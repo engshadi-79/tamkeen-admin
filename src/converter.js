@@ -1,0 +1,410 @@
+/* واجهة «تحويل ملف حسب قالب»: قالب Excel أو Word + ملف بيانات Excel ← ملف مطابق للقالب */
+(function (App) {
+  const { ui } = App;
+  const core = () => App.converterCore;
+  const store = () => App.converterStore;
+  const $ = (id) => document.getElementById(id);
+
+  const WEEKDAY_NAMES = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const WEEKDAY_DISPLAY_ORDER = [6, 0, 1, 2, 3, 4, 5]; // السبت أولاً
+
+  const state = {
+    mode: "upload",
+    savedTemplates: [],
+    selectedSavedId: "",
+    parsed: null, // { templateHeaders, dataHeaders, dataRows, truncated, templateBuffer, templateIsDocx, templateName, savedId }
+    mapping: {},
+    outputFormat: "xlsx",
+    groupBy1: "",
+    groupBy2: "",
+    autoNumberHeader: "",
+    sortRowsBy: "",
+    fitGroupToOnePage: false,
+    datesEnabled: false,
+    datesStart: "",
+    datesEnd: "",
+    datesWeekdays: [],
+    groupWeekdays: {},
+    busy: false,
+  };
+
+  const esc = ui.esc;
+  const opt = (value, label, selected) => `<option value="${esc(value)}"${selected ? " selected" : ""}>${esc(label)}</option>`;
+
+  function librariesReady() {
+    return typeof window.ExcelJS !== "undefined" && typeof window.JSZip !== "undefined";
+  }
+
+  function setError(message) {
+    $("conv-error").textContent = message || "";
+    $("conv-error").hidden = !message;
+  }
+
+  const selectedSaved = () => state.savedTemplates.find((t) => t.id === state.selectedSavedId);
+
+  /* ===== القسم العلوي: مصدر القالب وملف البيانات ===== */
+  function renderSource() {
+    document.querySelectorAll("[data-conv-mode]").forEach((b) => b.classList.toggle("active", b.dataset.convMode === state.mode));
+    $("conv-upload-box").hidden = state.mode !== "upload";
+    $("conv-saved-box").hidden = state.mode !== "saved";
+    $("conv-save-area").hidden = state.mode !== "upload";
+
+    const hasSaved = state.savedTemplates.length > 0;
+    if (hasSaved && !selectedSaved()) state.selectedSavedId = state.savedTemplates[0].id;
+    $("conv-saved-empty").hidden = hasSaved;
+    $("conv-saved-row").hidden = !hasSaved;
+    $("conv-saved-select").innerHTML = state.savedTemplates
+      .map((t) => opt(t.id, `${t.name} (${t.format === "docx" ? "Word" : "Excel"})`, t.id === state.selectedSavedId))
+      .join("");
+  }
+
+  async function refreshSaved() {
+    try {
+      state.savedTemplates = await store().list();
+    } catch (e) {
+      state.savedTemplates = [];
+      console.error(e);
+    }
+    renderSource();
+  }
+
+  const readFile = (file) => file.arrayBuffer();
+
+  async function handleParse() {
+    setError("");
+    if (!librariesReady()) { setError("تعذّر تحميل مكتبات Excel/Word من مجلد vendor."); return; }
+    const dataFile = $("conv-data-file").files[0];
+    if (!dataFile) { setError("اختر ملف البيانات"); return; }
+
+    let templateBuffer, templateIsDocx, templateName, savedId = null, templateHeaders = null;
+    if (state.mode === "upload") {
+      const templateFile = $("conv-template-file").files[0];
+      if (!templateFile) { setError("اختر ملف القالب"); return; }
+      templateBuffer = await readFile(templateFile);
+      templateIsDocx = core().isDocxName(templateFile.name);
+      templateName = templateFile.name.replace(/\.[^.]+$/, "") || "converted";
+    } else {
+      const saved = state.selectedSavedId && (await store().get(state.selectedSavedId));
+      if (!saved) { setError("اختر قالباً محفوظاً"); return; }
+      templateBuffer = await saved.file.arrayBuffer();
+      templateIsDocx = saved.format === "docx";
+      templateName = saved.name;
+      templateHeaders = saved.headers;
+      savedId = saved.id;
+    }
+
+    setBusy("conv-parse", true, "جارٍ التحليل...");
+    try {
+      if (!templateHeaders) templateHeaders = await core().readTemplateHeaders(templateBuffer, templateIsDocx);
+      const data = await core().readDataFile(await readFile(dataFile));
+
+      state.parsed = { templateHeaders, dataHeaders: data.headers, dataRows: data.rows, truncated: data.truncated, templateBuffer, templateIsDocx, templateName, savedId };
+      state.mapping = core().suggestColumnMapping(templateHeaders, data.headers);
+      state.outputFormat = templateIsDocx ? "docx" : "xlsx";
+
+      const defaults = (savedId && selectedSaved() && selectedSaved().defaultGroupBy) || [];
+      const usable = defaults.map((h) => core().resolveDefaultColumn(h, data.headers)).filter(Boolean);
+      state.groupBy1 = usable[0] || "";
+      state.groupBy2 = usable[1] || "";
+      state.autoNumberHeader = "";
+      state.sortRowsBy = "";
+      state.groupWeekdays = {};
+      state.datesWeekdays = [];
+      renderResult();
+      $("conv-result").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (e) {
+      console.error(e);
+      state.parsed = null;
+      renderResult();
+      setError(e && e.message && /[؀-ۿ]/.test(e.message)
+        ? e.message
+        : "تعذّر قراءة أحد الملفين - تأكد أن القالب Excel أو Word صحيح وأن ملف البيانات بصيغة Excel (.xlsx)");
+    } finally {
+      setBusy("conv-parse", false, "تحليل الملفين");
+    }
+  }
+
+  function setBusy(buttonId, busy, label) {
+    const b = $(buttonId);
+    if (!b) return;
+    b.disabled = busy;
+    b.textContent = label;
+  }
+
+  async function handleSaveTemplate() {
+    const errBox = $("conv-save-error");
+    errBox.textContent = "";
+    const file = $("conv-template-file").files[0];
+    const name = $("conv-save-name").value.trim();
+    if (!file) { errBox.textContent = "اختر ملف القالب أولاً"; return; }
+    if (!name) { errBox.textContent = "اسم القالب مطلوب"; return; }
+    if (!librariesReady()) { errBox.textContent = "تعذّر تحميل مكتبات Excel/Word."; return; }
+
+    setBusy("conv-save-btn", true, "جارٍ الحفظ...");
+    try {
+      const buffer = await readFile(file);
+      const isDocx = core().isDocxName(file.name);
+      const headers = await core().readTemplateHeaders(buffer, isDocx);
+      const id = await store().save({ name, format: isDocx ? "docx" : "xlsx", headers, file: new Blob([buffer], { type: file.type }) });
+      $("conv-save-form").hidden = true;
+      $("conv-save-toggle").hidden = false;
+      $("conv-save-name").value = "";
+      state.selectedSavedId = id;
+      await refreshSaved();
+      ui.toast("تم حفظ القالب على هذا الجهاز");
+    } catch (e) {
+      console.error(e);
+      errBox.textContent = e && e.message && /[؀-ۿ]/.test(e.message) ? e.message : "تعذّر العثور على صف عناوين في هذا الملف";
+    } finally {
+      setBusy("conv-save-btn", false, "حفظ");
+    }
+  }
+
+  async function handleDeleteSaved() {
+    const t = selectedSaved();
+    if (!t || !confirm(`حذف القالب المحفوظ «${t.name}»؟`)) return;
+    await store().remove(t.id);
+    state.selectedSavedId = "";
+    await refreshSaved();
+    ui.toast("تم حذف القالب");
+  }
+
+  async function handleDownloadSaved() {
+    const t = state.selectedSavedId && (await store().get(state.selectedSavedId));
+    if (t) ui.download(`${t.name}.${t.format}`, t.file);
+  }
+
+  /* ===== قسم الربط والخيارات ===== */
+  const activeGroupColumns = () => [state.groupBy1, state.groupBy2].filter(Boolean);
+
+  function distinctGroups() {
+    const p = state.parsed;
+    const cols = activeGroupColumns();
+    if (!p || cols.length === 0) return [];
+    const seen = new Map();
+    for (const row of p.dataRows) {
+      const key = core().computeGroupKey(cols, row);
+      if (!seen.has(key)) seen.set(key, cols.map((c) => String(row[c] == null ? "" : row[c])).join(" - "));
+    }
+    return [...seen.entries()].map(([key, label]) => ({ key, label }));
+  }
+
+  const weekdayBoxes = (checked, attrs) => WEEKDAY_DISPLAY_ORDER.map((day) =>
+    `<label class="conv-check"><input type="checkbox" ${attrs(day)} ${checked.includes(day) ? "checked" : ""}> ${WEEKDAY_NAMES[day]}</label>`
+  ).join("");
+
+  function renderResult() {
+    const box = $("conv-result");
+    const p = state.parsed;
+    if (!p) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+
+    const sameFormat = (state.outputFormat === "docx") === p.templateIsDocx;
+    const groups = activeGroupColumns();
+    const dataOptions = (selected, placeholder, exclude) =>
+      opt("", placeholder, !selected) + p.dataHeaders.filter((h) => h !== exclude).map((h) => opt(h, h, h === selected)).join("");
+
+    let html = `<h3>اربط كل عمود في القالب بالعمود المقابل له في ملف البيانات</h3>
+      <div class="conv-mapping">
+        ${p.templateHeaders.map((h, i) => `
+          <div class="conv-map-row">
+            <span>${esc(h)}</span>
+            <select data-map="${i}">${opt("", "— بدون —", !state.mapping[h])}${p.dataHeaders.map((dh) => opt(dh, dh, state.mapping[h] === dh)).join("")}</select>
+          </div>`).join("")}
+      </div>
+      <p class="conv-hint">${ui.fmt(p.dataRows.length)} صف من ملف البيانات${p.truncated ? ` (تم الاقتصار على أول ${ui.fmt(core().MAX_ROWS)} صف)` : ""}</p>
+
+      <div class="conv-tabs">
+        <button type="button" data-out="xlsx" class="${state.outputFormat === "xlsx" ? "active" : ""}">مخرج Excel</button>
+        <button type="button" data-out="docx" class="${state.outputFormat === "docx" ? "active" : ""}">مخرج Word</button>
+      </div>
+      <p class="conv-hint">${sameFormat
+        ? "المخرج بنفس صيغة القالب، فسيحافظ على تنسيقه وترويسته كما هي."
+        : "المخرج بصيغة مختلفة عن القالب، فسيُنشأ ملف جديد بجدول بسيط بدون تنسيق القالب الأصلي."}</p>`;
+
+    if (sameFormat) {
+      html += `
+      <div class="conv-section">
+        <span class="conv-label">تجميع الصفوف وتكرار العنوان عند كل مجموعة (اختياري)</span>
+        <div class="conv-inline">
+          <select id="conv-group1">${dataOptions(state.groupBy1, "بدون تجميع")}</select>
+          ${state.groupBy1 ? `<select id="conv-group2">${dataOptions(state.groupBy2, "+ مستوى تجميع ثانٍ (اختياري، مثلاً المجموعة)", state.groupBy1)}</select>` : ""}
+        </div>
+        ${state.mode === "saved" && p.savedId ? `<button type="button" class="conv-link" id="conv-save-default">احفظ هذا التجميع كافتراضي لهذا القالب</button>` : ""}
+        ${state.groupBy1 && !state.groupBy2 ? `<p class="conv-warn">⚠ اخترت مستوى تجميع واحداً فقط (${esc(state.groupBy1)}). لو كانت الصفوف التي تشترك في نفس القيمة تنتمي لأعمدة أخرى مختلفة (مثل مسارات مختلفة)، سيتم دمجها كلها في قسم واحد، وسيظهر عنوان القسم بقيمة أول صف فقط. أضف المستوى الثاني لو أردت فصلها أيضاً.</p>` : ""}
+        <p class="conv-hint">اختر عمود المجموعة من ملف البيانات نفسه (وليس من أعمدة القالب) - يفيد هذا حتى لو كانت المجموعة تظهر بالقالب فقط داخل عنوان مثل {{المجموعة}}. يرتّب الصفوف بحيث تكون كل مجموعة معاً، ويكرر ترويسة القالب مع فاصل صفحة حقيقي عند بداية كل مجموعة جديدة.${state.outputFormat === "docx" ? " أي محتوى بعد الجدول في القالب (مثل توقيع أو اعتماد) يتكرر أيضاً مع كل مجموعة." : ""}</p>
+      </div>`;
+
+      if (state.outputFormat === "docx" && groups.length > 0) {
+        html += `
+      <div class="conv-section conv-boxed">
+        <label class="conv-check strong"><input type="checkbox" id="conv-fit" ${state.fitGroupToOnePage ? "checked" : ""}> تقليص ارتفاع الصفوف وحجم الخط تلقائياً لتقريب كل مجموعة من صفحة واحدة</label>
+        <p class="conv-hint">يقلّص حجم الخط وارتفاع الصفوف حسب عدد صفوف كل مجموعة، بحد أدنى مقروء. هذا تقدير وليس ضماناً لصفحة واحدة في كل الحالات.</p>
+      </div>`;
+      }
+
+      if (state.outputFormat === "xlsx") {
+        html += `
+      <div class="conv-section conv-boxed">
+        <label class="conv-check strong"><input type="checkbox" id="conv-fit" ${state.fitGroupToOnePage ? "checked" : ""}> طباعة ${groups.length > 0 ? "كل مجموعة" : "الكشف"} في صفحة واحدة تتسع لجميع الصفوف</label>
+        <p class="conv-hint">يضبط مقياس الطباعة تلقائياً حسب ${groups.length > 0 ? "أطول مجموعة" : "عدد الصفوف"} وعرض الأعمدة، ويوسّع ارتفاع الصفوف لتملأ الصفحة${groups.length > 0 ? "، مع بقاء كل مجموعة في صفحة مستقلة" : ""}. مقياس الطباعة واحد للورقة كلها، لكن ارتفاع الصفوف يُحسب لكل مجموعة على حدة.</p>
+      </div>`;
+      }
+
+      if (state.outputFormat === "xlsx") {
+        const dg = distinctGroups();
+        html += `
+      <div class="conv-section conv-boxed">
+        <label class="conv-check strong"><input type="checkbox" id="conv-dates" ${state.datesEnabled ? "checked" : ""}> توليد تواريخ الحضور تلقائياً (اختياري)</label>
+        ${state.datesEnabled ? `
+          <div class="conv-inline">
+            <label class="conv-check">من تاريخ <input type="date" id="conv-dates-start" value="${esc(state.datesStart)}"></label>
+            <label class="conv-check">إلى تاريخ <input type="date" id="conv-dates-end" value="${esc(state.datesEnd)}"></label>
+          </div>
+          <p class="conv-hint">يمكن تحديد أي مدى (مثلاً نصف الشهر الأول) - يحسب أول 7 تواريخ داخل المدى توافق الأيام المحددة، ويستبدل بها صف التواريخ الموجود في القالب.</p>
+          ${dg.length > 0
+            ? `<p class="conv-label">حدد أيام الأسبوع الخاصة بكل مجموعة موجودة فعلياً في ملف البيانات:</p>
+               ${dg.map((g, gi) => `<div class="conv-group-days"><b>${esc(g.label)}</b><div class="conv-inline">${weekdayBoxes(state.groupWeekdays[g.key] || [], (d) => `data-gday="${gi}" data-day="${d}"`)}</div></div>`).join("")}`
+            : `<div class="conv-inline">${weekdayBoxes(state.datesWeekdays, (d) => `data-day-all="${d}"`)}</div>`}
+        ` : ""}
+      </div>`;
+      }
+
+      html += `
+      <div class="conv-section">
+        <span class="conv-label">ترقيم تلقائي لعمود (اختياري)</span>
+        <select id="conv-autonum">${opt("", "بدون ترقيم تلقائي", !state.autoNumberHeader)}${p.templateHeaders.map((h) => opt(h, h, h === state.autoNumberHeader)).join("")}</select>
+        <p class="conv-hint">يملأ هذا العمود بأرقام تسلسلية (1، 2، 3...) بدل قيمة من ملف البيانات${state.groupBy1 ? "، ويبدأ الترقيم من 1 من جديد مع كل مجموعة." : "."}</p>
+      </div>`;
+
+      if (state.outputFormat === "xlsx") {
+        html += `
+      <div class="conv-section">
+        <span class="conv-label">ترتيب الصفوف أبجدياً حسب عمود (اختياري)</span>
+        <select id="conv-sort">${dataOptions(state.sortRowsBy, "بدون ترتيب (نفس ترتيب ملف البيانات)")}</select>
+        <p class="conv-hint">يرتّب الصفوف أبجدياً حسب هذا العمود من ملف البيانات (مثل اسم الطالب)${state.groupBy1 ? "، كل مجموعة تُرتَّب بمفردها." : "."}</p>
+      </div>`;
+      }
+    }
+
+    html += `<button type="button" class="btn" id="conv-generate">⬇ توليد الملف وتنزيله</button>`;
+    box.innerHTML = html;
+    lastDistinctGroups = distinctGroups();
+  }
+
+  let lastDistinctGroups = [];
+
+  async function handleGenerate() {
+    const p = state.parsed;
+    if (!p) return;
+    setError("");
+    const groups = activeGroupColumns();
+    const sameFormat = (state.outputFormat === "docx") === p.templateIsDocx;
+
+    let sessionDates;
+    if (sameFormat && state.datesEnabled && state.outputFormat === "xlsx") {
+      if (!state.datesStart || !state.datesEnd) { setError("حدد تاريخ البداية وتاريخ النهاية لتوليد التواريخ"); return; }
+      sessionDates = { startDate: state.datesStart, endDate: state.datesEnd };
+      if (groups.length > 0) sessionDates.weekdaysByGroup = state.groupWeekdays;
+      else if (state.datesWeekdays.length > 0) sessionDates.weekdays = state.datesWeekdays;
+    }
+
+    setBusy("conv-generate", true, "جارٍ التوليد...");
+    try {
+      const { blob, filename } = await core().generate({
+        templateBuffer: p.templateBuffer,
+        templateIsDocx: p.templateIsDocx,
+        templateName: p.templateName,
+        templateHeaders: p.templateHeaders,
+        mapping: state.mapping,
+        // نسخة من الصفوف: التوليد يرتّبها داخل المجموعات
+        dataRows: p.dataRows.map((r) => Object.assign({}, r)),
+        outputFormat: state.outputFormat,
+        groupByColumns: sameFormat && groups.length ? groups : undefined,
+        autoNumberHeader: sameFormat ? state.autoNumberHeader || undefined : undefined,
+        sortRowsBy: sameFormat && state.outputFormat === "xlsx" ? state.sortRowsBy || undefined : undefined,
+        fitGroupToOnePage: sameFormat && (state.outputFormat === "xlsx" || groups.length > 0) && state.fitGroupToOnePage,
+        sessionDates,
+      });
+      ui.download(filename, blob);
+      ui.toast("تم توليد الملف");
+    } catch (e) {
+      console.error(e);
+      setError(e && e.message ? e.message : "تعذّر توليد الملف");
+    } finally {
+      setBusy("conv-generate", false, "⬇ توليد الملف وتنزيله");
+    }
+  }
+
+  /* ===== الأحداث ===== */
+  function onResultChange(e) {
+    const t = e.target;
+    const p = state.parsed;
+    if (t.dataset.map != null) {
+      state.mapping[p.templateHeaders[Number(t.dataset.map)]] = t.value;
+      return;
+    }
+    switch (t.id) {
+      case "conv-group1": state.groupBy1 = t.value; if (!t.value || t.value === state.groupBy2) state.groupBy2 = ""; state.groupWeekdays = {}; break;
+      case "conv-group2": state.groupBy2 = t.value; state.groupWeekdays = {}; break;
+      case "conv-fit": state.fitGroupToOnePage = t.checked; return;
+      case "conv-dates": state.datesEnabled = t.checked; break;
+      case "conv-dates-start": state.datesStart = t.value; return;
+      case "conv-dates-end": state.datesEnd = t.value; return;
+      case "conv-autonum": state.autoNumberHeader = t.value; break;
+      case "conv-sort": state.sortRowsBy = t.value; return;
+      default:
+        if (t.dataset.gday != null) {
+          const key = lastDistinctGroups[Number(t.dataset.gday)].key;
+          const day = Number(t.dataset.day);
+          const current = state.groupWeekdays[key] || [];
+          state.groupWeekdays[key] = t.checked ? [...current, day].sort() : current.filter((d) => d !== day);
+          return;
+        }
+        if (t.dataset.dayAll != null) {
+          const day = Number(t.dataset.dayAll);
+          state.datesWeekdays = t.checked ? [...state.datesWeekdays, day].sort() : state.datesWeekdays.filter((d) => d !== day);
+          return;
+        }
+        return;
+    }
+    renderResult();
+  }
+
+  async function onResultClick(e) {
+    const t = e.target.closest("button");
+    if (!t) return;
+    if (t.dataset.out) { state.outputFormat = t.dataset.out; renderResult(); return; }
+    if (t.id === "conv-generate") { handleGenerate(); return; }
+    if (t.id === "conv-save-default") {
+      try {
+        await store().setDefaultGroupBy(state.parsed.savedId, activeGroupColumns());
+        await refreshSaved();
+        ui.toast("تم حفظ التجميع الافتراضي لهذا القالب");
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+  }
+
+  function init() {
+    document.querySelectorAll("[data-conv-mode]").forEach((b) =>
+      b.addEventListener("click", () => { state.mode = b.dataset.convMode; renderSource(); })
+    );
+    $("conv-saved-select").addEventListener("change", (e) => { state.selectedSavedId = e.target.value; });
+    $("conv-saved-download").addEventListener("click", handleDownloadSaved);
+    $("conv-saved-delete").addEventListener("click", handleDeleteSaved);
+    $("conv-save-toggle").addEventListener("click", () => { $("conv-save-form").hidden = false; $("conv-save-toggle").hidden = true; $("conv-save-name").focus(); });
+    $("conv-save-cancel").addEventListener("click", () => { $("conv-save-form").hidden = true; $("conv-save-toggle").hidden = false; $("conv-save-error").textContent = ""; });
+    $("conv-save-btn").addEventListener("click", handleSaveTemplate);
+    $("conv-parse").addEventListener("click", handleParse);
+    $("conv-result").addEventListener("change", onResultChange);
+    $("conv-result").addEventListener("click", onResultClick);
+
+    refreshSaved().then(() => {
+      if (state.savedTemplates.length > 0) { state.mode = "saved"; renderSource(); }
+    });
+  }
+
+  App.converter = { init, render: renderSource };
+})(window.App = window.App || {});

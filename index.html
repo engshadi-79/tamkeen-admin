@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>مساعد تمكين الإداري</title>
+  <meta name="description" content="أداة إدارية لمتابعة المسارات والمراسلات والمهام في مشروع تمكين (PP-003)">
+  <!-- خط Cairo: يُحمَّل عند توفر الإنترنت، وتعمل الأداة بخطوط النظام البديلة دون اتصال -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles/theme.css?v=29">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>مساعد <span class="accent">تمكين</span> الإداري</h1>
+        <small>مركز مسارات التمكين · PP-003</small>
+      </div>
+      <ul class="nav">
+        <li><button data-view="dashboard"><span class="ico">▦</span>اللوحة الرئيسية</button></li>
+        <li><button data-view="tracks"><span class="ico">◧</span>متابعة المسارات</button></li>
+        <li><button data-view="letters"><span class="ico">✉</span>المراسلات والتقارير</button></li>
+        <li><button data-view="converter"><span class="ico">⇄</span>تحويل ملف حسب قالب</button></li>
+        <li><button data-view="tasks"><span class="ico">☑</span>المهام والمتابعات</button></li>
+      </ul>
+      <div class="sidebar-foot">
+        البيانات محفوظة على هذا الجهاز فقط
+        <div>
+          <button id="btn-export" title="تنزيل ملف JSON بجميع البيانات">نسخة احتياطية</button>
+          <button id="btn-import" title="استعادة البيانات من ملف JSON">استعادة</button>
+          <button id="btn-reset" title="حذف البيانات والعودة للقيم الافتراضية">إعادة ضبط</button>
+        </div>
+        <input type="file" id="import-file" accept="application/json,.json" hidden>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- ===== اللوحة الرئيسية ===== -->
+      <section class="view" id="view-dashboard">
+        <div class="page-head">
+          <div><h2>اللوحة الرئيسية</h2><p>نظرة شاملة على مؤشرات المشروع والمهام</p></div>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div class="card">
+          <h3>التنبيهات</h3>
+          <ul class="alerts" id="alerts"></ul>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>حالة المسارات</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>المسار</th><th>النوع</th><th>المستفيدون</th><th>الحضور</th><th>الإنجاز</th></tr></thead>
+                <tbody id="dash-tracks"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3>أقرب المهام غير المنجزة</h3>
+            <ul class="task-list" id="dash-tasks"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== متابعة المسارات ===== -->
+      <section class="view" id="view-tracks">
+        <div class="page-head">
+          <div><h2>متابعة المسارات</h2><p>عدّل القيم مباشرة في الجدول، ويتم الحفظ تلقائياً. إجمالي الساعات لكل مسار: 130 ساعة.</p></div>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>اسم المسار</th><th>النوع</th><th>عدد المستفيدين</th><th>نسبة الحضور (%)</th><th>الساعات المكتملة</th><th>التقدم</th></tr></thead>
+              <tbody id="tracks-body"></tbody>
+              <tfoot id="tracks-foot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== المراسلات ===== -->
+      <section class="view" id="view-letters">
+        <div class="page-head">
+          <div><h2>المراسلات والتقارير</h2><p>اختر قالباً واملأ الحقول، وستظهر المعاينة فوراً</p></div>
+          <div class="btn-row no-print">
+            <button class="btn" id="btn-copy">نسخ النص</button>
+            <button class="btn navy" id="btn-word">تصدير Word</button>
+            <button class="btn navy" id="btn-pdf">تصدير PDF</button>
+          </div>
+        </div>
+        <div class="letters-layout">
+          <div class="card">
+            <label class="field"><span>القالب</span><select id="tpl-select"></select></label>
+            <div class="tpl-actions">
+              <button class="btn secondary small" id="tpl-new">+ قالب جديد</button>
+              <button class="btn secondary small" id="tpl-dup">نسخ القالب للتعديل</button>
+              <button class="btn secondary small" id="tpl-edit" hidden>تعديل</button>
+              <button class="btn danger small" id="tpl-delete" hidden>حذف</button>
+            </div>
+            <label class="field"><span>الموضوع</span><input type="text" id="l-subject" placeholder="مثال: طلب تجهيز قاعة تدريبية"></label>
+            <label class="field"><span>المرسل إليه</span><input type="text" id="l-recipient" placeholder="مثال: الأستاذ/ محمد أحمد"></label>
+            <label class="field"><span>صفة المرسل إليه (اختياري)</span><input type="text" id="l-recipientTitle" placeholder="مثال: مدير عام الشؤون الإدارية"></label>
+            <div class="grid-fields">
+              <label class="field"><span>التاريخ</span><input type="date" id="l-date"></label>
+              <label class="field"><span>الرقم (اختياري)</span><input type="text" id="l-ref" placeholder="مثال: م ت/2026/045"></label>
+            </div>
+            <label class="field"><span>المرفقات (اختياري)</span><input type="text" id="l-attachments" placeholder="مثال: كشف الحضور"></label>
+            <div class="grid-fields">
+              <label class="field"><span>اسم الموقّع</span><input type="text" id="l-signer" placeholder="يُحفظ تلقائياً"></label>
+              <label class="field"><span>المسمى الوظيفي</span><input type="text" id="l-signerTitle" placeholder="مثال: مدير المشروع"></label>
+            </div>
+            <div class="ai-box">
+              <div class="ai-head">
+                <span>✨ كتابة المتن بالذكاء الاصطناعي</span>
+                <button class="btn secondary small" type="button" id="ai-settings">الإعدادات</button>
+              </div>
+              <textarea id="ai-request" rows="3" placeholder="اكتب ما تريد قوله، مثال: نطلب تجهيز القاعة رقم 3 بأجهزة العرض لمسار التصميم الجرافيكي لمدة أسبوعين ابتداءً من الأحد القادم"></textarea>
+              <div class="btn-row">
+                <button class="btn" type="button" id="ai-generate">توليد النص</button>
+                <button class="btn danger" type="button" id="ai-stop" hidden>إيقاف</button>
+              </div>
+              <p class="ai-status" id="ai-status" role="status"></p>
+            </div>
+            <label class="field"><span>تفاصيل إضافية (متن المراسلة)</span><textarea id="l-details" rows="9" placeholder="اكتب مضمون المراسلة هنا، أو ولّده بالذكاء الاصطناعي أعلاه ثم عدّله…"></textarea></label>
+          </div>
+          <div class="preview-col">
+            <div class="preview-bar"><span>معاينة على الترويسة الرسمية</span><span id="page-count"></span></div>
+            <div class="pages" id="preview" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== تحويل ملف حسب قالب ===== -->
+      <section class="view" id="view-converter">
+        <div class="page-head">
+          <div><h2>تحويل ملف حسب قالب</h2><p>اختر قالباً (Excel أو Word) يحدّد شكل المخرجات، وملف بيانات Excel، ثم اربط الأعمدة واحصل على ملف واحد مطابق للقالب</p></div>
+        </div>
+        <div class="card">
+          <div class="conv-tabs full">
+            <button type="button" data-conv-mode="saved">من القوالب المحفوظة</button>
+            <button type="button" data-conv-mode="upload">رفع قالب جديد</button>
+          </div>
+          <div class="grid-fields conv-files">
+            <div id="conv-saved-box" hidden>
+              <span class="conv-label">القالب المحفوظ</span>
+              <p class="conv-empty" id="conv-saved-empty">لا توجد قوالب محفوظة بعد — ارفع قالباً جديداً واحفظه لاستخدامه هنا لاحقاً.</p>
+              <div class="conv-inline" id="conv-saved-row">
+                <select id="conv-saved-select"></select>
+                <button type="button" class="conv-link" id="conv-saved-download">تحميل</button>
+                <button type="button" class="conv-link danger" id="conv-saved-delete">حذف</button>
+              </div>
+            </div>
+            <div id="conv-upload-box">
+              <label class="field"><span>ملف القالب — Excel أو Word (يحدّد شكل الأعمدة النهائية)</span><input type="file" id="conv-template-file" accept=".xlsx,.docx"></label>
+            </div>
+            <label class="field"><span>ملف البيانات المصدر (Excel)</span><input type="file" id="conv-data-file" accept=".xlsx"></label>
+          </div>
+          <div id="conv-save-area">
+            <button type="button" class="conv-link" id="conv-save-toggle">حفظ هذا القالب لاستخدامه لاحقاً</button>
+            <div class="conv-save-form" id="conv-save-form" hidden>
+              <input type="text" id="conv-save-name" placeholder="اسم القالب">
+              <button type="button" class="btn small" id="conv-save-btn">حفظ</button>
+              <button type="button" class="conv-link" id="conv-save-cancel">إلغاء</button>
+              <p class="conv-save-error" id="conv-save-error"></p>
+            </div>
+          </div>
+          <button type="button" class="btn" id="conv-parse">تحليل الملفين</button>
+          <p class="conv-error" id="conv-error" hidden></p>
+          <p class="conv-hint">تتم المعالجة كاملة داخل هذا المتصفح؛ لا تُرفع الملفات إلى أي خادم. القوالب المحفوظة تبقى على هذا الجهاز فقط.</p>
+        </div>
+        <div class="card" id="conv-result" hidden></div>
+      </section>
+
+      <!-- ===== المهام ===== -->
+      <section class="view" id="view-tasks">
+        <div class="page-head">
+          <div><h2>المهام والمتابعات</h2><p id="task-counts"></p></div>
+        </div>
+        <div class="card">
+          <form class="task-form" id="task-form">
+            <label class="field" style="margin:0"><span>المهمة</span><input type="text" id="task-text" placeholder="مثال: رفع كشف حضور مسار الخياطة" required></label>
+            <label class="field" style="margin:0"><span>تاريخ الاستحقاق (اختياري)</span><input type="date" id="task-due"></label>
+            <button class="btn" type="submit">إضافة</button>
+          </form>
+        </div>
+        <ul class="task-list" id="task-list"></ul>
+      </section>
+    </main>
+  </div>
+
+  <!-- نافذة تحرير القوالب -->
+  <div class="modal-backdrop" id="tpl-modal" role="dialog" aria-modal="true" aria-labelledby="tpl-modal-title">
+    <form class="modal" id="tpl-form">
+      <h3 id="tpl-modal-title">قالب جديد</h3>
+      <label class="field"><span>اسم القالب</span><input type="text" id="tpl-name"></label>
+      <label class="field"><span>نص القالب</span><textarea id="tpl-body" rows="14"></textarea></label>
+      <p class="vars-hint" id="vars-hint"></p>
+      <div class="btn-row">
+        <button class="btn" type="submit">حفظ القالب</button>
+        <button class="btn secondary" type="button" id="tpl-cancel">إلغاء</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- نافذة إعدادات الذكاء الاصطناعي -->
+  <div class="modal-backdrop" id="ai-modal" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
+    <form class="modal" id="ai-form">
+      <h3 id="ai-modal-title">إعدادات الذكاء الاصطناعي</h3>
+      <label class="field"><span>المزوّد</span>
+        <select id="ai-provider">
+          <option value="gemini">Google Gemini — مجاني بحدود يومية</option>
+          <option value="claude">Claude من Anthropic — مدفوع</option>
+        </select>
+      </label>
+      <div id="ai-gemini-fields">
+        <p class="vars-hint">أنشئ مفتاحاً مجانياً من <b dir="ltr">aistudio.google.com/apikey</b> بحساب Google (زر «Create API key»). الاستخدام المجاني له حد يومي يكفي مراسلات المكتب. تنبيه: في الخطة المجانية قد تستخدم Google ما يُرسل إليها لتحسين خدماتها، فلا تكتب بيانات شخصية حساسة في الطلب.</p>
+        <label class="field"><span>مفتاح Gemini</span><input type="password" id="ai-gemini-key" autocomplete="off" spellcheck="false" dir="ltr" placeholder="AIza..."></label>
+      </div>
+      <div id="ai-claude-fields" hidden>
+        <p class="vars-hint">أنشئ المفتاح من <b dir="ltr">console.anthropic.com</b> (الاستخدام مدفوع حسب الاستهلاك).</p>
+        <label class="field"><span>مفتاح Claude</span><input type="password" id="ai-claude-key" autocomplete="off" spellcheck="false" dir="ltr" placeholder="sk-ant-..."></label>
+      </div>
+      <p class="vars-hint">المفاتيح تُحفظ في هذا المتصفح على هذا الجهاز فقط، ولا تدخل في ملف النسخة الاحتياطية. عند التوليد يُرسل طلبك وبيانات المراسلة (الموضوع، المرسل إليه وصفته، نوع القالب، المسمى الوظيفي للموقّع) إلى المزوّد المختار فقط.</p>
+      <div class="btn-row">
+        <button class="btn" type="submit">حفظ</button>
+        <button class="btn danger" type="button" id="ai-key-delete">حذف المفاتيح</button>
+        <button class="btn secondary" type="button" id="ai-cancel">إلغاء</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+  <div id="print-root" aria-hidden="true"></div>
+
+  <script src="src/storage.js?v=29"></script>
+  <script src="src/ui.js?v=29"></script>
+  <script src="src/templates.js?v=29"></script>
+  <script src="src/tracks.js?v=29"></script>
+  <script src="src/tasks.js?v=29"></script>
+  <script src="src/dashboard.js?v=29"></script>
+  <script src="src/letterhead-docx.js?v=29"></script>
+  <script src="src/docx.js?v=29"></script>
+  <script src="src/ai.js?v=29"></script>
+  <script src="src/letters.js?v=29"></script>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="vendor/exceljs.min.js"></script>
+  <script src="src/converter-core.js?v=29"></script>
+  <script src="src/converter-store.js?v=29"></script>
+  <script src="src/converter.js?v=29"></script>
+  <script src="src/app.js?v=29"></script>
+</body>
+</html>
