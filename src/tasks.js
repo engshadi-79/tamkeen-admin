@@ -13,6 +13,12 @@
     });
   }
 
+  // المهام المنشأة من قرارات المحاضر تحمل اسم الاجتماع
+  function meetingLabel(id) {
+    const m = (store.get().meetings || []).find((x) => x.id === id);
+    return m ? `📋 من محضر: ${ui.esc(m.title || ui.formatDate(m.date))}` : "";
+  }
+
   function itemHTML(t, { actions = true } = {}) {
     const overdue = ui.isOverdue(t);
     const cls = ["task-item", t.done ? "done" : "", overdue ? "overdue" : ""].join(" ");
@@ -20,7 +26,7 @@
     return `
       <li class="${cls}" data-id="${t.id}">
         ${actions ? `<input type="checkbox" ${t.done ? "checked" : ""} aria-label="تعليم كمنجزة">` : ""}
-        <span class="t-text">${ui.esc(t.text)}</span>
+        <span class="t-text">${ui.esc(t.text)}${t.owner || t.meetingId ? `<span class="t-meta">${t.owner ? `👤 ${ui.esc(t.owner)}` : ""}${t.meetingId ? ` ${meetingLabel(t.meetingId)}` : ""}</span>` : ""}</span>
         <span class="t-date">${date}</span>
         ${actions ? `<button class="btn danger small" data-del title="حذف المهمة">حذف</button>` : ""}
       </li>`;
@@ -46,7 +52,8 @@
       const textInput = document.getElementById("task-text");
       const text = textInput.value.trim();
       if (!text) { textInput.focus(); return; }
-      store.get().tasks.push({ id: store.uid(), text, dueDate: dueInput.value || null, done: false });
+      const ownerInput = document.getElementById("task-owner");
+      store.get().tasks.push({ id: store.uid(), text, owner: ownerInput.value.trim(), dueDate: dueInput.value || null, done: false, createdAt: new Date().toISOString() });
       store.save();
       form.reset();
       textInput.focus();
@@ -57,7 +64,11 @@
     list.addEventListener("change", (e) => {
       if (e.target.type !== "checkbox") return;
       const task = store.get().tasks.find((t) => t.id === e.target.closest("li").dataset.id);
-      if (task) { task.done = e.target.checked; store.save(); }
+      if (task) {
+        task.done = e.target.checked;
+        task.doneAt = task.done ? `${ui.todayISO()}T${new Date().toTimeString().slice(0, 8)}` : null; // تاريخ محلي، للتقرير الدوري
+        store.save();
+      }
     });
     list.addEventListener("click", (e) => {
       if (!e.target.closest("[data-del]")) return;

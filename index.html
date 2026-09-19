@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=29">
+  <link rel="stylesheet" href="styles/theme.css?v=45">
 </head>
 <body>
   <div class="app">
@@ -22,6 +22,10 @@
         <li><button data-view="dashboard"><span class="ico">▦</span>اللوحة الرئيسية</button></li>
         <li><button data-view="tracks"><span class="ico">◧</span>متابعة المسارات</button></li>
         <li><button data-view="letters"><span class="ico">✉</span>المراسلات والتقارير</button></li>
+        <li><button data-view="report"><span class="ico">📊</span>التقرير الدوري</button></li>
+        <li><button data-view="meetings"><span class="ico">📋</span>محاضر الاجتماعات</button></li>
+        <li><button data-view="registry"><span class="ico">🗂</span>الوارد والصادر</button></li>
+        <li><button data-view="rtl"><span class="ico">⇆</span>تصحيح اتجاه Word</button></li>
         <li><button data-view="converter"><span class="ico">⇄</span>تحويل ملف حسب قالب</button></li>
         <li><button data-view="tasks"><span class="ico">☑</span>المهام والمتابعات</button></li>
       </ul>
@@ -88,6 +92,7 @@
             <button class="btn" id="btn-copy">نسخ النص</button>
             <button class="btn navy" id="btn-word">تصدير Word</button>
             <button class="btn navy" id="btn-pdf">تصدير PDF</button>
+            <button class="btn navy" id="btn-print">🖨 طباعة</button>
           </div>
         </div>
         <div class="letters-layout">
@@ -104,7 +109,7 @@
             <label class="field"><span>صفة المرسل إليه (اختياري)</span><input type="text" id="l-recipientTitle" placeholder="مثال: مدير عام الشؤون الإدارية"></label>
             <div class="grid-fields">
               <label class="field"><span>التاريخ</span><input type="date" id="l-date"></label>
-              <label class="field"><span>الرقم (اختياري)</span><input type="text" id="l-ref" placeholder="مثال: م ت/2026/045"></label>
+              <label class="field"><span>رقم الصادر <button type="button" class="conv-link" id="l-ref-auto" title="الرقم التالي في سجل الصادر">رقم تلقائي</button></span><input type="text" id="l-ref" placeholder="يُولَّد تلقائياً عند التصدير"></label>
             </div>
             <label class="field"><span>المرفقات (اختياري)</span><input type="text" id="l-attachments" placeholder="مثال: كشف الحضور"></label>
             <div class="grid-fields">
@@ -129,6 +134,174 @@
             <div class="preview-bar"><span>معاينة على الترويسة الرسمية</span><span id="page-count"></span></div>
             <div class="pages" id="preview" aria-live="polite"></div>
           </div>
+        </div>
+      </section>
+
+      <!-- ===== التقرير الدوري ===== -->
+      <section class="view" id="view-report">
+        <div class="page-head">
+          <div><h2>التقرير الدوري</h2><p>يجمع مؤشرات المسارات والمهام والاجتماعات والمراسلات للفترة تلقائياً، مع رسوم بيانية، على الترويسة الرسمية</p></div>
+          <div class="btn-row no-print">
+            <button class="btn navy" id="r-word">تصدير Word</button>
+            <button class="btn navy" id="r-pdf">تصدير PDF</button>
+            <button class="btn navy" id="r-print">🖨 طباعة</button>
+          </div>
+        </div>
+        <div class="letters-layout">
+          <div class="card">
+            <div class="grid-fields">
+              <label class="field"><span>الفترة من</span><input type="date" id="r-from"></label>
+              <label class="field"><span>إلى</span><input type="date" id="r-to"></label>
+            </div>
+            <div class="grid-fields">
+              <label class="field"><span>تاريخ التقرير</span><input type="date" id="r-date"></label>
+              <label class="field"><span>رقم الصادر <button type="button" class="conv-link" id="r-ref-auto">رقم تلقائي</button></span><input type="text" id="r-ref" placeholder="يُولَّد تلقائياً عند التصدير"></label>
+            </div>
+            <label class="field"><span>الجهة المرسل إليها</span><input type="text" id="r-recipient"></label>
+            <label class="field"><span>صفة المرسل إليه (اختياري)</span><input type="text" id="r-recipientTitle"></label>
+            <label class="field"><span>الموضوع (اختياري)</span><input type="text" id="r-subject" placeholder="تلقائي: تقرير الإنجاز الدوري للفترة من ... إلى ..."></label>
+            <div class="grid-fields">
+              <label class="field"><span>بداية التدريب</span><input type="date" id="r-trainingStart" title="لحساب الإنجاز المخطط"></label>
+              <label class="field"><span>نهاية التدريب</span><input type="date" id="r-trainingEnd" title="لحساب الإنجاز المخطط"></label>
+            </div>
+            <p class="conv-hint" style="margin-top:-6px">تاريخا التدريب يُحفظان، ويُستخدمان لمقارنة الإنجاز الفعلي بالمخطط.</p>
+            <label class="conv-check strong"><input type="checkbox" id="r-charts" checked> إدراج الرسوم البيانية</label><br>
+            <label class="conv-check strong"><input type="checkbox" id="r-tasks" checked> إدراج جدول المهام المنجزة خلال الفترة</label>
+            <label class="field" style="margin-top:12px"><span>أبرز الإنجازات (كل سطر بند)</span><textarea id="r-highlights" rows="4"></textarea></label>
+            <label class="field"><span>التحديات</span><textarea id="r-challenges" rows="3"></textarea></label>
+            <label class="field"><span>الخطوات القادمة</span><textarea id="r-next" rows="3"></textarea></label>
+          </div>
+          <div class="preview-col">
+            <div class="preview-bar"><span>معاينة على الترويسة الرسمية</span><span id="r-page-count"></span></div>
+            <div class="pages" id="r-preview" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== محاضر الاجتماعات ===== -->
+      <section class="view" id="view-meetings">
+        <div class="page-head">
+          <div><h2>محاضر الاجتماعات</h2><p>كل قرار تضيفه يصبح مهمة لها مسؤول وموعد في «المهام والمتابعات»</p></div>
+          <div class="btn-row no-print">
+            <button class="btn" id="m-save">حفظ المحضر</button>
+            <button class="btn navy" id="m-word">تصدير Word</button>
+            <button class="btn navy" id="m-pdf">تصدير PDF</button>
+            <button class="btn navy" id="m-print">🖨 طباعة</button>
+          </div>
+        </div>
+        <div class="letters-layout">
+          <div class="card">
+            <label class="field"><span>المحضر</span><select id="m-select"></select></label>
+            <div class="tpl-actions">
+              <button class="btn secondary small" id="m-new">+ محضر جديد</button>
+              <button class="btn danger small" id="m-delete" hidden>حذف المحضر</button>
+            </div>
+            <label class="field"><span>عنوان الاجتماع</span><input type="text" id="m-title" placeholder="مثال: اجتماع منسقي المسارات الأسبوعي"></label>
+            <div class="grid-fields">
+              <label class="field"><span>التاريخ</span><input type="date" id="m-date"></label>
+              <label class="field"><span>الساعة</span><input type="text" id="m-time" placeholder="مثال: 10:00 صباحاً"></label>
+            </div>
+            <div class="grid-fields">
+              <label class="field"><span>المكان</span><input type="text" id="m-place"></label>
+              <label class="field"><span>رئيس الاجتماع</span><input type="text" id="m-chair"></label>
+            </div>
+            <label class="field"><span>الحاضرون (كل اسم في سطر)</span><textarea id="m-attendees" rows="3"></textarea></label>
+            <label class="field"><span>جدول الأعمال (كل بند في سطر)</span><textarea id="m-agenda" rows="3"></textarea></label>
+            <label class="field"><span>ما تمت مناقشته</span><textarea id="m-discussion" rows="4"></textarea></label>
+            <div class="m-dec-head"><span class="conv-label">القرارات والتوصيات</span><button type="button" class="btn secondary small" id="m-add-decision">+ قرار</button></div>
+            <div id="m-decisions"></div>
+            <label class="field" style="margin-top:12px"><span>مُعِدّ المحضر</span><input type="text" id="m-writer"></label>
+          </div>
+          <div class="preview-col">
+            <div class="preview-bar"><span>معاينة على الترويسة الرسمية</span><span id="m-page-count"></span></div>
+            <div class="pages" id="m-preview" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== الوارد والصادر ===== -->
+      <section class="view" id="view-registry">
+        <div class="page-head">
+          <div><h2>الوارد والصادر</h2><p id="reg-counts"></p></div>
+          <div class="btn-row no-print">
+            <button class="btn navy" id="reg-bulk">⬆ رفع ملفات</button>
+            <input type="file" id="reg-bulk-input" multiple hidden>
+            <button class="btn navy" id="reg-folder">📁 رفع مجلد</button>
+            <input type="file" id="reg-folder-input" webkitdirectory multiple hidden>
+            <button class="btn" id="reg-add">+ قيد جديد</button>
+            <button class="btn secondary" id="reg-export">تصدير Excel</button>
+            <button class="btn" id="reg-archive-pending" hidden></button>
+            <button class="btn secondary" data-drive-settings>☁ Google Drive</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="reg-toolbar">
+            <div class="conv-tabs" style="margin:0">
+              <button type="button" data-reg-type="all">الكل</button>
+              <button type="button" data-reg-type="out">الصادر</button>
+              <button type="button" data-reg-type="in">الوارد</button>
+            </div>
+            <input type="text" id="reg-search" placeholder="بحث بالرقم أو الجهة أو الموضوع">
+            <select id="reg-year"></select>
+            <select id="reg-cat"></select>
+            <label class="reg-prefix">ترتيب
+              <select id="reg-sort">
+                <option value="date-desc">التاريخ: الأحدث أولاً</option>
+                <option value="date-asc">التاريخ: الأقدم أولاً</option>
+                <option value="name">الاسم (أ ← ي)</option>
+                <option value="category">نوع المستند</option>
+              </select>
+            </label>
+            <label class="reg-prefix">تصنيف
+              <select id="reg-group">
+                <option value="month">حسب الشهر</option>
+                <option value="category">حسب نوع المستند</option>
+                <option value="type">وارد / صادر</option>
+                <option value="initial">حسب أول حرف من الاسم</option>
+                <option value="">بدون تصنيف</option>
+              </select>
+            </label>
+            <label class="reg-prefix">بادئة الصادر <input type="text" id="reg-prefix" title="الأرقام: البادئة/السنة/التسلسل"></label>
+          </div>
+          <div class="table-wrap">
+            <table class="reg-table">
+              <thead><tr><th>النوع</th><th>الرقم</th><th class="sortable" data-sort-col="date" title="ترتيب حسب التاريخ">التاريخ</th><th>الجهة</th><th class="sortable" data-sort-col="category" title="ترتيب حسب نوع المستند">الموضوع</th><th class="sortable" data-sort-col="name" title="ترتيب حسب الاسم">اسم الملف</th><th>تاريخ الملف</th><th>المجلد في Drive</th><th></th></tr></thead>
+              <tbody id="reg-body"></tbody>
+            </table>
+          </div>
+          <p class="conv-hint">الخطابات والتقارير المصدَّرة (Word أو PDF أو طباعة) تُسجَّل في الصادر تلقائياً برقمها، وملف Word يُحفظ مرفقاً. اسحب ملفات أو مجلداً كاملاً إلى هذه الصفحة، أو اضغط «رفع ملفات» أو «رفع مجلد» لتسجيلها دفعة واحدة؛ تُرتَّب في Drive حسب: السنة / الشهر / الوارد أو الصادر / نوع المستند.</p>
+        </div>
+      </section>
+
+      <!-- ===== تصحيح اتجاه Word ===== -->
+      <section class="view" id="view-rtl">
+        <div class="page-head">
+          <div><h2>تصحيح اتجاه ملف Word</h2><p>لملفات Word العربية الناتجة عن أدوات الذكاء الاصطناعي وغيرها: فقرات يسارية، ونقاط في غير مكانها، وجداول معكوسة</p></div>
+          <div class="btn-row no-print"><button class="btn secondary" data-drive-settings>☁ Google Drive</button></div>
+        </div>
+        <div class="card">
+          <label class="rtl-drop" id="rtl-drop">
+            <input type="file" id="rtl-input" accept=".docx" multiple hidden>
+            <span class="rtl-drop-ico">⇆</span>
+            <b>اسحب ملفات Word إلى هنا، أو اضغط للاختيار</b>
+            <span class="conv-hint">ملف أو عدة ملفات .docx — المعالجة داخل هذا المتصفح، ولا يُرفع شيء إلا إذا اخترت الأرشفة في Drive</span>
+          </label>
+          <p class="conv-hint" id="rtl-busy" hidden>جارٍ التصحيح…</p>
+          <ul class="rtl-list" id="rtl-results"></ul>
+          <div class="btn-row" id="rtl-actions" hidden>
+            <button class="btn navy" id="rtl-download-all">تنزيل الكل (ملف مضغوط)</button>
+            <button class="btn secondary" id="rtl-clear">مسح القائمة</button>
+          </div>
+          <details class="rtl-what">
+            <summary>ماذا يُصحَّح؟</summary>
+            <ul>
+              <li>اتجاه كل فقرة عربية من اليمين لليسار، والفقرات الإنجليزية الخالصة تبقى كما هي.</li>
+              <li>المحاذاة: الفقرات تصبح يمينية، والموسّطة والمضبوطة من الجانبين تبقى كما هي.</li>
+              <li>النص العربي يُعلَّم كنص يميني فتظهر النقاط والأقواس في مكانها الصحيح.</li>
+              <li>الجداول: العمود الأول يصبح في اليمين، دون المساس بتنسيق الخلايا.</li>
+              <li>الترويسة والتذييل والحواشي، واتجاه الصفحة.</li>
+            </ul>
+          </details>
         </div>
       </section>
 
@@ -181,6 +354,7 @@
         <div class="card">
           <form class="task-form" id="task-form">
             <label class="field" style="margin:0"><span>المهمة</span><input type="text" id="task-text" placeholder="مثال: رفع كشف حضور مسار الخياطة" required></label>
+            <label class="field" style="margin:0"><span>المسؤول (اختياري)</span><input type="text" id="task-owner"></label>
             <label class="field" style="margin:0"><span>تاريخ الاستحقاق (اختياري)</span><input type="date" id="task-due"></label>
             <button class="btn" type="submit">إضافة</button>
           </form>
@@ -231,24 +405,146 @@
     </form>
   </div>
 
+  <!-- نافذة إعدادات Google Drive -->
+  <div class="modal-backdrop" id="drv-modal" role="dialog" aria-modal="true" aria-labelledby="drv-title">
+    <div class="modal">
+      <h3 id="drv-title">☁ الأرشفة على Google Drive</h3>
+      <p class="drv-status" id="drv-status"></p>
+      <fieldset class="drv-users-box cloud-box">
+        <legend>🏢 أرشيف المركز المشترك</legend>
+        <p class="conv-hint" style="margin-top:0">كل الملفات من كل المستخدمين تُحفظ في Drive حساب المركز، والجميع يرى نفس سجل الوارد والصادر. يكفي رمز المركز مرة واحدة لكل جهاز، بلا تسجيل دخول Google.</p>
+        <label class="field"><span>رابط خادم المركز</span><input type="url" id="cloud-url" dir="ltr" placeholder="https://script.google.com/macros/s/…/exec" spellcheck="false"></label>
+        <label class="field"><span>رمز المركز</span><input type="password" id="cloud-key" dir="ltr" autocomplete="off" spellcheck="false"></label>
+        <div class="btn-row">
+          <button class="btn navy small" type="button" id="cloud-connect">اتصال بأرشيف المركز</button>
+          <button class="btn secondary small" type="button" id="cloud-disconnect">إيقاف على هذا الجهاز</button>
+        </div>
+      </fieldset>
+      <label class="conv-check strong"><input type="checkbox" id="drv-auto"> أرشفة تلقائية لكل خطاب يُصدَّر ولكل مرفق وارد</label>
+      <details class="rtl-what" id="drv-personal">
+        <summary>الرفع بحساب Google شخصي (بدلاً من أرشيف المركز)</summary>
+      <label class="field"><span>حساب Google على هذا الجهاز</span><input type="email" id="drv-email" dir="ltr" placeholder="يُحفظ تلقائياً بعد أول اتصال" spellcheck="false" autocomplete="off"></label>
+      <p class="conv-hint" style="margin-top:-6px">بعد أول اتصال لا تظهر شاشة اختيار الحساب مرة أخرى على هذا الجهاز. لتغيير الحساب اكتب البريد الجديد واضغط «حفظ».</p>
+      <label class="field"><span>مُعرّف العميل (Client ID)</span><input type="text" id="drv-client" dir="ltr" placeholder="xxxxxxxx.apps.googleusercontent.com" spellcheck="false"></label>
+      <label class="field"><span>اسم مجلد الأرشيف في Drive</span><input type="text" id="drv-root"></label>
+      <fieldset class="drv-users-box">
+        <legend>👥 المستخدمون المسموح لهم</legend>
+        <div class="drv-user-row">
+          <input type="text" id="drv-user-input" dir="ltr" placeholder="name@gmail.com — ويمكن لصق عدة إيميلات" spellcheck="false" autocomplete="off">
+          <button class="btn small" type="button" id="drv-user-add">إضافة</button>
+        </div>
+        <ul class="drv-users" id="drv-users"></ul>
+        <div class="btn-row">
+          <button class="btn secondary small" type="button" id="drv-users-google">فتح قائمة المستخدمين في Google</button>
+        </div>
+        <p class="conv-hint">Google تشترط أن يكون كل مستخدم مضافاً أيضاً في «Test users» في Google Cloud (حتى 100)، ولا تسمح بإضافته من خارج صفحتها. زر «إضافتهم في Google» ينسخ الإيميلات الجديدة ويفتح الصفحة لتلصقها. والأداة ترفض الاتصال بأي حساب غير موجود في هذه القائمة.</p>
+        <label class="field"><span>مُعرّف مشروع Google Cloud</span><input type="text" id="drv-project" dir="ltr" spellcheck="false"></label>
+      </fieldset>
+      <div class="btn-row">
+        <button class="btn navy small" type="button" id="drv-connect">اتصال بحسابي</button>
+        <button class="btn danger small" type="button" id="drv-disconnect">قطع الاتصال</button>
+      </div>
+      <p class="conv-hint">يُرفع إلى Drive الحساب الذي يتصل من هذا الجهاز، والأداة لا ترى فيه إلا الملفات التي أنشأتها. لا يُستخدم هذا الخيار عند الاتصال بأرشيف المركز.</p>
+      <details class="rtl-what">
+        <summary>كيف أحصل على مُعرّف العميل؟ (مرة واحدة، مجاناً)</summary>
+        <ol>
+          <li>افتح <b dir="ltr">console.cloud.google.com</b> بحسابك، وأنشئ مشروعاً جديداً (مثلاً: tamkeen-archive).</li>
+          <li>من «APIs &amp; Services ← Library» ابحث عن <b>Google Drive API</b> واضغط Enable.</li>
+          <li>من «OAuth consent screen» اختر External، واكتب اسم التطبيق وبريدك، ثم أضف بريدك في «Test users».</li>
+          <li>من «Credentials ← Create credentials ← OAuth client ID» اختر النوع <b>Web application</b>.</li>
+          <li>في «Authorized JavaScript origins» أضف: <b dir="ltr" id="drv-origin">http://localhost:4180</b></li>
+          <li>انسخ «Client ID» والصقه في الحقل أعلاه، ثم «حفظ» و«اتصال».</li>
+        </ol>
+        <p class="conv-hint">تشغيل الأداة يجب أن يكون من ملف «تشغيل.bat» (عنوان http://localhost:4180)؛ Google لا تسمح بتسجيل الدخول من ملف مفتوح مباشرة.</p>
+      </details>
+      </details>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn" type="button" id="drv-save">حفظ</button>
+        <button class="btn secondary" type="button" id="drv-close">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- نافذة قيد الوارد والصادر -->
+  <div class="modal-backdrop" id="reg-modal" role="dialog" aria-modal="true" aria-labelledby="reg-modal-title">
+    <form class="modal" id="reg-form">
+      <h3 id="reg-modal-title">قيد جديد</h3>
+      <div class="grid-fields">
+        <label class="field"><span>النوع</span><select id="reg-type"><option value="in">وارد</option><option value="out">صادر</option></select></label>
+        <label class="field"><span>التاريخ</span><input type="date" id="reg-date"></label>
+      </div>
+      <label class="field"><span>نوع المستند</span><select id="reg-category"></select></label>
+      <label class="field"><span>الرقم <button type="button" class="conv-link" id="reg-number-auto">رقم تلقائي</button></span><input type="text" id="reg-number"></label>
+      <label class="field"><span>الجهة</span><input type="text" id="reg-party" placeholder="الجهة المرسِلة (للوارد) أو المرسَل إليها (للصادر)"></label>
+      <label class="field"><span>الموضوع</span><input type="text" id="reg-subject"></label>
+      <label class="field"><span>ملاحظات</span><textarea id="reg-notes" rows="2"></textarea></label>
+      <label class="field"><span>المرفق (اختياري)</span><input type="file" id="reg-file"></label>
+      <p class="conv-hint" id="reg-file-current"></p>
+      <div class="btn-row">
+        <button class="btn" type="submit">حفظ</button>
+        <button class="btn secondary" type="button" id="reg-cancel">إلغاء</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- نافذة رفع عدة ملفات -->
+  <div class="modal-backdrop" id="bulk-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-title">
+    <div class="modal bulk-modal">
+      <h3 id="bulk-title">⬆ رفع ملفات وترتيبها <span class="reg-kind" id="bulk-count"></span></h3>
+      <p class="conv-hint">اقترحت الأداة نوع المستند والتاريخ لكل ملف من اسمه وتاريخ تعديله؛ راجعها قبل الحفظ. الترتيب في Drive: <b id="bulk-root"></b> / السنة / الشهر / الوارد أو الصادر / نوع المستند.</p>
+      <div class="bulk-all" id="bulk-all">
+        <span>للكل:</span>
+        <select data-all="type"><option value="">وارد أو صادر…</option><option value="in">وارد</option><option value="out">صادر</option></select>
+        <select data-all="category" id="bulk-all-cat"></select>
+        <input type="text" data-all="party" placeholder="الجهة للكل (ثم Enter)">
+        <button type="button" class="btn secondary small" id="bulk-more">+ إضافة ملفات</button>
+        <button type="button" class="btn secondary small" id="bulk-more-folder">+ إضافة مجلد</button>
+        <input type="file" id="bulk-more-input" multiple hidden>
+      </div>
+      <div class="table-wrap">
+        <table class="reg-table bulk-table">
+          <thead><tr><th>الملف</th><th>وارد/صادر</th><th>نوع المستند</th><th>التاريخ</th><th>الرقم</th><th>الجهة</th><th>الموضوع</th><th>المجلد في Drive</th><th></th></tr></thead>
+          <tbody id="bulk-body"></tbody>
+        </table>
+      </div>
+      <p class="conv-hint" id="bulk-progress" aria-live="polite"></p>
+      <div class="btn-row">
+        <button class="btn navy" type="button" id="bulk-save-drive">حفظ ورفع إلى Drive</button>
+        <button class="btn" type="button" id="bulk-save">حفظ في السجل فقط</button>
+        <button class="btn secondary" type="button" id="bulk-cancel">إلغاء</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=29"></script>
-  <script src="src/ui.js?v=29"></script>
-  <script src="src/templates.js?v=29"></script>
-  <script src="src/tracks.js?v=29"></script>
-  <script src="src/tasks.js?v=29"></script>
-  <script src="src/dashboard.js?v=29"></script>
-  <script src="src/letterhead-docx.js?v=29"></script>
-  <script src="src/docx.js?v=29"></script>
-  <script src="src/ai.js?v=29"></script>
-  <script src="src/letters.js?v=29"></script>
+  <script src="src/storage.js?v=45"></script>
+  <script src="src/ui.js?v=45"></script>
+  <script src="src/templates.js?v=45"></script>
+  <script src="src/tracks.js?v=45"></script>
+  <script src="src/tasks.js?v=45"></script>
+  <script src="src/dashboard.js?v=45"></script>
+  <script src="src/letterhead-docx.js?v=45"></script>
+  <script src="src/docx.js?v=45"></script>
+  <script src="src/ai.js?v=45"></script>
+  <script src="src/doc-render.js?v=45"></script>
+  <script src="src/files-store.js?v=45"></script>
+  <script src="src/cloud.js?v=45"></script>
+  <script src="src/drive.js?v=45"></script>
+  <script src="src/drive-ui.js?v=45"></script>
+  <script src="src/rtl-fixer.js?v=45"></script>
+  <script src="src/rtl-page.js?v=45"></script>
+  <script src="src/registry.js?v=45"></script>
+  <script src="src/charts.js?v=45"></script>
+  <script src="src/meetings.js?v=45"></script>
+  <script src="src/report.js?v=45"></script>
+  <script src="src/letters.js?v=45"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=29"></script>
-  <script src="src/converter-store.js?v=29"></script>
-  <script src="src/converter.js?v=29"></script>
-  <script src="src/app.js?v=29"></script>
+  <script src="src/converter-core.js?v=45"></script>
+  <script src="src/converter-store.js?v=45"></script>
+  <script src="src/converter.js?v=45"></script>
+  <script src="src/app.js?v=45"></script>
 </body>
 </html>

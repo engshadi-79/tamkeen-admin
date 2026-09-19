@@ -1,7 +1,7 @@
 /* نقطة التشغيل: التنقل بين الأقسام، النسخ الاحتياطي، وربط الوحدات */
 (function (App) {
   const { store, ui } = App;
-  const VIEWS = ["dashboard", "tracks", "letters", "converter", "tasks"];
+  const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "rtl", "converter", "tasks"];
 
   function show(view) {
     if (!VIEWS.includes(view)) view = "dashboard";
@@ -12,6 +12,10 @@
     if (view === "dashboard") App.dashboard.render();
     if (view === "tracks") App.tracks.render();
     if (view === "letters") App.letters.render();
+    if (view === "report") App.report.render();
+    if (view === "meetings") App.meetings.render();
+    if (view === "registry") App.registry.render();
+    if (view === "rtl") App.rtlPage.render();
     if (view === "converter") App.converter.render();
     if (view === "tasks") App.tasks.render();
     if (location.hash.slice(1) !== view) history.replaceState(null, "", "#" + view);
@@ -52,6 +56,11 @@
     App.tracks.init();
     App.tasks.init();
     App.letters.init();
+    App.driveUI.init();
+    App.registry.init();
+    App.rtlPage.init();
+    App.meetings.init();
+    App.report.init();
     App.converter.init();
     initBackup();
 

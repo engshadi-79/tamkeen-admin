@@ -30,7 +30,7 @@
   }
 
   function defaultState() {
-    return { tracks: defaultTracks(), tasks: [], customTemplates: [], signer: "" };
+    return { tracks: defaultTracks(), tasks: [], customTemplates: [], signer: "", registry: [], meetings: [] };
   }
 
   let state;

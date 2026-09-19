@@ -35,84 +35,9 @@
 
   const plainText = () => blocks().map((b) => b.text).join("\n");
 
-  /* ===== المعاينة مقسّمة إلى صفحات بحجم الورقة الفعلي ===== */
-  function blockEl(b) {
-    if (b.kind === "signature") {
-      // نفس مواضع ملف Word: كل سطر في منتصف أطول سطر، والكتلة عند الهامش الأيسر
-      const starts = templates.signatureLayout(b.lines);
-      const el = document.createElement("div");
-      el.className = "lb lb-addressee";
-      b.lines.forEach((t, i) => {
-        const row = document.createElement("div");
-        row.className = "addr-line";
-        const s = document.createElement("span");
-        s.textContent = t;
-        s.style.insetInlineStart = `${(starts[i] / 612) * 100}cqw`;
-        row.append(s);
-        el.append(row);
-      });
-      return el;
-    }
-    if (b.kind === "addressee") {
-      // نفس مواضع ملف Word: الاسم ثابت، «المحترم» بعده، والصفة في منتصفه
-      const pos = templates.addresseeLayout(b);
-      const cqw = (pt) => `${(pt / 612) * 100}cqw`;
-      const el = document.createElement("div");
-      el.className = "lb lb-addressee";
-      const line = (text, startPt) => {
-        const s = document.createElement("span");
-        s.textContent = text;
-        s.style.insetInlineStart = cqw(startPt);
-        return s;
-      };
-      const first = document.createElement("div");
-      first.className = "addr-line";
-      first.append(line(b.name, 0));
-      if (b.honorific) first.append(line(b.honorific, pos.honorificStart));
-      el.append(first);
-      if (b.title) {
-        const second = document.createElement("div");
-        second.className = "addr-line";
-        second.append(line(b.title, pos.titleStart));
-        el.append(second);
-      }
-      return el;
-    }
-    const el = document.createElement("p");
-    el.className = "lb lb-" + b.kind;
-    el.textContent = b.text || " ";
-    if (b.sizePt) el.style.fontSize = `${(b.sizePt / 612) * 100}cqw`;
-    return el;
-  }
-
-  function newPage(container) {
-    const page = document.createElement("div");
-    page.className = "lh-page";
-    const body = document.createElement("div");
-    body.className = "lh-body";
-    page.appendChild(body);
-    container.appendChild(page);
-    return body;
-  }
-
-  function paginate(container, list) {
-    container.innerHTML = "";
-    let body = newPage(container);
-    list.forEach((b) => {
-      const el = blockEl(b);
-      body.appendChild(el);
-      if (body.scrollHeight > body.clientHeight + 1 && body.children.length > 1) {
-        el.remove();
-        body = newPage(container);
-        body.appendChild(el);
-      }
-    });
-    return container.children.length;
-  }
-
   function renderPreview() {
-    const count = paginate($("preview"), blocks());
-    $("page-count").textContent = count === 1 ? "صفحة واحدة" : count === 2 ? "صفحتان" : `${count} صفحات`;
+    const count = App.docRender.paginate($("preview"), blocks());
+    $("page-count").textContent = App.docRender.pageCountLabel(count);
     const custom = isCustom(current());
     $("tpl-edit").hidden = !custom;
     $("tpl-delete").hidden = !custom;
@@ -129,42 +54,45 @@
     renderPreview();
   }
 
-  /* ===== التصدير ===== */
+  /* ===== التصدير (كل تصدير يُسجَّل في الصادر) ===== */
   function fileBase() {
-    const clean = (t) => t.replace(/[\\/:*?"<>|]+/g, "").slice(0, 60).trim();
+    const clean = App.docRender.cleanFileName;
     return [clean(current().name), clean(values().subject), $("l-date").value || ui.todayISO()].filter(Boolean).join(" - ");
   }
 
-  function exportWord() {
-    try {
-      ui.download(fileBase() + ".docx", App.docx.build(blocks()));
-      ui.toast("تم تصدير ملف Word على الترويسة الرسمية");
-    } catch (e) {
-      console.error(e);
-      ui.toast("تعذّر إنشاء ملف Word");
+  /* يضمن وجود رقم صادر (يُولَّد تلقائياً إن كان الحقل فارغاً) ثم يسجّل الخطاب في الصادر */
+  async function registerOutgoing(file) {
+    if (!App.registry) return;
+    if (!$("l-ref").value.trim()) {
+      $("l-ref").value = App.registry.nextOutgoingNumber($("l-date").value || ui.todayISO());
+      renderPreview();
     }
+    const v = values();
+    const number = await App.registry.upsertOutgoing({
+      number: v.ref,
+      date: $("l-date").value || ui.todayISO(),
+      party: [v.recipient, v.recipientTitle].filter(Boolean).join(" - "),
+      subject: v.subject || current().name,
+      kind: current().name,
+      category: "خطابات",
+      file,
+    });
+    if (number) ui.toast(`سُجّل في الصادر برقم ${number}`);
   }
 
-  function exportPDF() {
-    const root = $("print-root");
-    // صفحات الطباعة بالمقاس الفعلي تُقسَّم من جديد لضمان مطابقة المعاينة
-    root.innerHTML = "";
-    document.body.classList.add("printing");
-    paginate(root, blocks());
-    const title = document.title;
-    document.title = fileBase(); // يُقترح اسماً لملف PDF
-    const cleanup = () => {
-      document.body.classList.remove("printing");
-      root.innerHTML = "";
-      document.title = title;
-      window.removeEventListener("afterprint", cleanup);
-    };
-    window.addEventListener("afterprint", cleanup);
-    // انتظار تحميل صورة الترويسة قبل فتح نافذة الطباعة
-    const img = new Image();
-    img.onload = img.onerror = () => setTimeout(() => window.print(), 50);
-    img.src = "assets/letterhead/page.jpg?v=5";
-    ui.toast("اختر «حفظ بتنسيق PDF» ومقاس الورق Letter بدون هوامش");
+  async function exportWord() {
+    if (App.registry && !$("l-ref").value.trim()) {
+      $("l-ref").value = App.registry.nextOutgoingNumber($("l-date").value || ui.todayISO());
+      renderPreview();
+    }
+    const base = fileBase();
+    const blob = App.docRender.exportWord(blocks(), base);
+    if (blob) await registerOutgoing({ blob, name: base + ".docx" });
+  }
+
+  async function exportPDF(asPdf) {
+    await registerOutgoing(null);
+    App.docRender.print(blocks(), fileBase(), asPdf);
   }
 
   /* ===== إدارة القوالب المخصصة ===== */
@@ -333,7 +261,12 @@
 
     $("btn-copy").addEventListener("click", () => ui.copyText(plainText()));
     $("btn-word").addEventListener("click", exportWord);
-    $("btn-pdf").addEventListener("click", exportPDF);
+    $("btn-pdf").addEventListener("click", () => exportPDF(true));
+    $("btn-print").addEventListener("click", () => exportPDF(false));
+    $("l-ref-auto").addEventListener("click", () => {
+      $("l-ref").value = App.registry.nextOutgoingNumber($("l-date").value || ui.todayISO());
+      renderPreview();
+    });
 
     $("tpl-new").addEventListener("click", () => openEditor(null));
     $("tpl-dup").addEventListener("click", () => openEditor(current()));
