@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=45">
+  <link rel="stylesheet" href="styles/theme.css?v=49">
 </head>
 <body>
   <div class="app">
@@ -232,6 +232,7 @@
             <button class="btn secondary" id="reg-export">تصدير Excel</button>
             <button class="btn" id="reg-archive-pending" hidden></button>
             <button class="btn secondary" data-drive-settings>☁ Google Drive</button>
+            <button class="btn secondary" data-profile>👤 ملفي الشخصي</button>
           </div>
         </div>
         <div class="card">
@@ -244,6 +245,7 @@
             <input type="text" id="reg-search" placeholder="بحث بالرقم أو الجهة أو الموضوع">
             <select id="reg-year"></select>
             <select id="reg-cat"></select>
+            <select id="reg-owner" title="ملفات مستخدم محدد"></select>
             <label class="reg-prefix">ترتيب
               <select id="reg-sort">
                 <option value="date-desc">التاريخ: الأحدث أولاً</option>
@@ -257,6 +259,7 @@
                 <option value="month">حسب الشهر</option>
                 <option value="category">حسب نوع المستند</option>
                 <option value="type">وارد / صادر</option>
+                <option value="owner">حسب المستخدم</option>
                 <option value="initial">حسب أول حرف من الاسم</option>
                 <option value="">بدون تصنيف</option>
               </select>
@@ -269,7 +272,7 @@
               <tbody id="reg-body"></tbody>
             </table>
           </div>
-          <p class="conv-hint">الخطابات والتقارير المصدَّرة (Word أو PDF أو طباعة) تُسجَّل في الصادر تلقائياً برقمها، وملف Word يُحفظ مرفقاً. اسحب ملفات أو مجلداً كاملاً إلى هذه الصفحة، أو اضغط «رفع ملفات» أو «رفع مجلد» لتسجيلها دفعة واحدة؛ تُرتَّب في Drive حسب: السنة / الشهر / الوارد أو الصادر / نوع المستند.</p>
+          <p class="conv-hint">الخطابات والتقارير المصدَّرة (Word أو PDF أو طباعة) تُسجَّل في الصادر تلقائياً برقمها، وملف Word يُحفظ مرفقاً. اسحب ملفات أو مجلداً كاملاً إلى هذه الصفحة، أو اضغط «رفع ملفات» أو «رفع مجلد» لتسجيلها دفعة واحدة؛ تُرتَّب في Drive حسب: مجلد المستخدم / السنة / الشهر / الوارد أو الصادر / نوع المستند، وكل الملفات متاحة للجميع.</p>
         </div>
       </section>
 
@@ -516,35 +519,51 @@
     </div>
   </div>
 
+  <!-- نافذة الملف الشخصي -->
+  <div class="modal-backdrop" id="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title-h">
+    <form class="modal profile-modal" id="profile-form">
+      <h3 id="profile-title-h">👤 ملفي الشخصي</h3>
+      <p class="conv-hint" id="profile-hint"></p>
+      <label class="field"><span>الاسم</span><input type="text" id="profile-name" maxlength="60" autocomplete="name" required></label>
+      <label class="field"><span>المسمى الوظيفي (اختياري)</span><input type="text" id="profile-title" maxlength="80"></label>
+      <p class="conv-hint">مجلدك في الأرشيف: «أرشيف مساعد تمكين / اسمك / السنة / الشهر / …». الاسم محفوظ على هذا الجهاز.</p>
+      <div class="btn-row">
+        <button class="btn" type="submit">حفظ</button>
+        <button class="btn secondary" type="button" id="profile-cancel">إلغاء</button>
+      </div>
+    </form>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=45"></script>
-  <script src="src/ui.js?v=45"></script>
-  <script src="src/templates.js?v=45"></script>
-  <script src="src/tracks.js?v=45"></script>
-  <script src="src/tasks.js?v=45"></script>
-  <script src="src/dashboard.js?v=45"></script>
-  <script src="src/letterhead-docx.js?v=45"></script>
-  <script src="src/docx.js?v=45"></script>
-  <script src="src/ai.js?v=45"></script>
-  <script src="src/doc-render.js?v=45"></script>
-  <script src="src/files-store.js?v=45"></script>
-  <script src="src/cloud.js?v=45"></script>
-  <script src="src/drive.js?v=45"></script>
-  <script src="src/drive-ui.js?v=45"></script>
-  <script src="src/rtl-fixer.js?v=45"></script>
-  <script src="src/rtl-page.js?v=45"></script>
-  <script src="src/registry.js?v=45"></script>
-  <script src="src/charts.js?v=45"></script>
-  <script src="src/meetings.js?v=45"></script>
-  <script src="src/report.js?v=45"></script>
-  <script src="src/letters.js?v=45"></script>
+  <script src="src/storage.js?v=49"></script>
+  <script src="src/ui.js?v=49"></script>
+  <script src="src/templates.js?v=49"></script>
+  <script src="src/tracks.js?v=49"></script>
+  <script src="src/tasks.js?v=49"></script>
+  <script src="src/dashboard.js?v=49"></script>
+  <script src="src/letterhead-docx.js?v=49"></script>
+  <script src="src/docx.js?v=49"></script>
+  <script src="src/ai.js?v=49"></script>
+  <script src="src/doc-render.js?v=49"></script>
+  <script src="src/files-store.js?v=49"></script>
+  <script src="src/cloud.js?v=49"></script>
+  <script src="src/drive.js?v=49"></script>
+  <script src="src/drive-ui.js?v=49"></script>
+  <script src="src/rtl-fixer.js?v=49"></script>
+  <script src="src/rtl-page.js?v=49"></script>
+  <script src="src/profile.js?v=49"></script>
+  <script src="src/registry.js?v=49"></script>
+  <script src="src/charts.js?v=49"></script>
+  <script src="src/meetings.js?v=49"></script>
+  <script src="src/report.js?v=49"></script>
+  <script src="src/letters.js?v=49"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=45"></script>
-  <script src="src/converter-store.js?v=45"></script>
-  <script src="src/converter.js?v=45"></script>
-  <script src="src/app.js?v=45"></script>
+  <script src="src/converter-core.js?v=49"></script>
+  <script src="src/converter-store.js?v=49"></script>
+  <script src="src/converter.js?v=49"></script>
+  <script src="src/app.js?v=49"></script>
 </body>
 </html>

@@ -287,6 +287,13 @@ body.printing #print-root { display: block; position: absolute; top: 0; left: -1
 .reg-num { font-weight: 700; direction: ltr; unicode-bidi: plaintext; white-space: nowrap; }
 .reg-kind { font-size: 12px; color: var(--muted); }
 .reg-actions { white-space: nowrap; }
+.reg-actions .act-btn { display: inline-flex; align-items: center; gap: 4px; margin: 2px; padding: 5px 11px; border-radius: 8px; border: 1px solid transparent; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .15s, color .15s; }
+.act-btn.dl { background: var(--teal-600); color: #fff; }
+.act-btn.dl:hover { background: var(--teal-500); }
+.act-btn.edit { background: var(--surface); color: var(--navy-800); border-color: var(--border); }
+.act-btn.edit:hover { background: var(--teal-100); }
+.act-btn.del { background: var(--danger-bg); color: var(--danger); border-color: #f1b0a8; }
+.act-btn.del:hover { background: var(--danger); color: #fff; }
 
 /* قرارات المحضر */
 .m-dec-head { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 6px; }
@@ -332,6 +339,10 @@ body.printing #print-root { display: block; position: absolute; top: 0; left: -1
 .reg-path { font-size: 12.5px; }
 .reg-path.pending { color: var(--muted); }
 .nowrap { white-space: nowrap; }
+.reg-pending { font-size: 12px; color: #9a5b00; background: #fff4e0; border-radius: 8px; padding: 1px 7px; white-space: nowrap; }
+.reg-owner { font-size: 12px; color: var(--teal-600); font-weight: 700; }
+.modal.profile-modal { width: min(460px, 100%); }
+#profile-modal { z-index: 60; }
 .reg-toolbar .reg-prefix select { width: auto; font-weight: 400; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--teal-600); }

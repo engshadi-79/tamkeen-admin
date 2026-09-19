@@ -57,10 +57,13 @@
   const guessDate = (name, lastModified) => dateFromText(name) || (lastModified ? localISO(new Date(lastModified)) : ui.todayISO());
 
   /* مسار المجلد في Drive: السنة / الشهر / الوارد أو الصادر / نوع المستند */
+  /* مسار المجلد في Drive: مجلد المستخدم / السنة / الشهر / الوارد أو الصادر / نوع المستند */
   const archivePath = (r) => {
     const d = String(r.date || ui.todayISO());
-    return [d.slice(0, 4), d.slice(5, 7), DIR_FOLDER[r.type], categoryOf(r)];
+    const path = [d.slice(0, 4), d.slice(5, 7), DIR_FOLDER[r.type], categoryOf(r)];
+    return r.owner ? [r.owner, ...path] : path;
   };
+  const me = () => (App.profile ? App.profile.name() : "");
   const pathText = (path) => path.join(" / ");
 
   /* يُستدعى عند تصدير خطاب أو تقرير: يضيف قيداً صادراً أو يحدّث القيد الموجود بنفس الرقم */
@@ -68,7 +71,7 @@
     if (!number) return null;
     let rec = records().find((r) => r.type === "out" && r.number === number);
     if (!rec) {
-      rec = { id: store.uid(), type: "out", number, createdAt: new Date().toISOString() };
+      rec = { id: store.uid(), type: "out", number, owner: me(), createdAt: new Date().toISOString() };
       records().push(rec);
     }
     Object.assign(rec, { date, party, subject, kind: kind || rec.kind || "", source: "letters" });
@@ -192,6 +195,7 @@
       store.save();
       if ($("view-registry").classList.contains("active")) render();
       if (App.dashboard && document.getElementById("view-dashboard").classList.contains("active")) App.dashboard.render();
+      uploadPendingToCenter();
     } catch (e) {
       console.warn("مزامنة السجل:", e.message);
       if (showErrors) ui.toast(e.message);
@@ -200,24 +204,78 @@
       if (syncAgain) { syncAgain = false; scheduleSync(500); }
     }
   }
+  /* مع أرشيف المركز لا يلزم تسجيل دخول: أي ملف على هذا الجهاز لم يصل إلى المركز بعد يُرفع تلقائياً،
+     حتى يستطيع الجميع تحميله */
+  let uploadingPending = false;
+  async function uploadPendingToCenter() {
+    if (uploadingPending || !App.cloud || !App.cloud.ready()) return;
+    const candidates = records().filter((r) => !r.driveLink && (r.fileId || r.localFileId));
+    const local = [];
+    for (const r of candidates) {
+      const ids = [r.localFileId, r.fileId].filter(Boolean);
+      for (const id of ids) { if (await App.filesStore.get(id).catch(() => null)) { local.push(r); break; } }
+    }
+    if (!local.length) return;
+    uploadingPending = true;
+    try {
+      const ok = await archiveList(local);
+      if (ok) ui.toast(ok === 1 ? "رُفع ملف معلّق إلى أرشيف المركز" : `رُفع ${ui.fmt(ok)} ملفاً معلّقاً إلى أرشيف المركز`);
+      if ($("view-registry").classList.contains("active")) render();
+    } finally {
+      uploadingPending = false;
+    }
+  }
+
   const scheduleSync = (ms) => { clearTimeout(syncTimer); syncTimer = setTimeout(() => syncShared(false), ms); };
 
-  /* فتح المرفق: من هذا الجهاز إن وُجد، وإلا من خادم المركز */
-  async function openFile(rec) {
+  /* المرفق: من هذا الجهاز إن وُجد، وإلا من خادم المركز (مع ذاكرة مؤقتة حتى لا يُجلب مرتين) */
+  const fetched = new Map();
+  async function getFile(rec) {
     for (const id of [rec.localFileId, rec.fileId]) {
       const f = id && (await App.filesStore.get(id).catch(() => null));
-      if (f) { ui.download(f.name, f.blob); return; }
+      if (f) return { name: f.name, blob: f.blob };
     }
     if (rec.driveId && App.cloud && App.cloud.ready()) {
-      ui.toast("جارٍ جلب الملف من أرشيف المركز…");
-      try {
+      if (!fetched.has(rec.driveId)) {
+        ui.toast("جارٍ جلب الملف من أرشيف المركز…");
         const f = await App.cloud.download(rec.driveId);
-        ui.download(rec.fileName || f.name, f.blob);
-      } catch (e) { ui.toast(e.message); }
-      return;
+        fetched.set(rec.driveId, { name: rec.fileName || f.name, blob: f.blob });
+      }
+      return fetched.get(rec.driveId);
     }
-    if (rec.driveLink) { window.open(rec.driveLink, "_blank", "noopener"); return; }
-    ui.toast("الملف غير موجود على هذا الجهاز");
+    return null;
+  }
+
+  const VIEWABLE = /^(application\/pdf|image\/|text\/plain)/;
+
+  /* «عرض»: PDF والصور والنصوص تُفتح في تبويب جديد، وغيرها يُنزَّل. «تحميل»: تنزيل دائماً */
+  async function openFile(rec, mode) {
+    const view = mode === "view";
+    // التبويب يُفتح فوراً ضمن ضغطة الزر حتى لا يمنعه المتصفح، ثم يُملأ بعد جلب الملف
+    const tab = view && !rec.fileId && !rec.localFileId ? window.open("", "_blank") : null;
+    try {
+      const f = await getFile(rec);
+      if (!f) {
+        if (tab) tab.close();
+        if (rec.driveLink) window.open(rec.driveLink, "_blank", "noopener");
+        else ui.toast(rec.owner
+          ? `الملف لم يصل إلى أرشيف المركز بعد؛ هو على جهاز ${rec.owner}، ويُرفع تلقائياً عند فتح الأداة على جهازه.`
+          : "الملف لم يصل إلى أرشيف المركز بعد؛ هو على جهاز من رفعه، ويُرفع تلقائياً عند فتح الأداة على جهازه.");
+        return;
+      }
+      if (view && VIEWABLE.test(f.blob.type || "")) {
+        const url = URL.createObjectURL(f.blob);
+        if (tab) tab.location.href = url; else window.open(url, "_blank");
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return;
+      }
+      if (tab) tab.close();
+      ui.download(f.name, f.blob);
+      if (view) ui.toast("هذا النوع لا يُعرض في المتصفح؛ تم تنزيله");
+    } catch (e) {
+      if (tab) tab.close();
+      ui.toast(e.message);
+    }
   }
 
   /* للإحصاء في التقرير الدوري */
@@ -228,7 +286,7 @@
   }
 
   /* ===== الواجهة ===== */
-  const filter = { type: "all", q: "", year: "", cat: "" };
+  const filter = { type: "all", q: "", year: "", cat: "", owner: "" };
   const catOptions = (selected, withAll) =>
     (withAll ? `<option value="">كل الأنواع</option>` : "") + CATEGORIES.map((c) => `<option ${c === selected ? "selected" : ""}>${c}</option>`).join("");
 
@@ -238,7 +296,8 @@
       .filter((r) => filter.type === "all" || r.type === filter.type)
       .filter((r) => !filter.year || String(r.date || "").startsWith(filter.year))
       .filter((r) => !filter.cat || categoryOf(r) === filter.cat)
-      .filter((r) => !q || [r.number, r.party, r.subject, r.notes, r.kind, r.fileName, categoryOf(r)].some((f) => String(f || "").includes(q)))
+      .filter((r) => !filter.owner || (r.owner || "") === (filter.owner === "__me" ? me() : filter.owner))
+      .filter((r) => !q || [r.number, r.party, r.subject, r.notes, r.kind, r.fileName, r.owner, categoryOf(r)].some((f) => String(f || "").includes(q)))
       .sort(compare);
   }
 
@@ -274,6 +333,7 @@
     },
     category: { key: (r) => categoryOf(r), label: (k) => `🗂 ${k}`, order: (a, b) => CATEGORIES.indexOf(a) - CATEGORIES.indexOf(b) },
     type: { key: (r) => r.type, label: (k) => (k === "out" ? "📤 الصادر" : "📥 الوارد"), order: (a, b) => (a === "out" ? -1 : 1) - (b === "out" ? -1 : 1) },
+    owner: { key: (r) => r.owner || "—", label: (k) => (k === "—" ? "👤 بدون مستخدم" : `👤 ${k}`), order: (a, b) => (a === me() ? -1 : b === me() ? 1 : a.localeCompare(b, "ar")) },
     initial: { key: (r) => (displayName(r).trim()[0] || "—").toUpperCase(), label: (k) => `🔤 ${k}`, order: (a, b) => a.localeCompare(b, "ar") },
   };
 
@@ -288,7 +348,11 @@
         <td class="reg-file">${fileCell(r)}</td>
         <td class="nowrap">${r.fileId && r.fileDate ? esc(ui.formatDate(r.fileDate)) : "—"}</td>
         <td>${folderCell(r)}</td>
-        <td class="reg-actions"><button class="conv-link" data-edit>تعديل</button> <button class="conv-link danger" data-del>حذف</button></td>
+        <td class="reg-actions">
+          ${r.fileId ? `<button class="act-btn dl" data-download title="تحميل الملف إلى الجهاز">⬇ تحميل</button>` : ""}
+          <button class="act-btn edit" data-edit title="تعديل القيد">✎ تعديل</button>
+          <button class="act-btn del" data-del title="حذف القيد">🗑 حذف</button>
+        </td>
       </tr>`;
   }
 
@@ -328,9 +392,10 @@
     if (!r.fileId) return "—";
     const drive = r.driveLink
       ? `<a class="conv-link" href="${esc(r.driveLink)}" target="_blank" rel="noopener" title="فتح في Google Drive">☁ Drive</a>`
+      : App.cloud && App.cloud.ready() ? `<span class="reg-pending" title="الملف على جهاز من رفعه ولم يصل إلى أرشيف المركز بعد">⏳ بانتظار الرفع</span>`
       : App.drive && App.drive.isConfigured() ? `<button class="conv-link" data-archive title="${r.drivePending ? "بانتظار الأرشفة" : "أرشفة في Google Drive"}">${r.drivePending ? "⏳" : "☁"} أرشفة</button>` : "";
-    return `<div class="reg-fname" title="${esc(r.fileName || "")}">${nameHtml(r.fileName)}</div>
-      <div class="reg-file-btns"><button class="conv-link" data-open>📎 فتح</button> ${drive}</div>`;
+    return `<div class="reg-fname" title="${esc(r.fileName || "")}">${nameHtml(r.fileName)}</div>${r.owner ? `<div class="reg-owner">👤 ${esc(r.owner)}</div>` : ""}
+      <div class="reg-file-btns"><button class="conv-link" data-open title="عرض الملف">📎 عرض</button> ${drive}</div>`;
   }
 
   function render() {
@@ -338,6 +403,11 @@
     const years = [...new Set(all.map((r) => String(r.date || "").slice(0, 4)).filter(Boolean))].sort().reverse();
     $("reg-year").innerHTML = `<option value="">كل السنوات</option>` + years.map((y) => `<option ${y === filter.year ? "selected" : ""}>${y}</option>`).join("");
     $("reg-cat").innerHTML = catOptions(filter.cat, true);
+    const owners = [...new Set(all.map((r) => r.owner).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
+    const mine = me();
+    $("reg-owner").innerHTML = `<option value="">كل المستخدمين</option>`
+      + (mine ? `<option value="__me" ${filter.owner === "__me" ? "selected" : ""}>ملفاتي (${esc(mine)})</option>` : "")
+      + owners.filter((o) => o !== mine).map((o) => `<option value="${esc(o)}" ${filter.owner === o ? "selected" : ""}>${esc(o)}</option>`).join("");
     document.querySelectorAll("[data-reg-type]").forEach((b) => b.classList.toggle("active", b.dataset.regType === filter.type));
     $("reg-counts").textContent = `${ui.fmt(all.filter((r) => r.type === "out").length)} صادر · ${ui.fmt(all.filter((r) => r.type === "in").length)} وارد`;
     $("reg-prefix").value = settings().prefix;
@@ -355,7 +425,7 @@
     });
     const list = filtered();
     $("reg-body").innerHTML = list.length ? bodyHtml(list)
-      : `<tr><td colspan="9" class="empty">لا توجد قيود${filter.q || filter.type !== "all" || filter.year || filter.cat ? " مطابقة" : " بعد. الخطابات المصدَّرة من «المراسلات» تُسجَّل هنا تلقائياً، أو ارفع ملفاتك من «رفع ملفات»"}.</td></tr>`;
+      : `<tr><td colspan="9" class="empty">لا توجد قيود${filter.q || filter.type !== "all" || filter.year || filter.cat || filter.owner ? " مطابقة" : " بعد. الخطابات المصدَّرة من «المراسلات» تُسجَّل هنا تلقائياً، أو ارفع ملفاتك من «رفع ملفات»"}.</td></tr>`;
   }
 
   /* ===== نموذج الإضافة والتعديل ===== */
@@ -393,7 +463,7 @@
 
     let rec = editingId && records().find((r) => r.id === editingId);
     if (!rec) {
-      rec = { id: store.uid(), createdAt: new Date().toISOString() };
+      rec = { id: store.uid(), owner: me(), createdAt: new Date().toISOString() };
       records().push(rec);
     }
     const moved = rec.driveLink && pathText(archivePath(rec)) !== pathText(archivePath({ type, date, category: $("reg-category").value }));
@@ -451,6 +521,7 @@
     const shared = bulk[0] ? { type: bulk[0].type, party: bulk[0].party } : { type: "in", party: "" };
     list.forEach((file) => bulk.push({
       file,
+      owner: me(),
       type: shared.type,
       category: guessCategoryFor(file),
       date: guessDateFor(file),
@@ -533,6 +604,10 @@
     }
     // الاتصال أولاً وهو ما زال ضمن ضغطة الزر (نافذة Google تحتاج ذلك)
     if (toDrive && !(await App.driveUI.ensureConnected())) return;
+    // كل ملف يُسجَّل باسم صاحبه ويُحفظ في مجلده
+    const owner = await App.profile.ensure();
+    if (!owner) { ui.toast("أنشئ ملفك الشخصي أولاً"); return; }
+    bulk.forEach((it) => { it.owner = owner; });
 
     setBulkBusy(true);
     const created = [];
@@ -544,7 +619,7 @@
         $("bulk-progress").textContent = `حفظ ${ui.fmt(i + 1)} من ${ui.fmt(ordered.length)}…`;
         const date = it.date || ui.todayISO();
         const rec = {
-          id: store.uid(), createdAt: new Date().toISOString(), source: "upload",
+          id: store.uid(), createdAt: new Date().toISOString(), source: "upload", owner,
           type: it.type, date, number: it.number.trim() || nextNumber(it.type, date),
           category: it.category, party: it.party.trim(), subject: it.subject.trim(), notes: "",
         };
@@ -630,7 +705,7 @@
       { header: "التاريخ", key: "date", width: 13 }, { header: "الجهة", key: "party", width: 34 },
       { header: "الموضوع", key: "subject", width: 44 }, { header: "نوع المستند", key: "category", width: 18 },
       { header: "نوع المراسلة", key: "kind", width: 18 }, { header: "ملاحظات", key: "notes", width: 30 },
-      { header: "اسم الملف", key: "fileName", width: 30 }, { header: "تاريخ الملف", key: "fileDate", width: 13 },
+      { header: "اسم الملف", key: "fileName", width: 30 }, { header: "المستخدم", key: "owner", width: 18 }, { header: "تاريخ الملف", key: "fileDate", width: 13 },
       { header: "المجلد في Drive", key: "folder", width: 40 }, { header: "رابط Drive", key: "driveLink", width: 40 },
     ];
     filtered().forEach((r) => sh.addRow(Object.assign({}, r, {
@@ -655,6 +730,8 @@
     $("reg-search").addEventListener("input", (e) => { filter.q = e.target.value; render(); });
     $("reg-year").addEventListener("change", (e) => { filter.year = e.target.value; render(); });
     $("reg-cat").addEventListener("change", (e) => { filter.cat = e.target.value; render(); });
+    $("reg-owner").addEventListener("change", (e) => { filter.owner = e.target.value; render(); });
+    if (App.profile) App.profile.onChange(() => { if ($("view-registry").classList.contains("active")) render(); });
     $("reg-sort").addEventListener("change", (e) => { view.sort = e.target.value; saveView(); render(); });
     $("reg-group").addEventListener("change", (e) => { view.group = e.target.value; saveView(); render(); });
     // الضغط على رأس العمود يرتّب به؛ والتاريخ يتبدّل بين الأحدث والأقدم
@@ -684,7 +761,8 @@
       const tr = e.target.closest("tr[data-id]");
       if (!tr) return;
       const rec = records().find((r) => r.id === tr.dataset.id);
-      if (e.target.closest("[data-open]")) openFile(rec);
+      if (e.target.closest("[data-open]")) openFile(rec, "view");
+      else if (e.target.closest("[data-download]")) openFile(rec, "download");
       else if (e.target.closest("[data-archive]")) archiveNow([rec]);
       else if (e.target.closest("[data-edit]")) openForm(rec);
       else if (e.target.closest("[data-del]")) deleteRecord(rec.id);

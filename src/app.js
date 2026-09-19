@@ -57,6 +57,7 @@
     App.tasks.init();
     App.letters.init();
     App.driveUI.init();
+    App.profile.init();
     App.registry.init();
     App.rtlPage.init();
     App.meetings.init();
