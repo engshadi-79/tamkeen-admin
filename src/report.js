@@ -124,6 +124,23 @@
       });
     }
 
+    // الأرشيف خلال الفترة حسب نوع المستند (وارد / صادر)
+    const regList = App.registry.live().filter((r) => (!v.from || r.date >= v.from) && (!v.to || r.date <= v.to));
+    if (regList.length) {
+      section("الوارد والصادر والأرشيف خلال الفترة");
+      const cats = [...new Set(regList.map((r) => r.category || "أخرى"))];
+      const count = (c, t) => regList.filter((r) => (r.category || "أخرى") === c && r.type === t).length;
+      out.push({
+        kind: "table",
+        headers: ["نوع المستند", "الوارد", "الصادر", "الإجمالي"],
+        widths: [0.4, 0.2, 0.2, 0.2],
+        align: [null, "center", "center", "center"],
+        rows: cats.map((c) => [c, ui.fmt(count(c, "in")), ui.fmt(count(c, "out")), ui.fmt(count(c, "in") + count(c, "out"))]),
+      });
+      const followUp = regList.filter((r) => r.type === "in" && r.dueDate && !r.done).length;
+      if (followUp) out.push({ kind: "para", text: `وارد بحاجة إلى معالجة أو رد: ${ui.fmt(followUp)}.` });
+    }
+
     if (v.tasksList && d.doneTasks.length) {
       section("المهام المنجزة خلال الفترة");
       out.push({
@@ -168,7 +185,7 @@
   }
 
   async function exportAs(kind) {
-    if (!$("r-ref").value.trim()) $("r-ref").value = App.registry.nextOutgoingNumber($("r-date").value || ui.todayISO());
+    if (!$("r-ref").value.trim()) $("r-ref").value = await App.registry.assignNumber("out", $("r-date").value || ui.todayISO());
     const v = values();
     const list = blocks();
     const base = fileBase();
@@ -208,7 +225,7 @@
       el.addEventListener(el.type === "checkbox" || el.type === "date" ? "change" : "input", renderPreview);
     });
     ["r-recipient", "r-recipientTitle", "r-trainingStart", "r-trainingEnd"].forEach((id) => $(id).addEventListener("change", persistSettings));
-    $("r-ref-auto").addEventListener("click", () => { $("r-ref").value = App.registry.nextOutgoingNumber($("r-date").value || ui.todayISO()); renderPreview(); });
+    $("r-ref-auto").addEventListener("click", async () => { $("r-ref").value = await App.registry.assignNumber("out", $("r-date").value || ui.todayISO()); renderPreview(); });
     $("r-word").addEventListener("click", () => exportAs("word"));
     $("r-pdf").addEventListener("click", () => exportAs("pdf"));
     $("r-print").addEventListener("click", () => exportAs("print"));

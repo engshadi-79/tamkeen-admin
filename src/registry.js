@@ -65,17 +65,64 @@
   };
   const me = () => (App.profile ? App.profile.name() : "");
   const pathText = (path) => path.join(" / ");
+  const nowISO = () => new Date().toISOString();
+  const TRASH_DAYS = 30;
+
+  /* سجل نشاط كل قيد: من فعل ماذا ومتى (آخر 30 حدثاً) */
+  function logAction(rec, action) {
+    rec.history = (rec.history || []).concat({ at: nowISO(), by: me() || "—", action }).slice(-30);
+  }
+
+  /* المدير يعدّل كل القيود؛ المستخدم يعدّل قيوده فقط */
+  const canModify = (r) => !App.profile || App.profile.isAdmin() || (!!r.owner && r.owner === me());
+  const live = () => records().filter((r) => !r.deletedAt);
+
+  /* المسار التدريبي: يُقترح من اسم الملف أو مجلده بمطابقة أسماء المسارات */
+  const trackNames = () => (store.get().tracks || []).map((t) => t.name);
+  const GENERIC = new Set(["مسار", "والأثاث", "وصناعة", "والعناية", "والشبكات", "الشخصية"]);
+  function guessTrack(text) {
+    const t = String(text || "");
+    let best = "", score = 0;
+    trackNames().forEach((name) => {
+      if (t.includes(name)) { if (name.length * 10 > score) { best = name; score = name.length * 10; } return; }
+      const hits = name.split(/\s+/).filter((w) => w.length > 3 && !GENERIC.has(w) && t.includes(w.replace(/^ال/, ""))).length;
+      if (hits > score) { best = name; score = hits; }
+    });
+    return best;
+  }
+  const trackOptions = (selected, allLabel) => `<option value="">${allLabel || "— بدون مسار —"}</option>`
+    + trackNames().map((n) => `<option ${n === selected ? "selected" : ""}>${esc(n)}</option>`).join("");
+
+  /* رقم تسلسلي محجوز من الخادم (لا يتكرر بين الأجهزة)، أو محلي بلا أرشيف مركز */
+  const headOf = (type, date) => `${type === "out" ? settings().prefix.trim() : IN_PREFIX}/${String(date || ui.todayISO()).slice(0, 4)}/`;
+  async function assignNumbers(type, date, count) {
+    if (App.cloud && App.cloud.ready()) {
+      try { return await App.cloud.reserve(headOf(type, date), count); } catch (e) { console.warn("حجز الرقم:", e.message); }
+    }
+    const first = parseInt(nextNumber(type, date).split("/").pop(), 10);
+    return Array.from({ length: count }, (_, i) => headOf(type, date) + String(first + i).padStart(3, "0"));
+  }
+  const assignNumber = async (type, date) => (await assignNumbers(type, date, 1))[0];
 
   /* يُستدعى عند تصدير خطاب أو تقرير: يضيف قيداً صادراً أو يحدّث القيد الموجود بنفس الرقم */
-  async function upsertOutgoing({ number, date, party, subject, kind, category, file }) {
+  async function upsertOutgoing({ number, date, party, subject, kind, category, file, replyTo }) {
     if (!number) return null;
     let rec = records().find((r) => r.type === "out" && r.number === number);
     if (!rec) {
-      rec = { id: store.uid(), type: "out", number, owner: me(), createdAt: new Date().toISOString() };
+      rec = { id: store.uid(), type: "out", number, owner: me(), createdAt: nowISO() };
       records().push(rec);
-    }
-    Object.assign(rec, { date, party, subject, kind: kind || rec.kind || "", source: "letters" });
+      logAction(rec, "تصدير خطاب");
+    } else logAction(rec, "إعادة تصدير");
+    Object.assign(rec, { date, party, subject, kind: kind || rec.kind || "", source: "letters", deletedAt: null });
     rec.category = category || rec.category || categoryOf(rec);
+    if (!rec.track) rec.track = guessTrack(`${subject} ${party}`);
+    // الرد على وارد: يُربط الصادر بالوارد ويُعلَّم الوارد «تمت المعالجة»
+    const original = replyTo && records().find((r) => r.id === replyTo);
+    if (original) {
+      rec.replyTo = original.id;
+      Object.assign(original, { done: true, replyId: rec.id, replyNumber: number });
+      logAction(original, `رُدّ عليه بالصادر ${number}`);
+    }
     if (file) await attachFile(rec, file.blob, file.name, ui.todayISO());
     store.save();
     if ($("view-registry").classList.contains("active")) render();
@@ -99,6 +146,7 @@
     const path = archivePath(rec);
     const res = await App.drive.upload(f.blob, `${safeNum} - ${f.name}`, path);
     Object.assign(rec, { driveId: res.id, driveLink: res.link, driveFolderId: res.folderId, drivePath: path, drivePending: false });
+    logAction(rec, "رُفع إلى الأرشيف");
     store.save();
     return true;
   }
@@ -196,6 +244,7 @@
       if ($("view-registry").classList.contains("active")) render();
       if (App.dashboard && document.getElementById("view-dashboard").classList.contains("active")) App.dashboard.render();
       uploadPendingToCenter();
+      purgeTrash();
     } catch (e) {
       console.warn("مزامنة السجل:", e.message);
       if (showErrors) ui.toast(e.message);
@@ -209,7 +258,7 @@
   let uploadingPending = false;
   async function uploadPendingToCenter() {
     if (uploadingPending || !App.cloud || !App.cloud.ready()) return;
-    const candidates = records().filter((r) => !r.driveLink && (r.fileId || r.localFileId));
+    const candidates = records().filter((r) => !r.deletedAt && !r.driveLink && (r.fileId || r.localFileId));
     const local = [];
     for (const r of candidates) {
       const ids = [r.localFileId, r.fileId].filter(Boolean);
@@ -246,59 +295,188 @@
     return null;
   }
 
-  const VIEWABLE = /^(application\/pdf|image\/|text\/plain)/;
+  const missingMsg = (rec) => rec.owner
+    ? `الملف لم يصل إلى أرشيف المركز بعد؛ هو على جهاز ${rec.owner}، ويُرفع تلقائياً عند فتح الأداة على جهازه.`
+    : "الملف لم يصل إلى أرشيف المركز بعد؛ هو على جهاز من رفعه، ويُرفع تلقائياً عند فتح الأداة على جهازه.";
 
-  /* «عرض»: PDF والصور والنصوص تُفتح في تبويب جديد، وغيرها يُنزَّل. «تحميل»: تنزيل دائماً */
+  /* «تحميل»: تنزيل الملف دائماً. «عرض»: معاينة داخل الصفحة */
   async function openFile(rec, mode) {
-    const view = mode === "view";
-    // التبويب يُفتح فوراً ضمن ضغطة الزر حتى لا يمنعه المتصفح، ثم يُملأ بعد جلب الملف
-    const tab = view && !rec.fileId && !rec.localFileId ? window.open("", "_blank") : null;
+    if (mode === "view") { openPreview(rec); return; }
     try {
       const f = await getFile(rec);
-      if (!f) {
-        if (tab) tab.close();
-        if (rec.driveLink) window.open(rec.driveLink, "_blank", "noopener");
-        else ui.toast(rec.owner
-          ? `الملف لم يصل إلى أرشيف المركز بعد؛ هو على جهاز ${rec.owner}، ويُرفع تلقائياً عند فتح الأداة على جهازه.`
-          : "الملف لم يصل إلى أرشيف المركز بعد؛ هو على جهاز من رفعه، ويُرفع تلقائياً عند فتح الأداة على جهازه.");
-        return;
+      if (f) { ui.download(f.name, f.blob); return; }
+      if (rec.driveLink && !(App.cloud && App.cloud.ready())) window.open(rec.driveLink, "_blank", "noopener");
+      else ui.toast(missingMsg(rec));
+    } catch (e) { ui.toast(e.message); }
+  }
+
+  /* ===== معاينة الملف داخل الصفحة: PDF والصور والنصوص وWord وExcel ===== */
+  let pvFile = null, pvUrl = null;
+  const pvNote = (text) => `<p class="pv-note">${esc(text)}</p>`;
+
+  async function openPreview(rec) {
+    pvFile = null;
+    $("pv-title").textContent = rec.fileName || rec.subject || "ملف";
+    $("pv-body").innerHTML = pvNote("جارٍ تجهيز المعاينة…");
+    $("pv-modal").classList.add("open");
+    try {
+      const f = await getFile(rec);
+      if (!f) { $("pv-body").innerHTML = pvNote(missingMsg(rec)); return; }
+      pvFile = f;
+      const type = f.blob.type || "";
+      const name = String(f.name || rec.fileName || "").toLowerCase();
+      if (/pdf/.test(type) || name.endsWith(".pdf")) {
+        pvUrl = URL.createObjectURL(new Blob([f.blob], { type: "application/pdf" }));
+        $("pv-body").innerHTML = `<iframe src="${pvUrl}" title="معاينة"></iframe>`;
+      } else if (/^image\//.test(type) || /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(name)) {
+        pvUrl = URL.createObjectURL(f.blob);
+        $("pv-body").innerHTML = `<img src="${pvUrl}" alt="">`;
+      } else if (/^text\//.test(type) || /\.(txt|csv|json|md)$/.test(name)) {
+        $("pv-body").innerHTML = `<div class="pv-doc" style="white-space:pre-wrap">${esc(await f.blob.text())}</div>`;
+      } else if (name.endsWith(".docx")) {
+        $("pv-body").innerHTML = `<div class="pv-doc">${await docxHtml(f.blob)}</div>`;
+      } else if (/\.(xlsx|xlsm)$/.test(name)) {
+        $("pv-body").innerHTML = await sheetHtml(f.blob);
+      } else {
+        $("pv-body").innerHTML = pvNote("لا يمكن معاينة هذا النوع من الملفات داخل المتصفح؛ استخدم «تحميل».");
       }
-      if (view && VIEWABLE.test(f.blob.type || "")) {
-        const url = URL.createObjectURL(f.blob);
-        if (tab) tab.location.href = url; else window.open(url, "_blank");
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-        return;
-      }
-      if (tab) tab.close();
-      ui.download(f.name, f.blob);
-      if (view) ui.toast("هذا النوع لا يُعرض في المتصفح؛ تم تنزيله");
     } catch (e) {
-      if (tab) tab.close();
-      ui.toast(e.message);
+      console.error(e);
+      $("pv-body").innerHTML = pvNote(`تعذّرت المعاينة: ${e.message}`);
     }
+  }
+
+  function closePreview() {
+    $("pv-modal").classList.remove("open");
+    $("pv-body").innerHTML = "";
+    if (pvUrl) { URL.revokeObjectURL(pvUrl); pvUrl = null; }
+  }
+
+  /* نص ملف Word مع الفقرات والجداول والخط العريض والمحاذاة (معاينة، لا تنسيق كامل) */
+  async function docxHtml(blob) {
+    const zip = await JSZip.loadAsync(blob);
+    const xml = await zip.file("word/document.xml").async("string");
+    const doc = new DOMParser().parseFromString(xml, "application/xml");
+    const kids = (el, name) => [...el.childNodes].filter((n) => n.localName === name);
+    const find = (el, name) => [...el.getElementsByTagNameNS("*", name)];
+    const para = (p) => {
+      const pPr = kids(p, "pPr")[0];
+      const jc = pPr && find(pPr, "jc")[0];
+      const align = jc ? { center: "center", both: "justify", left: "right", start: "right", right: "left", end: "left" }[jc.getAttribute("w:val")] : "";
+      const html = find(p, "r").map((r) => {
+        const text = kids(r, "t").map((t) => t.textContent).join("") + (kids(r, "tab").length ? " " : "") + (kids(r, "br").length ? "\n" : "");
+        const rPr = kids(r, "rPr")[0];
+        const bold = rPr && kids(rPr, "b").some((b) => !/^(0|false)$/.test(b.getAttribute("w:val") || ""));
+        return bold ? `<b>${esc(text)}</b>` : esc(text);
+      }).join("");
+      return `<p${align ? ` style="text-align:${align}"` : ""}>${html || "&nbsp;"}</p>`;
+    };
+    const body = find(doc, "body")[0];
+    if (!body) return "";
+    return [...body.childNodes].map((n) => {
+      if (n.localName === "p") return para(n);
+      if (n.localName === "tbl") {
+        return `<table>${kids(n, "tr").map((tr) => `<tr>${kids(tr, "tc").map((tc) => `<td>${kids(tc, "p").map(para).join("")}</td>`).join("")}</tr>`).join("")}</table>`;
+      }
+      return "";
+    }).join("");
+  }
+
+  /* أول ثلاث أوراق من ملف Excel كجداول (حتى 300 صف و30 عموداً) */
+  async function sheetHtml(blob) {
+    if (typeof ExcelJS === "undefined") return pvNote("تعذّر تحميل مكتبة Excel.");
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await blob.arrayBuffer());
+    return wb.worksheets.slice(0, 3).map((ws) => {
+      const rows = [];
+      ws.eachRow({ includeEmpty: false }, (row, i) => {
+        if (i > 300) return;
+        const cells = [];
+        for (let c = 1; c <= Math.min(ws.columnCount, 30); c++) {
+          const v = row.getCell(c).text;
+          cells.push(`<td>${esc(v == null ? "" : String(v))}</td>`);
+        }
+        rows.push(`<tr>${cells.join("")}</tr>`);
+      });
+      return `<h4 style="margin:12px">${esc(ws.name)}</h4><table class="pv-sheet" dir="rtl">${rows.join("")}</table>`;
+    }).join("") || pvNote("الملف فارغ.");
+  }
+
+  /* المحذوفات تبقى 30 يوماً قابلة للاسترجاع، ثم تُحذف نهائياً من السجل (الملف في Drive يبقى) */
+  function purgeTrash() {
+    const limit = Date.now() - TRASH_DAYS * 86400000;
+    const old = records().filter((r) => r.deletedAt && Date.parse(r.deletedAt) < limit);
+    if (!old.length) return;
+    old.forEach((r) => { if (r.fileId) App.filesStore.remove(r.fileId).catch(() => {}); });
+    const ids = new Set(old.map((r) => r.id));
+    store.get().registry = records().filter((r) => !ids.has(r.id));
+    store.save();
+  }
+
+  /* ===== المتابعة: وارد يحتاج معالجة قبل موعد ===== */
+  const daysLeft = (due) => Math.round((Date.parse(due) - Date.parse(ui.todayISO())) / 86400000);
+  function followUps() {
+    return live().filter((r) => r.dueDate && !r.done)
+      .map((r) => ({ rec: r, days: daysLeft(r.dueDate) }))
+      .filter((x) => x.days <= 3)
+      .sort((a, b) => a.days - b.days);
+  }
+  function dueBadge(r) {
+    if (r.done) return r.dueDate || r.replyNumber ? `<span class="due-badge ok" title="${r.replyNumber ? `رُدّ عليه بالصادر ${esc(r.replyNumber)}` : "تمت المعالجة"}">✓ ${r.replyNumber ? "رُدّ عليه" : "تمت المعالجة"}</span>` : "";
+    if (!r.dueDate) return "";
+    const d = daysLeft(r.dueDate);
+    if (d < 0) return `<span class="due-badge late">متأخر ${ui.fmt(-d)} يوم</span>`;
+    if (d <= 3) return `<span class="due-badge soon">${d === 0 ? "مطلوب اليوم" : `خلال ${ui.fmt(d)} يوم`}</span>`;
+    return `<span class="due-badge">حتى ${esc(ui.formatDate(r.dueDate))}</span>`;
   }
 
   /* للإحصاء في التقرير الدوري */
   function countInPeriod(from, to) {
     const inRange = (r) => (!from || r.date >= from) && (!to || r.date <= to);
-    const list = records().filter(inRange);
+    const list = live().filter(inRange);
     return { out: list.filter((r) => r.type === "out").length, in: list.filter((r) => r.type === "in").length };
   }
 
   /* ===== الواجهة ===== */
-  const filter = { type: "all", q: "", year: "", cat: "", owner: "" };
+  const filter = { type: "all", q: "", year: "", cat: "", owner: "", track: "", trash: false, content: null };
+  const selected = new Set();
   const catOptions = (selected, withAll) =>
     (withAll ? `<option value="">كل الأنواع</option>` : "") + CATEGORIES.map((c) => `<option ${c === selected ? "selected" : ""}>${c}</option>`).join("");
 
   function filtered() {
     const q = filter.q.trim();
     return records()
+      .filter((r) => (filter.trash ? !!r.deletedAt : !r.deletedAt))
       .filter((r) => filter.type === "all" || r.type === filter.type)
+      .filter((r) => !filter.track || (r.track || "") === filter.track)
       .filter((r) => !filter.year || String(r.date || "").startsWith(filter.year))
       .filter((r) => !filter.cat || categoryOf(r) === filter.cat)
       .filter((r) => !filter.owner || (r.owner || "") === (filter.owner === "__me" ? me() : filter.owner))
-      .filter((r) => !q || [r.number, r.party, r.subject, r.notes, r.kind, r.fileName, r.owner, categoryOf(r)].some((f) => String(f || "").includes(q)))
+      .filter((r) => !q || textMatch(r, q) || inContent(r))
       .sort(compare);
+  }
+
+  const textMatch = (r, q) => [r.number, r.party, r.subject, r.notes, r.kind, r.fileName, r.owner, r.track, categoryOf(r)].some((f) => String(f || "").includes(q));
+  const inContent = (r) => !!(filter.content && r.driveId && filter.content.ids.has(r.driveId));
+
+  /* البحث داخل محتوى الملفات عبر فهرسة Drive على الخادم */
+  let contentTimer = null;
+  function searchContent() {
+    clearTimeout(contentTimer);
+    const q = filter.q.trim();
+    filter.content = null;
+    if (q.length < 3 || !App.cloud || !App.cloud.ready()) { $("reg-content-status").textContent = ""; return; }
+    $("reg-content-status").textContent = "…يبحث داخل محتوى الملفات";
+    contentTimer = setTimeout(async () => {
+      try {
+        const ids = await App.cloud.search(q);
+        if (filter.q.trim() !== q) return;
+        filter.content = { q, ids: new Set(ids) };
+        const extra = live().filter((r) => inContent(r) && !textMatch(r, q)).length;
+        $("reg-content-status").textContent = extra ? `+ ${ui.fmt(extra)} في محتوى الملفات` : "لا نتائج إضافية داخل الملفات";
+        render();
+      } catch (e) { $("reg-content-status").textContent = ""; }
+    }, 700);
   }
 
   /* ===== الترتيب والتصنيف (يُحفظ اختيار العرض في هذا المتصفح) ===== */
@@ -334,26 +512,37 @@
     category: { key: (r) => categoryOf(r), label: (k) => `🗂 ${k}`, order: (a, b) => CATEGORIES.indexOf(a) - CATEGORIES.indexOf(b) },
     type: { key: (r) => r.type, label: (k) => (k === "out" ? "📤 الصادر" : "📥 الوارد"), order: (a, b) => (a === "out" ? -1 : 1) - (b === "out" ? -1 : 1) },
     owner: { key: (r) => r.owner || "—", label: (k) => (k === "—" ? "👤 بدون مستخدم" : `👤 ${k}`), order: (a, b) => (a === me() ? -1 : b === me() ? 1 : a.localeCompare(b, "ar")) },
+    track: { key: (r) => r.track || "—", label: (k) => (k === "—" ? "🎓 بدون مسار" : `🎓 ${k}`), order: (a, b) => (a === "—" ? 1 : b === "—" ? -1 : a.localeCompare(b, "ar")) },
     initial: { key: (r) => (displayName(r).trim()[0] || "—").toUpperCase(), label: (k) => `🔤 ${k}`, order: (a, b) => a.localeCompare(b, "ar") },
   };
 
   function rowHtml(r) {
     return `
-      <tr data-id="${r.id}">
+      <tr data-id="${r.id}" class="${selected.has(r.id) ? "selected" : ""}">
+        <td class="reg-sel">${r.fileId ? `<input type="checkbox" data-sel ${selected.has(r.id) ? "checked" : ""} aria-label="تحديد">` : ""}</td>
         <td><span class="badge ${r.type === "out" ? "digital" : "craft"}">${TYPE_LABEL[r.type]}</span></td>
         <td class="reg-num">${esc(r.number)}</td>
         <td class="nowrap">${esc(ui.formatDate(r.date))}</td>
         <td>${esc(r.party || "")}</td>
-        <td>${esc(r.subject || "")}<div class="reg-kind">${esc(categoryOf(r))}${r.kind && r.kind !== categoryOf(r) ? ` · ${esc(r.kind)}` : ""}</div></td>
+        <td>${esc(r.subject || "")}<div class="reg-kind">${esc(categoryOf(r))}${r.kind && r.kind !== categoryOf(r) ? ` · ${esc(r.kind)}` : ""}${r.track ? ` · 🎓 ${esc(r.track)}` : ""}</div>${r.type === "in" ? dueBadge(r) : ""}${filter.content && inContent(r) && !textMatch(r, filter.content.q) ? `<span class="due-badge">📄 في المحتوى</span>` : ""}</td>
         <td class="reg-file">${fileCell(r)}</td>
         <td class="nowrap">${r.fileId && r.fileDate ? esc(ui.formatDate(r.fileDate)) : "—"}</td>
         <td>${folderCell(r)}</td>
-        <td class="reg-actions">
-          ${r.fileId ? `<button class="act-btn dl" data-download title="تحميل الملف إلى الجهاز">⬇ تحميل</button>` : ""}
-          <button class="act-btn edit" data-edit title="تعديل القيد">✎ تعديل</button>
-          <button class="act-btn del" data-del title="حذف القيد">🗑 حذف</button>
-        </td>
+        <td class="reg-actions">${actionsHtml(r)}</td>
       </tr>`;
+  }
+
+  function actionsHtml(r) {
+    const mod = canModify(r);
+    if (r.deletedAt) {
+      return `<span class="reg-kind">حُذف ${esc(ui.formatDate(r.deletedAt.slice(0, 10)))}${r.deletedBy ? ` · ${esc(r.deletedBy)}` : ""}</span><br>`
+        + (mod ? `<button class="act-btn edit" data-restore>↺ استرجاع</button>` : "")
+        + (App.profile && App.profile.isAdmin() ? ` <button class="act-btn del" data-purge>✖ حذف نهائي</button>` : "");
+    }
+    return (r.fileId ? `<button class="act-btn dl" data-download title="تحميل الملف إلى الجهاز">⬇ تحميل</button>` : "")
+      + (r.type === "in" ? ` <button class="act-btn reply" data-reply title="إنشاء خطاب رد في المراسلات">↩ رد</button>` : "")
+      + (mod ? ` <button class="act-btn edit" data-edit title="تعديل القيد">✎ تعديل</button> <button class="act-btn del" data-del title="نقل إلى المحذوفات">🗑 حذف</button>`
+        : ` <span class="reg-kind" title="التعديل لصاحب القيد أو المدير">🔒</span>`);
   }
 
   function bodyHtml(list) {
@@ -365,7 +554,7 @@
       const items = groups.get(k);
       const id = `${view.group}:${k}`;
       const closed = collapsed.has(id);
-      return `<tr class="reg-group" data-group="${esc(id)}"><td colspan="9"><span class="reg-caret">${closed ? "◂" : "▾"}</span> ${esc(g.label(k))} <span class="reg-group-count">${ui.fmt(items.length)}</span></td></tr>`
+      return `<tr class="reg-group" data-group="${esc(id)}"><td colspan="10"><span class="reg-caret">${closed ? "◂" : "▾"}</span> ${esc(g.label(k))} <span class="reg-group-count">${ui.fmt(items.length)}</span></td></tr>`
         + (closed ? "" : items.map(rowHtml).join(""));
     }).join("");
   }
@@ -408,8 +597,15 @@
     $("reg-owner").innerHTML = `<option value="">كل المستخدمين</option>`
       + (mine ? `<option value="__me" ${filter.owner === "__me" ? "selected" : ""}>ملفاتي (${esc(mine)})</option>` : "")
       + owners.filter((o) => o !== mine).map((o) => `<option value="${esc(o)}" ${filter.owner === o ? "selected" : ""}>${esc(o)}</option>`).join("");
+    $("reg-track-filter").innerHTML = trackOptions(filter.track, "كل المسارات");
+    const trashCount = all.filter((r) => r.deletedAt).length;
+    $("reg-trash").textContent = filter.trash ? "↩ العودة إلى السجل" : `🗑 المحذوفات${trashCount ? ` (${ui.fmt(trashCount)})` : ""}`;
+    $("reg-trash").classList.toggle("active", filter.trash);
+    $("reg-trash-note").hidden = !filter.trash;
     document.querySelectorAll("[data-reg-type]").forEach((b) => b.classList.toggle("active", b.dataset.regType === filter.type));
-    $("reg-counts").textContent = `${ui.fmt(all.filter((r) => r.type === "out").length)} صادر · ${ui.fmt(all.filter((r) => r.type === "in").length)} وارد`;
+    const alive = all.filter((r) => !r.deletedAt);
+    const fu = followUps();
+    $("reg-counts").textContent = `${ui.fmt(alive.filter((r) => r.type === "out").length)} صادر · ${ui.fmt(alive.filter((r) => r.type === "in").length)} وارد${fu.length ? ` · ${ui.fmt(fu.length)} بحاجة متابعة` : ""}`;
     $("reg-prefix").value = settings().prefix;
     const pending = all.filter((r) => r.drivePending && r.fileId && !r.driveLink);
     $("reg-archive-pending").hidden = !pending.length;
@@ -424,8 +620,11 @@
       th.dataset.arrow = !on ? "" : view.sort === "date-desc" ? "▼" : "▲";
     });
     const list = filtered();
+    [...selected].forEach((id) => { const r = records().find((x) => x.id === id); if (!r || r.deletedAt) selected.delete(id); });
     $("reg-body").innerHTML = list.length ? bodyHtml(list)
-      : `<tr><td colspan="9" class="empty">لا توجد قيود${filter.q || filter.type !== "all" || filter.year || filter.cat || filter.owner ? " مطابقة" : " بعد. الخطابات المصدَّرة من «المراسلات» تُسجَّل هنا تلقائياً، أو ارفع ملفاتك من «رفع ملفات»"}.</td></tr>`;
+      : `<tr><td colspan="10" class="empty">${filter.trash ? "سلة المحذوفات فارغة." : `لا توجد قيود${filter.q || filter.type !== "all" || filter.year || filter.cat || filter.owner || filter.track ? " مطابقة" : " بعد. الخطابات المصدَّرة من «المراسلات» تُسجَّل هنا تلقائياً، أو ارفع ملفاتك من «رفع ملفات»"}.`}</td></tr>`;
+    renderSelection();
+    if ($("reg-stats").open) renderStats();
   }
 
   /* ===== نموذج الإضافة والتعديل ===== */
@@ -437,6 +636,10 @@
     $("reg-type").value = rec ? rec.type : "in";
     $("reg-date").value = rec ? rec.date : ui.todayISO();
     $("reg-category").innerHTML = catOptions(rec ? categoryOf(rec) : "خطابات");
+    $("reg-track").innerHTML = trackOptions(rec ? rec.track || "" : "");
+    $("reg-due").value = rec ? rec.dueDate || "" : "";
+    $("reg-done").checked = !!(rec && rec.done);
+    syncFollowUp();
     $("reg-number").value = rec ? rec.number : "";
     $("reg-party").value = rec ? rec.party || "" : "";
     $("reg-subject").value = rec ? rec.subject || "" : "";
@@ -449,6 +652,8 @@
   }
   const closeForm = () => $("reg-modal").classList.remove("open");
 
+  function syncFollowUp() { $("reg-follow").hidden = $("reg-type").value !== "in"; }
+
   function syncNumberHint() {
     $("reg-number").placeholder = `تلقائي: ${nextNumber($("reg-type").value, $("reg-date").value)}`;
   }
@@ -457,19 +662,23 @@
     e.preventDefault();
     const type = $("reg-type").value;
     const date = $("reg-date").value || ui.todayISO();
-    const number = $("reg-number").value.trim() || nextNumber(type, date);
-    const dup = records().find((r) => r.type === type && r.number === number && r.id !== editingId);
-    if (dup) { ui.toast(`الرقم ${number} مسجّل مسبقاً في ${TYPE_LABEL[type]}`); return; }
-
     let rec = editingId && records().find((r) => r.id === editingId);
+    if (rec && !canModify(rec)) { ui.toast("التعديل لصاحب القيد أو المدير فقط"); return; }
+    const typed = $("reg-number").value.trim();
+    const dup = typed && records().find((r) => r.type === type && r.number === typed && r.id !== editingId && !r.deletedAt);
+    if (dup) { ui.toast(`الرقم ${typed} مسجّل مسبقاً في ${TYPE_LABEL[type]}`); return; }
+    const number = typed || (await assignNumber(type, date));
+
     if (!rec) {
-      rec = { id: store.uid(), owner: me(), createdAt: new Date().toISOString() };
+      rec = { id: store.uid(), owner: me(), createdAt: nowISO() };
       records().push(rec);
-    }
+      logAction(rec, "إنشاء قيد");
+    } else logAction(rec, "تعديل");
     const moved = rec.driveLink && pathText(archivePath(rec)) !== pathText(archivePath({ type, date, category: $("reg-category").value }));
-    Object.assign(rec, { type, date, number, category: $("reg-category").value, party: $("reg-party").value.trim(), subject: $("reg-subject").value.trim(), notes: $("reg-notes").value.trim() });
+    Object.assign(rec, { type, date, number, category: $("reg-category").value, track: $("reg-track").value, party: $("reg-party").value.trim(), subject: $("reg-subject").value.trim(), notes: $("reg-notes").value.trim() });
+    if (type === "in") Object.assign(rec, { dueDate: $("reg-due").value || null, done: $("reg-done").checked });
     const file = $("reg-file").files[0];
-    if (file) await attachFile(rec, file, file.name, localISO(new Date(file.lastModified)));
+    if (file) { await attachFile(rec, file, file.name, localISO(new Date(file.lastModified))); logAction(rec, `إرفاق ملف: ${file.name}`); }
     store.save();
     closeForm();
     render();
@@ -477,14 +686,127 @@
     ui.toast(`تم حفظ القيد ${number}${moved && !file ? " — الملف في Drive باقٍ في مجلده السابق" : ""}`);
   }
 
-  async function deleteRecord(id) {
+  function deleteRecord(id) {
     const rec = records().find((r) => r.id === id);
-    if (!rec || !confirm(`حذف القيد ${rec.number} (${TYPE_LABEL[rec.type]})؟${rec.driveLink ? "\nالنسخة في Google Drive لا تُحذف." : ""}`)) return;
-    if (rec.fileId) await App.filesStore.remove(rec.fileId).catch(() => {});
-    store.get().registry = records().filter((r) => r.id !== id);
+    if (!rec) return;
+    if (!canModify(rec)) { ui.toast("الحذف لصاحب القيد أو المدير فقط"); return; }
+    if (!confirm(`نقل القيد ${rec.number} (${TYPE_LABEL[rec.type]}) إلى المحذوفات؟\nيمكن استرجاعه خلال ${TRASH_DAYS} يوماً.`)) return;
+    Object.assign(rec, { deletedAt: nowISO(), deletedBy: me() || "—" });
+    logAction(rec, "حذف (إلى المحذوفات)");
+    selected.delete(id);
     store.save();
     render();
-    ui.toast("تم حذف القيد");
+    ui.toast("نُقل القيد إلى المحذوفات");
+  }
+
+  function restoreRecord(rec) {
+    if (!canModify(rec)) { ui.toast("الاسترجاع لصاحب القيد أو المدير فقط"); return; }
+    Object.assign(rec, { deletedAt: null, deletedBy: null });
+    logAction(rec, "استرجاع من المحذوفات");
+    store.save();
+    render();
+    ui.toast(`استُرجع القيد ${rec.number}`);
+  }
+
+  async function purgeRecord(rec) {
+    if (!App.profile.isAdmin()) return;
+    if (!confirm(`حذف القيد ${rec.number} نهائياً من السجل؟ لا يمكن التراجع.${rec.driveLink ? "\nالملف في Drive المركز يبقى في مجلده." : ""}`)) return;
+    if (rec.fileId) await App.filesStore.remove(rec.fileId).catch(() => {});
+    store.get().registry = records().filter((r) => r.id !== rec.id);
+    store.save();
+    render();
+    ui.toast("حُذف القيد نهائياً");
+  }
+
+  /* ===== الرد على وارد: خطاب جاهز في المراسلات مربوط برقم الوارد ===== */
+  function replyTo(rec) {
+    if (!App.letters || !App.letters.startReply) return;
+    App.letters.startReply(rec);
+  }
+
+  /* ===== التحديد وتحميل عدة ملفات في ملف مضغوط ===== */
+  function renderSelection() {
+    const n = selected.size;
+    $("reg-sel-bar").hidden = !n;
+    $("reg-sel-count").textContent = `${ui.fmt(n)} ملف محدد`;
+    const boxes = [...document.querySelectorAll("#reg-body [data-sel]")];
+    $("reg-sel-all").checked = boxes.length > 0 && boxes.every((b) => b.checked);
+    $("reg-sel-all").indeterminate = !$("reg-sel-all").checked && boxes.some((b) => b.checked);
+  }
+
+  async function downloadSelected() {
+    if (typeof JSZip === "undefined") { ui.toast("تعذّر تحميل مكتبة الضغط"); return; }
+    const recs = [...selected].map((id) => records().find((r) => r.id === id)).filter(Boolean);
+    const zip = new JSZip();
+    const used = new Set();
+    let ok = 0;
+    $("reg-sel-download").disabled = true;
+    for (let i = 0; i < recs.length; i++) {
+      $("reg-sel-count").textContent = `تجهيز ${ui.fmt(i + 1)} من ${ui.fmt(recs.length)}…`;
+      try {
+        const f = await getFile(recs[i]);
+        if (!f) continue;
+        let name = f.name || recs[i].fileName || "ملف";
+        for (let k = 2; used.has(name); k++) name = name.replace(/(\.[^.]+)?$/, (ext) => ` (${k})${ext}`);
+        used.add(name);
+        zip.file(name, f.blob);
+        ok++;
+      } catch (e) { console.warn(e.message); }
+    }
+    $("reg-sel-download").disabled = false;
+    renderSelection();
+    if (!ok) { ui.toast("تعذّر جلب الملفات المحددة"); return; }
+    ui.download(`ملفات الأرشيف - ${ui.todayISO()}.zip`, await zip.generateAsync({ type: "blob" }));
+    ui.toast(ok === recs.length ? `حُمّل ${ui.fmt(ok)} ملفاً` : `حُمّل ${ui.fmt(ok)} من ${ui.fmt(recs.length)}؛ بعضها لم يصل إلى الأرشيف بعد`);
+  }
+
+  /* ===== سجل النشاط ===== */
+  function openActivity() {
+    const items = [];
+    records().forEach((r) => (r.history || []).forEach((h) => items.push(Object.assign({ rec: r }, h))));
+    items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const who = $("act-user").value;
+    const users = [...new Set(items.map((x) => x.by))].sort((a, b) => a.localeCompare(b, "ar"));
+    $("act-user").innerHTML = `<option value="">كل المستخدمين</option>` + users.map((u) => `<option ${u === who ? "selected" : ""}>${esc(u)}</option>`).join("");
+    const list = items.filter((x) => !who || x.by === who).slice(0, 400);
+    $("act-list").innerHTML = list.length ? list.map((x) => `<li>
+        <span class="act-when">${esc(ui.formatDate(String(x.at).slice(0, 10)))} ${esc(new Date(x.at).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }))}</span>
+        <b>${esc(x.by)}</b> — ${esc(x.action)}
+        <span class="reg-kind">${esc(TYPE_LABEL[x.rec.type] || "")} ${esc(x.rec.number)}${x.rec.subject ? ` · ${esc(x.rec.subject)}` : ""}</span>
+      </li>`).join("") : `<li class="empty">لا يوجد نشاط مسجّل بعد.</li>`;
+    $("act-modal").classList.add("open");
+  }
+
+  /* ===== إحصاءات الأرشيف ===== */
+  function countBy(list, key) {
+    const m = new Map();
+    list.forEach((r) => { const k = key(r); m.set(k, (m.get(k) || 0) + 1); });
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }
+  function statsCharts(list) {
+    const chart = (title, pairs) => {
+      const top = pairs.slice(0, 10);
+      return top.length ? App.charts.horizontalBars({ title, labels: top.map((p) => p[0]), values: top.map((p) => p[1]), max: Math.max(...top.map((p) => p[1])), unit: "" }) : null;
+    };
+    const months = countBy(list, (r) => String(r.date || "").slice(0, 7)).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6).reverse()
+      .map(([k, v]) => [`${k.slice(5, 7)}/${k.slice(0, 4)}`, v]);
+    return [
+      chart("الملفات حسب نوع المستند", countBy(list, categoryOf)),
+      chart("الملفات حسب المستخدم", countBy(list, (r) => r.owner || "بدون مستخدم")),
+      chart("الملفات حسب المسار التدريبي", countBy(list.filter((r) => r.track), (r) => r.track)),
+      chart("القيود في آخر 6 أشهر", months),
+    ].filter(Boolean);
+  }
+  function renderStats() {
+    const list = live();
+    const withFile = list.filter((r) => r.fileId).length;
+    const fu = followUps();
+    $("reg-stats-kpis").innerHTML = `
+      <div class="stat"><div class="label">إجمالي القيود</div><div class="value">${ui.fmt(list.length)}</div><div class="sub">${ui.fmt(list.filter((r) => r.type === "in").length)} وارد · ${ui.fmt(list.filter((r) => r.type === "out").length)} صادر</div></div>
+      <div class="stat"><div class="label">ملفات في الأرشيف</div><div class="value">${ui.fmt(list.filter((r) => r.driveLink).length)}</div><div class="sub">من ${ui.fmt(withFile)} ملفاً مرفقاً</div></div>
+      <div class="stat"><div class="label">المستخدمون</div><div class="value">${ui.fmt(new Set(list.map((r) => r.owner).filter(Boolean)).size)}</div><div class="sub">رفعوا ملفات إلى الأرشيف</div></div>
+      <div class="stat"><div class="label">بحاجة متابعة</div><div class="value">${ui.fmt(fu.length)}</div><div class="sub">${ui.fmt(fu.filter((x) => x.days < 0).length)} متأخر</div></div>`;
+    $("reg-stats-charts").innerHTML = statsCharts(list).map((c) => `<img src="${c.src}" alt="">`).join("");
   }
 
   /* ===== رفع عدة ملفات دفعة واحدة ===== */
@@ -525,6 +847,7 @@
       type: shared.type,
       category: guessCategoryFor(file),
       date: guessDateFor(file),
+      track: guessTrack(`${folderOf(file)} ${file.name}`),
       number: "",
       party: shared.party,
       subject: file.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim(),
@@ -566,7 +889,7 @@
     return `<tr data-i="${i}">
       <td class="bulk-name" title="${esc(it.file.name)}">${nameHtml(it.file.name)}${folderOf(it.file) ? `<div class="reg-kind">📂 ${esc(folderOf(it.file))}</div>` : ""}<div class="reg-kind">${esc(ui.fmt(Math.max(1, Math.round(it.file.size / 1024))))} ك.ب · ${esc(ui.formatDate(localISO(new Date(it.file.lastModified))))}</div></td>
       <td><select data-k="type"><option value="in" ${it.type === "in" ? "selected" : ""}>وارد</option><option value="out" ${it.type === "out" ? "selected" : ""}>صادر</option></select></td>
-      <td><select data-k="category">${catOptions(it.category)}</select></td>
+      <td><select data-k="category">${catOptions(it.category)}</select><select data-k="track" class="bulk-track" title="المسار التدريبي">${trackOptions(it.track)}</select></td>
       <td><input type="date" data-k="date" value="${esc(it.date)}"></td>
       <td><input type="text" data-k="number" value="${esc(it.number)}" placeholder="تلقائي"></td>
       <td><input type="text" data-k="party" value="${esc(it.party)}"></td>
@@ -612,17 +935,26 @@
     setBulkBusy(true);
     const created = [];
     try {
-      // بالترتيب الزمني حتى تتسلسل الأرقام التلقائية مع التواريخ
+      // بالترتيب الزمني حتى تتسلسل الأرقام التلقائية مع التواريخ، والأرقام محجوزة من الخادم دفعة واحدة
       const ordered = bulk.slice().sort((a, b) => a.date.localeCompare(b.date));
+      $("bulk-progress").textContent = "حجز الأرقام…";
+      const pools = new Map();
+      ordered.filter((it) => !it.number.trim()).forEach((it) => {
+        const head = headOf(it.type, it.date || ui.todayISO());
+        if (!pools.has(head)) pools.set(head, { type: it.type, date: it.date || ui.todayISO(), count: 0, list: [] });
+        pools.get(head).count++;
+      });
+      for (const p of pools.values()) p.list = await assignNumbers(p.type, p.date, p.count);
       for (let i = 0; i < ordered.length; i++) {
         const it = ordered[i];
         $("bulk-progress").textContent = `حفظ ${ui.fmt(i + 1)} من ${ui.fmt(ordered.length)}…`;
         const date = it.date || ui.todayISO();
         const rec = {
           id: store.uid(), createdAt: new Date().toISOString(), source: "upload", owner,
-          type: it.type, date, number: it.number.trim() || nextNumber(it.type, date),
-          category: it.category, party: it.party.trim(), subject: it.subject.trim(), notes: "",
+          type: it.type, date, number: it.number.trim() || pools.get(headOf(it.type, date)).list.shift(),
+          category: it.category, track: it.track || "", party: it.party.trim(), subject: it.subject.trim(), notes: "",
         };
+        logAction(rec, `رفع ملف: ${it.file.name}`);
         await attachFile(rec, it.file, it.file.name, localISO(new Date(it.file.lastModified)));
         records().push(rec);
         store.save();
@@ -727,10 +1059,30 @@
       document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - lastSync > 15000) syncShared(false); });
     }
     document.querySelectorAll("[data-reg-type]").forEach((b) => b.addEventListener("click", () => { filter.type = b.dataset.regType; render(); }));
-    $("reg-search").addEventListener("input", (e) => { filter.q = e.target.value; render(); });
+    $("reg-search").addEventListener("input", (e) => { filter.q = e.target.value; render(); searchContent(); });
     $("reg-year").addEventListener("change", (e) => { filter.year = e.target.value; render(); });
     $("reg-cat").addEventListener("change", (e) => { filter.cat = e.target.value; render(); });
     $("reg-owner").addEventListener("change", (e) => { filter.owner = e.target.value; render(); });
+    $("reg-track-filter").addEventListener("change", (e) => { filter.track = e.target.value; render(); });
+    $("reg-trash").addEventListener("click", () => { filter.trash = !filter.trash; selected.clear(); render(); });
+    $("reg-activity").addEventListener("click", openActivity);
+    $("act-user").addEventListener("change", openActivity);
+    $("act-close").addEventListener("click", () => $("act-modal").classList.remove("open"));
+    $("act-modal").addEventListener("click", (e) => { if (e.target.id === "act-modal") $("act-modal").classList.remove("open"); });
+    $("reg-stats").addEventListener("toggle", () => { if ($("reg-stats").open) renderStats(); });
+    $("reg-sel-all").addEventListener("change", (e) => {
+      document.querySelectorAll("#reg-body tr[data-id]").forEach((tr) => {
+        if (!tr.querySelector("[data-sel]")) return;
+        if (e.target.checked) selected.add(tr.dataset.id); else selected.delete(tr.dataset.id);
+      });
+      render();
+    });
+    $("reg-sel-download").addEventListener("click", downloadSelected);
+    $("pv-close").addEventListener("click", closePreview);
+    $("pv-modal").addEventListener("click", (e) => { if (e.target.id === "pv-modal") closePreview(); });
+    $("pv-download").addEventListener("click", () => { if (pvFile) ui.download(pvFile.name, pvFile.blob); });
+    $("reg-sel-clear").addEventListener("click", () => { selected.clear(); render(); });
+    $("reg-type").addEventListener("change", syncFollowUp);
     if (App.profile) App.profile.onChange(() => { if ($("view-registry").classList.contains("active")) render(); });
     $("reg-sort").addEventListener("change", (e) => { view.sort = e.target.value; saveView(); render(); });
     $("reg-group").addEventListener("change", (e) => { view.group = e.target.value; saveView(); render(); });
@@ -761,6 +1113,15 @@
       const tr = e.target.closest("tr[data-id]");
       if (!tr) return;
       const rec = records().find((r) => r.id === tr.dataset.id);
+      if (e.target.closest("[data-sel]")) {
+        if (e.target.checked) selected.add(rec.id); else selected.delete(rec.id);
+        tr.classList.toggle("selected", e.target.checked);
+        renderSelection();
+        return;
+      }
+      if (e.target.closest("[data-restore]")) { restoreRecord(rec); return; }
+      if (e.target.closest("[data-purge]")) { purgeRecord(rec); return; }
+      if (e.target.closest("[data-reply]")) { replyTo(rec); return; }
       if (e.target.closest("[data-open]")) openFile(rec, "view");
       else if (e.target.closest("[data-download]")) openFile(rec, "download");
       else if (e.target.closest("[data-archive]")) archiveNow([rec]);
@@ -773,9 +1134,9 @@
     $("reg-form").addEventListener("submit", saveForm);
     $("reg-cancel").addEventListener("click", closeForm);
     $("reg-modal").addEventListener("click", (e) => { if (e.target.id === "reg-modal") closeForm(); });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeForm(); closeBulk(); } });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeForm(); closeBulk(); closePreview(); $("act-modal").classList.remove("open"); } });
     initBulk();
   }
 
-  App.registry = { syncShared, init, render, nextOutgoingNumber, upsertOutgoing, countInPeriod, guessCategory, guessDate };
+  App.registry = { assignNumber, followUps, statsCharts, live, logAction, syncShared, init, render, nextOutgoingNumber, upsertOutgoing, countInPeriod, guessCategory, guessDate };
 })(window.App = window.App || {});

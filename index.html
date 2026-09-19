@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=49">
+  <link rel="stylesheet" href="styles/theme.css?v=51">
 </head>
 <body>
   <div class="app">
@@ -56,7 +56,7 @@
             <h3>حالة المسارات</h3>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>المسار</th><th>النوع</th><th>المستفيدون</th><th>الحضور</th><th>الإنجاز</th></tr></thead>
+                <thead><tr><th>المسار</th><th>النوع</th><th>المستفيدون</th><th>الحضور</th><th>الإنجاز</th><th>ملفات الأرشيف</th></tr></thead>
                 <tbody id="dash-tracks"></tbody>
               </table>
             </div>
@@ -104,6 +104,7 @@
               <button class="btn secondary small" id="tpl-edit" hidden>تعديل</button>
               <button class="btn danger small" id="tpl-delete" hidden>حذف</button>
             </div>
+            <p class="reply-note" id="reply-note" hidden>↩ <span id="reply-note-text"></span> <button type="button" class="conv-link" id="reply-cancel">إلغاء الربط</button></p>
             <label class="field"><span>الموضوع</span><input type="text" id="l-subject" placeholder="مثال: طلب تجهيز قاعة تدريبية"></label>
             <label class="field"><span>المرسل إليه</span><input type="text" id="l-recipient" placeholder="مثال: الأستاذ/ محمد أحمد"></label>
             <label class="field"><span>صفة المرسل إليه (اختياري)</span><input type="text" id="l-recipientTitle" placeholder="مثال: مدير عام الشؤون الإدارية"></label>
@@ -233,19 +234,31 @@
             <button class="btn" id="reg-archive-pending" hidden></button>
             <button class="btn secondary" data-drive-settings>☁ Google Drive</button>
             <button class="btn secondary" data-profile>👤 ملفي الشخصي</button>
+            <button class="btn secondary" id="reg-activity">📜 سجل النشاط</button>
+            <button class="btn secondary" id="reg-trash">🗑 المحذوفات</button>
           </div>
         </div>
+        <details class="card reg-stats" id="reg-stats">
+          <summary>📊 إحصاءات الأرشيف</summary>
+          <div class="stats" id="reg-stats-kpis"></div>
+          <div class="reg-stats-charts" id="reg-stats-charts"></div>
+        </details>
         <div class="card">
+          <p class="reg-trash-note" id="reg-trash-note" hidden>🗑 المحذوفات: تبقى 30 يوماً قابلة للاسترجاع ثم تُحذف من السجل نهائياً. الملفات في Drive المركز لا تُحذف.</p>
           <div class="reg-toolbar">
             <div class="conv-tabs" style="margin:0">
               <button type="button" data-reg-type="all">الكل</button>
               <button type="button" data-reg-type="out">الصادر</button>
               <button type="button" data-reg-type="in">الوارد</button>
             </div>
-            <input type="text" id="reg-search" placeholder="بحث بالرقم أو الجهة أو الموضوع">
+            <div class="reg-search-box">
+              <input type="text" id="reg-search" placeholder="بحث بالرقم أو الجهة أو الموضوع أو داخل محتوى الملفات">
+              <span class="reg-content-status" id="reg-content-status" aria-live="polite"></span>
+            </div>
             <select id="reg-year"></select>
             <select id="reg-cat"></select>
             <select id="reg-owner" title="ملفات مستخدم محدد"></select>
+            <select id="reg-track-filter" title="المسار التدريبي"></select>
             <label class="reg-prefix">ترتيب
               <select id="reg-sort">
                 <option value="date-desc">التاريخ: الأحدث أولاً</option>
@@ -260,15 +273,21 @@
                 <option value="category">حسب نوع المستند</option>
                 <option value="type">وارد / صادر</option>
                 <option value="owner">حسب المستخدم</option>
+                <option value="track">حسب المسار التدريبي</option>
                 <option value="initial">حسب أول حرف من الاسم</option>
                 <option value="">بدون تصنيف</option>
               </select>
             </label>
             <label class="reg-prefix">بادئة الصادر <input type="text" id="reg-prefix" title="الأرقام: البادئة/السنة/التسلسل"></label>
           </div>
+          <div class="reg-sel-bar" id="reg-sel-bar" hidden>
+            <span id="reg-sel-count"></span>
+            <button class="btn small" type="button" id="reg-sel-download">⬇ تحميل المحدد (ملف مضغوط)</button>
+            <button class="btn secondary small" type="button" id="reg-sel-clear">إلغاء التحديد</button>
+          </div>
           <div class="table-wrap">
             <table class="reg-table">
-              <thead><tr><th>النوع</th><th>الرقم</th><th class="sortable" data-sort-col="date" title="ترتيب حسب التاريخ">التاريخ</th><th>الجهة</th><th class="sortable" data-sort-col="category" title="ترتيب حسب نوع المستند">الموضوع</th><th class="sortable" data-sort-col="name" title="ترتيب حسب الاسم">اسم الملف</th><th>تاريخ الملف</th><th>المجلد في Drive</th><th></th></tr></thead>
+              <thead><tr><th class="reg-sel"><input type="checkbox" id="reg-sel-all" aria-label="تحديد الكل" title="تحديد كل الملفات الظاهرة"></th><th>النوع</th><th>الرقم</th><th class="sortable" data-sort-col="date" title="ترتيب حسب التاريخ">التاريخ</th><th>الجهة</th><th class="sortable" data-sort-col="category" title="ترتيب حسب نوع المستند">الموضوع</th><th class="sortable" data-sort-col="name" title="ترتيب حسب الاسم">اسم الملف</th><th>تاريخ الملف</th><th>المجلد في Drive</th><th></th></tr></thead>
               <tbody id="reg-body"></tbody>
             </table>
           </div>
@@ -476,11 +495,18 @@
         <label class="field"><span>النوع</span><select id="reg-type"><option value="in">وارد</option><option value="out">صادر</option></select></label>
         <label class="field"><span>التاريخ</span><input type="date" id="reg-date"></label>
       </div>
-      <label class="field"><span>نوع المستند</span><select id="reg-category"></select></label>
+      <div class="grid-fields">
+        <label class="field"><span>نوع المستند</span><select id="reg-category"></select></label>
+        <label class="field"><span>المسار التدريبي</span><select id="reg-track"></select></label>
+      </div>
       <label class="field"><span>الرقم <button type="button" class="conv-link" id="reg-number-auto">رقم تلقائي</button></span><input type="text" id="reg-number"></label>
       <label class="field"><span>الجهة</span><input type="text" id="reg-party" placeholder="الجهة المرسِلة (للوارد) أو المرسَل إليها (للصادر)"></label>
       <label class="field"><span>الموضوع</span><input type="text" id="reg-subject"></label>
       <label class="field"><span>ملاحظات</span><textarea id="reg-notes" rows="2"></textarea></label>
+      <div class="grid-fields" id="reg-follow">
+        <label class="field"><span>مطلوب المعالجة أو الرد قبل (اختياري)</span><input type="date" id="reg-due"></label>
+        <label class="conv-check strong" style="align-self:end;margin-bottom:14px"><input type="checkbox" id="reg-done"> تمت المعالجة</label>
+      </div>
       <label class="field"><span>المرفق (اختياري)</span><input type="file" id="reg-file"></label>
       <p class="conv-hint" id="reg-file-current"></p>
       <div class="btn-row">
@@ -526,6 +552,9 @@
       <p class="conv-hint" id="profile-hint"></p>
       <label class="field"><span>الاسم</span><input type="text" id="profile-name" maxlength="60" autocomplete="name" required></label>
       <label class="field"><span>المسمى الوظيفي (اختياري)</span><input type="text" id="profile-title" maxlength="80"></label>
+      <label class="field"><span>رمز المدير (للمدير فقط)</span><input type="password" id="profile-admin" dir="ltr" autocomplete="off"></label>
+      <p class="conv-hint" id="profile-role"></p>
+      <button type="button" class="conv-link" id="profile-drop-admin">إلغاء صلاحية المدير على هذا الجهاز</button>
       <p class="conv-hint">مجلدك في الأرشيف: «أرشيف مساعد تمكين / اسمك / السنة / الشهر / …». الاسم محفوظ على هذا الجهاز.</p>
       <div class="btn-row">
         <button class="btn" type="submit">حفظ</button>
@@ -534,36 +563,60 @@
     </form>
   </div>
 
+  <!-- سجل النشاط -->
+  <div class="modal-backdrop" id="act-modal" role="dialog" aria-modal="true" aria-labelledby="act-title">
+    <div class="modal">
+      <h3 id="act-title">📜 سجل النشاط</h3>
+      <select id="act-user"></select>
+      <ul class="act-list" id="act-list"></ul>
+      <div class="btn-row"><button class="btn secondary" type="button" id="act-close">إغلاق</button></div>
+    </div>
+  </div>
+
+  <!-- معاينة ملف -->
+  <div class="modal-backdrop" id="pv-modal" role="dialog" aria-modal="true" aria-labelledby="pv-title">
+    <div class="modal pv-modal">
+      <div class="pv-head">
+        <h3 id="pv-title"></h3>
+        <div class="btn-row">
+          <button class="btn small" type="button" id="pv-download">⬇ تحميل</button>
+          <button class="btn secondary small" type="button" id="pv-close">إغلاق</button>
+        </div>
+      </div>
+      <div class="pv-body" id="pv-body"></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=49"></script>
-  <script src="src/ui.js?v=49"></script>
-  <script src="src/templates.js?v=49"></script>
-  <script src="src/tracks.js?v=49"></script>
-  <script src="src/tasks.js?v=49"></script>
-  <script src="src/dashboard.js?v=49"></script>
-  <script src="src/letterhead-docx.js?v=49"></script>
-  <script src="src/docx.js?v=49"></script>
-  <script src="src/ai.js?v=49"></script>
-  <script src="src/doc-render.js?v=49"></script>
-  <script src="src/files-store.js?v=49"></script>
-  <script src="src/cloud.js?v=49"></script>
-  <script src="src/drive.js?v=49"></script>
-  <script src="src/drive-ui.js?v=49"></script>
-  <script src="src/rtl-fixer.js?v=49"></script>
-  <script src="src/rtl-page.js?v=49"></script>
-  <script src="src/profile.js?v=49"></script>
-  <script src="src/registry.js?v=49"></script>
-  <script src="src/charts.js?v=49"></script>
-  <script src="src/meetings.js?v=49"></script>
-  <script src="src/report.js?v=49"></script>
-  <script src="src/letters.js?v=49"></script>
+  <script src="src/storage.js?v=51"></script>
+  <script src="src/ui.js?v=51"></script>
+  <script src="src/templates.js?v=51"></script>
+  <script src="src/tracks.js?v=51"></script>
+  <script src="src/tasks.js?v=51"></script>
+  <script src="src/dashboard.js?v=51"></script>
+  <script src="src/letterhead-docx.js?v=51"></script>
+  <script src="src/docx.js?v=51"></script>
+  <script src="src/ai.js?v=51"></script>
+  <script src="src/doc-render.js?v=51"></script>
+  <script src="src/files-store.js?v=51"></script>
+  <script src="src/cloud.js?v=51"></script>
+  <script src="src/drive.js?v=51"></script>
+  <script src="src/drive-ui.js?v=51"></script>
+  <script src="src/rtl-fixer.js?v=51"></script>
+  <script src="src/rtl-page.js?v=51"></script>
+  <script src="src/profile.js?v=51"></script>
+  <script src="src/registry.js?v=51"></script>
+  <script src="src/charts.js?v=51"></script>
+  <script src="src/meetings.js?v=51"></script>
+  <script src="src/report.js?v=51"></script>
+  <script src="src/letters.js?v=51"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=49"></script>
-  <script src="src/converter-store.js?v=49"></script>
-  <script src="src/converter.js?v=49"></script>
-  <script src="src/app.js?v=49"></script>
+  <script src="src/converter-core.js?v=51"></script>
+  <script src="src/converter-store.js?v=51"></script>
+  <script src="src/converter.js?v=51"></script>
+  <script src="src/app.js?v=51"></script>
 </body>
 </html>

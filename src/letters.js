@@ -61,12 +61,38 @@
   }
 
   /* يضمن وجود رقم صادر (يُولَّد تلقائياً إن كان الحقل فارغاً) ثم يسجّل الخطاب في الصادر */
-  async function registerOutgoing(file) {
-    if (!App.registry) return;
-    if (!$("l-ref").value.trim()) {
-      $("l-ref").value = App.registry.nextOutgoingNumber($("l-date").value || ui.todayISO());
+  /* الرد على وارد: يُفتح خطاب جاهز مربوط بالوارد، ويُعلَّم الوارد «رُدّ عليه» عند التصدير */
+  let replyTo = null;
+  function startReply(rec) {
+    replyTo = rec.id;
+    const sel = $("tpl-select");
+    if ([...sel.options].some((o) => o.value === "official")) sel.value = "official";
+    const [name, ...title] = String(rec.party || "").split(" - ");
+    $("l-recipient").value = name || "";
+    $("l-recipientTitle").value = title.join(" - ");
+    $("l-subject").value = rec.subject ? `رد على: ${rec.subject}` : "رد على كتابكم";
+    $("l-ref").value = "";
+    $("l-date").value = ui.todayISO();
+    $("l-details").value = `إشارة إلى كتابكم رقم (${rec.number}) بتاريخ ${ui.formatDate(rec.date)}${rec.subject ? ` بشأن ${rec.subject}` : ""}، نفيدكم بما يلي:
+
+`;
+    $("reply-note").hidden = false;
+    $("reply-note-text").textContent = `رد على الوارد ${rec.number}${rec.subject ? ` — ${rec.subject}` : ""}`;
+    location.hash = "letters";
+    setTimeout(() => { renderPreview(); $("l-details").focus(); }, 50);
+  }
+  function cancelReply() { replyTo = null; $("reply-note").hidden = true; }
+
+  async function ensureRef() {
+    if (App.registry && !$("l-ref").value.trim()) {
+      $("l-ref").value = await App.registry.assignNumber("out", $("l-date").value || ui.todayISO());
       renderPreview();
     }
+  }
+
+  async function registerOutgoing(file) {
+    if (!App.registry) return;
+    await ensureRef();
     const v = values();
     const number = await App.registry.upsertOutgoing({
       number: v.ref,
@@ -76,15 +102,14 @@
       kind: current().name,
       category: "خطابات",
       file,
+      replyTo,
     });
-    if (number) ui.toast(`سُجّل في الصادر برقم ${number}`);
+    if (number) ui.toast(replyTo ? `سُجّل في الصادر برقم ${number} وربُط بالوارد` : `سُجّل في الصادر برقم ${number}`);
+    if (number && replyTo) cancelReply();
   }
 
   async function exportWord() {
-    if (App.registry && !$("l-ref").value.trim()) {
-      $("l-ref").value = App.registry.nextOutgoingNumber($("l-date").value || ui.todayISO());
-      renderPreview();
-    }
+    await ensureRef();
     const base = fileBase();
     const blob = App.docRender.exportWord(blocks(), base);
     if (blob) await registerOutgoing({ blob, name: base + ".docx" });
@@ -263,10 +288,11 @@
     $("btn-word").addEventListener("click", exportWord);
     $("btn-pdf").addEventListener("click", () => exportPDF(true));
     $("btn-print").addEventListener("click", () => exportPDF(false));
-    $("l-ref-auto").addEventListener("click", () => {
-      $("l-ref").value = App.registry.nextOutgoingNumber($("l-date").value || ui.todayISO());
+    $("l-ref-auto").addEventListener("click", async () => {
+      $("l-ref").value = await App.registry.assignNumber("out", $("l-date").value || ui.todayISO());
       renderPreview();
     });
+    $("reply-cancel").addEventListener("click", cancelReply);
 
     $("tpl-new").addEventListener("click", () => openEditor(null));
     $("tpl-dup").addEventListener("click", () => openEditor(current()));
@@ -284,5 +310,5 @@
     renderSelect(templates.BUILT_IN[0].id);
   }
 
-  App.letters = { init, render: renderPreview, blocks };
+  App.letters = { init, render: renderPreview, blocks, startReply };
 })(window.App = window.App || {});

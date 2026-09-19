@@ -22,8 +22,15 @@
     overdue.forEach((t) => {
       alerts.push(`<li class="warn">المهمة «${ui.esc(t.text)}» متأخرة عن موعدها (${ui.formatDate(t.dueDate)}).</li>`);
     });
+    // الوارد الذي يحتاج معالجة أو رداً: المتأخر والمستحق خلال 3 أيام
+    (App.registry ? App.registry.followUps() : []).forEach(({ rec, days }) => {
+      const when = days < 0 ? `متأخر ${ui.fmt(-days)} يوم` : days === 0 ? "مطلوب اليوم" : `مطلوب خلال ${ui.fmt(days)} يوم`;
+      alerts.push(`<li class="${days < 0 ? "danger" : "warn"}">الوارد <b>${ui.esc(rec.number)}</b>${rec.subject ? ` «${ui.esc(rec.subject)}»` : ""}${rec.party ? ` من ${ui.esc(rec.party)}` : ""}: ${when} (${ui.formatDate(rec.dueDate)}). <a href="#registry">فتح السجل</a></li>`);
+    });
     document.getElementById("alerts").innerHTML = alerts.length ? alerts.join("") : `<li class="ok">لا توجد تنبيهات حالياً — جميع المؤشرات ضمن الحدود المطلوبة.</li>`;
 
+    const files = new Map();
+    (App.registry ? App.registry.live() : []).forEach((r) => { if (r.track) files.set(r.track, (files.get(r.track) || 0) + 1); });
     document.getElementById("dash-tracks").innerHTML = trackList.map((t) => {
       const low = Number(t.attendancePct) < ATTENDANCE_THRESHOLD;
       return `<tr>
@@ -32,6 +39,7 @@
         <td>${ui.fmt(t.beneficiaries)}</td>
         <td><span class="badge ${low ? "low" : "good"}">${ui.fmt(t.attendancePct)}%</span></td>
         <td style="min-width:140px">${ui.progressBar(App.tracks.hoursPct(t))}</td>
+        <td>${ui.fmt(files.get(t.name) || 0)}</td>
       </tr>`;
     }).join("");
 

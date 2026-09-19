@@ -60,6 +60,10 @@
   }
 
   const sync = (records, deleted) => call("sync", { records, deleted });
+  const reserve = async (head, count) => (await call("reserve", { head, count: count || 1 })).numbers;
+  const search = async (q) => (await call("search", { q })).ids || [];
+  const checkAdmin = async (admin) => !!(await call("role", { admin })).admin;
+  const backups = () => call("backups");
 
-  App.cloud = { settings, saveSettings, ready, test, upload, download, sync };
+  App.cloud = { settings, saveSettings, ready, test, upload, download, sync, reserve, search, checkAdmin, backups };
 })(window.App = window.App || {});
