@@ -9,9 +9,25 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=51">
+  <link rel="stylesheet" href="styles/theme.css?v=54">
 </head>
 <body>
+  <div class="login-screen" id="login-screen" hidden>
+    <form class="login-card" id="login-form" autocomplete="on">
+      <img src="assets/letterhead/page.jpg" alt="" class="login-logo" aria-hidden="true">
+      <h2 id="login-title">تسجيل الدخول</h2>
+      <p class="login-sub" id="login-sub"></p>
+      <div id="login-setup" hidden>
+        <label class="field"><span>رمز المدير</span><input type="password" id="login-admin-key" dir="ltr" autocomplete="off"></label>
+        <label class="field"><span>اسمك الظاهر</span><input type="text" id="login-name" maxlength="60"></label>
+      </div>
+      <label class="field"><span>اسم المستخدم</span><input type="text" id="login-username" dir="ltr" autocomplete="username" spellcheck="false" autocapitalize="off"></label>
+      <label class="field"><span>كلمة المرور</span><input type="password" id="login-password" dir="ltr" autocomplete="current-password"></label>
+      <p class="login-error" id="login-error" role="alert"></p>
+      <button class="btn navy" type="submit" id="login-submit">دخول</button>
+      <p class="login-foot">مساعد تمكين الإداري — مركز مسارات التمكين</p>
+    </form>
+  </div>
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
@@ -233,7 +249,7 @@
             <button class="btn secondary" id="reg-export">تصدير Excel</button>
             <button class="btn" id="reg-archive-pending" hidden></button>
             <button class="btn secondary" data-drive-settings>☁ Google Drive</button>
-            <button class="btn secondary" data-profile>👤 ملفي الشخصي</button>
+            <button class="btn secondary" data-profile>👤 حسابي</button>
             <button class="btn secondary" id="reg-activity">📜 سجل النشاط</button>
             <button class="btn secondary" id="reg-trash">🗑 المحذوفات</button>
           </div>
@@ -434,13 +450,11 @@
       <p class="drv-status" id="drv-status"></p>
       <fieldset class="drv-users-box cloud-box">
         <legend>🏢 أرشيف المركز المشترك</legend>
-        <p class="conv-hint" style="margin-top:0">كل الملفات من كل المستخدمين تُحفظ في Drive حساب المركز، والجميع يرى نفس سجل الوارد والصادر. يكفي رمز المركز مرة واحدة لكل جهاز، بلا تسجيل دخول Google.</p>
-        <label class="field"><span>رابط خادم المركز</span><input type="url" id="cloud-url" dir="ltr" placeholder="https://script.google.com/macros/s/…/exec" spellcheck="false"></label>
-        <label class="field"><span>رمز المركز</span><input type="password" id="cloud-key" dir="ltr" autocomplete="off" spellcheck="false"></label>
-        <div class="btn-row">
-          <button class="btn navy small" type="button" id="cloud-connect">اتصال بأرشيف المركز</button>
-          <button class="btn secondary small" type="button" id="cloud-disconnect">إيقاف على هذا الجهاز</button>
-        </div>
+        <p class="conv-hint" style="margin-top:0">كل الملفات من كل المستخدمين تُحفظ في Drive حساب المركز، والجميع يرى نفس سجل الوارد والصادر. الدخول باسم المستخدم وكلمة المرور.</p>
+        <details><summary class="reg-kind">إعداد متقدم: رابط خادم المركز</summary>
+          <label class="field"><span>رابط خادم المركز</span><input type="url" id="cloud-url" dir="ltr" placeholder="https://script.google.com/macros/s/…/exec" spellcheck="false"></label>
+          <button class="btn secondary small" type="button" id="cloud-save-url">حفظ الرابط</button>
+        </details>
       </fieldset>
       <label class="conv-check strong"><input type="checkbox" id="drv-auto"> أرشفة تلقائية لكل خطاب يُصدَّر ولكل مرفق وارد</label>
       <details class="rtl-what" id="drv-personal">
@@ -545,22 +559,65 @@
     </div>
   </div>
 
-  <!-- نافذة الملف الشخصي -->
-  <div class="modal-backdrop" id="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title-h">
-    <form class="modal profile-modal" id="profile-form">
-      <h3 id="profile-title-h">👤 ملفي الشخصي</h3>
-      <p class="conv-hint" id="profile-hint"></p>
-      <label class="field"><span>الاسم</span><input type="text" id="profile-name" maxlength="60" autocomplete="name" required></label>
-      <label class="field"><span>المسمى الوظيفي (اختياري)</span><input type="text" id="profile-title" maxlength="80"></label>
-      <label class="field"><span>رمز المدير (للمدير فقط)</span><input type="password" id="profile-admin" dir="ltr" autocomplete="off"></label>
-      <p class="conv-hint" id="profile-role"></p>
-      <button type="button" class="conv-link" id="profile-drop-admin">إلغاء صلاحية المدير على هذا الجهاز</button>
-      <p class="conv-hint">مجلدك في الأرشيف: «أرشيف مساعد تمكين / اسمك / السنة / الشهر / …». الاسم محفوظ على هذا الجهاز.</p>
-      <div class="btn-row">
-        <button class="btn" type="submit">حفظ</button>
-        <button class="btn secondary" type="button" id="profile-cancel">إلغاء</button>
+  <!-- حسابي -->
+  <div class="modal-backdrop" id="profile-modal" role="dialog" aria-modal="true" aria-labelledby="acc-title">
+    <div class="modal profile-modal">
+      <h3 id="acc-title">👤 حسابي</h3>
+      <div class="acc-card">
+        <div class="acc-avatar">👤</div>
+        <div>
+          <b id="acc-name"></b>
+          <div class="reg-kind">اسم المستخدم: <bdi dir="ltr" id="acc-username"></bdi></div>
+          <div class="reg-kind" id="acc-role"></div>
+        </div>
       </div>
-    </form>
+      <p class="conv-hint">ملفاتك تُحفظ في مجلد باسمك في أرشيف المركز، ويستطيع الجميع رؤيتها وتحميلها.</p>
+      <form id="acc-password-form" class="acc-password">
+        <b>تغيير كلمة المرور</b>
+        <label class="field"><span>كلمة المرور الحالية</span><input type="password" id="acc-current" autocomplete="current-password" required></label>
+        <div class="grid-fields">
+          <label class="field"><span>الجديدة</span><input type="password" id="acc-new" autocomplete="new-password" minlength="6" required></label>
+          <label class="field"><span>تأكيدها</span><input type="password" id="acc-new2" autocomplete="new-password" minlength="6" required></label>
+        </div>
+        <button class="btn small" type="submit">تغيير كلمة المرور</button>
+      </form>
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn navy" type="button" id="acc-users">👥 المستخدمون</button>
+        <button class="btn danger" type="button" id="acc-logout">تسجيل الخروج</button>
+        <button class="btn secondary" type="button" id="profile-close">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- إدارة المستخدمين (للمدير) -->
+  <div class="modal-backdrop" id="users-modal" role="dialog" aria-modal="true" aria-labelledby="users-title">
+    <div class="modal users-modal">
+      <h3 id="users-title">👥 المستخدمون</h3>
+      <div class="table-wrap">
+        <table class="reg-table">
+          <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>آخر دخول</th><th></th></tr></thead>
+          <tbody id="users-list"></tbody>
+        </table>
+      </div>
+      <form id="user-form" class="user-form">
+        <b id="uf-title">إضافة مستخدم</b>
+        <div class="grid-fields">
+          <label class="field"><span>الاسم الظاهر (ويكون اسم مجلده)</span><input type="text" id="uf-name" maxlength="60" required></label>
+          <label class="field"><span>اسم المستخدم (للدخول)</span><input type="text" id="uf-username" dir="ltr" maxlength="40" autocomplete="off" spellcheck="false" required></label>
+        </div>
+        <label class="field"><span>كلمة المرور <button type="button" class="conv-link" id="uf-generate">اقتراح كلمة مرور</button></span><input type="password" id="uf-password" dir="ltr" autocomplete="new-password"></label>
+        <div class="btn-row">
+          <label class="conv-check"><input type="checkbox" id="uf-admin"> مدير</label>
+          <label class="conv-check"><input type="checkbox" id="uf-active" checked> الحساب مفعّل</label>
+        </div>
+        <div class="btn-row">
+          <button class="btn" type="submit" id="uf-save">حفظ المستخدم</button>
+          <button class="btn secondary" type="button" id="uf-cancel" hidden>إلغاء التعديل</button>
+        </div>
+        <p class="conv-hint">تغيير كلمة مرور مستخدم أو إيقاف حسابه يُخرجه من كل أجهزته فوراً. حذف الحساب لا يحذف قيوده وملفاته.</p>
+      </form>
+      <div class="btn-row"><button class="btn secondary" type="button" id="users-close">إغلاق</button></div>
+    </div>
   </div>
 
   <!-- سجل النشاط -->
@@ -590,33 +647,33 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=51"></script>
-  <script src="src/ui.js?v=51"></script>
-  <script src="src/templates.js?v=51"></script>
-  <script src="src/tracks.js?v=51"></script>
-  <script src="src/tasks.js?v=51"></script>
-  <script src="src/dashboard.js?v=51"></script>
-  <script src="src/letterhead-docx.js?v=51"></script>
-  <script src="src/docx.js?v=51"></script>
-  <script src="src/ai.js?v=51"></script>
-  <script src="src/doc-render.js?v=51"></script>
-  <script src="src/files-store.js?v=51"></script>
-  <script src="src/cloud.js?v=51"></script>
-  <script src="src/drive.js?v=51"></script>
-  <script src="src/drive-ui.js?v=51"></script>
-  <script src="src/rtl-fixer.js?v=51"></script>
-  <script src="src/rtl-page.js?v=51"></script>
-  <script src="src/profile.js?v=51"></script>
-  <script src="src/registry.js?v=51"></script>
-  <script src="src/charts.js?v=51"></script>
-  <script src="src/meetings.js?v=51"></script>
-  <script src="src/report.js?v=51"></script>
-  <script src="src/letters.js?v=51"></script>
+  <script src="src/storage.js?v=54"></script>
+  <script src="src/ui.js?v=54"></script>
+  <script src="src/templates.js?v=54"></script>
+  <script src="src/tracks.js?v=54"></script>
+  <script src="src/tasks.js?v=54"></script>
+  <script src="src/dashboard.js?v=54"></script>
+  <script src="src/letterhead-docx.js?v=54"></script>
+  <script src="src/docx.js?v=54"></script>
+  <script src="src/ai.js?v=54"></script>
+  <script src="src/doc-render.js?v=54"></script>
+  <script src="src/files-store.js?v=54"></script>
+  <script src="src/cloud.js?v=54"></script>
+  <script src="src/drive.js?v=54"></script>
+  <script src="src/drive-ui.js?v=54"></script>
+  <script src="src/rtl-fixer.js?v=54"></script>
+  <script src="src/rtl-page.js?v=54"></script>
+  <script src="src/profile.js?v=54"></script>
+  <script src="src/registry.js?v=54"></script>
+  <script src="src/charts.js?v=54"></script>
+  <script src="src/meetings.js?v=54"></script>
+  <script src="src/report.js?v=54"></script>
+  <script src="src/letters.js?v=54"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=51"></script>
-  <script src="src/converter-store.js?v=51"></script>
-  <script src="src/converter.js?v=51"></script>
-  <script src="src/app.js?v=51"></script>
+  <script src="src/converter-core.js?v=54"></script>
+  <script src="src/converter-store.js?v=54"></script>
+  <script src="src/converter.js?v=54"></script>
+  <script src="src/app.js?v=54"></script>
 </body>
 </html>

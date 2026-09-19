@@ -1,13 +1,16 @@
 /* الخادم المشترك (Google Apps Script بحساب المركز): كل الملفات في Drive حساب واحد،
-   وسجل الوارد والصادر مشترك بين كل الأجهزة. الدخول برمز المركز مرة واحدة لكل جهاز، بلا نوافذ Google. */
+   وسجل الوارد والصادر مشترك بين كل الأجهزة. الدخول باسم مستخدم وكلمة مرور؛ الجلسة تُحفظ على الجهاز 30 يوماً. */
 (function (App) {
   const STORAGE = "tamkeen-admin:cloud";
   const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbyvEVh6eb827Ue-sgDtQNz1bHt-9wakgLZiVD1YNN0lIRofr5Q5CbxPBs_6jqVQsLwFbg/exec"; // خادم المركز (بحساب ostoraplus2017)
+  const listeners = [];
 
   function settings() {
     let s = {};
     try { s = JSON.parse(localStorage.getItem(STORAGE) || "{}"); } catch (e) { /* تخزين غير متاح */ }
-    return Object.assign({ url: DEFAULT_URL, key: "", owner: "" }, s);
+    s = Object.assign({ url: DEFAULT_URL, token: "", user: null, owner: "" }, s);
+    delete s.key; // رمز المركز القديم لم يعد مستخدماً
+    return s;
   }
   function saveSettings(patch) {
     const s = Object.assign(settings(), patch);
@@ -15,32 +18,62 @@
     return s;
   }
 
-  const ready = () => { const s = settings(); return !!(s.url && s.key); };
+  const ready = () => { const s = settings(); return !!(s.url && s.token); };
+  const user = () => settings().user;
 
-  async function call(action, payload, override) {
-    const s = Object.assign(settings(), override || {});
-    if (!s.url || !s.key) throw new Error("الخادم المشترك غير مُعدّ: أدخل رمز المركز من إعدادات Google Drive.");
+  /* انتهاء الجلسة أو إيقاف الحساب: خروج على هذا الجهاز */
+  function expire() {
+    if (!settings().token) return;
+    saveSettings({ token: "", user: null });
+    listeners.forEach((fn) => fn("expired"));
+  }
+
+  async function call(action, payload) {
+    const s = settings();
+    if (!s.url) throw new Error("رابط خادم المركز غير مُعدّ.");
     let res;
     try {
       // text/plain يتجنّب طلب التحقق المسبق (CORS) الذي لا يدعمه Apps Script
-      res = await fetch(s.url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ key: s.key, action }, payload || {})) });
+      res = await fetch(s.url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ token: s.token, action }, payload || {})) });
     } catch (e) {
       throw new Error("تعذّر الوصول إلى خادم المركز. تحقق من الإنترنت.");
     }
     let data;
     try { data = await res.json(); } catch (e) { throw new Error(`رد غير متوقع من خادم المركز (${res.status}).`); }
-    if (data.error === "UNAUTHORIZED") throw new Error("رمز المركز غير صحيح.");
-    if (data.error) throw new Error(`خادم المركز: ${data.error}`);
+    if (data.error === "UNAUTHORIZED") {
+      if (!s.token) throw new Error("خادم المركز لم يُحدَّث بعد إلى نظام الحسابات؛ حدّثه من Apps Script (النسخة 3).");
+      expire();
+      throw new Error("انتهت الجلسة؛ سجّل الدخول من جديد.");
+    }
+    if (data.error) throw new Error(data.error);
     return data;
   }
 
-  /* يتحقق من الرابط والرمز قبل حفظهما */
-  async function test(url, key) {
-    const r = await call("ping", null, { url, key });
-    saveSettings({ url, key, owner: r.owner || "" });
-    return r;
+  /* ===== الدخول والحسابات ===== */
+  const status = () => call("status");
+  function signedIn(r) {
+    saveSettings({ token: r.token, user: r.user });
+    listeners.forEach((fn) => fn("login"));
+    return r.user;
   }
+  const login = async (username, password) => signedIn(await call("login", { username, password }));
+  const setup = async (data) => signedIn(await call("setup", data));
+  async function logout() {
+    try { await call("logout"); } catch (e) { /* الخروج محلياً في كل الأحوال */ }
+    saveSettings({ token: "", user: null });
+    listeners.forEach((fn) => fn("logout"));
+  }
+  async function refreshUser() {
+    const r = await call("ping");
+    saveSettings({ user: r.user, owner: r.owner || "" });
+    return r.user;
+  }
+  const changePassword = (current, password) => call("password", { current, password });
+  const listUsers = async () => (await call("users")).users || [];
+  const saveUser = (u) => call("saveUser", { user: u });
+  const deleteUser = (username) => call("deleteUser", { username });
 
+  /* ===== الملفات والسجل ===== */
   const toBase64 = (blob) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
@@ -62,8 +95,11 @@
   const sync = (records, deleted) => call("sync", { records, deleted });
   const reserve = async (head, count) => (await call("reserve", { head, count: count || 1 })).numbers;
   const search = async (q) => (await call("search", { q })).ids || [];
-  const checkAdmin = async (admin) => !!(await call("role", { admin })).admin;
   const backups = () => call("backups");
 
-  App.cloud = { settings, saveSettings, ready, test, upload, download, sync, reserve, search, checkAdmin, backups };
+  App.cloud = {
+    settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
+    listUsers, saveUser, deleteUser, upload, download, sync, reserve, search, backups,
+    onAuth: (fn) => listeners.push(fn),
+  };
 })(window.App = window.App || {});

@@ -151,7 +151,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 label.field { display: block; margin-bottom: 12px; }
 label.field > span { display: block; font-size: 13px; font-weight: 700; color: var(--navy-800); margin-bottom: 4px; }
-input[type=text], input[type=number], input[type=date], select, textarea {
+input[type=text], input[type=number], input[type=date], input[type=password], input[type=email], input[type=url], select, textarea {
   width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px;
   background: #fff; color: var(--text);
 }
@@ -377,6 +377,23 @@ body.printing #print-root { display: block; position: absolute; top: 0; left: -1
 .pv-sheet { background: #fff; margin: 12px; }
 .pv-note { padding: 40px 20px; text-align: center; color: var(--muted); }
 .reply-note { margin: 0 0 10px; padding: 7px 12px; border-radius: 10px; background: #eef2fb; color: var(--navy-800); font-weight: 700; font-size: 13.5px; }
+body.locked { overflow: hidden; }
+body.locked .app { filter: blur(6px); pointer-events: none; user-select: none; }
+.login-screen { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(135deg, rgba(11,31,58,.92), rgba(15,139,141,.85)); }
+.login-screen[hidden] { display: none; }
+.login-card { width: min(400px, 100%); background: #fff; border-radius: 18px; padding: 26px 26px 18px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.login-logo { width: 100%; height: 86px; object-fit: cover; object-position: top; border-radius: 10px; margin-bottom: 12px; }
+.login-card h2 { margin: 0 0 4px; color: var(--navy-900); }
+.login-sub { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
+.login-card .btn { width: 100%; justify-content: center; padding: 11px; font-size: 16px; }
+.login-error { min-height: 1.2em; margin: 0 0 8px; color: var(--danger); font-weight: 700; font-size: 13.5px; }
+.login-foot { margin: 14px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
+.acc-card { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 12px; background: var(--teal-100); }
+.acc-avatar { font-size: 30px; width: 52px; height: 52px; border-radius: 50%; background: #fff; display: grid; place-items: center; }
+.acc-password { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; }
+.modal.users-modal { width: min(860px, 100%); }
+.user-form { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: #fafbfc; }
+.user-off td { opacity: .55; }
 .reg-owner { font-size: 12px; color: var(--teal-600); font-weight: 700; }
 .modal.profile-modal { width: min(460px, 100%); }
 #profile-modal { z-index: 60; }

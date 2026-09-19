@@ -64,7 +64,6 @@
     $("drv-client").value = s.clientId;
     const c = App.cloud.settings();
     $("cloud-url").value = c.url;
-    $("cloud-key").value = c.key;
     $("drv-email").value = s.email || "";
     $("drv-root").value = s.rootName;
     $("drv-auto").checked = s.autoArchive;
@@ -120,25 +119,11 @@
     $("drv-modal").addEventListener("click", (e) => { if (e.target.id === "drv-modal") close(); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
     document.querySelectorAll("[data-drive-settings]").forEach((b) => b.addEventListener("click", open));
-    $("cloud-connect").addEventListener("click", async () => {
+    $("cloud-save-url").addEventListener("click", () => {
       const url = $("cloud-url").value.trim();
-      const key = $("cloud-key").value.trim();
       if (!/^https:\/\/script\.google\.com\//.test(url)) { ui.toast("أدخل رابط خادم المركز (يبدأ بـ https://script.google.com/)"); return; }
-      if (!key) { ui.toast("أدخل رمز المركز"); return; }
-      $("cloud-connect").disabled = true;
-      try {
-        await App.cloud.test(url, key);
-        ui.toast("تم الاتصال بأرشيف المركز");
-        renderStatus();
-        App.registry.syncShared(true);
-      } catch (e) { ui.toast(e.message); }
-      $("cloud-connect").disabled = false;
-    });
-    $("cloud-disconnect").addEventListener("click", () => {
-      if (!confirm("إيقاف الاتصال بأرشيف المركز على هذا الجهاز؟ السجل الموجود على الجهاز يبقى.")) return;
-      App.cloud.saveSettings({ key: "", owner: "" });
-      $("cloud-key").value = "";
-      renderStatus();
+      App.cloud.saveSettings({ url });
+      ui.toast("تم حفظ رابط الخادم");
     });
     $("drv-user-add").addEventListener("click", addUsersFromInput);
     $("drv-user-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addUsersFromInput(); } });
