@@ -555,10 +555,11 @@
         + (mod ? `<button class="act-btn edit" data-restore>↺ استرجاع</button>` : "")
         + (App.profile && App.profile.isAdmin() ? ` <button class="act-btn del" data-purge>✖ حذف نهائي</button>` : "");
     }
+    const mayDelete = !App.profile.can || App.profile.can("delete");
     return (r.fileId ? `<button class="act-btn dl" data-download title="تحميل الملف إلى الجهاز">⬇ تحميل</button>` : "")
       + (r.type === "in" ? ` <button class="act-btn reply" data-reply title="إنشاء خطاب رد في المراسلات">↩ رد</button>` : "")
-      + (r.type === "in" && App.ai && App.ai.hasKey() ? ` <button class="act-btn ai" data-summarize title="تلخيص الخطاب بالذكاء الاصطناعي">✨ تلخيص</button>` : "")
-      + (mod ? ` <button class="act-btn edit" data-edit title="تعديل القيد">✎ تعديل</button> <button class="act-btn del" data-del title="نقل إلى المحذوفات">🗑 حذف</button>`
+      + (r.type === "in" && App.ai && App.ai.hasKey() && (!App.profile.can || App.profile.can("ai")) ? ` <button class="act-btn ai" data-summarize title="تلخيص الخطاب بالذكاء الاصطناعي">✨ تلخيص</button>` : "")
+      + (mod ? ` <button class="act-btn edit" data-edit title="تعديل القيد">✎ تعديل</button>${mayDelete ? ` <button class="act-btn del" data-del title="نقل إلى المحذوفات">🗑 حذف</button>` : ""}`
         : ` <span class="reg-kind" title="التعديل لصاحب القيد أو المدير">🔒</span>`);
   }
 

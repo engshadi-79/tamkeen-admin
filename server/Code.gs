@@ -51,7 +51,7 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 8, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
+      case "status": return out_({ ok: true, version: 9, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
       case "login": {
         const res = login_(req.username, req.password);
@@ -65,7 +65,7 @@ function doPost(e) {
     if (!user) return out_({ error: "UNAUTHORIZED" });
     logRequest_(user, req);
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 8, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 9, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
@@ -100,7 +100,12 @@ function users_() {
   try { return JSON.parse(PropertiesService.getScriptProperties().getProperty("USERS") || "{}"); } catch (err) { return {}; }
 }
 function saveUsers_(all) { PropertiesService.getScriptProperties().setProperty("USERS", JSON.stringify(all)); }
-const publicUser_ = (u) => ({ username: u.username, name: u.name, email: u.email || "", admin: !!u.admin, active: u.active !== false, lastLogin: u.lastLogin || "" });
+const publicUser_ = (u) => ({
+  username: u.username, name: u.name, email: u.email || "", admin: !!u.admin,
+  active: u.active !== false, lastLogin: u.lastLogin || "",
+  views: u.views || [],   // الصفحات المسموح له بها (فارغ = الكل)
+  perms: u.perms || {},   // صلاحيات إضافية مثل الحذف والرفع والتصدير
+});
 
 function hash_(password, salt) {
   let h = salt + "|" + password;
@@ -236,6 +241,8 @@ function saveUser_(data, by) {
     const u = existing || { username };
     u.name = String(data.name || u.name || username).trim();
     if (data.email !== undefined) u.email = String(data.email || "").trim();
+    if (data.views !== undefined) u.views = (data.views || []).map(String).slice(0, 40);
+    if (data.perms !== undefined) u.perms = data.perms || {};
     u.admin = !!data.admin;
     u.active = data.active !== false;
     if (data.password) {

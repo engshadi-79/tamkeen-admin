@@ -1,10 +1,12 @@
 /* نقطة التشغيل: التنقل بين الأقسام، النسخ الاحتياطي، وربط الوحدات */
 (function (App) {
   const { store, ui } = App;
-  const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "tasks"];
+  const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "tasks", "admin"];
 
   function show(view) {
     if (!VIEWS.includes(view)) view = "dashboard";
+    // صفحة ممنوعة على هذا المستخدم: يُنقل إلى أول صفحة مسموحة
+    if (App.profile && !App.profile.canView(view)) view = App.profile.firstView();
     VIEWS.forEach((v) => {
       document.getElementById("view-" + v).classList.toggle("active", v === view);
       document.querySelector(`[data-view="${v}"]`).classList.toggle("active", v === view);
@@ -19,6 +21,7 @@
     if (view === "rtl") App.rtlPage.render();
     if (view === "converter") App.converter.render();
     if (view === "tasks") App.tasks.render();
+    if (view === "admin") App.admin.render();
     if (location.hash.slice(1) !== view) history.replaceState(null, "", "#" + view);
     window.scrollTo(0, 0);
   }
@@ -63,6 +66,7 @@
     App.ai.migrateToShared();
     App.registry.init();
     App.roster.init();
+    App.admin.init();
     App.rtlPage.init();
     App.meetings.init();
     App.aiAssist.attach();

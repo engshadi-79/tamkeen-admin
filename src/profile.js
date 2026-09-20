@@ -10,9 +10,34 @@
   const name = () => (user() && user().name) || "";
   /* المدير يعدّل ويحذف كل القيود؛ المستخدم قيوده فقط (ويطبّق الخادم القاعدة نفسها) */
   const isAdmin = () => !!(user() && user().admin);
+  /* الصفحات المسموحة: الفارغ يعني الكل، ولوحة التحكم للمدير وحده */
+  const canView = (view) => {
+    const u = user();
+    if (!u) return true;
+    if (view === "admin") return !!u.admin;
+    if (u.admin) return true;
+    const list = u.views || [];
+    return !list.length || list.includes(view);
+  };
+  const firstView = () => {
+    const order = ["dashboard", "registry", "roster", "letters", "report", "meetings", "tasks", "tracks", "rtl", "converter"];
+    return order.find(canView) || "dashboard";
+  };
+  const can = (perm) => {
+    const u = user();
+    if (!u || u.admin) return true;
+    return (u.perms || {})[perm] !== false;
+  };
+
+  /* إخفاء أزرار القائمة الجانبية لما لا يُسمح به */
+  function applyAccess() {
+    document.querySelectorAll("[data-view]").forEach((b) => { b.hidden = !canView(b.dataset.view); });
+    document.querySelectorAll("[data-admin-only]").forEach((b) => { b.hidden = !isAdmin(); });
+    document.querySelectorAll("[data-perm]").forEach((b) => { b.hidden = !can(b.dataset.perm); });
+  }
   const get = () => ({ name: name(), admin: isAdmin() });
   const ensure = () => Promise.resolve(name());
-  const notify = () => { renderBadges(); listeners.forEach((fn) => fn()); };
+  const notify = () => { renderBadges(); applyAccess(); listeners.forEach((fn) => fn()); };
 
   /* ===== شاشة الدخول ===== */
   let setupMode = false;
@@ -307,7 +332,7 @@
     $("login-forgot").addEventListener("click", forgot);
     $("reset-cancel").addEventListener("click", hideReset);
     $("acc-backup").addEventListener("click", fullBackup);
-    $("acc-users").addEventListener("click", openUsers);
+    $("acc-users").addEventListener("click", () => { close(); location.hash = "admin"; });
     $("acc-events").addEventListener("click", openEvents);
     $("sys-days").addEventListener("change", openEvents);
     $("sys-close").addEventListener("click", () => $("sys-modal").classList.remove("open"));
@@ -341,9 +366,10 @@
     });
 
     renderBadges();
+    applyAccess();
     if (!App.cloud.ready()) showLogin();
     else App.cloud.refreshUser().then(notify).catch(() => { /* بلا إنترنت: تبقى الجلسة المحفوظة */ });
   }
 
-  App.profile = { init, get, name, isAdmin, ensure, open, onChange: (fn) => listeners.push(fn) };
+  App.profile = { init, get, name, isAdmin, canView, firstView, can, applyAccess, ensure, open, onChange: (fn) => listeners.push(fn) };
 })(window.App = window.App || {});

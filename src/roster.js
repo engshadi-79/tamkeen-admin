@@ -344,7 +344,7 @@
         }).join("")}
         <td class="reg-actions nowrap">
           <button class="act-btn edit" data-notes title="ملاحظات المتابعة">📝${(r.notes || []).length ? ` ${ui.fmt(r.notes.length)}` : ""}</button>
-          <button class="act-btn del" data-del title="حذف السجل">🗑</button>
+          ${!App.profile.can || App.profile.can("delete") ? `<button class="act-btn del" data-del title="حذف السجل">🗑</button>` : ""}
         </td>
       </tr>`).join("")
       : `<tr><td colspan="${m.columns.length + 2}" class="empty">لا توجد سجلات مطابقة.</td></tr>`;

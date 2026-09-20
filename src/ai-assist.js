@@ -60,6 +60,7 @@
 
   /* يضيف الزر فوق كل مربع يحمل data-ai-polish ويعمل على أي حقل يُنشأ لاحقاً */
   function attach(root) {
+    if (App.profile && App.profile.can && !App.profile.can("ai")) return;
     (root || document).querySelectorAll("[data-ai-polish]:not([data-ai-ready])").forEach((el) => {
       el.dataset.aiReady = "1";
       const btn = document.createElement("button");

@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=88">
+  <link rel="stylesheet" href="styles/theme.css?v=90">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -55,6 +55,7 @@
         <li><button data-view="roster"><span class="ico">👥</span>المستفيدون والتعهدات</button></li>
         <li><button data-view="rtl"><span class="ico">⇆</span>تصحيح اتجاه Word</button></li>
         <li><button data-view="converter"><span class="ico">⇄</span>تحويل ملف حسب قالب</button></li>
+        <li><button data-view="admin" data-admin-only hidden><span class="ico">⚙</span>لوحة التحكم</button></li>
         <li><button data-view="tasks"><span class="ico">☑</span>المهام والمتابعات</button></li>
       </ul>
       <div class="sidebar-foot">
@@ -119,7 +120,7 @@
           <div class="btn-row no-print">
             <button class="btn" id="btn-copy">نسخ النص</button>
             <button class="btn navy" id="btn-word">تصدير Word</button>
-            <button class="btn" id="lb-open">📑 إصدار جماعي من Excel</button>
+            <button class="btn" id="lb-open" data-perm="export">📑 إصدار جماعي من Excel</button>
             <button class="btn navy" id="btn-pdf">تصدير PDF</button>
             <button class="btn navy" id="btn-print">🖨 طباعة</button>
           </div>
@@ -299,14 +300,14 @@
         <div class="page-head">
           <div><h2>الوارد والصادر</h2><p id="reg-counts"></p></div>
           <div class="btn-row no-print">
-            <button class="btn navy" id="reg-bulk">⬆ رفع ملفات</button>
+            <button class="btn navy" id="reg-bulk" data-perm="upload">⬆ رفع ملفات</button>
             <input type="file" id="reg-bulk-input" multiple hidden>
-            <button class="btn navy" id="reg-folder">📁 رفع مجلد</button>
-            <button class="btn navy" id="reg-camera">📷 تصوير خطاب</button>
+            <button class="btn navy" id="reg-folder" data-perm="upload">📁 رفع مجلد</button>
+            <button class="btn navy" id="reg-camera" data-perm="upload">📷 تصوير خطاب</button>
             <input type="file" id="reg-camera-input" accept="image/*" capture="environment" multiple hidden>
             <input type="file" id="reg-folder-input" webkitdirectory multiple hidden>
             <button class="btn" id="reg-add">+ قيد جديد</button>
-            <button class="btn secondary" id="reg-export">تصدير Excel</button>
+            <button class="btn secondary" id="reg-export" data-perm="export">تصدير Excel</button>
             <button class="btn" id="reg-archive-pending" hidden></button>
             <button class="btn secondary" data-drive-settings>☁ Google Drive</button>
             <button class="btn secondary" data-profile>👤 حسابي</button>
@@ -371,20 +372,79 @@
         </div>
       </section>
 
+      <!-- ===== لوحة التحكم ===== -->
+      <section class="view" id="view-admin">
+        <div class="page-head">
+          <div><h2>⚙ لوحة التحكم</h2><p>المستخدمون وصلاحياتهم، وما يظهر لكل واحد، وحالة النظام</p></div>
+          <div class="btn-row no-print">
+            <button class="btn secondary" id="adm-refresh">🔄 تحديث</button>
+            <a class="btn secondary" id="adm-log" target="_blank" rel="noopener" hidden>📜 سجل الأحداث في Drive</a>
+            <a class="btn secondary" id="adm-backups" target="_blank" rel="noopener" hidden>💾 النسخ الاحتياطية</a>
+          </div>
+        </div>
+        <p class="conv-hint" id="adm-denied" hidden>هذه الصفحة للمدير فقط.</p>
+        <div id="adm-body" hidden>
+          <div class="stats" id="adm-stats"></div>
+          <div class="card">
+            <div class="table-wrap">
+              <table class="reg-table">
+                <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>الصفحات الظاهرة له</th><th>آخر دخول</th><th></th></tr></thead>
+                <tbody id="adm-users"></tbody>
+              </table>
+            </div>
+          </div>
+          <form class="card" id="adm-form">
+            <h3 id="adm-form-title">إضافة مستخدم جديد</h3>
+            <div class="grid-fields">
+              <label class="field"><span>الاسم الظاهر (ويكون اسم مجلده في الأرشيف)</span><input type="text" id="adm-name" maxlength="60" required></label>
+              <label class="field"><span>اسم المستخدم (للدخول)</span><input type="text" id="adm-username" dir="ltr" maxlength="40" spellcheck="false" autocomplete="off" required></label>
+            </div>
+            <div class="grid-fields">
+              <label class="field"><span>البريد الإلكتروني (لاستعادة كلمة المرور والملخص اليومي)</span><input type="email" id="adm-email" dir="ltr" autocomplete="off"></label>
+              <label class="field"><span>كلمة المرور <button type="button" class="conv-link" id="adm-generate">اقتراح كلمة مرور</button></span><input type="password" id="adm-password" dir="ltr" autocomplete="new-password"></label>
+            </div>
+            <div class="btn-row">
+              <label class="conv-check strong"><input type="checkbox" id="adm-admin"> مدير النظام</label>
+              <label class="conv-check strong"><input type="checkbox" id="adm-active" checked> الحساب مفعّل</label>
+            </div>
+            <div id="adm-access">
+              <p class="conv-label" id="adm-access-note"></p>
+              <b class="conv-label">الصفحات التي تظهر له</b>
+              <div class="conv-multi" id="adm-views"></div>
+              <b class="conv-label">ما يستطيع فعله</b>
+              <div class="conv-multi" id="adm-perms"></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn navy" type="submit" id="adm-save">حفظ المستخدم</button>
+              <button class="btn secondary" type="button" id="adm-cancel" hidden>إلغاء التعديل</button>
+            </div>
+            <p class="conv-hint">تغيير كلمة المرور أو إيقاف الحساب يُخرج صاحبه من كل أجهزته فوراً. الحذف لا يحذف قيوده ولا ملفاته.</p>
+          </form>
+          <div class="card">
+            <b class="conv-label">الملخص اليومي بالبريد</b>
+            <div class="digest-box">
+              <label class="conv-check strong"><input type="checkbox" id="adm-digest-on"> إرسال ملخص يومي لكل مستخدم بالوارد المتأخر والمهام المستحقة</label>
+              <label class="reg-prefix">الساعة <select id="adm-digest-hour"></select></label>
+              <button class="btn small" type="button" id="adm-digest-save">حفظ</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== المستفيدون والتعهدات ===== -->
       <section class="view" id="view-roster">
         <div class="page-head">
           <div><h2 id="ros-title">المستفيدون والتعهدات</h2><p id="ros-sub">ارفع ملف Excel لإنشاء القائمة، وأكملها هنا، وارفع ملفاً جديداً لاحقاً ليضيف الأسماء الجديدة</p></div>
           <div class="btn-row no-print">
-            <button class="btn navy" data-ros-import>⬆ رفع ملف Excel</button>
+            <button class="btn navy" data-ros-import data-perm="upload">⬆ رفع ملف Excel</button>
             <button class="btn" id="ros-add">+ سجل جديد</button>
             <button class="btn secondary" id="ros-add-col">+ عمود جديد</button>
             <button class="btn secondary" id="ros-cols">🗂 الأعمدة</button>
             <button class="btn secondary" id="ros-sync">🔄 مزامنة الآن</button>
-            <button class="btn secondary" id="ros-export">تصدير Excel</button>
+            <button class="btn secondary" id="ros-export" data-perm="export">تصدير Excel</button>
             <button class="btn" id="ros-report">🖨 تقرير المتابعة</button>
             <button class="btn secondary" id="ros-report-word">تقرير Word</button>
-            <button class="btn danger" id="ros-clear">حذف القائمة</button>
+            <button class="btn danger" id="ros-clear" data-perm="delete">حذف القائمة</button>
           </div>
         </div>
         <input type="file" id="ros-file" accept=".xlsx,.xlsm" hidden>
@@ -853,37 +913,38 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=88"></script>
-  <script src="src/ui.js?v=88"></script>
-  <script src="src/templates.js?v=88"></script>
-  <script src="src/tracks.js?v=88"></script>
-  <script src="src/tasks.js?v=88"></script>
-  <script src="src/dashboard.js?v=88"></script>
-  <script src="src/letterhead-docx.js?v=88"></script>
-  <script src="src/docx.js?v=88"></script>
-  <script src="src/ai.js?v=88"></script>
-  <script src="src/doc-render.js?v=88"></script>
-  <script src="src/files-store.js?v=88"></script>
-  <script src="src/shared.js?v=88"></script>
-  <script src="src/cloud.js?v=88"></script>
-  <script src="src/drive.js?v=88"></script>
-  <script src="src/drive-ui.js?v=88"></script>
-  <script src="src/rtl-fixer.js?v=88"></script>
-  <script src="src/rtl-page.js?v=88"></script>
-  <script src="src/profile.js?v=88"></script>
-  <script src="src/roster.js?v=88"></script>
-  <script src="src/registry.js?v=88"></script>
-  <script src="src/charts.js?v=88"></script>
-  <script src="src/ai-assist.js?v=88"></script>
-  <script src="src/meetings.js?v=88"></script>
-  <script src="src/report.js?v=88"></script>
-  <script src="src/letters.js?v=88"></script>
+  <script src="src/storage.js?v=90"></script>
+  <script src="src/ui.js?v=90"></script>
+  <script src="src/templates.js?v=90"></script>
+  <script src="src/tracks.js?v=90"></script>
+  <script src="src/tasks.js?v=90"></script>
+  <script src="src/dashboard.js?v=90"></script>
+  <script src="src/letterhead-docx.js?v=90"></script>
+  <script src="src/docx.js?v=90"></script>
+  <script src="src/ai.js?v=90"></script>
+  <script src="src/doc-render.js?v=90"></script>
+  <script src="src/files-store.js?v=90"></script>
+  <script src="src/shared.js?v=90"></script>
+  <script src="src/cloud.js?v=90"></script>
+  <script src="src/drive.js?v=90"></script>
+  <script src="src/drive-ui.js?v=90"></script>
+  <script src="src/rtl-fixer.js?v=90"></script>
+  <script src="src/rtl-page.js?v=90"></script>
+  <script src="src/profile.js?v=90"></script>
+  <script src="src/admin.js?v=90"></script>
+  <script src="src/roster.js?v=90"></script>
+  <script src="src/registry.js?v=90"></script>
+  <script src="src/charts.js?v=90"></script>
+  <script src="src/ai-assist.js?v=90"></script>
+  <script src="src/meetings.js?v=90"></script>
+  <script src="src/report.js?v=90"></script>
+  <script src="src/letters.js?v=90"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=88"></script>
-  <script src="src/converter-store.js?v=88"></script>
-  <script src="src/converter.js?v=88"></script>
-  <script src="src/app.js?v=88"></script>
+  <script src="src/converter-core.js?v=90"></script>
+  <script src="src/converter-store.js?v=90"></script>
+  <script src="src/converter.js?v=90"></script>
+  <script src="src/app.js?v=90"></script>
 </body>
 </html>
