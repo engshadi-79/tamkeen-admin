@@ -240,6 +240,27 @@
     });
   }
 
+  /* إن ضاع تعريف الأعمدة (مزامنة قديمة أو جهاز آخر) تُعاد بناؤه من مفاتيح البيانات نفسها */
+  function recoverColumns() {
+    const m = meta();
+    if (m.columns.length || !rows().length) return false;
+    const keys = [];
+    rows().forEach((r) => Object.keys(r.values || {}).forEach((k) => { if (!keys.includes(k)) keys.push(k); }));
+    if (!keys.length) return false;
+    m.columns = keys.map((k) => {
+      const label = k.replace(/_/g, " ").trim();
+      const values = rows().map((r) => r.values[k]);
+      return Object.assign({ key: k, label }, columnMeta(label, values));
+    });
+    if (!m.keyColumn || !keys.includes(m.keyColumn)) {
+      const idCol = m.columns.find((c) => /هوية|هويه|id/i.test(c.label));
+      m.keyColumn = idCol ? idCol.key : m.columns[0].key;
+    }
+    store.save();
+    ui.toast(`استُرجع تعريف ${ui.fmt(m.columns.length)} عمود من بيانات القائمة`);
+    return true;
+  }
+
   /* ترقية القوائم القديمة: أعمدة الصح/الخطأ أو التي قيمها «تم / لم يتم» تصبح قوائم اختيار */
   function migrate() {
     const m = meta();
@@ -264,6 +285,7 @@
 
   /* ===== العرض ===== */
   function render() {
+    recoverColumns();
     migrate();
     const m = meta();
     const has = rows().length > 0;

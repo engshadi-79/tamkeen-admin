@@ -17,13 +17,21 @@
   /* الإعدادات ليست مصفوفة: تُعامل كعناصر { id: اسم الإعداد, value } */
   function readCol(name) {
     if (name !== "settings") return (store.get()[name] = store.get()[name] || []);
-    return SETTINGS_KEYS.filter((k) => store.get()[k] !== undefined).map((k) => ({ id: k, value: store.get()[k], updatedAt: (store.get().settingsAt || {})[k] || "" }));
+    return SETTINGS_KEYS
+      // إعداد فارغ لا يُرفع فوق إعداد موجود (مثل تعريف أعمدة القائمة)
+      .filter((k) => store.get()[k] !== undefined && !(k === "rosterMeta" && !(store.get()[k].columns || []).length))
+      .map((k) => ({ id: k, value: store.get()[k], updatedAt: (store.get().settingsAt || {})[k] || "" }));
   }
 
   function writeCol(name, records) {
     if (name !== "settings") { store.get()[name] = records; return; }
     const at = (store.get().settingsAt = store.get().settingsAt || {});
-    records.forEach((r) => { store.get()[r.id] = r.value; at[r.id] = r.updatedAt || ""; });
+    records.forEach((r) => {
+      // تعريف أعمدة القائمة لا يُستبدل بنسخة فارغة
+      if (r.id === "rosterMeta" && !((r.value || {}).columns || []).length && ((store.get().rosterMeta || {}).columns || []).length) return;
+      store.get()[r.id] = r.value;
+      at[r.id] = r.updatedAt || "";
+    });
   }
 
   function fingerprint(r) {
