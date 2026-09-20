@@ -29,6 +29,11 @@
     const next = String(url || "").trim() || DEFAULT_URL;
     if (next === settings().url) return false;
     saveSettings({ url: next, token: "", user: null, owner: "" });
+    // بصمات المزامنة تخصّ الخادم السابق. لولا مسحها لظنّ الجهاز أنه رفع بياناته
+    // إلى الخادم الجديد فلا يرفع شيئاً، ثم يستبدل بياناته المحلية بردّه الفارغ.
+    ["tamkeen-admin:sync2", "tamkeen-admin:reg-sync"].forEach((k) => {
+      try { localStorage.removeItem(k); } catch (e) { /* تخزين غير متاح */ }
+    });
     return true;
   }
 

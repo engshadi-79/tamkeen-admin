@@ -116,6 +116,14 @@
           return;
         }
         const records = merged[name].records;
+        // خادم أعاد قسماً فارغاً بلا أي شاهد حذف، ونحن لم نرسل شيئاً: خادم جديد أو فارغ،
+        // فلا تُمسح بيانات الجهاز بردّه — تُترك كما هي وتُرفع في الجولة التالية.
+        const sentNothing = !(cols[name].records || []).length && !Object.keys(cols[name].deleted || {}).length;
+        if (!records.length && !Object.keys(merged[name].deleted || {}).length && readCol(name).length && sentNothing) {
+          next[name] = {};
+          schedule(1500);
+          return;
+        }
         // تعديلات جرت أثناء الطلب: تبقى نسخة الجهاز وتُرفع في المزامنة التالية
         const liveNow = new Map(readCol(name).map((r) => [r.id, r]));
         const sent = sentPrints[name] || {};
