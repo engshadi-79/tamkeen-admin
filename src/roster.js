@@ -236,6 +236,36 @@
       : `<tr><td colspan="${m.columns.length + 2}" class="empty">لا توجد سجلات مطابقة.</td></tr>`;
   }
 
+  /* ===== الإضافة اليدوية ===== */
+  function addRecord() {
+    const m = meta();
+    const rec = { id: store.uid(), values: {}, addedAt: new Date().toISOString(), source: "إضافة يدوية", isNew: true };
+    m.columns.forEach((c) => { rec.values[c.key] = c.type === "check" ? false : ""; });
+    rows().unshift(rec);
+    store.save();
+    filter.q = "";
+    filter.only = "";
+    render();
+    // التركيز على أول خانة كتابة في السطر الجديد
+    const tr = document.querySelector(`#ros-body tr[data-id="${rec.id}"]`);
+    const first = tr && tr.querySelector('input[type="text"]');
+    if (first) { first.focus(); tr.scrollIntoView({ block: "center" }); }
+    ui.toast("أُضيف سجل جديد — اكتب بياناته");
+  }
+
+  function addColumn() {
+    const label = prompt("اسم العمود الجديد (مثال: تعهد استلام الأدوات)");
+    if (!label || !label.trim()) return;
+    const type = confirm("هل هذا العمود خانة تعليم (نعم/لا)؟\nموافق = خانة تعليم، إلغاء = حقل كتابة") ? "check" : "text";
+    const m = meta();
+    const key = slug(label, m.columns.map((c) => c.key));
+    m.columns.push({ key, label: label.trim(), type });
+    rows().forEach((r) => { r.values[key] = type === "check" ? false : ""; });
+    store.save();
+    render();
+    ui.toast(`أُضيف عمود «${label.trim()}»`);
+  }
+
   /* ===== الحفظ التلقائي ===== */
   let saveTimer = null;
   const autoSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => { store.save(); $("ros-saved").textContent = "✓ حُفظ"; setTimeout(() => { $("ros-saved").textContent = ""; }, 1500); }, 400); };
@@ -346,6 +376,8 @@
       if (e.target.id === "ros-only") filter.only = e.target.value;
       render();
     });
+    $("ros-add").addEventListener("click", addRecord);
+    $("ros-add-col").addEventListener("click", addColumn);
     $("ros-export").addEventListener("click", exportExcel);
     $("ros-report").addEventListener("click", () => App.docRender.print(reportBlocks(), `تقرير ${meta().name || "المستفيدين"} - ${ui.todayISO()}`, false));
     $("ros-report-word").addEventListener("click", () => App.docRender.exportWord(reportBlocks(), `تقرير ${meta().name || "المستفيدين"} - ${ui.todayISO()}`));
