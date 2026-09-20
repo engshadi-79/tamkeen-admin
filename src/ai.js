@@ -31,7 +31,7 @@
     try { localStorage.setItem(STORAGE, JSON.stringify(s)); } catch (e) { /* تخزين غير متاح */ }
   }
   const settings = () => loadSettings();
-  const hasKey = () => { const s = loadSettings(); return !!(s.provider === "claude" ? s.claudeKey : s.geminiKey); };
+  const hasKey = (provider) => { const s = loadSettings(); return !!((provider || s.provider) === "claude" ? s.claudeKey : s.geminiKey); };
 
   /* ===== قراءة أحداث SSE ===== */
   async function readSSE(res, onEvent) {
@@ -200,15 +200,19 @@
   }
 
   /* يرسل الطلب ويستدعي onText مع كل جزء نصي يصل. يُرجع سبب التوقف: refusal | max_tokens | غير ذلك */
-  async function generate({ request, context, onText, signal }) {
+  async function generate({ request, context, onText, signal, provider }) {
     const s = loadSettings();
-    const key = s.provider === "claude" ? s.claudeKey : s.geminiKey;
+    const use = provider || s.provider; // يمكن اختيار الخدمة لكل طلب (مثل تحليل ملفات التقرير)
+    const key = use === "claude" ? s.claudeKey : s.geminiKey;
     if (!key) throw new Error("NO_KEY");
 
-    const contextLines = Object.entries(context).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join("\n");
-    const userContent = `${contextLines ? `بيانات المراسلة:\n${contextLines}\n\n` : ""}المطلوب كتابته:\n${request}`;
+    // السياق إما نص جاهز (تحليل ملفات ومرفقات) أو حقول مراسلة
+    const asText = typeof context === "string";
+    const contextText = asText ? context
+      : Object.entries(context || {}).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join("\n");
+    const userContent = `${contextText ? `${asText ? "المحتوى" : "بيانات المراسلة"}:\n${contextText}\n\n` : ""}المطلوب كتابته:\n${request}`;
 
-    const run = s.provider === "claude" ? generateClaude : generateGemini;
+    const run = use === "claude" ? generateClaude : generateGemini;
     return run({ key, userContent, onText, signal });
   }
 

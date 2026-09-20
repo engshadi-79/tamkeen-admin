@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=66">
+  <link rel="stylesheet" href="styles/theme.css?v=67">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -211,6 +211,13 @@
               <label class="field"><span>ماذا تريد من التقرير؟</span><textarea id="r-ai-ask" rows="3" placeholder="مثال: قارن الحضور بين المسارات، واذكر أعلى وأدنى ثلاثة، ونسبة الإناث، وأبرز الملاحظات في جداول الدرجات."></textarea></label>
               <label class="field"><span>عنوان القسم في التقرير</span><input type="text" id="r-analysis-title" placeholder="تحليل الملفات المرفقة"></label>
               <div class="btn-row">
+                <label class="reg-prefix">الخدمة
+                  <select id="r-ai-provider">
+                    <option value="">الافتراضية</option>
+                    <option value="gemini">Gemini (مجاني)</option>
+                    <option value="claude">Claude</option>
+                  </select>
+                </label>
                 <button class="btn navy small" type="button" id="r-ai-run" disabled>✨ تحليل وكتابة القسم</button>
                 <button class="btn secondary small" type="button" id="r-ai-clear">مسح الملفات</button>
                 <span class="conv-hint" id="r-ai-status" aria-live="polite"></span>
@@ -721,35 +728,35 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=66"></script>
-  <script src="src/ui.js?v=66"></script>
-  <script src="src/templates.js?v=66"></script>
-  <script src="src/tracks.js?v=66"></script>
-  <script src="src/tasks.js?v=66"></script>
-  <script src="src/dashboard.js?v=66"></script>
-  <script src="src/letterhead-docx.js?v=66"></script>
-  <script src="src/docx.js?v=66"></script>
-  <script src="src/ai.js?v=66"></script>
-  <script src="src/doc-render.js?v=66"></script>
-  <script src="src/files-store.js?v=66"></script>
-  <script src="src/shared.js?v=66"></script>
-  <script src="src/cloud.js?v=66"></script>
-  <script src="src/drive.js?v=66"></script>
-  <script src="src/drive-ui.js?v=66"></script>
-  <script src="src/rtl-fixer.js?v=66"></script>
-  <script src="src/rtl-page.js?v=66"></script>
-  <script src="src/profile.js?v=66"></script>
-  <script src="src/registry.js?v=66"></script>
-  <script src="src/charts.js?v=66"></script>
-  <script src="src/meetings.js?v=66"></script>
-  <script src="src/report.js?v=66"></script>
-  <script src="src/letters.js?v=66"></script>
+  <script src="src/storage.js?v=67"></script>
+  <script src="src/ui.js?v=67"></script>
+  <script src="src/templates.js?v=67"></script>
+  <script src="src/tracks.js?v=67"></script>
+  <script src="src/tasks.js?v=67"></script>
+  <script src="src/dashboard.js?v=67"></script>
+  <script src="src/letterhead-docx.js?v=67"></script>
+  <script src="src/docx.js?v=67"></script>
+  <script src="src/ai.js?v=67"></script>
+  <script src="src/doc-render.js?v=67"></script>
+  <script src="src/files-store.js?v=67"></script>
+  <script src="src/shared.js?v=67"></script>
+  <script src="src/cloud.js?v=67"></script>
+  <script src="src/drive.js?v=67"></script>
+  <script src="src/drive-ui.js?v=67"></script>
+  <script src="src/rtl-fixer.js?v=67"></script>
+  <script src="src/rtl-page.js?v=67"></script>
+  <script src="src/profile.js?v=67"></script>
+  <script src="src/registry.js?v=67"></script>
+  <script src="src/charts.js?v=67"></script>
+  <script src="src/meetings.js?v=67"></script>
+  <script src="src/report.js?v=67"></script>
+  <script src="src/letters.js?v=67"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=66"></script>
-  <script src="src/converter-store.js?v=66"></script>
-  <script src="src/converter.js?v=66"></script>
-  <script src="src/app.js?v=66"></script>
+  <script src="src/converter-core.js?v=67"></script>
+  <script src="src/converter-store.js?v=67"></script>
+  <script src="src/converter.js?v=67"></script>
+  <script src="src/app.js?v=67"></script>
 </body>
 </html>

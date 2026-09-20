@@ -228,7 +228,11 @@
   }
 
   async function runAnalysis() {
-    if (!App.ai.hasKey()) { ui.toast("أضف مفتاح الذكاء الاصطناعي من صفحة المراسلات ← إعدادات"); return; }
+    const provider = $("r-ai-provider").value || undefined;
+    if (!App.ai.hasKey(provider)) {
+      ui.toast(`أضف مفتاح ${provider === "claude" ? "Claude" : provider === "gemini" ? "Gemini" : "الذكاء الاصطناعي"} من صفحة المراسلات ← إعدادات`);
+      return;
+    }
     if (!aiFiles.length) return;
     const ask = $("r-ai-ask").value.trim() || "حلّل الملفات واكتب أهم النتائج والأرقام والملاحظات في صيغة تقرير رسمي.";
     let context = "";
@@ -244,6 +248,7 @@
       await App.ai.generate({
         request: `${ask}\n\nاكتب النتيجة بالعربية الفصحى، بنداً في كل سطر، بلا عناوين ولا مقدمات ولا خاتمة، ولا تكتب تحية أو توقيعاً. اعتمد على أرقام الملفات كما هي.`,
         context,
+        provider,
         onText: (t) => { target.value += t; renderPreview(); },
       });
       $("r-ai-status").textContent = target.value.trim() ? "تم التحليل — راجع النص وعدّله قبل التصدير" : "لم يصل رد من الخدمة";
