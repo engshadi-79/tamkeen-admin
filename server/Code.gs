@@ -51,7 +51,7 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 10, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
+      case "status": return out_({ ok: true, version: 11, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
       case "login": {
         const res = login_(req.username, req.password);
@@ -65,7 +65,7 @@ function doPost(e) {
     if (!user) return out_({ error: "UNAUTHORIZED" });
     logRequest_(user, req);
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 10, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 11, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
@@ -85,6 +85,8 @@ function doPost(e) {
       case "users": return out_({ users: Object.keys(users_()).map((u) => publicUser_(users_()[u])) });
       case "digest": return out_(setupDigest_(req.enabled, req.hour));
       case "saveUser": return out_(saveUser_(req.user, user));
+      case "exportUsers": return out_(exportUsers_());
+      case "importUsers": return out_(importUsers_(req.users, user));
       case "deleteUser": return out_(deleteUser_(req.username, user));
     }
     return out_({ error: "إجراء غير معروف" });
@@ -254,6 +256,53 @@ function saveUser_(data, by) {
     saveUsers_(all);
     if (data.password || u.active === false) cleanSessions_(existing ? username : null); // كلمة مرور جديدة أو إيقاف: خروج من كل الأجهزة
     return { user: publicUser_(u) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* تصدير الحسابات لنقلها إلى خادم آخر: تُنقل بصمة كلمة المرور لا الكلمة نفسها،
+   فيدخل كل مستخدم بكلمته القديمة كما هي. */
+function exportUsers_() {
+  const all = users_();
+  return {
+    algo: "gas300",
+    users: Object.keys(all).map((k) => {
+      const u = all[k];
+      return {
+        username: u.username, name: u.name, email: u.email || "", admin: !!u.admin,
+        active: u.active !== false, salt: u.salt, hash: u.hash, algo: "gas300",
+        views: u.views || [], perms: u.perms || {}, lastLogin: u.lastLogin || "",
+      };
+    }),
+  };
+}
+
+/* استيراد حسابات من خادم آخر: الموجود لا يُستبدل، وحساب المستورِد لا يُمسّ */
+function importUsers_(list, by) {
+  if (!Array.isArray(list) || !list.length) throw new Error("لا توجد حسابات في الملف");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const all = users_();
+    const skipped = [];
+    let added = 0;
+    list.forEach((u) => {
+      const username = normUser_(u && u.username);
+      if (username.length < 3 || !u.salt || !u.hash) { skipped.push({ username: (u && u.username) || "?", why: "بيانات ناقصة" }); return; }
+      if (all[username]) { skipped.push({ username, why: "موجود مسبقاً" }); return; }
+      // هذا الخادم لا يفهم إلا تشفيره؛ كلمة مرور بتشفير آخر لا يمكن التحقق منها
+      if (u.algo && u.algo !== "gas300") { skipped.push({ username, why: "تشفير كلمة المرور غير مدعوم هنا" }); return; }
+      all[username] = {
+        username, name: String(u.name || username).trim(), email: String(u.email || "").trim(),
+        admin: !!u.admin, active: u.active !== false, salt: u.salt, hash: u.hash,
+        views: u.views || [], perms: u.perms || {},
+      };
+      added++;
+    });
+    saveUsers_(all);
+    log_(by.name, "استيراد حسابات", `أُضيف ${added}، وتُخطّي ${skipped.length}`);
+    return { added, skipped };
   } finally {
     lock.releaseLock();
   }

@@ -146,6 +146,39 @@
     $("adm-save").disabled = false;
   }
 
+  /* نقل الحسابات بين الخادمين: ملف فيه بصمات كلمات المرور، لا الكلمات نفسها */
+  async function exportUsers() {
+    $("adm-export").disabled = true;
+    try {
+      const list = await App.cloud.exportUsers();
+      if (!list.length) throw new Error("لا توجد حسابات للتصدير");
+      const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), users: list }, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `حسابات مساعد تمكين - ${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      ui.toast(`صُدِّر ${ui.fmt(list.length)} حساباً — الملف يحوي بصمات كلمات المرور، احذفه بعد الاستيراد`);
+    } catch (e) { ui.toast(e.message); }
+    $("adm-export").disabled = false;
+  }
+
+  async function importUsers(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const list = Array.isArray(data) ? data : data.users;
+      if (!Array.isArray(list) || !list.length) throw new Error("الملف لا يحوي حسابات");
+      if (!confirm(`استيراد ${ui.fmt(list.length)} حساباً إلى هذا الخادم؟\nالحسابات الموجودة لن تُستبدل، وكلمات المرور تبقى كما هي عند أصحابها.`)) return;
+      const r = await App.cloud.importUsers(list);
+      const why = (r.skipped || []).map((s) => `${s.username}: ${s.why}`).join("\n");
+      ui.toast(`أُضيف ${ui.fmt(r.added)} حساباً${r.skipped && r.skipped.length ? `، وتُخطّي ${ui.fmt(r.skipped.length)}` : ""}`);
+      if (why) console.info("حسابات لم تُستورد:\n" + why);
+      await load();
+    } catch (e) { ui.toast(e.message); }
+  }
+
   function suggestPassword() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
     const a = new Uint32Array(10);
@@ -175,6 +208,9 @@
     $("adm-generate").addEventListener("click", suggestPassword);
     $("adm-admin").addEventListener("change", syncAdminToggle);
     $("adm-refresh").addEventListener("click", load);
+    $("adm-export").addEventListener("click", exportUsers);
+    $("adm-import").addEventListener("click", () => $("adm-import-file").click());
+    $("adm-import-file").addEventListener("change", (e) => { importUsers(e.target.files[0]); e.target.value = ""; });
     $("adm-digest-save").addEventListener("click", saveDigest);
     $("adm-users").addEventListener("click", async (e) => {
       const tr = e.target.closest("tr[data-u]");

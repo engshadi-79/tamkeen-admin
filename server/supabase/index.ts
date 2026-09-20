@@ -31,7 +31,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 10;
+const VERSION = 11;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -220,6 +220,47 @@ async function deleteUser(username: unknown, by: any) {
   if (name === by.username) throw new Error("لا يمكنك حذف حسابك بنفسك");
   await db.from("app_users").delete().eq("username", name);
   return { ok: true };
+}
+
+/* تصدير الحسابات لنقلها إلى خادم آخر: تُنقل بصمة كلمة المرور لا الكلمة نفسها */
+async function exportUsers() {
+  const { data } = await db.from("app_users").select("*").order("username");
+  return {
+    users: (data || []).map((u: any) => ({
+      username: u.username, name: u.name, email: u.email || "", admin: !!u.admin,
+      active: u.active !== false, salt: u.salt, hash: u.hash, algo: u.algo,
+      views: u.views || [], perms: u.perms || {}, lastLogin: u.last_login || "",
+    })),
+  };
+}
+
+/* استيراد حسابات من خادم آخر: الموجود لا يُستبدل، وحساب المستورِد لا يُمسّ.
+   يقبل تشفير Apps Script (gas300) كما هو، فيدخل كل مستخدم بكلمته القديمة،
+   وتُرقّى كلمته تلقائياً إلى PBKDF2 عند أول دخول ناجح. */
+async function importUsers(list: any[], by: any) {
+  if (!Array.isArray(list) || !list.length) throw new Error("لا توجد حسابات في الملف");
+  const { data: existing } = await db.from("app_users").select("username");
+  const have = new Set((existing || []).map((u: any) => u.username));
+  const skipped: any[] = [];
+  const rows: any[] = [];
+  for (const u of list) {
+    const username = norm(u?.username);
+    if (username.length < 3 || !u.salt || !u.hash) { skipped.push({ username: u?.username || "?", why: "بيانات ناقصة" }); continue; }
+    if (have.has(username)) { skipped.push({ username, why: "موجود مسبقاً" }); continue; }
+    const algo = u.algo === "pbkdf2" ? "pbkdf2" : "gas300";
+    rows.push({
+      username, name: String(u.name || username).trim(), email: String(u.email || "").trim(),
+      admin: !!u.admin, active: u.active !== false, salt: u.salt, hash: u.hash, algo,
+      views: u.views || [], perms: u.perms || {},
+    });
+    have.add(username);
+  }
+  if (rows.length) {
+    const { error } = await db.from("app_users").insert(rows);
+    if (error) throw new Error(error.message);
+  }
+  await log(by.name, "استيراد حسابات", `أُضيف ${rows.length}، وتُخطّي ${skipped.length}`);
+  return { added: rows.length, skipped };
 }
 
 /* نسيت كلمة المرور: يحتاج مفتاح Resend للإرسال؛ بدونه يُنبَّه المستخدم لمراجعة المدير */
@@ -615,6 +656,8 @@ Deno.serve(async (httpReq) => {
         return json({ users: (data || []).map(publicUser) });
       }
       case "saveUser": return json(await saveUser(req.user, user));
+      case "exportUsers": return json(await exportUsers());
+      case "importUsers": return json(await importUsers(req.users, user));
       case "deleteUser": return json(await deleteUser(req.username, user));
       case "digest": {
         const hour = Math.min(23, Math.max(0, Number(req.hour) || 7));

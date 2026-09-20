@@ -159,5 +159,39 @@ console.log("\n[11] حدود النسخة التجريبية");
 check("القراءة الضوئية ترد برسالة مفهومة", (await post({ action: "ocr", token: T, data: "" })).error?.includes("غير متاحة"));
 check("إجراء غير معروف", (await post({ action: "بلا", token: T })).error === "إجراء غير معروف");
 
+/* ===== 12. ناقل الحسابات ===== */
+console.log("\n[12] نقل الحسابات بين الخادمين");
+/* حساب كما يُصدّره خادم Apps Script: بصمة 300 دورة SHA-256 */
+async function gas300(password, salt) {
+  const enc = new TextEncoder();
+  const b64 = (b) => Buffer.from(b).toString("base64");
+  let h = salt + "|" + password;
+  for (let i = 0; i < 300; i++) h = b64(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(h + salt))));
+  return h;
+}
+const oldSalt = "salt-from-apps-script";
+const legacy = {
+  username: "huda", name: "هدى", email: "h@x.com", admin: false, active: true,
+  salt: oldSalt, hash: await gas300("huda1234", oldSalt), algo: "gas300",
+  views: ["registry", "roster"], perms: { upload: true, delete: false },
+};
+check("غير المدير لا يصدّر الحسابات", (await post({ action: "exportUsers", token: O })).error === "هذا الإجراء للمدير فقط");
+const imp = await post({ action: "importUsers", token: T, users: [legacy] });
+check("استُوردت هدى", imp.added === 1 && imp.skipped.length === 0, imp);
+const huda = await post({ action: "login", username: "huda", password: "huda1234" });
+check("تدخل بكلمتها القديمة نفسها", !!huda.token, huda);
+check("وصلاحياتها انتقلت معها", huda.user && huda.user.views.join(",") === "registry,roster" && huda.user.perms.upload === true, huda.user);
+check("وكلمة خاطئة ما زالت تُرفض", (await post({ action: "login", username: "huda", password: "huda9999" })).error.includes("غير صحيحة"));
+
+const again = await post({ action: "importUsers", token: T, users: [legacy] });
+check("إعادة الاستيراد لا تستبدل الموجود", again.added === 0 && again.skipped[0].why === "موجود مسبقاً", again);
+check("حساب ناقص يُتخطّى بسبب مفهوم", (await post({ action: "importUsers", token: T, users: [{ username: "زائف" }] })).skipped[0].why === "بيانات ناقصة");
+
+const exported = await post({ action: "exportUsers", token: T });
+const back = exported.users.find((u) => u.username === "huda");
+check("التصدير يعيد البصمة لا كلمة المرور", !!back.hash && !!back.salt && back.password === undefined, Object.keys(back));
+check("وكلمتها رُقّيت تلقائياً بعد أول دخول", back.algo === "pbkdf2", back.algo);
+check("والتصدير يشمل كل الحسابات", exported.users.length >= 4, exported.users.map((u) => u.username));
+
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);
