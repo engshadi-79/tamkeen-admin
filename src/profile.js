@@ -126,6 +126,7 @@
     $("acc-username").textContent = u.username;
     $("acc-role").textContent = u.admin ? "مدير: يعدّل ويحذف كل القيود ويدير المستخدمين" : "مستخدم: يعدّل ويحذف قيوده فقط";
     $("acc-users").hidden = !u.admin;
+    $("acc-events").hidden = !u.admin;
     ["acc-current", "acc-new", "acc-new2"].forEach((id) => { $(id).value = ""; });
     $("profile-modal").classList.add("open");
   }
@@ -142,6 +143,28 @@
       ui.toast("تم تغيير كلمة المرور");
       ["acc-current", "acc-new", "acc-new2"].forEach((id) => { $(id).value = ""; });
     } catch (err) { ui.toast(err.message); }
+  }
+
+  /* ===== سجل أحداث النظام (محفوظ على Drive) ===== */
+  async function openEvents() {
+    close();
+    $("sys-modal").classList.add("open");
+    $("sys-list").innerHTML = `<li class="conv-hint">جارٍ التحميل…</li>`;
+    try {
+      const [events, info] = await Promise.all([App.cloud.events(Number($("sys-days").value) || 3, 400), App.cloud.backups()]);
+      $("sys-folder").href = info.logFolder || "#";
+      $("sys-folder").hidden = !info.logFolder;
+      $("sys-backups").href = info.folder || "#";
+      $("sys-backups").hidden = !info.folder;
+      $("sys-list").innerHTML = events.length ? events.map((e) => `<li>
+          <span class="act-when">${esc(e.at)}</span>
+          <b>${esc(e.user)}</b> — ${esc(e.action)}
+          ${e.details ? `<span class="reg-kind">${esc(e.details)}</span>` : ""}
+        </li>`).join("") : `<li class="conv-hint">لا توجد أحداث في هذه المدة.</li>`;
+      $("sys-count").textContent = events.length ? `${ui.fmt(events.length)} حدث` : "";
+    } catch (err) {
+      $("sys-list").innerHTML = `<li class="conv-hint">${esc(err.message)}</li>`;
+    }
   }
 
   /* ===== إدارة المستخدمين (للمدير) ===== */
@@ -285,6 +308,10 @@
     $("reset-cancel").addEventListener("click", hideReset);
     $("acc-backup").addEventListener("click", fullBackup);
     $("acc-users").addEventListener("click", openUsers);
+    $("acc-events").addEventListener("click", openEvents);
+    $("sys-days").addEventListener("change", openEvents);
+    $("sys-close").addEventListener("click", () => $("sys-modal").classList.remove("open"));
+    $("sys-modal").addEventListener("click", (e) => { if (e.target.id === "sys-modal") $("sys-modal").classList.remove("open"); });
     $("profile-close").addEventListener("click", close);
     $("profile-modal").addEventListener("click", (e) => { if (e.target.id === "profile-modal") close(); });
     document.querySelectorAll("[data-profile]").forEach((b) => b.addEventListener("click", open));

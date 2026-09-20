@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=84">
+  <link rel="stylesheet" href="styles/theme.css?v=85">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -686,6 +686,7 @@
       </form>
       <div class="btn-row" style="margin-top:14px">
         <button class="btn navy" type="button" id="acc-users">👥 المستخدمون</button>
+        <button class="btn secondary" type="button" id="acc-events">📜 سجل أحداث النظام</button>
         <button class="btn" type="button" id="acc-backup">⬇ نسخة احتياطية شاملة</button>
         <button class="btn secondary" type="button" id="acc-logout-all">خروج من كل الأجهزة</button>
         <button class="btn danger" type="button" id="acc-logout">تسجيل الخروج</button>
@@ -811,40 +812,62 @@
     </div>
   </div>
 
+  <!-- سجل أحداث النظام -->
+  <div class="modal-backdrop" id="sys-modal" role="dialog" aria-modal="true" aria-labelledby="sys-title">
+    <div class="modal users-modal">
+      <h3 id="sys-title">📜 سجل أحداث النظام <span class="reg-kind" id="sys-count"></span></h3>
+      <p class="conv-hint">كل ما يجري في النظام يُسجَّل في ملفات يومية على Drive المركز: من فعل ماذا ومتى. الملفات بصيغة CSV يفتحها Excel مباشرة.</p>
+      <div class="btn-row">
+        <label class="reg-prefix">المدة
+          <select id="sys-days">
+            <option value="1">اليوم</option>
+            <option value="3" selected>آخر 3 أيام</option>
+            <option value="7">آخر أسبوع</option>
+            <option value="30">آخر شهر</option>
+          </select>
+        </label>
+        <a class="btn secondary small" id="sys-folder" target="_blank" rel="noopener" hidden>📁 ملفات السجل في Drive</a>
+        <a class="btn secondary small" id="sys-backups" target="_blank" rel="noopener" hidden>💾 النسخ الاحتياطية</a>
+      </div>
+      <ul class="act-list" id="sys-list"></ul>
+      <div class="btn-row"><button class="btn secondary" type="button" id="sys-close">إغلاق</button></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=84"></script>
-  <script src="src/ui.js?v=84"></script>
-  <script src="src/templates.js?v=84"></script>
-  <script src="src/tracks.js?v=84"></script>
-  <script src="src/tasks.js?v=84"></script>
-  <script src="src/dashboard.js?v=84"></script>
-  <script src="src/letterhead-docx.js?v=84"></script>
-  <script src="src/docx.js?v=84"></script>
-  <script src="src/ai.js?v=84"></script>
-  <script src="src/doc-render.js?v=84"></script>
-  <script src="src/files-store.js?v=84"></script>
-  <script src="src/shared.js?v=84"></script>
-  <script src="src/cloud.js?v=84"></script>
-  <script src="src/drive.js?v=84"></script>
-  <script src="src/drive-ui.js?v=84"></script>
-  <script src="src/rtl-fixer.js?v=84"></script>
-  <script src="src/rtl-page.js?v=84"></script>
-  <script src="src/profile.js?v=84"></script>
-  <script src="src/roster.js?v=84"></script>
-  <script src="src/registry.js?v=84"></script>
-  <script src="src/charts.js?v=84"></script>
-  <script src="src/ai-assist.js?v=84"></script>
-  <script src="src/meetings.js?v=84"></script>
-  <script src="src/report.js?v=84"></script>
-  <script src="src/letters.js?v=84"></script>
+  <script src="src/storage.js?v=85"></script>
+  <script src="src/ui.js?v=85"></script>
+  <script src="src/templates.js?v=85"></script>
+  <script src="src/tracks.js?v=85"></script>
+  <script src="src/tasks.js?v=85"></script>
+  <script src="src/dashboard.js?v=85"></script>
+  <script src="src/letterhead-docx.js?v=85"></script>
+  <script src="src/docx.js?v=85"></script>
+  <script src="src/ai.js?v=85"></script>
+  <script src="src/doc-render.js?v=85"></script>
+  <script src="src/files-store.js?v=85"></script>
+  <script src="src/shared.js?v=85"></script>
+  <script src="src/cloud.js?v=85"></script>
+  <script src="src/drive.js?v=85"></script>
+  <script src="src/drive-ui.js?v=85"></script>
+  <script src="src/rtl-fixer.js?v=85"></script>
+  <script src="src/rtl-page.js?v=85"></script>
+  <script src="src/profile.js?v=85"></script>
+  <script src="src/roster.js?v=85"></script>
+  <script src="src/registry.js?v=85"></script>
+  <script src="src/charts.js?v=85"></script>
+  <script src="src/ai-assist.js?v=85"></script>
+  <script src="src/meetings.js?v=85"></script>
+  <script src="src/report.js?v=85"></script>
+  <script src="src/letters.js?v=85"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=84"></script>
-  <script src="src/converter-store.js?v=84"></script>
-  <script src="src/converter.js?v=84"></script>
-  <script src="src/app.js?v=84"></script>
+  <script src="src/converter-core.js?v=85"></script>
+  <script src="src/converter-store.js?v=85"></script>
+  <script src="src/converter.js?v=85"></script>
+  <script src="src/app.js?v=85"></script>
 </body>
 </html>

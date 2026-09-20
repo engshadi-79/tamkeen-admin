@@ -9,6 +9,7 @@ const ADMIN_KEY = "PUT-ADMIN-CODE-HERE";
 const ROOT_NAME = "أرشيف مساعد تمكين";
 const DATA_NAME = "tamkeen-registry.json";
 const BACKUP_FOLDER = "نسخ احتياطية للسجل";
+const LOG_FOLDER = "سجل أحداث النظام";
 const BACKUP_KEEP = 180; // 30 يوماً × 6 ملفات
 const SESSION_DAYS = 30;
 
@@ -50,16 +51,21 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 7, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
+      case "status": return out_({ ok: true, version: 8, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
-      case "login": return out_(login_(req.username, req.password));
+      case "login": {
+        const res = login_(req.username, req.password);
+        log_(res.user.name, "دخول", "");
+        return out_(res);
+      }
       case "forgot": return out_(forgot_(req.username));
       case "reset": return out_(reset_(req.username, req.code, req.password));
     }
     const user = session_(req.token);
     if (!user) return out_({ error: "UNAUTHORIZED" });
+    logRequest_(user, req);
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 7, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 8, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
@@ -71,7 +77,8 @@ function doPost(e) {
       case "file": return out_(file_(req.id));
       case "reserve": return out_(reserve_(req.head, req.count));
       case "search": return out_(search_(req.q));
-      case "backups": return out_(Object.assign(listBackups_(), { digest: digestState_() }));
+      case "backups": return out_(Object.assign(listBackups_(), { digest: digestState_(), logFolder: subFolder_(root_(), LOG_FOLDER).getUrl() }));
+      case "events": return out_({ events: readLog_(Number(req.days) || 3, Number(req.limit) || 300) });
     }
     if (!user.admin) return out_({ error: "هذا الإجراء للمدير فقط" });
     switch (req.action) {
@@ -443,6 +450,83 @@ function dailyDigest() {
       <p style="color:#5f6b7d;font-size:12px">رسالة تلقائية من مساعد تمكين الإداري.</p></div>`;
     MailApp.sendEmail({ to: u.email, subject: `مساعد تمكين: ${rows.length + myTasks.length} بند يحتاج متابعة`, htmlBody: html });
   });
+}
+
+/* ===== سجل أحداث النظام على Drive: ملف CSV لكل يوم يفتحه Excel مباشرة ===== */
+function logFile_(day) {
+  const folder = subFolder_(root_(), LOG_FOLDER);
+  const name = `أحداث ${day}.csv`;
+  const it = folder.getFilesByName(name);
+  if (it.hasNext()) return it.next();
+  // BOM ليقرأ Excel العربية بشكل صحيح
+  return folder.createFile(name, "\ufeffالوقت,المستخدم,الإجراء,التفاصيل\n", "text/csv");
+}
+
+const csv_ = (v) => `"${String(v == null ? "" : v).replace(/"/g, "\"\"").replace(/[\r\n]+/g, " ")}"`;
+
+function log_(who, action, details) {
+  try {
+    const tz = Session.getScriptTimeZone();
+    const now = new Date();
+    const file = logFile_(Utilities.formatDate(now, tz, "yyyy-MM-dd"));
+    const line = [csv_(Utilities.formatDate(now, tz, "yyyy-MM-dd HH:mm:ss")), csv_(who), csv_(action), csv_(details)].join(",") + "\n";
+    file.setContent(file.getBlob().getDataAsString("UTF-8") + line);
+  } catch (err) { /* السجل لا يعطّل العمل */ }
+}
+
+/* وصف مختصر لكل طلب يصل من الأداة */
+function logRequest_(user, req) {
+  const a = req.action;
+  if (a === "ping" || a === "status" || a === "people" || a === "events" || a === "backups") return;
+  if (a === "sync") {
+    const n = (req.records || []).length;
+    const d = Object.keys(req.deleted || {}).length;
+    if (!n && !d) return; // قراءة فقط
+    log_(user.name, "تعديل سجل الوارد والصادر", `${n} قيد مُرسل، ${d} حذف`);
+    return;
+  }
+  if (a === "syncAll") {
+    const parts = [];
+    Object.keys(req.cols || {}).forEach((k) => {
+      const n = (req.cols[k].records || []).length;
+      const d = Object.keys(req.cols[k].deleted || {}).length;
+      if (n || d) parts.push(`${k}: ${n} سجل${d ? ` و${d} حذف` : ""}`);
+    });
+    if (parts.length) log_(user.name, "تعديل الأقسام", parts.join(" · "));
+    return;
+  }
+  const labels = {
+    upload: "رفع ملف", file: "فتح ملف", ocr: "قراءة ضوئية", reserve: "حجز رقم", search: "بحث في المحتوى",
+    logout: "خروج", logoutAll: "خروج من كل الأجهزة", password: "تغيير كلمة المرور",
+    saveUser: "حفظ مستخدم", deleteUser: "حذف مستخدم", digest: "إعداد الملخص اليومي",
+  };
+  const details = a === "upload" ? `${req.name || ""} → ${(req.path || []).join("/")}`
+    : a === "saveUser" ? (req.user || {}).username || ""
+    : a === "deleteUser" ? req.username || ""
+    : a === "search" ? req.q || ""
+    : a === "ocr" ? req.name || "" : "";
+  log_(user.name, labels[a] || a, details);
+}
+
+/* قراءة آخر الأحداث لعرضها داخل الأداة */
+function readLog_(days, limit) {
+  const tz = Session.getScriptTimeZone();
+  const out = [];
+  for (let i = 0; i < Math.max(1, days); i++) {
+    const day = Utilities.formatDate(new Date(Date.now() - i * 86400000), tz, "yyyy-MM-dd");
+    const folder = subFolder_(root_(), LOG_FOLDER);
+    const it = folder.getFilesByName(`أحداث ${day}.csv`);
+    if (!it.hasNext()) continue;
+    const text = it.next().getBlob().getDataAsString("UTF-8").replace(/^\ufeff/, "");
+    const lines = text.split("\n").slice(1).filter(Boolean);
+    lines.reverse().forEach((l) => {
+      if (out.length >= limit) return;
+      const cells = (l.match(/"(?:[^"]|"")*"/g) || []).map((c) => c.slice(1, -1).replace(/""/g, '"'));
+      if (cells.length >= 3) out.push({ at: cells[0], user: cells[1], action: cells[2], details: cells[3] || "" });
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /* نسخة احتياطية واحدة في اليوم قبل أول تعديل، ويُحتفظ بآخر 30 نسخة */

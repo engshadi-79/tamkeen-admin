@@ -100,13 +100,14 @@
   const reserve = async (head, count) => (await call("reserve", { head, count: count || 1 })).numbers;
   const search = async (q) => (await call("search", { q })).ids || [];
   const backups = () => call("backups");
+  const events = async (days, limit) => (await call("events", { days, limit })).events || [];
   const forgot = (username) => call("forgot", { username });
   const reset = async (username, code, password) => signedIn(await call("reset", { username, code, password }));
   const logoutAll = () => call("logoutAll");
 
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
-    listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, forgot, reset, logoutAll,
+    listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});
