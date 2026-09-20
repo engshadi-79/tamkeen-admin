@@ -50,9 +50,29 @@
     };
     const numbered = (text) => lines(text).map((p, i) => `${i + 1}. ${p}`);
 
-    section("الحاضرون", numbered(v.attendees));
-    section("المعتذرون عن الحضور", numbered(v.apologies));
-    section("المدعوون الذين لم يحضروا", numbered(v.absent));
+    /* جدول الأسماء: كل سطر «الاسم - الصفة» أو «الاسم | الصفة» يصبح صفاً بعمودين */
+    const nameRows = (text) => lines(text).map((l) => {
+      const parts = l.split(/\s*[|\-–—]\s*/);
+      return [parts[0].trim(), parts.slice(1).join(" - ").trim()];
+    });
+
+    function peopleTable(head, text, extraCol) {
+      const rows = nameRows(text);
+      if (!rows.length) return;
+      const withTitle = rows.some((r) => r[1]);
+      out.push({ kind: "para", text: "" }, { kind: "bold", text: `${ORD[n++]}: ${head}` });
+      out.push({
+        kind: "table",
+        headers: withTitle ? ["م", "الاسم", extraCol || "الصفة"] : ["م", "الاسم"],
+        widths: withTitle ? [0.08, 0.47, 0.45] : [0.1, 0.9],
+        align: withTitle ? ["center", null, null] : ["center", null],
+        rows: rows.map((r, i) => (withTitle ? [String(i + 1), r[0], r[1] || "—"] : [String(i + 1), r[0]])),
+      });
+    }
+
+    peopleTable("الحاضرون", v.attendees);
+    peopleTable("المعتذرون عن الحضور", v.apologies, "سبب الاعتذار");
+    peopleTable("المدعوون الذين لم يحضروا", v.absent);
     section("جدول الأعمال", lines(v.agenda));
     section("ما تمت مناقشته", lines(v.discussion));
     section("نقاط التوافق والخلاف", lines(v.consensus));
@@ -111,7 +131,7 @@
         headers: ["م", "الاسم", "التوقيع"],
         widths: [0.08, 0.52, 0.4],
         align: ["center", null, "center"],
-        rows: lines(v.attendees).map((p, i) => [String(i + 1), p, ""]),
+        rows: nameRows(v.attendees).map((r, i) => [String(i + 1), r[1] ? `${r[0]} - ${r[1]}` : r[0], ""]),
       });
     }
     return out;
