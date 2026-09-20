@@ -627,6 +627,67 @@
     if ($("reg-stats").open) renderStats();
   }
 
+  /* ===== قراءة خطاب ممسوح ضوئياً (OCR) وتعبئة الحقول منه ===== */
+  const AR_DIGITS = /[٠-٩]/g;
+  const toEn = (t) => String(t).replace(AR_DIGITS, (c) => "٠١٢٣٤٥٦٧٨٩".indexOf(c));
+
+  /* استخراج الرقم والتاريخ والموضوع والجهة من نص الخطاب سطراً سطراً */
+  const ORG = /(وزارة|مؤسسة|جمعية|شركة|مركز|هيئة|مديرية|إدارة|مكتب|بلدية|جامعة|كلية|مدرسة|مستشفى|نقابة)/;
+
+  function parseLetter(raw) {
+    const lines = toEn(raw).replace(/\r/g, "").split("\n").map((l) => l.trim()).filter(Boolean);
+    const out = {};
+    const find = (re) => { for (const l of lines) { const m = l.match(re); if (m) return m; } return null; };
+
+    let m = find(/(?:الرقم|رقم\s*(?:الكتاب|الخطاب|الصادر|الإشارة)?)\s*[:：]\s*(\S+)/);
+    if (m) out.number = m[1].replace(/[.،؛]$/, "");
+    m = find(/(?:التاريخ|بتاريخ)\s*[:：]?\s*(\d{1,4}[-\/.]\d{1,2}[-\/.]\d{2,4})/) || find(/(\d{1,4}[-\/.]\d{1,2}[-\/.]\d{2,4})/);
+    if (m) out.date = dateFromText(m[1]) || "";
+    m = find(/الموضوع\s*[:：]?\s*(.{3,120})/);
+    if (m) out.subject = m[1].trim().replace(/[.،]$/, "");
+    const org = lines.slice(0, 10).find((l) => ORG.test(l) && l.length < 80);
+    if (org) out.party = org.replace(/[:：].*$/, "").trim();
+    if (!out.subject) {
+      const line = lines.find((l) => l.length > 15 && !ORG.test(l) && !/^(بسم|الحمد|السلام|المكرم|سعادة|تحية|الرقم|التاريخ)/.test(l));
+      if (line) out.subject = line.slice(0, 100);
+    }
+    return out;
+  }
+
+  async function readScan() {
+    const file = $("reg-file").files[0] || (editingId && (await getFile(records().find((r) => r.id === editingId)).catch(() => null)) || {}).blob;
+    if (!file) { ui.toast("اختر ملف الخطاب الممسوح أولاً"); return; }
+    if (!App.cloud || !App.cloud.ready()) { ui.toast("القراءة تحتاج الاتصال بأرشيف المركز"); return; }
+    const btn = $("reg-ocr");
+    btn.disabled = true;
+    const old = btn.textContent;
+    btn.textContent = "جارٍ القراءة…";
+    try {
+      const data = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result).split(",")[1]);
+        fr.onerror = () => reject(fr.error);
+        fr.readAsDataURL(file);
+      });
+      const { text } = await App.cloud.ocr(data, file.type || "application/pdf", file.name || "scan");
+      if (!String(text || "").trim()) { ui.toast("لم يُقرأ نص من الملف؛ تأكد من وضوح المسح"); return; }
+      const f = parseLetter(text);
+      const filled = [];
+      if (f.number && !$("reg-number").value.trim()) { $("reg-number").value = f.number; filled.push("الرقم"); }
+      if (f.date) { $("reg-date").value = f.date; filled.push("التاريخ"); }
+      if (f.party && !$("reg-party").value.trim()) { $("reg-party").value = f.party; filled.push("الجهة"); }
+      if (f.subject && !$("reg-subject").value.trim()) { $("reg-subject").value = f.subject; filled.push("الموضوع"); }
+      $("reg-notes").value = ($("reg-notes").value ? $("reg-notes").value + "\n" : "") + "— نص الخطاب المقروء آلياً —\n" + String(text).trim().slice(0, 1500);
+      syncNumberHint();
+      ui.toast(filled.length ? `قُرئ الخطاب وعُبِّئ: ${filled.join("، ")}` : "قُرئ النص وأُضيف إلى الملاحظات");
+    } catch (e) {
+      ui.toast(e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = old;
+    }
+  }
+
   /* ===== نموذج الإضافة والتعديل ===== */
   let editingId = null;
 
@@ -645,12 +706,22 @@
     $("reg-subject").value = rec ? rec.subject || "" : "";
     $("reg-notes").value = rec ? rec.notes || "" : "";
     $("reg-file").value = "";
+    syncOcrButton();
     $("reg-file-current").textContent = rec && rec.fileId ? `المرفق الحالي: ${rec.fileName}` : "";
     syncNumberHint();
     $("reg-modal").classList.add("open");
     $("reg-party").focus();
   }
   const closeForm = () => $("reg-modal").classList.remove("open");
+
+  /* زر القراءة يظهر لملفات الصور و PDF فقط */
+  function syncOcrButton() {
+    const f = $("reg-file").files[0];
+    const rec = editingId && records().find((r) => r.id === editingId);
+    const name = (f && f.name) || (rec && rec.fileName) || "";
+    const scan = /\.(pdf|jpe?g|png|tiff?|webp|heic)$/i.test(name);
+    $("reg-ocr").hidden = !scan || !(App.cloud && App.cloud.ready());
+  }
 
   function syncFollowUp() { $("reg-follow").hidden = $("reg-type").value !== "in"; }
 
@@ -1083,6 +1154,8 @@
     $("pv-download").addEventListener("click", () => { if (pvFile) ui.download(pvFile.name, pvFile.blob); });
     $("reg-sel-clear").addEventListener("click", () => { selected.clear(); render(); });
     $("reg-type").addEventListener("change", syncFollowUp);
+    $("reg-file").addEventListener("change", syncOcrButton);
+    $("reg-ocr").addEventListener("click", readScan);
     if (App.profile) App.profile.onChange(() => { if ($("view-registry").classList.contains("active")) render(); });
     $("reg-sort").addEventListener("change", (e) => { view.sort = e.target.value; saveView(); render(); });
     $("reg-group").addEventListener("change", (e) => { view.group = e.target.value; saveView(); render(); });

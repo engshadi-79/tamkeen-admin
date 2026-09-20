@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=54">
+  <link rel="stylesheet" href="styles/theme.css?v=57">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -388,11 +388,16 @@
       <section class="view" id="view-tasks">
         <div class="page-head">
           <div><h2>المهام والمتابعات</h2><p id="task-counts"></p></div>
+          <div class="conv-tabs" style="margin:0">
+            <button type="button" data-task-filter="all">الكل</button>
+            <button type="button" data-task-filter="mine">مهامي</button>
+            <button type="button" data-task-filter="late">المتأخرة</button>
+          </div>
         </div>
         <div class="card">
           <form class="task-form" id="task-form">
             <label class="field" style="margin:0"><span>المهمة</span><input type="text" id="task-text" placeholder="مثال: رفع كشف حضور مسار الخياطة" required></label>
-            <label class="field" style="margin:0"><span>المسؤول (اختياري)</span><input type="text" id="task-owner"></label>
+            <label class="field" style="margin:0"><span>المسؤول (اختياري)</span><input type="text" id="task-owner" list="people-list" placeholder="اختر مستخدماً أو اكتب اسماً"></label>
             <label class="field" style="margin:0"><span>تاريخ الاستحقاق (اختياري)</span><input type="date" id="task-due"></label>
             <button class="btn" type="submit">إضافة</button>
           </form>
@@ -522,6 +527,7 @@
         <label class="conv-check strong" style="align-self:end;margin-bottom:14px"><input type="checkbox" id="reg-done"> تمت المعالجة</label>
       </div>
       <label class="field"><span>المرفق (اختياري)</span><input type="file" id="reg-file"></label>
+      <button class="btn secondary small" type="button" id="reg-ocr" hidden>📷 قراءة الخطاب الممسوح وتعبئة الحقول</button>
       <p class="conv-hint" id="reg-file-current"></p>
       <div class="btn-row">
         <button class="btn" type="submit">حفظ</button>
@@ -604,6 +610,7 @@
         <div class="grid-fields">
           <label class="field"><span>الاسم الظاهر (ويكون اسم مجلده)</span><input type="text" id="uf-name" maxlength="60" required></label>
           <label class="field"><span>اسم المستخدم (للدخول)</span><input type="text" id="uf-username" dir="ltr" maxlength="40" autocomplete="off" spellcheck="false" required></label>
+          <label class="field"><span>البريد الإلكتروني (للملخص اليومي)</span><input type="email" id="uf-email" dir="ltr" autocomplete="off"></label>
         </div>
         <label class="field"><span>كلمة المرور <button type="button" class="conv-link" id="uf-generate">اقتراح كلمة مرور</button></span><input type="password" id="uf-password" dir="ltr" autocomplete="new-password"></label>
         <div class="btn-row">
@@ -616,6 +623,14 @@
         </div>
         <p class="conv-hint">تغيير كلمة مرور مستخدم أو إيقاف حسابه يُخرجه من كل أجهزته فوراً. حذف الحساب لا يحذف قيوده وملفاته.</p>
       </form>
+      <div class="digest-box">
+        <label class="conv-check strong"><input type="checkbox" id="digest-on"> ملخص يومي بالبريد لكل مستخدم: الوارد المتأخر والمهام المستحقة</label>
+        <label class="reg-prefix">الساعة
+          <select id="digest-hour"></select>
+        </label>
+        <button class="btn small" type="button" id="digest-save">حفظ إعداد الملخص</button>
+        <span class="reg-kind" id="digest-status"></span>
+      </div>
       <div class="btn-row"><button class="btn secondary" type="button" id="users-close">إغلاق</button></div>
     </div>
   </div>
@@ -644,36 +659,39 @@
     </div>
   </div>
 
+  <datalist id="people-list"></datalist>
+
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=54"></script>
-  <script src="src/ui.js?v=54"></script>
-  <script src="src/templates.js?v=54"></script>
-  <script src="src/tracks.js?v=54"></script>
-  <script src="src/tasks.js?v=54"></script>
-  <script src="src/dashboard.js?v=54"></script>
-  <script src="src/letterhead-docx.js?v=54"></script>
-  <script src="src/docx.js?v=54"></script>
-  <script src="src/ai.js?v=54"></script>
-  <script src="src/doc-render.js?v=54"></script>
-  <script src="src/files-store.js?v=54"></script>
-  <script src="src/cloud.js?v=54"></script>
-  <script src="src/drive.js?v=54"></script>
-  <script src="src/drive-ui.js?v=54"></script>
-  <script src="src/rtl-fixer.js?v=54"></script>
-  <script src="src/rtl-page.js?v=54"></script>
-  <script src="src/profile.js?v=54"></script>
-  <script src="src/registry.js?v=54"></script>
-  <script src="src/charts.js?v=54"></script>
-  <script src="src/meetings.js?v=54"></script>
-  <script src="src/report.js?v=54"></script>
-  <script src="src/letters.js?v=54"></script>
+  <script src="src/storage.js?v=57"></script>
+  <script src="src/ui.js?v=57"></script>
+  <script src="src/templates.js?v=57"></script>
+  <script src="src/tracks.js?v=57"></script>
+  <script src="src/tasks.js?v=57"></script>
+  <script src="src/dashboard.js?v=57"></script>
+  <script src="src/letterhead-docx.js?v=57"></script>
+  <script src="src/docx.js?v=57"></script>
+  <script src="src/ai.js?v=57"></script>
+  <script src="src/doc-render.js?v=57"></script>
+  <script src="src/files-store.js?v=57"></script>
+  <script src="src/shared.js?v=57"></script>
+  <script src="src/cloud.js?v=57"></script>
+  <script src="src/drive.js?v=57"></script>
+  <script src="src/drive-ui.js?v=57"></script>
+  <script src="src/rtl-fixer.js?v=57"></script>
+  <script src="src/rtl-page.js?v=57"></script>
+  <script src="src/profile.js?v=57"></script>
+  <script src="src/registry.js?v=57"></script>
+  <script src="src/charts.js?v=57"></script>
+  <script src="src/meetings.js?v=57"></script>
+  <script src="src/report.js?v=57"></script>
+  <script src="src/letters.js?v=57"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=54"></script>
-  <script src="src/converter-store.js?v=54"></script>
-  <script src="src/converter.js?v=54"></script>
-  <script src="src/app.js?v=54"></script>
+  <script src="src/converter-core.js?v=57"></script>
+  <script src="src/converter-store.js?v=57"></script>
+  <script src="src/converter.js?v=57"></script>
+  <script src="src/app.js?v=57"></script>
 </body>
 </html>

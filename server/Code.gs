@@ -9,7 +9,7 @@ const ADMIN_KEY = "PUT-ADMIN-CODE-HERE";
 const ROOT_NAME = "أرشيف مساعد تمكين";
 const DATA_NAME = "tamkeen-registry.json";
 const BACKUP_FOLDER = "نسخ احتياطية للسجل";
-const BACKUP_KEEP = 30;
+const BACKUP_KEEP = 180; // 30 يوماً × 6 ملفات
 const SESSION_DAYS = 30;
 
 function doGet() {
@@ -23,26 +23,30 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 3, hasUsers: Object.keys(users_()).length > 0 });
+      case "status": return out_({ ok: true, version: 4, hasUsers: Object.keys(users_()).length > 0 });
       case "setup": return out_(setup_(req));
       case "login": return out_(login_(req.username, req.password));
     }
     const user = session_(req.token);
     if (!user) return out_({ error: "UNAUTHORIZED" });
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 3, user: publicUser_(user) });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 4, user: publicUser_(user) });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "sync": return out_(sync_(req.records || [], req.deleted || {}, user));
+      case "syncAll": return out_(syncAll_(req.cols || {}));
+      case "people": return out_({ people: Object.keys(users_()).map((u) => users_()[u]).filter((u) => u.active !== false).map((u) => ({ name: u.name, username: u.username })) });
+      case "ocr": return out_(ocr_(req));
       case "upload": return out_(upload_(req));
       case "file": return out_(file_(req.id));
       case "reserve": return out_(reserve_(req.head, req.count));
       case "search": return out_(search_(req.q));
-      case "backups": return out_(listBackups_());
+      case "backups": return out_(Object.assign(listBackups_(), { digest: digestState_() }));
     }
     if (!user.admin) return out_({ error: "هذا الإجراء للمدير فقط" });
     switch (req.action) {
       case "users": return out_({ users: Object.keys(users_()).map((u) => publicUser_(users_()[u])) });
+      case "digest": return out_(setupDigest_(req.enabled, req.hour));
       case "saveUser": return out_(saveUser_(req.user, user));
       case "deleteUser": return out_(deleteUser_(req.username, user));
     }
@@ -59,7 +63,7 @@ function users_() {
   try { return JSON.parse(PropertiesService.getScriptProperties().getProperty("USERS") || "{}"); } catch (err) { return {}; }
 }
 function saveUsers_(all) { PropertiesService.getScriptProperties().setProperty("USERS", JSON.stringify(all)); }
-const publicUser_ = (u) => ({ username: u.username, name: u.name, admin: !!u.admin, active: u.active !== false, lastLogin: u.lastLogin || "" });
+const publicUser_ = (u) => ({ username: u.username, name: u.name, email: u.email || "", admin: !!u.admin, active: u.active !== false, lastLogin: u.lastLogin || "" });
 
 function hash_(password, salt) {
   let h = salt + "|" + password;
@@ -84,7 +88,7 @@ function setup_(req) {
     if (username.length < 3) throw new Error("اسم المستخدم 3 أحرف على الأقل");
     checkPassword_(req.password);
     const salt = Utilities.getUuid();
-    saveUsers_({ [username]: { username, name: String(req.name || username).trim(), admin: true, active: true, salt, hash: hash_(req.password, salt) } });
+    saveUsers_({ [username]: { username, name: String(req.name || username).trim(), email: String(req.email || "").trim(), admin: true, active: true, salt, hash: hash_(req.password, salt) } });
   } finally {
     lock.releaseLock();
   }
@@ -158,6 +162,7 @@ function saveUser_(data, by) {
     if (username === by.username && (data.admin === false || data.active === false)) throw new Error("لا يمكنك إلغاء صلاحيتك أو إيقاف حسابك بنفسك");
     const u = existing || { username };
     u.name = String(data.name || u.name || username).trim();
+    if (data.email !== undefined) u.email = String(data.email || "").trim();
     u.admin = !!data.admin;
     u.active = data.active !== false;
     if (data.password) {
@@ -257,6 +262,115 @@ function sync_(records, deleted, user) {
   }
 }
 
+/* ===== الأقسام المشتركة الأخرى: كل قسم ملف JSON مستقل، والدمج بنفس قاعدة السجل ===== */
+const COLS = { tracks: 1, tasks: 1, meetings: 1, customTemplates: 1, settings: 1 };
+
+function colFile_(name) {
+  const root = root_();
+  const fname = `tamkeen-${name}.json`;
+  const it = root.getFilesByName(fname);
+  return it.hasNext() ? it.next() : root.createFile(fname, JSON.stringify({ records: [], deleted: {} }), "application/json");
+}
+
+function syncAll_(cols) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    const result = {};
+    Object.keys(cols).forEach((name) => {
+      if (!COLS[name]) return;
+      const file = colFile_(name);
+      const data = readData_(file);
+      const incoming = cols[name] || {};
+      const del = Object.assign({}, data.deleted || {});
+      Object.keys(incoming.deleted || {}).forEach((id) => { if (!del[id] || incoming.deleted[id] > del[id]) del[id] = incoming.deleted[id]; });
+      const map = {};
+      (data.records || []).forEach((r) => { map[r.id] = r; });
+      (incoming.records || []).forEach((r) => { if (r && r.id && (!map[r.id] || stamp_(r) > stamp_(map[r.id]))) map[r.id] = r; });
+      Object.keys(del).forEach((id) => { if (map[id] && stamp_(map[id]) <= del[id]) delete map[id]; });
+      const merged = { records: Object.keys(map).map((k) => map[k]), deleted: del };
+      const json = JSON.stringify(merged);
+      if (json !== JSON.stringify({ records: data.records || [], deleted: data.deleted || {} })) file.setContent(json);
+      result[name] = merged;
+    });
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ===== قراءة خطاب ممسوح ضوئياً (OCR) عبر تحويله إلى مستند Google مؤقت ===== */
+function ocr_(req) {
+  const token = ScriptApp.getOAuthToken();
+  const boundary = "tamkeenocr" + Utilities.getUuid();
+  const meta = JSON.stringify({ name: "OCR " + (req.name || "ملف"), mimeType: "application/vnd.google-apps.document" });
+  const payload = Utilities.newBlob(
+    "--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + meta + "\r\n" +
+    "--" + boundary + "\r\nContent-Type: " + (req.mime || "application/pdf") + "\r\nContent-Transfer-Encoding: base64\r\n\r\n" + req.data + "\r\n" +
+    "--" + boundary + "--"
+  ).getBytes();
+  const up = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=" + encodeURIComponent(req.lang || "ar"), {
+    method: "post",
+    contentType: "multipart/related; boundary=" + boundary,
+    payload: payload,
+    headers: { Authorization: "Bearer " + token },
+    muteHttpExceptions: true,
+  });
+  if (up.getResponseCode() >= 300) throw new Error("تعذّرت قراءة الملف: " + up.getContentText().slice(0, 150));
+  const id = JSON.parse(up.getContentText()).id;
+  try {
+    const res = UrlFetchApp.fetch(`https://www.googleapis.com/drive/v3/files/${id}/export?mimeType=text/plain`, {
+      headers: { Authorization: "Bearer " + token },
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() >= 300) throw new Error("تعذّر استخراج النص");
+    return { text: res.getContentText().slice(0, 20000) };
+  } finally {
+    try { DriveApp.getFileById(id).setTrashed(true); } catch (err) { /* الملف المؤقت */ }
+  }
+}
+
+/* ===== الملخص اليومي بالبريد ===== */
+function setupDigest_(enabled, hour) {
+  ScriptApp.getProjectTriggers().forEach((t) => { if (t.getHandlerFunction() === "dailyDigest") ScriptApp.deleteTrigger(t); });
+  const props = PropertiesService.getScriptProperties();
+  if (!enabled) { props.deleteProperty("DIGEST"); return { enabled: false }; }
+  const h = Math.min(23, Math.max(0, Number(hour) || 7));
+  ScriptApp.newTrigger("dailyDigest").timeBased().atHour(h).everyDays(1).create();
+  props.setProperty("DIGEST", String(h));
+  return { enabled: true, hour: h };
+}
+
+function digestState_() {
+  const h = PropertiesService.getScriptProperties().getProperty("DIGEST");
+  return { enabled: h !== null, hour: Number(h || 7) };
+}
+
+/* يُرسل تلقائياً كل يوم: الوارد المتأخر والمهام المستحقة لكل مستخدم، والمدير يرى الجميع */
+function dailyDigest() {
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  const reg = (readData_(dataFile_()).records || []).filter((r) => !r.deletedAt);
+  const tasks = (readData_(colFile_("tasks")).records || []).filter((t) => !t.done);
+  const lateIn = reg.filter((r) => r.type === "in" && r.dueDate && !r.done && r.dueDate <= today);
+  const lateTasks = tasks.filter((t) => t.dueDate && t.dueDate <= today);
+  const users = users_();
+  Object.keys(users).forEach((k) => {
+    const u = users[k];
+    if (!u.email || u.active === false) return;
+    const mine = (list, field) => (u.admin ? list : list.filter((x) => (x[field] || "") === u.name));
+    const rows = mine(lateIn, "owner");
+    const myTasks = mine(lateTasks, "owner");
+    if (!rows.length && !myTasks.length) return;
+    const li = (t) => `<li>${t}</li>`;
+    const html = `<div dir="rtl" style="font-family:Tahoma,Arial">
+      <h3>مساعد تمكين: متابعة ${today}</h3>
+      ${rows.length ? `<p><b>وارد بحاجة إلى رد أو معالجة (${rows.length}):</b></p><ul>${rows.map((r) => li(`${r.number} — ${r.subject || ""} ${r.party ? "(" + r.party + ")" : ""} — حتى ${r.dueDate}`)).join("")}</ul>` : ""}
+      ${myTasks.length ? `<p><b>مهام مستحقة (${myTasks.length}):</b></p><ul>${myTasks.map((t) => li(`${t.text} — حتى ${t.dueDate}${t.owner ? " — " + t.owner : ""}`)).join("")}</ul>` : ""}
+      <p style="color:#5f6b7d;font-size:12px">رسالة تلقائية من مساعد تمكين الإداري.</p></div>`;
+    MailApp.sendEmail({ to: u.email, subject: `مساعد تمكين: ${rows.length + myTasks.length} بند يحتاج متابعة`, htmlBody: html });
+  });
+}
+
 /* نسخة احتياطية واحدة في اليوم قبل أول تعديل، ويُحتفظ بآخر 30 نسخة */
 function backupDaily_(file) {
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
@@ -264,6 +378,9 @@ function backupDaily_(file) {
   if (props.getProperty("LAST_BACKUP") === today) return;
   const folder = subFolder_(root_(), BACKUP_FOLDER);
   file.makeCopy(`سجل الوارد والصادر - ${today}.json`, folder);
+  Object.keys(COLS).forEach((name) => {
+    try { colFile_(name).makeCopy(`${name} - ${today}.json`, folder); } catch (err) { /* قسم غير موجود بعد */ }
+  });
   props.setProperty("LAST_BACKUP", today);
   const files = [];
   const it = folder.getFiles();

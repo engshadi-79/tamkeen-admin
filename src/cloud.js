@@ -93,13 +93,17 @@
   }
 
   const sync = (records, deleted) => call("sync", { records, deleted });
+  const syncAll = (cols) => call("syncAll", { cols });
+  const people = async () => (await call("people")).people || [];
+  const ocr = (data, mime, name) => call("ocr", { data, mime, name });
+  const digest = (enabled, hour) => call("digest", { enabled, hour });
   const reserve = async (head, count) => (await call("reserve", { head, count: count || 1 })).numbers;
   const search = async (q) => (await call("search", { q })).ids || [];
   const backups = () => call("backups");
 
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
-    listUsers, saveUser, deleteUser, upload, download, sync, reserve, search, backups,
+    listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});

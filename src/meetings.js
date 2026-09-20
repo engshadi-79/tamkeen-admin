@@ -193,5 +193,7 @@
     load(null);
   }
 
-  App.meetings = { init, render: () => { renderDecisions(); renderPreview(); }, inPeriod };
+  const isIdle = () => !currentId && !$("m-title").value.trim() && !$("m-discussion").value.trim();
+
+  App.meetings = { isIdle, init, render: () => { renderDecisions(); renderPreview(); }, inPeriod };
 })(window.App = window.App || {});

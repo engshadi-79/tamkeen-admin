@@ -310,5 +310,5 @@
     renderSelect(templates.BUILT_IN[0].id);
   }
 
-  App.letters = { init, render: renderPreview, blocks, startReply };
+  App.letters = { init, render: renderPreview, blocks, startReply, refreshTemplates: () => renderSelect() };
 })(window.App = window.App || {});

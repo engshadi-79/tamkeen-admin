@@ -112,8 +112,33 @@
   async function openUsers() {
     close();
     $("users-modal").classList.add("open");
+    $("digest-hour").innerHTML = Array.from({ length: 24 }, (_, h) => `<option value="${h}">${String(h).padStart(2, "0")}:00</option>`).join("");
     resetUserForm();
     await loadUsers();
+    loadDigest();
+  }
+
+  /* الملخص اليومي: يرسله الخادم تلقائياً كل يوم */
+  async function loadDigest() {
+    $("digest-status").textContent = "";
+    try {
+      const r = await App.cloud.backups();
+      const d = r.digest || { enabled: false, hour: 7 };
+      $("digest-on").checked = !!d.enabled;
+      $("digest-hour").value = String(d.hour || 7);
+      $("digest-status").textContent = d.enabled ? `مفعّل يومياً الساعة ${String(d.hour).padStart(2, "0")}:00` : "غير مفعّل";
+      if (r.folder) $("digest-status").title = "نسخ السجل الاحتياطية في Drive";
+    } catch (e) { $("digest-status").textContent = e.message; }
+  }
+
+  async function saveDigest() {
+    $("digest-save").disabled = true;
+    try {
+      const r = await App.cloud.digest($("digest-on").checked, Number($("digest-hour").value));
+      $("digest-status").textContent = r.enabled ? `مفعّل يومياً الساعة ${String(r.hour).padStart(2, "0")}:00` : "غير مفعّل";
+      ui.toast(r.enabled ? "سيصل الملخص يومياً لمن له بريد مسجّل" : "أُوقف الملخص اليومي");
+    } catch (e) { ui.toast(e.message); }
+    $("digest-save").disabled = false;
   }
 
   async function loadUsers() {
@@ -138,6 +163,7 @@
     $("uf-username").value = u ? u.username : "";
     $("uf-username").readOnly = !!u;
     $("uf-name").value = u ? u.name : "";
+    $("uf-email").value = u ? u.email || "" : "";
     $("uf-password").value = "";
     $("uf-password").placeholder = u ? "اتركه فارغاً للإبقاء على كلمة المرور الحالية" : "6 أحرف على الأقل";
     $("uf-admin").checked = !!(u && u.admin);
@@ -150,6 +176,7 @@
     const data = {
       username: $("uf-username").value.trim(),
       name: $("uf-name").value.trim(),
+      email: $("uf-email").value.trim(),
       password: $("uf-password").value,
       admin: $("uf-admin").checked,
       active: $("uf-active").checked,
@@ -190,6 +217,7 @@
     $("user-form").addEventListener("submit", saveUserForm);
     $("uf-cancel").addEventListener("click", () => resetUserForm());
     $("uf-generate").addEventListener("click", suggestPassword);
+    $("digest-save").addEventListener("click", saveDigest);
     $("users-close").addEventListener("click", () => $("users-modal").classList.remove("open"));
     $("users-modal").addEventListener("click", (e) => { if (e.target.id === "users-modal") $("users-modal").classList.remove("open"); });
     $("users-list").addEventListener("click", async (e) => {

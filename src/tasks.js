@@ -32,18 +32,35 @@
       </li>`;
   }
 
-  function render() {
-    const tasks = sorted(store.get().tasks);
-    const list = document.getElementById("task-list");
-    list.innerHTML = tasks.length ? tasks.map((t) => itemHTML(t)).join("") : `<li class="empty">لا توجد مهام بعد. أضف أول مهمة من النموذج أعلاه.</li>`;
+  /* التصفية: الكل، أو مهامي (المسؤول = اسم حسابي)، أو المتأخرة */
+  let filter = "all";
+  const me = () => (App.profile ? App.profile.name() : "");
+  const mine = (t) => (t.owner || "") === me();
 
-    const pending = tasks.filter((t) => !t.done).length;
-    const overdue = tasks.filter(ui.isOverdue).length;
+  function visible(tasks) {
+    if (filter === "mine") return tasks.filter(mine);
+    if (filter === "late") return tasks.filter(ui.isOverdue);
+    return tasks;
+  }
+
+  function render() {
+    const all = sorted(store.get().tasks);
+    const tasks = visible(all);
+    const list = document.getElementById("task-list");
+    list.innerHTML = tasks.length ? tasks.map((t) => itemHTML(t)).join("")
+      : `<li class="empty">${filter === "mine" ? "لا توجد مهام مسندة إليك." : filter === "late" ? "لا توجد مهام متأخرة." : "لا توجد مهام بعد. أضف أول مهمة من النموذج أعلاه."}</li>`;
+
+    const pending = all.filter((t) => !t.done).length;
+    const overdue = all.filter(ui.isOverdue).length;
+    const myPending = all.filter((t) => !t.done && mine(t)).length;
     document.getElementById("task-counts").textContent =
-      `${ui.fmt(pending)} قيد الانتظار · ${ui.fmt(overdue)} متأخرة · ${ui.fmt(tasks.length - pending)} منجزة`;
+      `${ui.fmt(pending)} قيد الانتظار · ${ui.fmt(overdue)} متأخرة · ${ui.fmt(all.length - pending)} منجزة${me() ? ` · ${ui.fmt(myPending)} عليك` : ""}`;
+    document.querySelectorAll("[data-task-filter]").forEach((b) => b.classList.toggle("active", b.dataset.taskFilter === filter));
   }
 
   function init() {
+    document.querySelectorAll("[data-task-filter]").forEach((b) => b.addEventListener("click", () => { filter = b.dataset.taskFilter; render(); }));
+    if (App.profile) App.profile.onChange(render);
     const form = document.getElementById("task-form");
     const dueInput = document.getElementById("task-due");
 
