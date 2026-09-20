@@ -23,6 +23,9 @@
     return String(v == null ? "" : v);
   };
   const isDone = (rec, col) => cellValue(rec.values[col.key], col) === (col.doneValue || DONE);
+  /* عمود بخيارين فقط يُعرض مربع تعليم؛ وبأكثر من خيارين يُعرض قائمة منسدلة */
+  const isYesNo = (col) => (col.options || []).length === 2;
+  const otherValue = (col) => (col.options || []).find((o) => o !== (col.doneValue || DONE)) || NOT_DONE;
 
   /* مفتاح لاتيني ثابت لكل عمود حتى لا يتأثر بتغيّر صياغة العنوان */
   function slug(label, used) {
@@ -309,6 +312,8 @@
         ${m.columns.map((c) => {
           if (c.type !== "select") return `<td><input type="text" data-k="${esc(c.key)}" value="${esc(r.values[c.key] || "")}"></td>`;
           const v = cellValue(r.values[c.key], c);
+          // خياران فقط (تم / لم يتم): مربع تعليم كما في Excel. أكثر من خيارين: قائمة منسدلة
+          if (isYesNo(c)) return `<td class="ros-check"><input type="checkbox" data-k="${esc(c.key)}" ${v === (c.doneValue || DONE) ? "checked" : ""} aria-label="${esc(c.label)}" title="${esc(c.label)}"></td>`;
           const opts = [...new Set([...(c.options || []), v].filter(Boolean))];
           return `<td><select data-k="${esc(c.key)}" class="ros-sel ${v === (c.doneValue || DONE) ? "done" : v ? "not" : ""}" aria-label="${esc(c.label)}">
             <option value=""></option>
@@ -469,15 +474,17 @@
     if (!tr || !key) return;
     const rec = rows().find((r) => r.id === tr.dataset.id);
     if (!rec) return;
-    rec.values[key] = e.target.value;
-    if (e.target.tagName === "SELECT") {
-      const col = meta().columns.find((c) => c.key === key);
-      e.target.className = `ros-sel ${e.target.value === (col.doneValue || DONE) ? "done" : e.target.value ? "not" : ""}`;
+    const col = meta().columns.find((c) => c.key === key);
+    if (e.target.type === "checkbox") {
+      rec.values[key] = e.target.checked ? (col.doneValue || DONE) : otherValue(col);
+    } else {
+      rec.values[key] = e.target.value;
+      if (e.target.tagName === "SELECT") e.target.className = `ros-sel ${e.target.value === (col.doneValue || DONE) ? "done" : e.target.value ? "not" : ""}`;
     }
     rec.updatedAt = new Date().toISOString();
     rec.updatedBy = App.profile ? App.profile.name() : "";
     autoSave();
-    if (e.target.tagName === "SELECT") {
+    if (e.target.tagName === "SELECT" || e.target.type === "checkbox") {
       // تحديث المؤشرات فقط، دون إعادة بناء الجدول أثناء الكتابة
       const m = meta();
       $("ros-stats").innerHTML = m.columns.filter((c) => c.type === "select").map((c) => {
