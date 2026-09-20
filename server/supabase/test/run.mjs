@@ -193,5 +193,30 @@ check("التصدير يعيد البصمة لا كلمة المرور", !!back.
 check("وكلمتها رُقّيت تلقائياً بعد أول دخول", back.algo === "pbkdf2", back.algo);
 check("والتصدير يشمل كل الحسابات", exported.users.length >= 4, exported.users.map((u) => u.username));
 
+/* ===== 13. اعتماد بيانات جهاز (نقل بين الخوادم) ===== */
+console.log("\n[13] اعتماد بيانات جهاز");
+// مسار محذوف للتوّ: المزامنة العادية ترفض إعادته، والاعتماد يقبلها
+const gone = { id: "t9", name: "مسار محذوف", updatedAt: new Date().toISOString() };
+await post({ action: "syncAll", token: T, cols: { tracks: { records: [gone], deleted: {} } } });
+await post({ action: "syncAll", token: T, cols: { tracks: { records: [], deleted: { t9: new Date().toISOString() } } } });
+let revived = await post({ action: "syncAll", token: T, cols: { tracks: { records: [{ ...gone, updatedAt: new Date().toISOString() }], deleted: {} } } });
+check("المزامنة العادية ترفض إعادة المحذوف", !revived.tracks.records.some((x) => x.id === "t9"));
+
+check("غير المدير لا يعتمد بيانات", (await post({ action: "adopt", token: O, cols: {} })).error === "هذا الإجراء للمدير فقط");
+
+const ad = await post({ action: "adopt", token: T, cols: {
+  tracks: { records: [gone, { id: "t10", name: "مسار جديد", updatedAt: new Date().toISOString() }] },
+  registry: { records: [{ id: "g1", number: "ج/001", subject: "منقول", updatedAt: new Date().toISOString() }] },
+} });
+check("اعتُمدت الأقسام بأعدادها", ad.adopted.tracks === 2 && ad.adopted.registry === 1, ad);
+
+const after = await post({ action: "syncAll", token: T, cols: { tracks: { records: [], deleted: {} } } });
+check("المحذوف عاد بعد الاعتماد", after.tracks.records.some((x) => x.id === "t9"), after.tracks.records.map((x) => x.id));
+check("وشاهد الحذف أُزيل", !after.tracks.deleted.t9);
+const moved = await post({ action: "sync", token: T, records: [], deleted: {} });
+check("وسجل الوارد والصادر استُقبل", moved.records.some((r) => r.id === "g1"));
+check("والقيد المنقول نُسب لصاحبه", moved.records.find((r) => r.id === "g1").owner === "شادي");
+check("الاعتماد مسجّل في الأحداث", (await post({ action: "events", token: T, days: 1, limit: 80 })).events.some((e) => e.action === "اعتماد بيانات جهاز"));
+
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);

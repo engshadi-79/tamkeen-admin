@@ -118,6 +118,7 @@
   const deleteUser = (username) => call("deleteUser", { username });
   const exportUsers = async () => (await call("exportUsers")).users || [];
   const importUsers = (list) => call("importUsers", { users: list });
+  const adopt = (cols) => call("adopt", { cols });
 
   /* ===== الملفات والسجل ===== */
   const toBase64 = (blob) => new Promise((resolve, reject) => {
@@ -154,7 +155,7 @@
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
-    isTrial, useServer, defaultUrl: DEFAULT_URL, exportUsers, importUsers,
+    isTrial, useServer, defaultUrl: DEFAULT_URL, exportUsers, importUsers, adopt,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});

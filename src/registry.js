@@ -237,6 +237,14 @@
       local.forEach((r) => { sentPrints[r.id] = fingerprint(r); });
       // بلا تغييرات: طلب قراءة فقط، فلا يكتب الخادم شيئاً ولا يزدحم القفل
       const merged = await App.cloud.sync(changed.length || Object.keys(deleted).length ? local : [], deleted);
+      // خادم أعاد سجلاً فارغاً بلا أي شاهد حذف، ونحن لم نرسل شيئاً:
+      // خادم جديد أو فارغ، فلا تُمسح قيود الجهاز بردّه — تُرفع في الجولة التالية.
+      if (!merged.records.length && !Object.keys(merged.deleted || {}).length && local.length
+          && !changed.length && !Object.keys(deleted).length) {
+        saveSnap([]);
+        scheduleSync(1500);
+        return;
+      }
       // الملف المحلي (fileId) يخص هذا الجهاز فقط: يُحتفظ به إن كان القيد نفسه
       const localFiles = new Map(local.filter((r) => r.fileId).map((r) => [r.id, r]));
       merged.records.forEach((r) => {

@@ -85,6 +85,7 @@ function doPost(e) {
       case "users": return out_({ users: Object.keys(users_()).map((u) => publicUser_(users_()[u])) });
       case "digest": return out_(setupDigest_(req.enabled, req.hour));
       case "saveUser": return out_(saveUser_(req.user, user));
+      case "adopt": return out_(adopt_(req.cols || {}, user));
       case "exportUsers": return out_(exportUsers_());
       case "importUsers": return out_(importUsers_(req.users, user));
       case "deleteUser": return out_(deleteUser_(req.username, user));
@@ -256,6 +257,35 @@ function saveUser_(data, by) {
     saveUsers_(all);
     if (data.password || u.active === false) cleanSessions_(existing ? username : null); // كلمة مرور جديدة أو إيقاف: خروج من كل الأجهزة
     return { user: publicUser_(u) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* اعتماد بيانات جهاز كاملة على هذا الخادم (للنقل بين الخوادم):
+   يُكتب كل سجل بلا مقارنة وقت، وتُزال شواهد الحذف عن معرّفاته. للمدير وحده. */
+function adopt_(cols, user) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(45000)) throw new Error("الخادم مشغول، أعد المحاولة بعد لحظات");
+  try {
+    const adopted = {};
+    Object.keys(cols || {}).forEach((name) => {
+      if (name !== "registry" && !isCol_(name)) return;
+      const recs = (cols[name].records || []).filter((r) => r && r.id);
+      adopted[name] = 0;
+      if (!recs.length) return;
+      const file = name === "registry" ? dataFile_() : colFile_(name);
+      const data = readData_(file);
+      const map = {};
+      (data.records || []).forEach((r) => { map[r.id] = r; });
+      const del = Object.assign({}, data.deleted || {});
+      // قيد بلا صاحب يُنسب لمن اعتمد النقل
+      recs.forEach((r) => { if (!r.owner) r.owner = user.name; map[r.id] = r; delete del[r.id]; });
+      file.setContent(JSON.stringify({ records: Object.keys(map).map((k) => map[k]), deleted: del }));
+      adopted[name] = recs.length;
+    });
+    log_(user.name, "اعتماد بيانات جهاز", Object.keys(adopted).map((k) => k + ": " + adopted[k]).join(" · "));
+    return { adopted: adopted };
   } finally {
     lock.releaseLock();
   }

@@ -32,6 +32,7 @@
   let info = {};
 
   const viewLabel = (id) => (VIEWS.find((v) => v.id === id) || {}).label || id;
+  const LABEL = { registry: "الوارد والصادر", tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "المستفيدون", settings: "الإعدادات" };
 
   async function load() {
     if (!App.profile.isAdmin()) return;
@@ -179,6 +180,31 @@
     } catch (e) { ui.toast(e.message); }
   }
 
+  /* رفع كل بيانات هذا الجهاز إلى الخادم الحالي واعتمادها — للنقل بين الخوادم */
+  async function adoptDevice() {
+    const s = store.get();
+    const cols = App.shared.collect();
+    cols.registry = { records: (s.registry || []).filter((r) => !r.deletedAt) };
+    const total = Object.keys(cols).reduce((n, k) => n + cols[k].records.length, 0);
+    if (!total) { ui.toast("لا توجد بيانات على هذا الجهاز"); return; }
+    const detail = Object.keys(cols).filter((k) => cols[k].records.length)
+      .map((k) => `${LABEL[k] || k}: ${ui.fmt(cols[k].records.length)}`).join("\n");
+    if (!confirm(`رفع بيانات هذا الجهاز إلى الخادم الحالي واعتمادها؟\n\n${detail}\n\nما على الخادم من هذه القيود يُستبدل بنسخة هذا الجهاز.`)) return;
+    $("adm-adopt").disabled = true;
+    try {
+      const r = await App.cloud.adopt(cols);
+      const n = Object.keys(r.adopted || {}).reduce((a, k) => a + r.adopted[k], 0);
+      // بصمات المزامنة بعد الاعتماد تبدأ من جديد
+      App.shared.resetSnap();
+      try { localStorage.removeItem("tamkeen-admin:reg-sync"); } catch (e) { /* تخزين غير متاح */ }
+      ui.toast(`اُعتُمد ${ui.fmt(n)} سجلاً على هذا الخادم`);
+      await App.shared.sync(true);
+      await App.registry.syncShared(true);
+      renderStats();
+    } catch (e) { ui.toast(e.message); }
+    $("adm-adopt").disabled = false;
+  }
+
   function suggestPassword() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
     const a = new Uint32Array(10);
@@ -209,6 +235,7 @@
     $("adm-admin").addEventListener("change", syncAdminToggle);
     $("adm-refresh").addEventListener("click", load);
     $("adm-export").addEventListener("click", exportUsers);
+    $("adm-adopt").addEventListener("click", adoptDevice);
     $("adm-import").addEventListener("click", () => $("adm-import-file").click());
     $("adm-import-file").addEventListener("change", (e) => { importUsers(e.target.files[0]); e.target.value = ""; });
     $("adm-digest-save").addEventListener("click", saveDigest);

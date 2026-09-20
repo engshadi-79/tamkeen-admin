@@ -453,6 +453,42 @@ async function syncAll(cols: Record<string, any>, user: any) {
   return result;
 }
 
+/* اعتماد بيانات جهاز كاملة على هذا الخادم (للنقل بين الخوادم).
+   بخلاف المزامنة: يُكتب كل سجل بلا مقارنة وقت، وتُزال شواهد الحذف عن معرّفاته
+   حتى لا يمنعها حارس منع عودة المحذوف. للمدير وحده، وبتأكيد منه. */
+async function adopt(cols: Record<string, any>, user: any) {
+  const adopted: Record<string, number> = {};
+  for (const name of Object.keys(cols || {})) {
+    if (!COL_NAME.test(name)) continue;
+    const recs = (cols[name].records || []).filter((r: any) => r && r.id);
+    adopted[name] = 0;
+    if (!recs.length) continue;
+    const ids = recs.map((r: any) => String(r.id));
+    for (const part of chunk(ids, 100)) await db.from("deletions").delete().eq("col", name).in("id", part);
+    const now = new Date().toISOString();
+    const rows = recs.map((r: any) => {
+      // قيد بلا صاحب يُنسب لمن اعتمد النقل، في السجل نفسه لا في العمود وحده
+      const data = r.owner ? r : { ...r, owner: user.name };
+      return {
+        col: name,
+        id: String(r.id),
+        owner: String(data.owner),
+        stamp: String(stampOf(data) || now),
+        data,
+        search: searchText(data),
+        updated_at: now,
+      };
+    });
+    for (const part of chunk(rows, 500)) {
+      const { error } = await db.from("records").upsert(part, { onConflict: "col,id" });
+      if (error) throw new Error(error.message);
+    }
+    adopted[name] = rows.length;
+  }
+  await log(user.name, "اعتماد بيانات جهاز", Object.keys(adopted).map((k) => `${k}: ${adopted[k]}`).join(" · "));
+  return { adopted };
+}
+
 /* ===== حجز أرقام الصادر ===== */
 async function reserve(head: unknown, count: unknown) {
   const n = Math.max(1, Math.min(500, Number(count) || 1));
@@ -656,6 +692,7 @@ Deno.serve(async (httpReq) => {
         return json({ users: (data || []).map(publicUser) });
       }
       case "saveUser": return json(await saveUser(req.user, user));
+      case "adopt": return json(await adopt(req.cols || {}, user));
       case "exportUsers": return json(await exportUsers());
       case "importUsers": return json(await importUsers(req.users, user));
       case "deleteUser": return json(await deleteUser(req.username, user));

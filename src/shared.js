@@ -189,5 +189,17 @@
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") schedule(1000); });
   }
 
-  App.shared = { init, sync, names, loadPeople, allowWipe };
+  /* كل الأقسام كما تُرسل للخادم، بما فيها الإعدادات */
+  function collect() {
+    const out = {};
+    COLS.forEach((name) => { out[name] = { records: readCol(name) }; });
+    return out;
+  }
+
+  /* بعد اعتماد البيانات على خادم جديد: تُمسح البصمات لتبدأ مزامنة نظيفة */
+  function resetSnap() {
+    try { localStorage.removeItem(SNAP_KEY); } catch (e) { /* تخزين غير متاح */ }
+  }
+
+  App.shared = { init, sync, names, loadPeople, allowWipe, collect, resetSnap };
 })(window.App = window.App || {});
