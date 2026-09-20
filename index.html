@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=72">
+  <link rel="stylesheet" href="styles/theme.css?v=73">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -388,8 +388,14 @@
                 <tbody id="ros-body"></tbody>
               </table>
             </div>
-            <p class="conv-hint">كل تعديل يُحفظ تلقائياً ويُزامَن مع بقية الأجهزة. الصفوف المضافة في آخر رفع مميّزة بلون.</p>
+            <p class="conv-hint">كل تعديل يُحفظ تلقائياً ويُزامَن مع بقية الأجهزة. الصفوف المضافة في آخر رفع مميّزة بلون. زر «📝» بجانب كل اسم لملاحظات المتابعة المؤرخة.</p>
           </div>
+          <details class="card">
+            <summary>✍ نص تقرير المتابعة (مقدمة وتوصيات)</summary>
+            <label class="field" style="margin-top:12px"><span>مقدمة التقرير (كل سطر فقرة)</span><textarea id="ros-intro" rows="3" data-ai-polish="مقدمة تقرير متابعة تعهدات المستفيدين" placeholder="مثال: إلحاقاً لمتابعة استكمال تعهدات المتدربين في الدورة الثانية، نرفع لسيادتكم الموقف التالي:"></textarea></label>
+            <label class="field"><span>التوصيات (كل سطر بند)</span><textarea id="ros-closing" rows="3" data-ai-polish="توصيات في تقرير متابعة تعهدات المستفيدين" placeholder="مثال: التواصل مع المتبقين خلال أسبوع، وإغلاق الملف قبل نهاية الشهر."></textarea></label>
+            <label class="conv-check strong"><input type="checkbox" id="ros-notes-in-report" checked> إدراج ملاحظات المتابعة في التقرير</label>
+          </details>
         </div>
       </section>
 
@@ -779,40 +785,53 @@
     </div>
   </div>
 
+  <!-- ملاحظات المتابعة لشخص -->
+  <div class="modal-backdrop" id="ros-notes-modal" role="dialog" aria-modal="true" aria-labelledby="ros-notes-title">
+    <div class="modal">
+      <h3 id="ros-notes-title">📝 ملاحظات</h3>
+      <ul class="act-list" id="ros-notes-list"></ul>
+      <label class="field"><span>ملاحظة جديدة</span><textarea id="ros-note-text" rows="2" data-ai-polish="ملاحظة متابعة عن مستفيد" placeholder="مثال: تم التواصل هاتفياً ووعد بإحضار التعهد الأحد القادم"></textarea></label>
+      <div class="btn-row">
+        <button class="btn navy" type="button" id="ros-note-add">إضافة الملاحظة</button>
+        <button class="btn secondary" type="button" id="ros-notes-close">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=72"></script>
-  <script src="src/ui.js?v=72"></script>
-  <script src="src/templates.js?v=72"></script>
-  <script src="src/tracks.js?v=72"></script>
-  <script src="src/tasks.js?v=72"></script>
-  <script src="src/dashboard.js?v=72"></script>
-  <script src="src/letterhead-docx.js?v=72"></script>
-  <script src="src/docx.js?v=72"></script>
-  <script src="src/ai.js?v=72"></script>
-  <script src="src/doc-render.js?v=72"></script>
-  <script src="src/files-store.js?v=72"></script>
-  <script src="src/shared.js?v=72"></script>
-  <script src="src/cloud.js?v=72"></script>
-  <script src="src/drive.js?v=72"></script>
-  <script src="src/drive-ui.js?v=72"></script>
-  <script src="src/rtl-fixer.js?v=72"></script>
-  <script src="src/rtl-page.js?v=72"></script>
-  <script src="src/profile.js?v=72"></script>
-  <script src="src/roster.js?v=72"></script>
-  <script src="src/registry.js?v=72"></script>
-  <script src="src/charts.js?v=72"></script>
-  <script src="src/ai-assist.js?v=72"></script>
-  <script src="src/meetings.js?v=72"></script>
-  <script src="src/report.js?v=72"></script>
-  <script src="src/letters.js?v=72"></script>
+  <script src="src/storage.js?v=73"></script>
+  <script src="src/ui.js?v=73"></script>
+  <script src="src/templates.js?v=73"></script>
+  <script src="src/tracks.js?v=73"></script>
+  <script src="src/tasks.js?v=73"></script>
+  <script src="src/dashboard.js?v=73"></script>
+  <script src="src/letterhead-docx.js?v=73"></script>
+  <script src="src/docx.js?v=73"></script>
+  <script src="src/ai.js?v=73"></script>
+  <script src="src/doc-render.js?v=73"></script>
+  <script src="src/files-store.js?v=73"></script>
+  <script src="src/shared.js?v=73"></script>
+  <script src="src/cloud.js?v=73"></script>
+  <script src="src/drive.js?v=73"></script>
+  <script src="src/drive-ui.js?v=73"></script>
+  <script src="src/rtl-fixer.js?v=73"></script>
+  <script src="src/rtl-page.js?v=73"></script>
+  <script src="src/profile.js?v=73"></script>
+  <script src="src/roster.js?v=73"></script>
+  <script src="src/registry.js?v=73"></script>
+  <script src="src/charts.js?v=73"></script>
+  <script src="src/ai-assist.js?v=73"></script>
+  <script src="src/meetings.js?v=73"></script>
+  <script src="src/report.js?v=73"></script>
+  <script src="src/letters.js?v=73"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=72"></script>
-  <script src="src/converter-store.js?v=72"></script>
-  <script src="src/converter.js?v=72"></script>
-  <script src="src/app.js?v=72"></script>
+  <script src="src/converter-core.js?v=73"></script>
+  <script src="src/converter-store.js?v=73"></script>
+  <script src="src/converter.js?v=73"></script>
+  <script src="src/app.js?v=73"></script>
 </body>
 </html>

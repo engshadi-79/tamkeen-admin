@@ -7,6 +7,7 @@
   const esc = ui.esc;
 
   const rows = () => (store.get().roster = store.get().roster || []);
+  const lines = (t) => String(t || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const meta = () => (store.get().rosterMeta = Object.assign({ columns: [], keyColumn: "", name: "", importedAt: "", lastImport: null }, store.get().rosterMeta));
 
   const TRUE_WORDS = ["true", "نعم", "تم", "موقع", "موقّع", "✓", "yes", "1"];
@@ -192,6 +193,8 @@
     if (!has) return;
 
     $("ros-title").textContent = m.name || "قائمة المستفيدين";
+    if (document.activeElement !== $("ros-intro")) $("ros-intro").value = m.intro || "";
+    if (document.activeElement !== $("ros-closing")) $("ros-closing").value = m.closing || "";
     $("ros-sub").textContent = `${ui.fmt(rows().length)} سجل · ${ui.fmt(m.columns.length)} عمود`
       + (m.lastImport ? ` · آخر رفع: ${ui.formatDate(String(m.lastImport.at).slice(0, 10))} (${ui.fmt(m.lastImport.added)} جديد)` : "");
 
@@ -231,9 +234,55 @@
         ${m.columns.map((c) => `<td>${c.type === "check"
           ? `<input type="checkbox" data-k="${esc(c.key)}" ${r.values[c.key] ? "checked" : ""} aria-label="${esc(c.label)}">`
           : `<input type="text" data-k="${esc(c.key)}" value="${esc(r.values[c.key] || "")}">`}</td>`).join("")}
-        <td class="reg-actions"><button class="act-btn del" data-del title="حذف السجل">🗑</button></td>
+        <td class="reg-actions nowrap">
+          <button class="act-btn edit" data-notes title="ملاحظات المتابعة">📝${(r.notes || []).length ? ` ${ui.fmt(r.notes.length)}` : ""}</button>
+          <button class="act-btn del" data-del title="حذف السجل">🗑</button>
+        </td>
       </tr>`).join("")
       : `<tr><td colspan="${m.columns.length + 2}" class="empty">لا توجد سجلات مطابقة.</td></tr>`;
+  }
+
+  /* ===== ملاحظات المتابعة: عدة ملاحظات لكل شخص، لكل واحدة تاريخ وكاتب ===== */
+  let notesId = null;
+
+  const notesOf = (rec) => (rec.notes = rec.notes || []);
+  const nameOf = (rec) => {
+    const col = meta().columns.find((c) => /اسم/.test(c.label)) || meta().columns[0];
+    return col ? rec.values[col.key] || "" : "";
+  };
+
+  function openNotes(rec) {
+    notesId = rec.id;
+    $("ros-notes-title").textContent = `📝 ملاحظات: ${nameOf(rec)}`;
+    $("ros-note-text").value = "";
+    renderNotes();
+    $("ros-notes-modal").classList.add("open");
+    setTimeout(() => $("ros-note-text").focus(), 50);
+  }
+  const closeNotes = () => { $("ros-notes-modal").classList.remove("open"); notesId = null; };
+
+  function renderNotes() {
+    const rec = rows().find((r) => r.id === notesId);
+    if (!rec) return;
+    const list = notesOf(rec).slice().sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    $("ros-notes-list").innerHTML = list.length ? list.map((n) => `<li>
+        <span class="act-when">${esc(ui.formatDate(String(n.at).slice(0, 10)))}${n.by ? ` · ${esc(n.by)}` : ""}</span>
+        <span>${esc(n.text)}</span>
+        <button type="button" class="conv-link danger" data-note-del="${esc(n.id)}" title="حذف الملاحظة">✕</button>
+      </li>`).join("") : `<li class="conv-hint">لا توجد ملاحظات بعد.</li>`;
+  }
+
+  function addNote() {
+    const rec = rows().find((r) => r.id === notesId);
+    const text = $("ros-note-text").value.trim();
+    if (!rec || !text) { $("ros-note-text").focus(); return; }
+    notesOf(rec).push({ id: store.uid(), text, at: new Date().toISOString(), by: App.profile ? App.profile.name() : "" });
+    rec.updatedAt = new Date().toISOString();
+    store.save();
+    $("ros-note-text").value = "";
+    renderNotes();
+    render();
+    ui.toast("أُضيفت الملاحظة");
   }
 
   /* ===== الإضافة اليدوية ===== */
@@ -297,10 +346,12 @@
     const m = meta();
     const wb = new ExcelJS.Workbook();
     const sh = wb.addWorksheet(m.name ? m.name.slice(0, 28) : "القائمة", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
-    sh.columns = m.columns.map((c) => ({ header: c.label, key: c.key, width: c.type === "check" ? 14 : 24 }));
+    sh.columns = m.columns.map((c) => ({ header: c.label, key: c.key, width: c.type === "check" ? 14 : 24 }))
+      .concat([{ header: "ملاحظات المتابعة", key: "__notes", width: 40 }]);
     filtered().forEach((r) => {
       const row = {};
       m.columns.forEach((c) => { row[c.key] = c.type === "check" ? (r.values[c.key] ? "تم" : "لم يتم") : r.values[c.key] || ""; });
+      row.__notes = (r.notes || []).map((n) => `${ui.formatDate(String(n.at).slice(0, 10))}: ${n.text}`).join(" | ");
       sh.addRow(row);
     });
     sh.getRow(1).font = { bold: true };
@@ -313,6 +364,8 @@
     const m = meta();
     const list = filtered();
     const checks = checkColumns();
+    const intro = lines($("ros-intro").value);
+    const closing = lines($("ros-closing").value);
     const out = [
       { kind: "title", text: "بسم الله الرحمن الرحيم" },
       { kind: "meta", text: `التاريخ: ${ui.formatDate(ui.todayISO())}`, sizePt: 12 },
@@ -320,6 +373,10 @@
       { kind: "title", text: `تقرير ${m.name || "قائمة المستفيدين"}` },
       { kind: "para", text: "" },
     ];
+    if (intro.length) {
+      intro.forEach((t) => out.push({ kind: "para", text: t }));
+      out.push({ kind: "para", text: "" });
+    }
     if (checks.length) {
       out.push({ kind: "bold", text: "أولاً: ملخص الإنجاز" });
       out.push({
@@ -345,6 +402,21 @@
         rows: missing.map((r, i) => [String(i + 1), r.values[nameCol.key] || "", ...m.columns.filter((x) => x.type !== "check" && x !== nameCol).slice(0, 3).map((x) => String(r.values[x.key] || ""))]),
       });
     });
+    const withNotes = list.filter((r) => (r.notes || []).length);
+    if ($("ros-notes-in-report").checked && withNotes.length) {
+      out.push({ kind: "para", text: "" }, { kind: "bold", text: `ملاحظات المتابعة (${ui.fmt(withNotes.length)})` });
+      out.push({
+        kind: "table",
+        headers: ["م", nameCol.label, "الملاحظة", "التاريخ"],
+        widths: [0.07, 0.3, 0.45, 0.18],
+        align: ["center", null, null, "center"],
+        rows: withNotes.flatMap((r, i) => (r.notes || []).map((n, j) => [j ? "" : String(i + 1), j ? "" : r.values[nameCol.key] || "", n.text, ui.formatDate(String(n.at).slice(0, 10))])),
+      });
+    }
+    if (closing.length) {
+      out.push({ kind: "para", text: "" }, { kind: "bold", text: "التوصيات" });
+      closing.forEach((t) => out.push({ kind: "para", text: t }));
+    }
     out.push({ kind: "para", text: "" }, { kind: "signature", lines: [store.get().signerTitle, store.get().signer].filter(Boolean) });
     return out;
   }
@@ -358,6 +430,8 @@
     $("ros-body").addEventListener("input", onEdit);
     $("ros-body").addEventListener("change", onEdit);
     $("ros-body").addEventListener("click", (e) => {
+      const tr0 = e.target.closest("tr[data-id]");
+      if (e.target.closest("[data-notes]")) { openNotes(rows().find((r) => r.id === tr0.dataset.id)); return; }
       if (!e.target.closest("[data-del]")) return;
       const tr = e.target.closest("tr[data-id]");
       const rec = rows().find((r) => r.id === tr.dataset.id);
@@ -376,8 +450,21 @@
       if (e.target.id === "ros-only") filter.only = e.target.value;
       render();
     });
+    ["intro", "closing"].forEach((k) => $("ros-" + k).addEventListener("input", (e) => { meta()[k] = e.target.value; autoSave(); }));
     $("ros-add").addEventListener("click", addRecord);
     $("ros-add-col").addEventListener("click", addColumn);
+    $("ros-note-add").addEventListener("click", addNote);
+    $("ros-notes-close").addEventListener("click", closeNotes);
+    $("ros-notes-modal").addEventListener("click", (e) => { if (e.target.id === "ros-notes-modal") closeNotes(); });
+    $("ros-notes-list").addEventListener("click", (e) => {
+      const id = e.target.dataset.noteDel;
+      if (!id) return;
+      const rec = rows().find((r) => r.id === notesId);
+      rec.notes = notesOf(rec).filter((n) => n.id !== id);
+      store.save();
+      renderNotes();
+      render();
+    });
     $("ros-export").addEventListener("click", exportExcel);
     $("ros-report").addEventListener("click", () => App.docRender.print(reportBlocks(), `تقرير ${meta().name || "المستفيدين"} - ${ui.todayISO()}`, false));
     $("ros-report-word").addEventListener("click", () => App.docRender.exportWord(reportBlocks(), `تقرير ${meta().name || "المستفيدين"} - ${ui.todayISO()}`));
