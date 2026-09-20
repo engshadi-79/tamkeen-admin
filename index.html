@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=74">
+  <link rel="stylesheet" href="styles/theme.css?v=75">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -363,6 +363,7 @@
             <button class="btn navy" data-ros-import>⬆ رفع ملف Excel</button>
             <button class="btn" id="ros-add">+ سجل جديد</button>
             <button class="btn secondary" id="ros-add-col">+ عمود جديد</button>
+            <button class="btn secondary" id="ros-cols">🗂 الأعمدة</button>
             <button class="btn secondary" id="ros-export">تصدير Excel</button>
             <button class="btn" id="ros-report">🖨 تقرير المتابعة</button>
             <button class="btn secondary" id="ros-report-word">تقرير Word</button>
@@ -798,40 +799,50 @@
     </div>
   </div>
 
+  <!-- أعمدة النظام -->
+  <div class="modal-backdrop" id="ros-cols-modal" role="dialog" aria-modal="true" aria-labelledby="ros-cols-title">
+    <div class="modal">
+      <h3 id="ros-cols-title">🗂 أعمدة النظام</h3>
+      <p class="conv-hint">هذه الأعمدة ثابتة: أي ملف Excel ترفعه يُقرأ عليها فقط، ويُتجاهَل ما عداها. يمكنك تغيير الاسم أو النوع أو الترتيب أو الحذف.</p>
+      <ul class="ros-cols" id="ros-cols-list"></ul>
+      <div class="btn-row"><button class="btn secondary" type="button" id="ros-cols-close">إغلاق</button></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=74"></script>
-  <script src="src/ui.js?v=74"></script>
-  <script src="src/templates.js?v=74"></script>
-  <script src="src/tracks.js?v=74"></script>
-  <script src="src/tasks.js?v=74"></script>
-  <script src="src/dashboard.js?v=74"></script>
-  <script src="src/letterhead-docx.js?v=74"></script>
-  <script src="src/docx.js?v=74"></script>
-  <script src="src/ai.js?v=74"></script>
-  <script src="src/doc-render.js?v=74"></script>
-  <script src="src/files-store.js?v=74"></script>
-  <script src="src/shared.js?v=74"></script>
-  <script src="src/cloud.js?v=74"></script>
-  <script src="src/drive.js?v=74"></script>
-  <script src="src/drive-ui.js?v=74"></script>
-  <script src="src/rtl-fixer.js?v=74"></script>
-  <script src="src/rtl-page.js?v=74"></script>
-  <script src="src/profile.js?v=74"></script>
-  <script src="src/roster.js?v=74"></script>
-  <script src="src/registry.js?v=74"></script>
-  <script src="src/charts.js?v=74"></script>
-  <script src="src/ai-assist.js?v=74"></script>
-  <script src="src/meetings.js?v=74"></script>
-  <script src="src/report.js?v=74"></script>
-  <script src="src/letters.js?v=74"></script>
+  <script src="src/storage.js?v=75"></script>
+  <script src="src/ui.js?v=75"></script>
+  <script src="src/templates.js?v=75"></script>
+  <script src="src/tracks.js?v=75"></script>
+  <script src="src/tasks.js?v=75"></script>
+  <script src="src/dashboard.js?v=75"></script>
+  <script src="src/letterhead-docx.js?v=75"></script>
+  <script src="src/docx.js?v=75"></script>
+  <script src="src/ai.js?v=75"></script>
+  <script src="src/doc-render.js?v=75"></script>
+  <script src="src/files-store.js?v=75"></script>
+  <script src="src/shared.js?v=75"></script>
+  <script src="src/cloud.js?v=75"></script>
+  <script src="src/drive.js?v=75"></script>
+  <script src="src/drive-ui.js?v=75"></script>
+  <script src="src/rtl-fixer.js?v=75"></script>
+  <script src="src/rtl-page.js?v=75"></script>
+  <script src="src/profile.js?v=75"></script>
+  <script src="src/roster.js?v=75"></script>
+  <script src="src/registry.js?v=75"></script>
+  <script src="src/charts.js?v=75"></script>
+  <script src="src/ai-assist.js?v=75"></script>
+  <script src="src/meetings.js?v=75"></script>
+  <script src="src/report.js?v=75"></script>
+  <script src="src/letters.js?v=75"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=74"></script>
-  <script src="src/converter-store.js?v=74"></script>
-  <script src="src/converter.js?v=74"></script>
-  <script src="src/app.js?v=74"></script>
+  <script src="src/converter-core.js?v=75"></script>
+  <script src="src/converter-store.js?v=75"></script>
+  <script src="src/converter.js?v=75"></script>
+  <script src="src/app.js?v=75"></script>
 </body>
 </html>

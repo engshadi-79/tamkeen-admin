@@ -417,6 +417,10 @@ body.locked .app { filter: blur(6px); pointer-events: none; user-select: none; }
 .ros-table input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--teal-600); cursor: pointer; }
 .ros-table tr.ros-new td { background: #fffaf0; }
 .ros-saved { color: var(--ok); font-weight: 700; }
+.ros-cols { list-style: none; padding: 0; margin: 10px 0; max-height: 55vh; overflow: auto; }
+.ros-cols li { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--border); }
+.ros-cols input[type=text] { flex: 1; min-width: 120px; }
+.ros-cols select { width: auto; }
 .ros-cmp { list-style: none; padding: 0; margin: 8px 0; }
 .ros-cmp li { padding: 5px 0; border-bottom: 1px solid var(--border); }
 .digest-box { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; }

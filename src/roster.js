@@ -35,22 +35,37 @@
   const normId = (v) => String(v == null ? "" : v).replace(/[^\d٠-٩A-Za-z]/g, "").replace(/[٠-٩]/g, (c) => "٠١٢٣٤٥٦٧٨٩".indexOf(c));
   const normName = (v) => String(v || "").trim().replace(/\s+/g, " ").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
 
+  /* مطابقة عنوان عمود في الملف بعمود في النظام: تجاهل المسافات والأرقام والهمزات */
+  const normHead = (s) => String(s || "").trim().toLowerCase()
+    .replace(/[\u064B-\u0652]/g, "").replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/^ال/, "").replace(/[\s_\d().-]/g, "");
+
+  function matchColumn(label, columns) {
+    const n = normHead(label);
+    return columns.find((c) => normHead(c.label) === n)
+      || columns.find((c) => { const m = normHead(c.label); return m.length > 3 && (m.includes(n) || n.includes(m)); })
+      || null;
+  }
+
   /* ===== الاستيراد ===== */
   let pending = null; // { columns, keyColumn, records, fileName }
 
   async function readFile(file) {
     const data = await App.converterCore.readDataFile(await file.arrayBuffer());
-    const used = [];
+    const system = meta().columns;
+    const used = system.map((c) => c.key);
     const columns = data.headers.map((h) => {
+      const hit = system.length ? matchColumn(h, system) : null;
+      if (hit) return { key: hit.key, label: hit.label, type: hit.type, fileHeader: h };
       const key = slug(h, used);
       used.push(key);
-      return { key, label: h, type: columnType(h, data.rows.map((r) => r[h])) };
+      return { key, label: h, type: columnType(h, data.rows.map((r) => r[h])), fileHeader: h };
     });
     const keyCol = columns.find((c) => /هوية|هويه|رقم.*وطني|id/i.test(c.label)) || columns[0];
     const records = data.rows.map((r) => {
       const rec = { id: store.uid(), values: {} };
       columns.forEach((c) => {
-        const raw = r[c.label];
+        const raw = r[c.fileHeader || c.label];
         rec.values[c.key] = c.type === "check" ? toBool(raw) : String(raw == null ? "" : raw).trim();
       });
       return rec;
@@ -89,8 +104,10 @@
       pending = data;
       const m = meta();
       if (!rows().length) {
-        $("ros-import-body").innerHTML = `<p><b>${esc(file.name)}</b>: ${ui.fmt(data.count)} سجل، ${ui.fmt(data.columns.length)} عمود.</p>
-          <p class="conv-hint">الأعمدة: ${data.columns.map((c) => `${esc(c.label)}${c.type === "check" ? " (خانة تعليم)" : ""}`).join("، ")}</p>
+        $("ros-import-body").innerHTML = `<p><b>${esc(file.name)}</b>: ${ui.fmt(data.count)} سجل، ${ui.fmt(data.columns.length)} عمود في الملف.</p>
+          <p class="conv-hint">اختر الأعمدة التي تريدها في النظام. هذه الأعمدة تصبح ثابتة، وأي ملف ترفعه لاحقاً يُقرأ عليها فقط.</p>
+          <div class="conv-multi" id="ros-pick-cols">${data.columns.map((c) => `
+            <label class="conv-check"><input type="checkbox" data-col="${esc(c.key)}" checked> ${esc(c.label)}${c.type === "check" ? " <span class=\"reg-kind\">(خانة تعليم)</span>" : ""}</label>`).join("")}</div>
           <label class="field"><span>عمود المطابقة (يمنع تكرار الأسماء عند الرفع القادم)</span>
             <select id="ros-key">${data.columns.map((c) => `<option value="${esc(c.key)}" ${c.key === data.keyColumn ? "selected" : ""}>${esc(c.label)}</option>`).join("")}</select></label>`;
         $("ros-import-apply").textContent = `إنشاء القائمة (${ui.fmt(data.count)} سجل)`;
@@ -121,11 +138,17 @@
     if (!pending) return;
     const m = meta();
     if (!rows().length) {
-      m.columns = pending.columns;
+      const picked = [...document.querySelectorAll("#ros-pick-cols [data-col]")].filter((b) => b.checked).map((b) => b.dataset.col);
+      m.columns = pending.columns.filter((c) => !picked.length || picked.includes(c.key)).map((c) => ({ key: c.key, label: c.label, type: c.type }));
+      if (!m.columns.some((c) => c.key === pending.keyColumn) && m.columns.length) pending.keyColumn = m.columns[0].key;
       m.keyColumn = ($("ros-key") && $("ros-key").value) || pending.keyColumn;
       m.name = pending.fileName;
       m.importedAt = new Date().toISOString();
-      store.get().roster = pending.records.map((r) => Object.assign(r, { addedAt: m.importedAt, source: pending.fileName }));
+      store.get().roster = pending.records.map((r) => {
+        const values = {};
+        m.columns.forEach((c) => { values[c.key] = r.values[c.key] !== undefined ? r.values[c.key] : (c.type === "check" ? false : ""); });
+        return Object.assign(r, { values, addedAt: m.importedAt, source: pending.fileName });
+      });
       m.lastImport = { at: m.importedAt, file: pending.fileName, added: pending.records.length, changed: 0 };
       ui.toast(`أُنشئت القائمة بـ ${ui.fmt(pending.records.length)} سجل`);
     } else {
@@ -252,6 +275,58 @@
         </td>
       </tr>`).join("")
       : `<tr><td colspan="${m.columns.length + 2}" class="empty">لا توجد سجلات مطابقة.</td></tr>`;
+  }
+
+  /* ===== إدارة أعمدة النظام ===== */
+  function renderColumns() {
+    const m = meta();
+    $("ros-cols-list").innerHTML = m.columns.map((c, i) => `<li data-key="${esc(c.key)}">
+        <input type="text" data-col-label value="${esc(c.label)}" aria-label="اسم العمود">
+        <select data-col-type>
+          <option value="text" ${c.type === "text" ? "selected" : ""}>حقل كتابة</option>
+          <option value="check" ${c.type === "check" ? "selected" : ""}>خانة تعليم</option>
+        </select>
+        ${c.key === m.keyColumn ? `<span class="reg-kind">عمود المطابقة</span>` : `<button type="button" class="conv-link" data-col-key title="اجعله عمود المطابقة">🔑</button>`}
+        <button type="button" class="conv-link" data-col-up ${i === 0 ? "disabled" : ""} title="تحريك لأعلى">▲</button>
+        <button type="button" class="conv-link danger" data-col-del title="حذف العمود من النظام">✕</button>
+      </li>`).join("") || `<li class="conv-hint">لا توجد أعمدة بعد.</li>`;
+  }
+
+  function onColumnsClick(e) {
+    const li = e.target.closest("li[data-key]");
+    if (!li) return;
+    const m = meta();
+    const key = li.dataset.key;
+    const idx = m.columns.findIndex((c) => c.key === key);
+    if (e.target.closest("[data-col-del]")) {
+      const col = m.columns[idx];
+      if (!confirm(`حذف العمود «${col.label}» وكل قيمه من ${ui.fmt(rows().length)} سجل؟`)) return;
+      m.columns.splice(idx, 1);
+      rows().forEach((r) => { delete r.values[key]; });
+      if (m.keyColumn === key) m.keyColumn = m.columns.length ? m.columns[0].key : "";
+    } else if (e.target.closest("[data-col-up]")) {
+      m.columns.splice(idx - 1, 0, m.columns.splice(idx, 1)[0]);
+    } else if (e.target.closest("[data-col-key]")) {
+      m.keyColumn = key;
+    } else return;
+    store.save();
+    renderColumns();
+    render();
+  }
+
+  function onColumnsEdit(e) {
+    const li = e.target.closest("li[data-key]");
+    if (!li) return;
+    const col = meta().columns.find((c) => c.key === li.dataset.key);
+    if (!col) return;
+    if (e.target.hasAttribute("data-col-label")) col.label = e.target.value;
+    if (e.target.hasAttribute("data-col-type")) {
+      col.type = e.target.value;
+      rows().forEach((r) => { r.values[col.key] = col.type === "check" ? toBool(r.values[col.key]) : String(r.values[col.key] === true ? "نعم" : r.values[col.key] || ""); });
+      renderColumns();
+    }
+    autoSave();
+    render();
   }
 
   /* ===== ملاحظات المتابعة: عدة ملاحظات لكل شخص، لكل واحدة تاريخ وكاتب ===== */
@@ -465,6 +540,12 @@
     ["intro", "closing"].forEach((k) => $("ros-" + k).addEventListener("input", (e) => { meta()[k] = e.target.value; autoSave(); }));
     $("ros-add").addEventListener("click", addRecord);
     $("ros-add-col").addEventListener("click", addColumn);
+    $("ros-cols").addEventListener("click", () => { renderColumns(); $("ros-cols-modal").classList.add("open"); });
+    $("ros-cols-close").addEventListener("click", () => $("ros-cols-modal").classList.remove("open"));
+    $("ros-cols-modal").addEventListener("click", (e) => { if (e.target.id === "ros-cols-modal") $("ros-cols-modal").classList.remove("open"); });
+    $("ros-cols-list").addEventListener("click", onColumnsClick);
+    $("ros-cols-list").addEventListener("input", onColumnsEdit);
+    $("ros-cols-list").addEventListener("change", onColumnsEdit);
     $("ros-note-add").addEventListener("click", addNote);
     $("ros-notes-close").addEventListener("click", closeNotes);
     $("ros-notes-modal").addEventListener("click", (e) => { if (e.target.id === "ros-notes-modal") closeNotes(); });
