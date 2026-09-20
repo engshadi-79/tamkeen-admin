@@ -3,7 +3,7 @@
   const { store, ui } = App;
   const $ = (id) => document.getElementById(id);
   const esc = ui.esc;
-  const FIELDS = ["title", "date", "time", "place", "chair", "attendees", "agenda", "discussion", "writer"];
+  const FIELDS = ["title", "date", "time", "place", "chair", "attendees", "agenda", "discussion", "notes", "writer"];
 
   const meetings = () => (store.get().meetings = store.get().meetings || []);
   let currentId = null;
@@ -56,6 +56,10 @@
         rows: ds.map((d, i) => [String(i + 1), d.text.trim(), d.owner || "—", d.due ? ui.formatDate(d.due) : "—"]),
       });
     }
+    if (lines(v.notes).length) {
+      out.push({ kind: "para", text: "" }, { kind: "bold", text: `${ORD[n++]}: التوصيات الختامية` });
+      lines(v.notes).forEach((t) => out.push({ kind: "para", text: t }));
+    }
     out.push({ kind: "para", text: "" }, { kind: "signature", lines: ["مُعِدّ المحضر", v.writer || App.templates.PLACEHOLDER] });
     return out;
   }
@@ -81,13 +85,14 @@
       const status = task ? (task.done ? `<span class="badge good">منجز</span>` : ui.isOverdue(task) ? `<span class="badge low">متأخر</span>` : `<span class="badge craft">قيد التنفيذ</span>`) : "";
       return `<div class="m-dec" data-i="${i}">
         <span class="m-dec-n">${i + 1}</span>
-        <input type="text" data-f="text" value="${esc(d.text)}" placeholder="نص القرار أو التوصية">
+        <input type="text" data-f="text" value="${esc(d.text)}" placeholder="نص القرار أو التوصية" data-ai-polish="قرار أو توصية في محضر اجتماع">
         <input type="text" data-f="owner" value="${esc(d.owner || "")}" placeholder="المسؤول">
         <input type="date" data-f="due" value="${esc(d.due || "")}" title="موعد التنفيذ">
         ${status}
         <button type="button" class="conv-link danger" data-del title="حذف القرار">✕</button>
       </div>`;
     }).join("") : `<p class="conv-hint">لا توجد قرارات بعد.</p>`;
+    if (App.aiAssist) App.aiAssist.attach($("m-decisions"));
   }
 
   /* ===== الحفظ ومزامنة المهام ===== */

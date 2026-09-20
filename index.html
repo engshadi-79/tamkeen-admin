@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=68">
+  <link rel="stylesheet" href="styles/theme.css?v=70">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -224,9 +224,9 @@
               </div>
               <label class="field"><span>نص القسم (يمكنك تعديله)</span><textarea id="r-analysis" rows="6"></textarea></label>
             </fieldset>
-            <label class="field" style="margin-top:12px"><span>أبرز الإنجازات (كل سطر بند)</span><textarea id="r-highlights" rows="4"></textarea></label>
-            <label class="field"><span>التحديات</span><textarea id="r-challenges" rows="3"></textarea></label>
-            <label class="field"><span>الخطوات القادمة</span><textarea id="r-next" rows="3"></textarea></label>
+            <label class="field" style="margin-top:12px"><span>أبرز الإنجازات (كل سطر بند)</span><textarea id="r-highlights" rows="4" data-ai-polish="أبرز الإنجازات في تقرير دوري رسمي"></textarea></label>
+            <label class="field"><span>التحديات</span><textarea id="r-challenges" rows="3" data-ai-polish="التحديات في تقرير دوري رسمي"></textarea></label>
+            <label class="field"><span>الخطوات القادمة</span><textarea id="r-next" rows="3" data-ai-polish="الخطوات القادمة في تقرير دوري رسمي"></textarea></label>
           </div>
           <div class="preview-col">
             <div class="preview-bar"><span>معاينة على الترويسة الرسمية</span><span id="r-page-count"></span></div>
@@ -262,11 +262,12 @@
               <label class="field"><span>المكان</span><input type="text" id="m-place"></label>
               <label class="field"><span>رئيس الاجتماع</span><input type="text" id="m-chair"></label>
             </div>
-            <label class="field"><span>الحاضرون (كل اسم في سطر)</span><textarea id="m-attendees" rows="3"></textarea></label>
-            <label class="field"><span>جدول الأعمال (كل بند في سطر)</span><textarea id="m-agenda" rows="3"></textarea></label>
-            <label class="field"><span>ما تمت مناقشته</span><textarea id="m-discussion" rows="4"></textarea></label>
+            <label class="field"><span>الحاضرون (كل اسم في سطر)</span><textarea id="m-attendees" rows="3" data-ai-polish="أسماء الحاضرين في محضر اجتماع: رتّبها بأسماء ومسميات وظيفية رسمية"></textarea></label>
+            <label class="field"><span>جدول الأعمال (كل بند في سطر)</span><textarea id="m-agenda" rows="3" data-ai-polish="بنود جدول أعمال اجتماع"></textarea></label>
+            <label class="field"><span>ما تمت مناقشته</span><textarea id="m-discussion" rows="4" data-ai-polish="محضر اجتماع: فقرة ما تمت مناقشته"></textarea></label>
             <div class="m-dec-head"><span class="conv-label">القرارات والتوصيات</span><button type="button" class="btn secondary small" id="m-add-decision">+ قرار</button></div>
             <div id="m-decisions"></div>
+            <label class="field"><span>التوصيات الختامية (اختياري)</span><textarea id="m-notes" rows="2" data-ai-polish="ملاحظات ختامية في محضر اجتماع" placeholder="ملاحظات أو تنويهات تُذكر في نهاية المحضر"></textarea></label>
             <label class="field" style="margin-top:12px"><span>مُعِدّ المحضر</span><input type="text" id="m-writer"></label>
           </div>
           <div class="preview-col">
@@ -729,35 +730,36 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=68"></script>
-  <script src="src/ui.js?v=68"></script>
-  <script src="src/templates.js?v=68"></script>
-  <script src="src/tracks.js?v=68"></script>
-  <script src="src/tasks.js?v=68"></script>
-  <script src="src/dashboard.js?v=68"></script>
-  <script src="src/letterhead-docx.js?v=68"></script>
-  <script src="src/docx.js?v=68"></script>
-  <script src="src/ai.js?v=68"></script>
-  <script src="src/doc-render.js?v=68"></script>
-  <script src="src/files-store.js?v=68"></script>
-  <script src="src/shared.js?v=68"></script>
-  <script src="src/cloud.js?v=68"></script>
-  <script src="src/drive.js?v=68"></script>
-  <script src="src/drive-ui.js?v=68"></script>
-  <script src="src/rtl-fixer.js?v=68"></script>
-  <script src="src/rtl-page.js?v=68"></script>
-  <script src="src/profile.js?v=68"></script>
-  <script src="src/registry.js?v=68"></script>
-  <script src="src/charts.js?v=68"></script>
-  <script src="src/meetings.js?v=68"></script>
-  <script src="src/report.js?v=68"></script>
-  <script src="src/letters.js?v=68"></script>
+  <script src="src/storage.js?v=70"></script>
+  <script src="src/ui.js?v=70"></script>
+  <script src="src/templates.js?v=70"></script>
+  <script src="src/tracks.js?v=70"></script>
+  <script src="src/tasks.js?v=70"></script>
+  <script src="src/dashboard.js?v=70"></script>
+  <script src="src/letterhead-docx.js?v=70"></script>
+  <script src="src/docx.js?v=70"></script>
+  <script src="src/ai.js?v=70"></script>
+  <script src="src/doc-render.js?v=70"></script>
+  <script src="src/files-store.js?v=70"></script>
+  <script src="src/shared.js?v=70"></script>
+  <script src="src/cloud.js?v=70"></script>
+  <script src="src/drive.js?v=70"></script>
+  <script src="src/drive-ui.js?v=70"></script>
+  <script src="src/rtl-fixer.js?v=70"></script>
+  <script src="src/rtl-page.js?v=70"></script>
+  <script src="src/profile.js?v=70"></script>
+  <script src="src/registry.js?v=70"></script>
+  <script src="src/charts.js?v=70"></script>
+  <script src="src/ai-assist.js?v=70"></script>
+  <script src="src/meetings.js?v=70"></script>
+  <script src="src/report.js?v=70"></script>
+  <script src="src/letters.js?v=70"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=68"></script>
-  <script src="src/converter-store.js?v=68"></script>
-  <script src="src/converter.js?v=68"></script>
-  <script src="src/app.js?v=68"></script>
+  <script src="src/converter-core.js?v=70"></script>
+  <script src="src/converter-store.js?v=70"></script>
+  <script src="src/converter.js?v=70"></script>
+  <script src="src/app.js?v=70"></script>
 </body>
 </html>

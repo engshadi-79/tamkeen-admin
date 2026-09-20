@@ -406,6 +406,12 @@ body.locked .app { filter: blur(6px); pointer-events: none; user-select: none; }
 .act-btn.ai:hover { background: #5b2ea6; color: #fff; }
 .reg-summary { margin-top: 4px; font-size: 13px; background: #f7f3ff; border-radius: 8px; padding: 4px 8px; white-space: pre-wrap; }
 .reg-summary summary { cursor: pointer; font-weight: 700; color: #5b2ea6; }
+.ai-chip-row { display: inline-flex; gap: 6px; margin-inline-start: 8px; vertical-align: middle; }
+.ai-chip { border: 1px solid #dcc7f5; background: #f3eaff; color: #5b2ea6; border-radius: 8px; padding: 2px 9px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ai-chip:hover:not(:disabled) { background: #5b2ea6; color: #fff; }
+.ai-chip:disabled { opacity: .6; cursor: default; }
+.ai-chip.undo { border-color: var(--border); background: var(--surface); color: var(--navy-800); }
+.m-dec .ai-chip-row { margin: 0; }
 .digest-box { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; }
 .user-off td { opacity: .55; }
 .reg-owner { font-size: 12px; color: var(--teal-600); font-weight: 700; }

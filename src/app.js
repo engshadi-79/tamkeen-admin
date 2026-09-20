@@ -62,6 +62,7 @@
     App.registry.init();
     App.rtlPage.init();
     App.meetings.init();
+    App.aiAssist.attach();
     App.report.init();
     App.converter.init();
     initBackup();
