@@ -77,7 +77,8 @@
       const diffs = shared.filter((c) => c.type !== "check" && String(old.values[c.key] || "") !== String(rec.values[c.key] || "") && String(rec.values[c.key] || "") !== "");
       if (diffs.length) changed.push({ old, rec, diffs }); else same.push(rec);
     });
-    return { added, same, changed };
+    const extraColumns = incoming.columns.filter((c) => !m.columns.some((x) => x.key === c.key));
+    return { added, same, changed, extraColumns };
   }
 
   async function pickFile(file) {
@@ -103,7 +104,8 @@
             <li><b>${ui.fmt(cmp.changed.length)}</b> موجود ببيانات مختلفة في الملف</li>
           </ul>
           ${cmp.changed.length ? `<label class="conv-check strong"><input type="checkbox" id="ros-update-existing"> تحديث بيانات الموجودين من الملف (الاسم والجوال والمسار…)</label>` : ""}
-          <p class="conv-hint">خانات التعليم التي عُلِّمت داخل الأداة لا تتغيّر أبداً عند الرفع.</p>`;
+          ${cmp.extraColumns.length ? `<label class="conv-check strong"><input type="checkbox" id="ros-add-columns"> إضافة أعمدة جديدة موجودة في الملف فقط: ${cmp.extraColumns.map((c) => esc(c.label)).join("، ")}</label>` : ""}
+          <p class="conv-hint">تبقى أعمدة النظام كما هي، وأي عمود إضافي في الملف يُتجاهَل ما لم تختر إضافته. وخانات التعليم التي عُلِّمت داخل الأداة لا تتغيّر أبداً عند الرفع.</p>`;
         $("ros-import-apply").textContent = cmp.added.length ? `إضافة ${ui.fmt(cmp.added.length)} اسم جديد` : "تطبيق";
       }
       $("ros-import-apply").disabled = false;
@@ -129,9 +131,19 @@
     } else {
       const cmp = pending.cmp;
       const now = new Date().toISOString();
-      // أعمدة جديدة في الملف تُضاف إلى القائمة
-      pending.columns.forEach((c) => { if (!m.columns.some((x) => x.key === c.key)) m.columns.push(c); });
-      cmp.added.forEach((rec) => rows().push(Object.assign(rec, { addedAt: now, source: pending.fileName, isNew: true })));
+      // الأعمدة الجديدة في الملف تُضاف فقط إذا اختار المستخدم ذلك، وإلا تُتجاهَل
+      if ($("ros-add-columns") && $("ros-add-columns").checked) {
+        cmp.extraColumns.forEach((c) => {
+          m.columns.push(c);
+          rows().forEach((r) => { if (r.values[c.key] === undefined) r.values[c.key] = c.type === "check" ? false : ""; });
+        });
+      }
+      cmp.added.forEach((rec) => {
+        const values = {};
+        m.columns.forEach((c) => { values[c.key] = rec.values[c.key] !== undefined ? rec.values[c.key] : (c.type === "check" ? false : ""); });
+        rec.values = values;
+        rows().push(Object.assign(rec, { addedAt: now, source: pending.fileName, isNew: true }));
+      });
       const updateExisting = $("ros-update-existing") && $("ros-update-existing").checked;
       let updated = 0;
       if (updateExisting) {
