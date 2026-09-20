@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=85">
+  <link rel="stylesheet" href="styles/theme.css?v=87">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -254,22 +254,38 @@
               <button class="btn secondary small" id="m-new">+ محضر جديد</button>
               <button class="btn danger small" id="m-delete" hidden>حذف المحضر</button>
             </div>
+            <div class="grid-fields">
+              <label class="field"><span>الجهة أو المؤسسة (اختياري)</span><input type="text" id="m-org" placeholder="يظهر فوق عنوان المحضر"></label>
+              <label class="field"><span>رقم المحضر (اختياري)</span><input type="text" id="m-ref" placeholder="مثال: م ج/2026/07"></label>
+            </div>
             <label class="field"><span>عنوان الاجتماع</span><input type="text" id="m-title" placeholder="مثال: اجتماع منسقي المسارات الأسبوعي"></label>
             <div class="grid-fields">
               <label class="field"><span>التاريخ</span><input type="date" id="m-date"></label>
-              <label class="field"><span>الساعة</span><input type="text" id="m-time" placeholder="مثال: 10:00 صباحاً"></label>
+              <label class="field"><span>ساعة البداية</span><input type="text" id="m-time" placeholder="مثال: 10:00 صباحاً"></label>
+              <label class="field"><span>ساعة النهاية (اختياري)</span><input type="text" id="m-endTime" placeholder="مثال: 11:30 صباحاً"></label>
             </div>
             <div class="grid-fields">
               <label class="field"><span>المكان</span><input type="text" id="m-place"></label>
               <label class="field"><span>رئيس الاجتماع</span><input type="text" id="m-chair"></label>
             </div>
-            <label class="field"><span>الحاضرون (كل اسم في سطر)</span><textarea id="m-attendees" rows="3" data-ai-polish="أسماء الحاضرين في محضر اجتماع: رتّبها بأسماء ومسميات وظيفية رسمية"></textarea></label>
+            <label class="field"><span>الحاضرون (كل اسم في سطر، ويمكن إضافة الصفة بعد الاسم)</span><textarea id="m-attendees" rows="3" data-ai-polish="أسماء الحاضرين في محضر اجتماع: رتّبها بأسماء ومسميات وظيفية رسمية"></textarea></label>
+            <div class="grid-fields">
+              <label class="field"><span>المعتذرون عن الحضور (اختياري)</span><textarea id="m-apologies" rows="2" data-ai-polish="أسماء المعتذرين عن حضور اجتماع"></textarea></label>
+              <label class="field"><span>مدعوون لم يحضروا (اختياري)</span><textarea id="m-absent" rows="2" data-ai-polish="أسماء المدعوين الذين لم يحضروا اجتماعاً"></textarea></label>
+            </div>
             <label class="field"><span>جدول الأعمال (كل بند في سطر)</span><textarea id="m-agenda" rows="3" data-ai-polish="بنود جدول أعمال اجتماع"></textarea></label>
-            <label class="field"><span>ما تمت مناقشته</span><textarea id="m-discussion" rows="4" data-ai-polish="محضر اجتماع: فقرة ما تمت مناقشته"></textarea></label>
+            <label class="field"><span>ما تمت مناقشته (ملخص لكل بند)</span><textarea id="m-discussion" rows="4" data-ai-polish="محضر اجتماع: فقرة ما تمت مناقشته"></textarea></label>
+            <label class="field"><span>نقاط التوافق والخلاف (اختياري)</span><textarea id="m-consensus" rows="2" data-ai-polish="نقاط التوافق والخلاف في محضر اجتماع" placeholder="مثال: توافق الجميع على تقديم موعد التدريب، مع تحفّظ على مكان الانعقاد."></textarea></label>
             <div class="m-dec-head"><span class="conv-label">القرارات والتوصيات</span><button type="button" class="btn secondary small" id="m-add-decision">+ قرار</button></div>
             <div id="m-decisions"></div>
+            <label class="field"><span>المهام والمسؤوليات (اختياري) — كل سطر: المهمة | المسؤول | الموعد</span><textarea id="m-tasks" rows="3" list="people-list" placeholder="تجهيز قاعة التدريب | أحمد علي | 2026-09-25"></textarea></label>
+            <div class="grid-fields">
+              <label class="field"><span>موعد الاجتماع القادم (اختياري)</span><input type="date" id="m-nextDate"></label>
+              <label class="field"><span>بنود مؤجلة للاجتماع القادم (اختياري)</span><textarea id="m-nextItems" rows="2" data-ai-polish="بنود مؤجلة لاجتماع قادم"></textarea></label>
+            </div>
+            <label class="conv-check strong"><input type="checkbox" id="m-signAttendees"> إضافة جدول توقيع الحاضرين للإقرار بصحة المحضر</label>
             <label class="field"><span>التوصيات الختامية (اختياري)</span><textarea id="m-notes" rows="2" data-ai-polish="ملاحظات ختامية في محضر اجتماع" placeholder="ملاحظات أو تنويهات تُذكر في نهاية المحضر"></textarea></label>
-            <label class="field" style="margin-top:12px"><span>مُعِدّ المحضر</span><input type="text" id="m-writer"></label>
+            <label class="field" style="margin-top:12px"><span>مُحرِّر المحضر</span><input type="text" id="m-writer" list="people-list"></label>
           </div>
           <div class="preview-col">
             <div class="preview-bar"><span>معاينة على الترويسة الرسمية</span><span id="m-page-count"></span></div>
@@ -837,37 +853,37 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=85"></script>
-  <script src="src/ui.js?v=85"></script>
-  <script src="src/templates.js?v=85"></script>
-  <script src="src/tracks.js?v=85"></script>
-  <script src="src/tasks.js?v=85"></script>
-  <script src="src/dashboard.js?v=85"></script>
-  <script src="src/letterhead-docx.js?v=85"></script>
-  <script src="src/docx.js?v=85"></script>
-  <script src="src/ai.js?v=85"></script>
-  <script src="src/doc-render.js?v=85"></script>
-  <script src="src/files-store.js?v=85"></script>
-  <script src="src/shared.js?v=85"></script>
-  <script src="src/cloud.js?v=85"></script>
-  <script src="src/drive.js?v=85"></script>
-  <script src="src/drive-ui.js?v=85"></script>
-  <script src="src/rtl-fixer.js?v=85"></script>
-  <script src="src/rtl-page.js?v=85"></script>
-  <script src="src/profile.js?v=85"></script>
-  <script src="src/roster.js?v=85"></script>
-  <script src="src/registry.js?v=85"></script>
-  <script src="src/charts.js?v=85"></script>
-  <script src="src/ai-assist.js?v=85"></script>
-  <script src="src/meetings.js?v=85"></script>
-  <script src="src/report.js?v=85"></script>
-  <script src="src/letters.js?v=85"></script>
+  <script src="src/storage.js?v=87"></script>
+  <script src="src/ui.js?v=87"></script>
+  <script src="src/templates.js?v=87"></script>
+  <script src="src/tracks.js?v=87"></script>
+  <script src="src/tasks.js?v=87"></script>
+  <script src="src/dashboard.js?v=87"></script>
+  <script src="src/letterhead-docx.js?v=87"></script>
+  <script src="src/docx.js?v=87"></script>
+  <script src="src/ai.js?v=87"></script>
+  <script src="src/doc-render.js?v=87"></script>
+  <script src="src/files-store.js?v=87"></script>
+  <script src="src/shared.js?v=87"></script>
+  <script src="src/cloud.js?v=87"></script>
+  <script src="src/drive.js?v=87"></script>
+  <script src="src/drive-ui.js?v=87"></script>
+  <script src="src/rtl-fixer.js?v=87"></script>
+  <script src="src/rtl-page.js?v=87"></script>
+  <script src="src/profile.js?v=87"></script>
+  <script src="src/roster.js?v=87"></script>
+  <script src="src/registry.js?v=87"></script>
+  <script src="src/charts.js?v=87"></script>
+  <script src="src/ai-assist.js?v=87"></script>
+  <script src="src/meetings.js?v=87"></script>
+  <script src="src/report.js?v=87"></script>
+  <script src="src/letters.js?v=87"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=85"></script>
-  <script src="src/converter-store.js?v=85"></script>
-  <script src="src/converter.js?v=85"></script>
-  <script src="src/app.js?v=85"></script>
+  <script src="src/converter-core.js?v=87"></script>
+  <script src="src/converter-store.js?v=87"></script>
+  <script src="src/converter.js?v=87"></script>
+  <script src="src/app.js?v=87"></script>
 </body>
 </html>
