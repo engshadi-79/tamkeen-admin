@@ -60,6 +60,7 @@
     App.driveUI.init();
     App.profile.init();
     App.shared.init();
+    App.ai.migrateToShared();
     App.registry.init();
     App.roster.init();
     App.rtlPage.init();

@@ -238,5 +238,20 @@
     return run({ key, userContent, onText, signal, model: s.claudeModel });
   }
 
-  App.ai = { settings, saveSettings, hasKey, generate, CLAUDE_MODELS };
+  /* ترحيل المفتاح القديم المحفوظ على هذا الجهاز إلى إعدادات المركز، ليعمل عند الجميع */
+  function migrateToShared() {
+    if (!App.store) return;
+    let local = {};
+    try { local = JSON.parse(localStorage.getItem(STORAGE) || "{}"); } catch (e) { return; }
+    if (!local.geminiKey && !local.claudeKey) return;
+    if (local.share === false) return; // المستخدم اختار إبقاءه على جهازه
+    const shared = App.store.get().aiSettings || {};
+    if (shared.geminiKey || shared.claudeKey) { try { localStorage.removeItem(STORAGE); } catch (e) { /* تخزين غير متاح */ } return; }
+    App.store.get().aiSettings = Object.assign({ provider: "gemini", claudeModel: CLAUDE_MODEL }, local, { share: true });
+    App.store.save();
+    try { localStorage.removeItem(STORAGE); } catch (e) { /* تخزين غير متاح */ }
+    if (App.ui) App.ui.toast("صار مفتاح الذكاء الاصطناعي موحّداً لكل مستخدمي المركز");
+  }
+
+  App.ai = { settings, saveSettings, hasKey, generate, migrateToShared, CLAUDE_MODELS };
 })(window.App = window.App || {});
