@@ -4,9 +4,15 @@
 (function (App) {
   const { store, ui } = App;
   const SNAP_KEY = "tamkeen-admin:sync2";
-  const SETTINGS_KEYS = ["registrySettings", "reportSettings", "rosterMeta", "signer", "signerTitle"];
+  const SETTINGS_KEYS = ["registrySettings", "reportSettings", "rosterMeta", "aiSettings", "signer", "signerTitle"];
   const COLS = ["tracks", "tasks", "meetings", "customTemplates", "roster", "settings"];
   let syncing = false, again = false, timer = null, people = [];
+  const LABELS = { tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات" };
+  const confirmedWipe = {}; // أقسام وافق المستخدم على حذفها الجماعي من هذا الجهاز
+  const blocked = {};
+
+  /* يسمح بحذف جماعي متعمّد (مثل «حذف القائمة») لمرة واحدة */
+  function allowWipe(name) { confirmedWipe[name] = true; }
 
   /* الإعدادات ليست مصفوفة: تُعامل كعناصر { id: اسم الإعداد, value } */
   function readCol(name) {
@@ -75,6 +81,16 @@
         const ids = new Set(local.map((r) => r.id));
         const deleted = {};
         Object.keys(mine).forEach((id) => { if (!ids.has(id)) deleted[id] = now; });
+        // حماية: حذف جماعي مفاجئ (جهاز فُتح بنسخة قديمة أو مُسحت بياناته) لا يُرسل إلا بتأكيد
+        const count = Object.keys(deleted).length;
+        const known = Object.keys(mine).length;
+        if (count > 10 && known && count >= known * 0.5 && !confirmedWipe[name]) {
+          console.warn(`مزامنة ${name}: أُوقف حذف ${count} عنصراً من ${known} على هذا الجهاز`);
+          ui.toast(`أُوقفت مزامنة حذف ${ui.fmt(count)} عنصراً من «${LABELS[name] || name}» على هذا الجهاز حمايةً للبيانات`);
+          cols[name] = { records: local, deleted: {} };
+          blocked[name] = count;
+          return;
+        }
         cols[name] = { records: local, deleted };
       });
       const merged = await App.cloud.syncAll(cols);
@@ -139,5 +155,5 @@
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") schedule(1000); });
   }
 
-  App.shared = { init, sync, names, loadPeople };
+  App.shared = { init, sync, names, loadPeople, allowWipe };
 })(window.App = window.App || {});

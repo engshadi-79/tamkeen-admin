@@ -332,6 +332,7 @@
     $("ai-provider").value = s.provider;
     $("ai-gemini-key").value = s.geminiKey;
     $("ai-claude-key").value = s.claudeKey;
+    $("ai-share").checked = s.share !== false;
     $("ai-claude-model").innerHTML = App.ai.CLAUDE_MODELS
       .map((m) => `<option value="${m.id}"${m.id === s.claudeModel ? " selected" : ""}>${ui.esc(m.label)}</option>`).join("");
     syncProviderFields();
@@ -406,21 +407,23 @@
     $("ai-modal").addEventListener("click", (e) => { if (e.target.id === "ai-modal") closeAiSettings(); });
     $("ai-form").addEventListener("submit", (e) => {
       e.preventDefault();
+      const share = $("ai-share").checked;
       App.ai.saveSettings({
         provider: $("ai-provider").value,
         geminiKey: $("ai-gemini-key").value.trim(),
         claudeKey: $("ai-claude-key").value.trim(),
         claudeModel: $("ai-claude-model").value,
+        share,
       });
       closeAiSettings();
       aiStatus(App.ai.hasKey() ? "تم حفظ الإعدادات." : "");
-      ui.toast("تم حفظ الإعدادات");
+      ui.toast(share ? "حُفظ المفتاح لكل مستخدمي المركز" : "حُفظ المفتاح على هذا الجهاز فقط");
     });
     $("ai-key-delete").addEventListener("click", () => {
       if (!confirm("حذف مفاتيح الذكاء الاصطناعي من هذا الجهاز؟")) return;
-      App.ai.saveSettings({ provider: $("ai-provider").value, geminiKey: "", claudeKey: "" });
+      App.ai.saveSettings({ provider: $("ai-provider").value, geminiKey: "", claudeKey: "", share: $("ai-share").checked });
       closeAiSettings();
-      ui.toast("تم حذف المفاتيح من هذا الجهاز");
+      ui.toast($("ai-share").checked ? "حُذفت المفاتيح من إعدادات المركز" : "حُذفت المفاتيح من هذا الجهاز");
     });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAiSettings(); });
   }

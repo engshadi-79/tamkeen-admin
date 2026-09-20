@@ -626,11 +626,23 @@
       renderNotes();
       render();
     });
+    $("ros-sync").addEventListener("click", async () => {
+      const btn = $("ros-sync");
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = "…جارٍ المزامنة";
+      await App.shared.sync(true);
+      render();
+      ui.toast(`تمت المزامنة — ${ui.fmt(rows().length)} سجل`);
+      btn.textContent = label;
+      btn.disabled = false;
+    });
     $("ros-export").addEventListener("click", exportExcel);
     $("ros-report").addEventListener("click", () => App.docRender.print(reportBlocks(), `تقرير ${meta().name || "المستفيدين"} - ${ui.todayISO()}`, false));
     $("ros-report-word").addEventListener("click", () => App.docRender.exportWord(reportBlocks(), `تقرير ${meta().name || "المستفيدين"} - ${ui.todayISO()}`));
     $("ros-clear").addEventListener("click", () => {
-      if (!confirm("حذف القائمة كاملة من الأداة؟ لا يمكن التراجع.")) return;
+      if (!confirm("حذف القائمة كاملة من الأداة؟ لا يمكن التراجع، وتُحذف عند بقية المستخدمين أيضاً.")) return;
+      if (App.shared) App.shared.allowWipe("roster");
       store.get().roster = [];
       store.get().rosterMeta = { columns: [], keyColumn: "", name: "", importedAt: "", lastImport: null };
       store.save();

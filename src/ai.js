@@ -25,10 +25,26 @@
       const old = localStorage.getItem("tamkeen-admin:ai-key");
       if (old && !s.claudeKey) { s.claudeKey = old; localStorage.removeItem("tamkeen-admin:ai-key"); }
     } catch (e) { /* تخزين غير متاح */ }
-    return Object.assign({ provider: "gemini", geminiKey: "", claudeKey: "", claudeModel: CLAUDE_MODEL }, s);
+    // إعدادات المركز المشتركة أولاً، ثم إعدادات هذا الجهاز إن وُجدت (الجهاز يتقدّم)
+    const shared = (App.store && App.store.get().aiSettings) || {};
+    const local = Object.keys(s).length ? s : {};
+    return Object.assign({ provider: "gemini", geminiKey: "", claudeKey: "", claudeModel: CLAUDE_MODEL, share: true }, shared, local);
   }
+
+  /* share=true: المفتاح يُحفظ في إعدادات المركز ويصل لكل المستخدمين بعد المزامنة */
   function saveSettings(s) {
-    try { localStorage.setItem(STORAGE, JSON.stringify(s)); } catch (e) { /* تخزين غير متاح */ }
+    const share = s.share !== false;
+    try {
+      if (share) {
+        localStorage.removeItem(STORAGE);
+        if (App.store) {
+          App.store.get().aiSettings = Object.assign({}, s, { share: true });
+          App.store.save();
+        }
+      } else {
+        localStorage.setItem(STORAGE, JSON.stringify(Object.assign({}, s, { share: false })));
+      }
+    } catch (e) { /* تخزين غير متاح */ }
   }
   const settings = () => loadSettings();
   const hasKey = (provider) => { const s = loadSettings(); return !!((provider || s.provider) === "claude" ? s.claudeKey : s.geminiKey); };

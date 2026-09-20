@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=78">
+  <link rel="stylesheet" href="styles/theme.css?v=80">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -364,6 +364,7 @@
             <button class="btn" id="ros-add">+ سجل جديد</button>
             <button class="btn secondary" id="ros-add-col">+ عمود جديد</button>
             <button class="btn secondary" id="ros-cols">🗂 الأعمدة</button>
+            <button class="btn secondary" id="ros-sync">🔄 مزامنة الآن</button>
             <button class="btn secondary" id="ros-export">تصدير Excel</button>
             <button class="btn" id="ros-report">🖨 تقرير المتابعة</button>
             <button class="btn secondary" id="ros-report-word">تقرير Word</button>
@@ -534,7 +535,8 @@
         <label class="field"><span>مفتاح Claude</span><input type="password" id="ai-claude-key" autocomplete="off" spellcheck="false" dir="ltr" placeholder="sk-ant-..."></label>
         <label class="field"><span>نموذج Claude</span><select id="ai-claude-model"></select></label>
       </div>
-      <p class="vars-hint">المفاتيح تُحفظ في هذا المتصفح على هذا الجهاز فقط، ولا تدخل في ملف النسخة الاحتياطية. عند التوليد يُرسل طلبك وبيانات المراسلة (الموضوع، المرسل إليه وصفته، نوع القالب، المسمى الوظيفي للموقّع) إلى المزوّد المختار فقط.</p>
+      <label class="conv-check strong"><input type="checkbox" id="ai-share" checked> مشاركة المفتاح مع كل مستخدمي المركز (فيعمل عندهم بلا إعداد)</label>
+      <p class="vars-hint">عند المشاركة يُحفظ المفتاح في إعدادات المركز على الخادم ويصل لكل من يسجّل الدخول؛ وبدونها يبقى في هذا المتصفح وحده ولا يدخل في النسخة الاحتياطية. عند التوليد يُرسل طلبك وبيانات المراسلة (الموضوع، المرسل إليه وصفته، نوع القالب، المسمى الوظيفي للموقّع) إلى المزوّد المختار فقط.</p>
       <div class="btn-row">
         <button class="btn" type="submit">حفظ</button>
         <button class="btn danger" type="button" id="ai-key-delete">حذف المفاتيح</button>
@@ -812,37 +814,37 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=78"></script>
-  <script src="src/ui.js?v=78"></script>
-  <script src="src/templates.js?v=78"></script>
-  <script src="src/tracks.js?v=78"></script>
-  <script src="src/tasks.js?v=78"></script>
-  <script src="src/dashboard.js?v=78"></script>
-  <script src="src/letterhead-docx.js?v=78"></script>
-  <script src="src/docx.js?v=78"></script>
-  <script src="src/ai.js?v=78"></script>
-  <script src="src/doc-render.js?v=78"></script>
-  <script src="src/files-store.js?v=78"></script>
-  <script src="src/shared.js?v=78"></script>
-  <script src="src/cloud.js?v=78"></script>
-  <script src="src/drive.js?v=78"></script>
-  <script src="src/drive-ui.js?v=78"></script>
-  <script src="src/rtl-fixer.js?v=78"></script>
-  <script src="src/rtl-page.js?v=78"></script>
-  <script src="src/profile.js?v=78"></script>
-  <script src="src/roster.js?v=78"></script>
-  <script src="src/registry.js?v=78"></script>
-  <script src="src/charts.js?v=78"></script>
-  <script src="src/ai-assist.js?v=78"></script>
-  <script src="src/meetings.js?v=78"></script>
-  <script src="src/report.js?v=78"></script>
-  <script src="src/letters.js?v=78"></script>
+  <script src="src/storage.js?v=80"></script>
+  <script src="src/ui.js?v=80"></script>
+  <script src="src/templates.js?v=80"></script>
+  <script src="src/tracks.js?v=80"></script>
+  <script src="src/tasks.js?v=80"></script>
+  <script src="src/dashboard.js?v=80"></script>
+  <script src="src/letterhead-docx.js?v=80"></script>
+  <script src="src/docx.js?v=80"></script>
+  <script src="src/ai.js?v=80"></script>
+  <script src="src/doc-render.js?v=80"></script>
+  <script src="src/files-store.js?v=80"></script>
+  <script src="src/shared.js?v=80"></script>
+  <script src="src/cloud.js?v=80"></script>
+  <script src="src/drive.js?v=80"></script>
+  <script src="src/drive-ui.js?v=80"></script>
+  <script src="src/rtl-fixer.js?v=80"></script>
+  <script src="src/rtl-page.js?v=80"></script>
+  <script src="src/profile.js?v=80"></script>
+  <script src="src/roster.js?v=80"></script>
+  <script src="src/registry.js?v=80"></script>
+  <script src="src/charts.js?v=80"></script>
+  <script src="src/ai-assist.js?v=80"></script>
+  <script src="src/meetings.js?v=80"></script>
+  <script src="src/report.js?v=80"></script>
+  <script src="src/letters.js?v=80"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=78"></script>
-  <script src="src/converter-store.js?v=78"></script>
-  <script src="src/converter.js?v=78"></script>
-  <script src="src/app.js?v=78"></script>
+  <script src="src/converter-core.js?v=80"></script>
+  <script src="src/converter-store.js?v=80"></script>
+  <script src="src/converter.js?v=80"></script>
+  <script src="src/app.js?v=80"></script>
 </body>
 </html>
