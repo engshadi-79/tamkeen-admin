@@ -25,7 +25,7 @@
       const old = localStorage.getItem("tamkeen-admin:ai-key");
       if (old && !s.claudeKey) { s.claudeKey = old; localStorage.removeItem("tamkeen-admin:ai-key"); }
     } catch (e) { /* تخزين غير متاح */ }
-    return Object.assign({ provider: "gemini", geminiKey: "", claudeKey: "" }, s);
+    return Object.assign({ provider: "gemini", geminiKey: "", claudeKey: "", claudeModel: CLAUDE_MODEL }, s);
   }
   function saveSettings(s) {
     try { localStorage.setItem(STORAGE, JSON.stringify(s)); } catch (e) { /* تخزين غير متاح */ }
@@ -156,7 +156,13 @@
   }
 
   /* ===== Claude (Anthropic) ===== */
-  const CLAUDE_MODEL = "claude-opus-5";
+  // نماذج كلود: الأعلى جودة أولاً، والأوفر أخيراً
+  const CLAUDE_MODELS = [
+    { id: "claude-opus-5", label: "Opus 5 — الأقوى للتحليل الطويل" },
+    { id: "claude-sonnet-5", label: "Sonnet 5 — متوازن وأوفر" },
+    { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5 — الأسرع والأرخص" },
+  ];
+  const CLAUDE_MODEL = CLAUDE_MODELS[0].id;
 
   function claudeError(status, body) {
     const apiMsg = body && body.error && body.error.message ? ` (${body.error.message})` : "";
@@ -167,7 +173,7 @@
     return "تعذّر إتمام الطلب" + apiMsg;
   }
 
-  async function generateClaude({ key, userContent, onText, signal }) {
+  async function generateClaude({ key, userContent, onText, signal, model }) {
     const res = await post(
       "https://api.anthropic.com/v1/messages",
       {
@@ -178,7 +184,7 @@
         "anthropic-dangerous-direct-browser-access": "true",
       },
       {
-        model: CLAUDE_MODEL,
+        model: model || CLAUDE_MODEL,
         max_tokens: 16000,
         stream: true,
         fallbacks: "default",
@@ -213,8 +219,8 @@
     const userContent = `${contextText ? `${asText ? "المحتوى" : "بيانات المراسلة"}:\n${contextText}\n\n` : ""}المطلوب كتابته:\n${request}`;
 
     const run = use === "claude" ? generateClaude : generateGemini;
-    return run({ key, userContent, onText, signal });
+    return run({ key, userContent, onText, signal, model: s.claudeModel });
   }
 
-  App.ai = { settings, saveSettings, hasKey, generate };
+  App.ai = { settings, saveSettings, hasKey, generate, CLAUDE_MODELS };
 })(window.App = window.App || {});

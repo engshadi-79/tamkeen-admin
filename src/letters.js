@@ -332,6 +332,8 @@
     $("ai-provider").value = s.provider;
     $("ai-gemini-key").value = s.geminiKey;
     $("ai-claude-key").value = s.claudeKey;
+    $("ai-claude-model").innerHTML = App.ai.CLAUDE_MODELS
+      .map((m) => `<option value="${m.id}"${m.id === s.claudeModel ? " selected" : ""}>${ui.esc(m.label)}</option>`).join("");
     syncProviderFields();
     $("ai-modal").classList.add("open");
     $(s.provider === "claude" ? "ai-claude-key" : "ai-gemini-key").focus();
@@ -408,6 +410,7 @@
         provider: $("ai-provider").value,
         geminiKey: $("ai-gemini-key").value.trim(),
         claudeKey: $("ai-claude-key").value.trim(),
+        claudeModel: $("ai-claude-model").value,
       });
       closeAiSettings();
       aiStatus(App.ai.hasKey() ? "تم حفظ الإعدادات." : "");
