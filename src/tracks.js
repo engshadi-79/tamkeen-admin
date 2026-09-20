@@ -115,8 +115,90 @@
     ui.toast("حُذف المسار");
   }
 
+  const normName = (t) => String(t || "").replace(/^مسار\s*/, "").replace(/[إأآ]/g, "ا").replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
+
+  /* عدد المستفيدين لكل مسار من قائمة التعهدات */
+  function rosterCounts() {
+    const s = store.get();
+    const col = ((s.rosterMeta || {}).columns || []).find((c) => /مسار/.test(c.label));
+    const counts = {};
+    if (!col) return counts;
+    (s.roster || []).forEach((r) => {
+      const v = String((r.values || {})[col.key] || "").trim();
+      if (v) counts[v] = (counts[v] || 0) + 1;
+    });
+    return counts;
+  }
+
+  /* حذف المسارات المكررة بالاسم، مع الإبقاء على الصف الذي فيه بيانات */
+  function dedupe() {
+    const list = store.get().tracks || [];
+    const best = new Map();
+    list.forEach((t) => {
+      const k = normName(t.name);
+      const score = (Number(t.attendancePct) || 0) + (Number(t.hoursCompleted) || 0);
+      const cur = best.get(k);
+      if (!cur || score > cur.score) best.set(k, { track: t, score });
+    });
+    const keep = [...best.values()].map((x) => x.track);
+    const removed = list.length - keep.length;
+    if (!removed) { ui.toast("لا توجد مسارات مكررة"); return; }
+    if (!confirm(`حذف ${ui.fmt(removed)} مساراً مكرراً والإبقاء على ${ui.fmt(keep.length)}؟\nيُطبَّق عند كل المستخدمين.`)) return;
+    if (App.shared) App.shared.allowWipe("tracks");
+    store.get().tracks = keep;
+    store.save();
+    render();
+    App.dashboard.render();
+    ui.toast(`حُذف ${ui.fmt(removed)} مساراً مكرراً`);
+  }
+
+  /* اعتماد قائمة مسارات مكتوبة: تحلّ محل الموجود، مع الاحتفاظ ببيانات المسار المطابق بالاسم */
+  function openList() {
+    const current = ordered().map((t) => t.name).filter(Boolean);
+    document.getElementById("trk-list").value = current.join("\n");
+    document.getElementById("trk-counts").checked = true;
+    document.getElementById("trk-modal").classList.add("open");
+    setTimeout(() => document.getElementById("trk-list").focus(), 50);
+  }
+
+  function applyList() {
+    const names = document.getElementById("trk-list").value.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!names.length) { ui.toast("اكتب أسماء المسارات، كل اسم في سطر"); return; }
+    const old = store.get().tracks || [];
+    const counts = document.getElementById("trk-counts").checked ? rosterCounts() : null;
+    const rosterKeys = counts ? Object.keys(counts) : [];
+    const next = names.map((name, i) => {
+      const prev = old.find((t) => normName(t.name) === normName(name));
+      const rosterName = rosterKeys.find((k) => normName(k) === normName(name));
+      return {
+        id: (prev && prev.id) || store.uid(),
+        name,
+        type: (prev && prev.type) || (/تصميم|تسويق|رقم|حاسب|برمج|ترجمة|افتراضي/.test(name) ? "digital" : "craft"),
+        beneficiaries: rosterName ? counts[rosterName] : (prev ? Number(prev.beneficiaries) || 0 : 0),
+        attendancePct: prev ? Number(prev.attendancePct) || 0 : 0,
+        hoursCompleted: prev ? Number(prev.hoursCompleted) || 0 : 0,
+        order: i + 1,
+      };
+    });
+    const removed = old.length - next.filter((t) => old.some((o) => o.id === t.id)).length;
+    if (!confirm(`اعتماد ${ui.fmt(next.length)} مساراً وحذف ما عداها (${ui.fmt(Math.max(0, removed))} مساراً)؟\nيُطبَّق عند كل المستخدمين، ولا يمكن التراجع.`)) return;
+    if (App.shared) App.shared.allowWipe("tracks");
+    store.get().tracks = next;
+    store.save();
+    document.getElementById("trk-modal").classList.remove("open");
+    render();
+    App.dashboard.render();
+    ui.toast(`اعتُمدت ${ui.fmt(next.length)} مسارات`);
+    if (App.shared) App.shared.sync(true);
+  }
+
   function init() {
     const body = document.getElementById("tracks-body");
+    document.getElementById("tracks-dedupe").addEventListener("click", dedupe);
+    document.getElementById("tracks-list").addEventListener("click", openList);
+    document.getElementById("trk-apply").addEventListener("click", applyList);
+    document.getElementById("trk-cancel").addEventListener("click", () => document.getElementById("trk-modal").classList.remove("open"));
+    document.getElementById("trk-modal").addEventListener("click", (e) => { if (e.target.id === "trk-modal") e.currentTarget.classList.remove("open"); });
     body.addEventListener("input", onInput);
     body.addEventListener("change", (e) => { onInput(e); renderFoot(); });
     body.addEventListener("click", (e) => {
