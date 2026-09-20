@@ -16,6 +16,7 @@
     parsed: null, // { templateHeaders, dataHeaders, dataRows, truncated, templateBuffer, templateIsDocx, templateName, savedId }
     mapping: {},
     constants: {}, // قيمة ثابتة لكل حقل لا يوجد له عمود في ملف البيانات
+    missingOpen: false, // مربع الحقول الناقصة مطوي حتى يفتحه المستخدم
     outputFormat: "xlsx",
     groupBy1: "",
     groupBy2: "",
@@ -263,14 +264,15 @@
           <span>${esc(name)}${hint ? `<small class="conv-hint"> ${esc(hint)}</small>` : ""}</span>
           <input type="text" data-const="${esc(name)}" value="${esc(state.constants[name] || "")}" placeholder="اكتب القيمة لتُوضع في كل الصفوف">
         </div>`;
-      html += `<div class="conv-section conv-missing">
-        <h3>⚠ حقول لم نجد لها بيانات في ملفك (${ui.fmt(missing.length + extra.length)})</h3>
+      const filledCount = missing.concat(extra).filter((f) => state.constants[f]).length;
+      html += `<details class="conv-section conv-missing" id="conv-missing" ${state.missingOpen ? "open" : ""}>
+        <summary>⚠ حقول لم نجد لها بيانات في ملفك (${ui.fmt(missing.length + extra.length)})${filledCount ? ` — عُبِّئ ${ui.fmt(filledCount)}` : ""} — اضغط للعرض</summary>
         <p class="conv-hint">اكتب قيمة كل حقل هنا، فتُوضع كما هي في كل صفوف القالب. أو اتركه فارغاً ليبقى فارغاً، أو اربطه بعمود من ملف البيانات في القائمة أدناه. وأعمدة التسلسل مثل «م» تُملأ من خيار «ترقيم تلقائي لعمود» أسفل الصفحة.</p>
         <div class="conv-mapping">
           ${missing.map((h) => field(h, "عمود في جدول القالب")).join("")}
           ${extra.map((ph) => field(ph, "حقل في ترويسة القالب")).join("")}
         </div>
-      </div>`;
+      </details>`;
     }
     html += `<h3>اربط كل عمود في القالب بالعمود المقابل له في ملف البيانات</h3>
       <div class="conv-mapping">
@@ -458,6 +460,7 @@
       return;
     }
     if (t.dataset.const != null) {
+      state.missingOpen = true;
       const key = t.dataset.const;
       if (t.value.trim()) state.constants[key] = t.value.trim(); else delete state.constants[key];
       return;

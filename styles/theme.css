@@ -396,7 +396,10 @@ body.locked .app { filter: blur(6px); pointer-events: none; user-select: none; }
 .conv-multi { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; margin: 6px 0; max-height: 160px; overflow: auto; }
 .conv-multi .conv-check { margin: 0; }
 .conv-missing { border: 1px solid #f0c987; background: #fffaf0; }
-.conv-missing h3 { margin-top: 0; color: #9a5b00; }
+.conv-missing > summary { cursor: pointer; font-weight: 700; color: #9a5b00; font-size: 15px; list-style: none; }
+.conv-missing > summary::-webkit-details-marker { display: none; }
+.conv-missing > summary::before { content: "▸ "; }
+.conv-missing[open] > summary::before { content: "▾ "; }
 .conv-map-row input[type=text] { width: 100%; }
 .conv-map-row small { font-weight: 400; color: var(--muted); }
 .act-btn.ai { background: #f3eaff; color: #5b2ea6; border-color: #dcc7f5; }
