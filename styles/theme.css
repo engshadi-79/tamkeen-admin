@@ -393,6 +393,8 @@ body.locked .app { filter: blur(6px); pointer-events: none; user-select: none; }
 .acc-password { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; }
 .modal.users-modal { width: min(860px, 100%); }
 .user-form { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: #fafbfc; }
+.conv-multi { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; margin: 6px 0; max-height: 160px; overflow: auto; }
+.conv-multi .conv-check { margin: 0; }
 .conv-missing { border: 1px solid #f0c987; background: #fffaf0; }
 .conv-missing h3 { margin-top: 0; color: #9a5b00; }
 .conv-map-row input[type=text] { width: 100%; }

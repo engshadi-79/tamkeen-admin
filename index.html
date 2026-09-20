@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=62">
+  <link rel="stylesheet" href="styles/theme.css?v=64">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -377,6 +377,11 @@
                 <button type="button" class="conv-link" id="conv-saved-download">تحميل</button>
                 <button type="button" class="conv-link danger" id="conv-saved-delete">حذف</button>
               </div>
+              <div id="conv-multi-box" hidden>
+                <span class="conv-label">قوالب إضافية تُطبَّق على نفس البيانات (اختياري)</span>
+                <div class="conv-multi" id="conv-multi-list"></div>
+                <p class="conv-hint" id="conv-multi-count"></p>
+              </div>
             </div>
             <div id="conv-upload-box">
               <label class="field"><span>ملف القالب — Excel أو Word (يحدّد شكل الأعمدة النهائية)</span><input type="file" id="conv-template-file" accept=".xlsx,.docx"></label>
@@ -696,35 +701,35 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=62"></script>
-  <script src="src/ui.js?v=62"></script>
-  <script src="src/templates.js?v=62"></script>
-  <script src="src/tracks.js?v=62"></script>
-  <script src="src/tasks.js?v=62"></script>
-  <script src="src/dashboard.js?v=62"></script>
-  <script src="src/letterhead-docx.js?v=62"></script>
-  <script src="src/docx.js?v=62"></script>
-  <script src="src/ai.js?v=62"></script>
-  <script src="src/doc-render.js?v=62"></script>
-  <script src="src/files-store.js?v=62"></script>
-  <script src="src/shared.js?v=62"></script>
-  <script src="src/cloud.js?v=62"></script>
-  <script src="src/drive.js?v=62"></script>
-  <script src="src/drive-ui.js?v=62"></script>
-  <script src="src/rtl-fixer.js?v=62"></script>
-  <script src="src/rtl-page.js?v=62"></script>
-  <script src="src/profile.js?v=62"></script>
-  <script src="src/registry.js?v=62"></script>
-  <script src="src/charts.js?v=62"></script>
-  <script src="src/meetings.js?v=62"></script>
-  <script src="src/report.js?v=62"></script>
-  <script src="src/letters.js?v=62"></script>
+  <script src="src/storage.js?v=64"></script>
+  <script src="src/ui.js?v=64"></script>
+  <script src="src/templates.js?v=64"></script>
+  <script src="src/tracks.js?v=64"></script>
+  <script src="src/tasks.js?v=64"></script>
+  <script src="src/dashboard.js?v=64"></script>
+  <script src="src/letterhead-docx.js?v=64"></script>
+  <script src="src/docx.js?v=64"></script>
+  <script src="src/ai.js?v=64"></script>
+  <script src="src/doc-render.js?v=64"></script>
+  <script src="src/files-store.js?v=64"></script>
+  <script src="src/shared.js?v=64"></script>
+  <script src="src/cloud.js?v=64"></script>
+  <script src="src/drive.js?v=64"></script>
+  <script src="src/drive-ui.js?v=64"></script>
+  <script src="src/rtl-fixer.js?v=64"></script>
+  <script src="src/rtl-page.js?v=64"></script>
+  <script src="src/profile.js?v=64"></script>
+  <script src="src/registry.js?v=64"></script>
+  <script src="src/charts.js?v=64"></script>
+  <script src="src/meetings.js?v=64"></script>
+  <script src="src/report.js?v=64"></script>
+  <script src="src/letters.js?v=64"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=62"></script>
-  <script src="src/converter-store.js?v=62"></script>
-  <script src="src/converter.js?v=62"></script>
-  <script src="src/app.js?v=62"></script>
+  <script src="src/converter-core.js?v=64"></script>
+  <script src="src/converter-store.js?v=64"></script>
+  <script src="src/converter.js?v=64"></script>
+  <script src="src/app.js?v=64"></script>
 </body>
 </html>

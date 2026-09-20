@@ -12,6 +12,7 @@
     mode: "upload",
     savedTemplates: [],
     selectedSavedId: "",
+    extraSavedIds: [], // قوالب محفوظة إضافية: يُولَّد ملف لكل قالب من نفس البيانات
     parsed: null, // { templateHeaders, dataHeaders, dataRows, truncated, templateBuffer, templateIsDocx, templateName, savedId }
     mapping: {},
     constants: {}, // قيمة ثابتة لكل حقل لا يوجد له عمود في ملف البيانات
@@ -57,6 +58,22 @@
     $("conv-saved-select").innerHTML = state.savedTemplates
       .map((t) => opt(t.id, `${t.name} (${t.format === "docx" ? "Word" : "Excel"})`, t.id === state.selectedSavedId))
       .join("");
+    renderExtraTemplates();
+  }
+
+  /* قوالب إضافية: نفس ملف البيانات يُطبَّق على كل قالب مختار ويخرج ملف لكل واحد */
+  function renderExtraTemplates() {
+    const others = state.savedTemplates.filter((t) => t.id !== state.selectedSavedId);
+    $("conv-multi-box").hidden = state.mode !== "saved" || others.length === 0;
+    state.extraSavedIds = state.extraSavedIds.filter((id) => others.some((t) => t.id === id));
+    $("conv-multi-list").innerHTML = others.map((t) => `
+      <label class="conv-check">
+        <input type="checkbox" data-extra-tpl="${esc(t.id)}" ${state.extraSavedIds.includes(t.id) ? "checked" : ""}>
+        ${esc(t.name)} <span class="reg-kind">(${t.format === "docx" ? "Word" : "Excel"})</span>
+      </label>`).join("");
+    $("conv-multi-count").textContent = state.extraSavedIds.length
+      ? `سيخرج ${ui.fmt(state.extraSavedIds.length + 1)} ملف في ملف مضغوط واحد`
+      : "";
   }
 
   async function refreshSaved() {
@@ -111,6 +128,7 @@
         return !dataNorm.some((d) => d === n || d.includes(n) || n.includes(d)) && !templateHeaders.some((h) => norm(h) === n) && !/^تاريخ\d+$/.test(ph);
       });
       state.outputFormat = templateIsDocx ? "docx" : "xlsx";
+      await prepareExtras(data);
 
       const defaults = (savedId && selectedSaved() && selectedSaved().defaultGroupBy) || [];
       const usable = defaults.map((h) => core().resolveDefaultColumn(h, data.headers)).filter(Boolean);
@@ -131,6 +149,27 @@
         : "تعذّر قراءة أحد الملفين - تأكد أن القالب Excel أو Word صحيح وأن ملف البيانات بصيغة Excel (.xlsx)");
     } finally {
       setBusy("conv-parse", false, "تحليل الملفين");
+    }
+  }
+
+  /* لكل قالب إضافي: عناوينه وربطه التلقائي وحقوله الناقصة */
+  async function prepareExtras(data) {
+    state.extras = [];
+    const norm = core().normalizeHeader;
+    const dataNorm = data.headers.map(norm);
+    for (const id of state.extraSavedIds) {
+      const saved = await store().get(id);
+      if (!saved) continue;
+      const buffer = await saved.file.arrayBuffer();
+      const isDocx = saved.format === "docx";
+      const headers = saved.headers && saved.headers.length ? saved.headers : await core().readTemplateHeaders(buffer, isDocx);
+      const mapping = core().suggestColumnMapping(headers, data.headers);
+      const placeholders = await core().readTemplatePlaceholders(buffer, isDocx);
+      const extraFields = placeholders.filter((ph) => {
+        const n = norm(ph);
+        return !dataNorm.some((d) => d === n || d.includes(n) || n.includes(d)) && !headers.some((h) => norm(h) === n) && !/^تاريخ\d+$/.test(ph);
+      });
+      state.extras.push({ id, name: saved.name, buffer, isDocx, headers, mapping, defaultGroupBy: saved.defaultGroupBy || [], missing: headers.filter((h) => !mapping[h]).concat(extraFields) });
     }
   }
 
@@ -215,7 +254,8 @@
       opt("", placeholder, !selected) + p.dataHeaders.filter((h) => h !== exclude).map((h) => opt(h, h, h === selected)).join("");
 
     const missing = p.templateHeaders.filter((h) => !state.mapping[h]);
-    const extra = state.extraFields || [];
+    const fromExtras = (state.extras || []).reduce((all, t) => all.concat(t.missing), []);
+    const extra = [...new Set((state.extraFields || []).concat(fromExtras))].filter((f) => !missing.includes(f));
     let html = "";
     if (missing.length || extra.length) {
       const field = (name, hint) => `
@@ -367,8 +407,39 @@
         fitGroupToOnePage: sameFormat && (state.outputFormat === "xlsx" || groups.length > 0) && state.fitGroupToOnePage,
         sessionDates,
       });
-      ui.download(filename, blob);
-      ui.toast("تم توليد الملف");
+      const extras = state.extras || [];
+      if (!extras.length) {
+        ui.download(filename, blob);
+        ui.toast("تم توليد الملف");
+      } else {
+        const zip = new JSZip();
+        zip.file(filename, blob);
+        for (let i = 0; i < extras.length; i++) {
+          const t = extras[i];
+          setBusy("conv-generate", true, `جارٍ التوليد ${ui.fmt(i + 2)} من ${ui.fmt(extras.length + 1)}...`);
+          const mapping = Object.assign({}, t.mapping);
+          Object.keys(state.constants).forEach((k) => { if (t.headers.includes(k) && !mapping[k]) mapping[k] = k; });
+          const groupsForExtra = t.defaultGroupBy && t.defaultGroupBy.length
+            ? t.defaultGroupBy.map((h) => core().resolveDefaultColumn(h, p.dataHeaders)).filter(Boolean)
+            : groups;
+          const out = await core().generate({
+            templateBuffer: t.buffer,
+            templateIsDocx: t.isDocx,
+            templateName: t.name,
+            templateHeaders: t.headers,
+            mapping,
+            dataRows: filled.rows.map((r) => Object.assign({}, r)),
+            outputFormat: t.isDocx ? "docx" : "xlsx",
+            groupByColumns: groupsForExtra.length ? groupsForExtra : undefined,
+            autoNumberHeader: t.headers.find((h) => h === state.autoNumberHeader) || undefined,
+            fitGroupToOnePage: state.fitGroupToOnePage,
+            sessionDates: t.isDocx ? undefined : sessionDates,
+          });
+          zip.file(out.filename, out.blob);
+        }
+        ui.download(`قوالب ${ui.fmt(extras.length + 1)} - ${ui.todayISO()}.zip`, await zip.generateAsync({ type: "blob" }));
+        ui.toast(`تم توليد ${ui.fmt(extras.length + 1)} ملف`);
+      }
     } catch (e) {
       console.error(e);
       setError(e && e.message ? e.message : "تعذّر توليد الملف");
@@ -438,7 +509,17 @@
     document.querySelectorAll("[data-conv-mode]").forEach((b) =>
       b.addEventListener("click", () => { state.mode = b.dataset.convMode; renderSource(); })
     );
-    $("conv-saved-select").addEventListener("change", (e) => { state.selectedSavedId = e.target.value; });
+    $("conv-saved-select").addEventListener("change", (e) => { state.selectedSavedId = e.target.value; renderExtraTemplates(); });
+    $("conv-multi-list").addEventListener("change", (e) => {
+      const id = e.target.dataset.extraTpl;
+      if (!id) return;
+      if (e.target.checked) state.extraSavedIds.push(id);
+      else state.extraSavedIds = state.extraSavedIds.filter((x) => x !== id);
+      // تحديث العدّاد فقط؛ إعادة بناء القائمة هنا تُفقد بقية المربعات
+      $("conv-multi-count").textContent = state.extraSavedIds.length
+        ? `سيخرج ${ui.fmt(state.extraSavedIds.length + 1)} ملف في ملف مضغوط واحد`
+        : "";
+    });
     $("conv-saved-download").addEventListener("click", handleDownloadSaved);
     $("conv-saved-delete").addEventListener("click", handleDeleteSaved);
     $("conv-save-toggle").addEventListener("click", () => { $("conv-save-form").hidden = false; $("conv-save-toggle").hidden = true; $("conv-save-name").focus(); });
