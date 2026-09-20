@@ -41,7 +41,8 @@
     const push = {};
     COLS.forEach((name) => {
       const local = readCol(name);
-      const remote = (server[name] && server[name].records) || [];
+      if (!server[name] || !Array.isArray(server[name].records)) { push[name] = true; return; } // قسم لا يعرفه الخادم
+      const remote = server[name].records;
       const takeServer = () => { writeCol(name, remote); snap[name] = {}; remote.forEach((r) => { snap[name][r.id] = fingerprint(r); }); };
       if (!remote.length) { push[name] = true; return; } // الخادم فارغ: تُرفع بيانات هذا الجهاز
       if (name === "tracks") {
@@ -78,12 +79,20 @@
       });
       const merged = await App.cloud.syncAll(cols);
       const next = {};
+      const skipped = [];
       COLS.forEach((name) => {
-        const records = (merged[name] && merged[name].records) || [];
+        if (!merged[name] || !Array.isArray(merged[name].records)) {
+          // الخادم لا يعرف هذا القسم بعد: تبقى بيانات الجهاز كما هي
+          next[name] = snap[name] || {};
+          skipped.push(name);
+          return;
+        }
+        const records = merged[name].records;
         writeCol(name, records);
         next[name] = {};
         records.forEach((r) => { next[name][r.id] = fingerprint(r); });
       });
+      if (skipped.length) console.warn("أقسام لا يدعمها الخادم بعد:", skipped.join("، "));
       saveSnap(next);
       store.save();
       rerender();
