@@ -42,7 +42,8 @@
         <td><input type="number" min="0" max="100" data-f="attendancePct" value="${t.attendancePct}" aria-label="نسبة الحضور"></td>
         <td><input type="number" min="0" max="${store.TOTAL_HOURS}" data-f="hoursCompleted" value="${t.hoursCompleted}" aria-label="الساعات المكتملة"></td>
         <td style="min-width:150px" data-progress>${ui.progressBar(hoursPct(t))}</td>
-      </tr>`).join("");
+        <td class="reg-actions">${!App.profile.can || App.profile.can("delete") ? `<button class="act-btn del" data-del title="حذف المسار">🗑</button>` : ""}</td>
+      </tr>`).join("") || `<tr><td colspan="7" class="empty">لا توجد مسارات. اضغط «+ مسار جديد».</td></tr>`;
 
     renderFoot();
   }
@@ -52,11 +53,11 @@
     const s = summary(tracks);
     document.getElementById("tracks-foot").innerHTML = `
       <tr>
-        <th>الإجمالي / المتوسط</th><th></th>
+        <th>الإجمالي / المتوسط (${ui.fmt(tracks.length)} مسار)</th><th></th>
         <th>${ui.fmt(s.beneficiaries)}</th>
         <th>${ui.fmt(s.attendancePct, 1)}%</th>
         <th>${ui.fmt(tracks.reduce((a, t) => a + Number(t.hoursCompleted || 0), 0))} / ${ui.fmt(store.TOTAL_HOURS * tracks.length)}</th>
-        <th>${ui.progressBar(s.completionPct)}</th>
+        <th>${ui.progressBar(s.completionPct)}</th><th></th>
       </tr>`;
   }
 
@@ -80,10 +81,42 @@
     renderFoot();
   }
 
+  /* إضافة مسار جديد فارغ، والتركيز على اسمه */
+  function addTrack() {
+    const t = { id: store.uid(), name: "", type: "craft", beneficiaries: 0, attendancePct: 0, hoursCompleted: 0 };
+    store.get().tracks.push(t);
+    store.save();
+    render();
+    const input = document.querySelector(`#tracks-body tr[data-id="${t.id}"] [data-f="name"]`);
+    if (input) { input.focus(); input.scrollIntoView({ block: "center" }); }
+    ui.toast("أُضيف مسار جديد — اكتب اسمه");
+  }
+
+  function removeTrack(id) {
+    const s = store.get();
+    const t = s.tracks.find((x) => x.id === id);
+    if (!t) return;
+    const used = (s.roster || []).filter((r) => Object.values(r.values || {}).includes(t.name)).length;
+    const msg = `حذف المسار «${t.name || "بلا اسم"}»؟`
+      + (used ? `\nمرتبط بـ ${ui.fmt(used)} مستفيداً في القائمة (بياناتهم تبقى كما هي).` : "")
+      + "\nيُحذف عند كل المستخدمين، ولا يمكن التراجع.";
+    if (!confirm(msg)) return;
+    s.tracks = s.tracks.filter((x) => x.id !== id);
+    store.save();
+    render();
+    App.dashboard.render();
+    ui.toast("حُذف المسار");
+  }
+
   function init() {
     const body = document.getElementById("tracks-body");
     body.addEventListener("input", onInput);
     body.addEventListener("change", (e) => { onInput(e); renderFoot(); });
+    body.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-del]");
+      if (btn) removeTrack(btn.closest("tr").dataset.id);
+    });
+    document.getElementById("tracks-add").addEventListener("click", addTrack);
   }
 
   App.tracks = { init, render, summary, hoursPct, textSummary, TYPE_LABEL };
