@@ -227,11 +227,13 @@
       const now = new Date().toISOString();
       const snap = loadSnap();
       const local = records();
-      local.forEach((r) => { if (snap[r.id] !== fingerprint(r)) r.updatedAt = now; });
+      const changed = local.filter((r) => snap[r.id] !== fingerprint(r));
+      changed.forEach((r) => { r.updatedAt = now; });
       const ids = new Set(local.map((r) => r.id));
       const deleted = {};
       Object.keys(snap).forEach((id) => { if (!ids.has(id)) deleted[id] = now; });
-      const merged = await App.cloud.sync(local, deleted);
+      // بلا تغييرات: طلب قراءة فقط، فلا يكتب الخادم شيئاً ولا يزدحم القفل
+      const merged = await App.cloud.sync(changed.length || Object.keys(deleted).length ? local : [], deleted);
       // الملف المحلي (fileId) يخص هذا الجهاز فقط: يُحتفظ به إن كان القيد نفسه
       const localFiles = new Map(local.filter((r) => r.fileId).map((r) => [r.id, r]));
       merged.records.forEach((r) => {
@@ -248,7 +250,8 @@
       purgeTrash();
     } catch (e) {
       console.warn("مزامنة السجل:", e.message);
-      if (showErrors) ui.toast(e.message);
+      if (/مشغول|مهلة|Lock|timed out/i.test(e.message)) scheduleSync(8000);
+      else if (showErrors) ui.toast(e.message);
     } finally {
       syncing = false;
       if (syncAgain) { syncAgain = false; scheduleSync(500); }

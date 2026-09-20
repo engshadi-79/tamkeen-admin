@@ -50,7 +50,7 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 6, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
+      case "status": return out_({ ok: true, version: 7, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
       case "login": return out_(login_(req.username, req.password));
       case "forgot": return out_(forgot_(req.username));
@@ -59,7 +59,7 @@ function doPost(e) {
     const user = session_(req.token);
     if (!user) return out_({ error: "UNAUTHORIZED" });
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 6, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 7, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
@@ -291,8 +291,10 @@ const stamp_ = (r) => r.updatedAt || r.createdAt || "";
 
 /* دمج سجل الجهاز مع السجل المشترك: الأحدث تعديلاً يفوز، والحذف يُسجَّل بتاريخه */
 function sync_(records, deleted, user) {
+  // بلا تغييرات: قراءة فقط بلا قفل
+  if (!records.length && !Object.keys(deleted).length) return readData_(dataFile_());
   const lock = LockService.getScriptLock();
-  lock.waitLock(25000);
+  if (!lock.tryLock(45000)) throw new Error("الخادم مشغول بمزامنة أخرى، أعد المحاولة بعد لحظات");
   try {
     const file = dataFile_();
     const data = readData_(file);
@@ -341,12 +343,16 @@ function colFile_(name) {
 }
 
 function syncAll_(cols) {
+  const result = {};
+  const names = Object.keys(cols).filter(isCol_);
+  // قسم بلا تغييرات: قراءة فقط، بلا قفل ولا كتابة (يخفّف الازدحام كثيراً)
+  const writes = names.filter((n) => ((cols[n].records || []).length || Object.keys(cols[n].deleted || {}).length));
+  names.filter((n) => writes.indexOf(n) === -1).forEach((n) => { result[n] = readData_(colFile_(n)); });
+  if (!writes.length) return result;
   const lock = LockService.getScriptLock();
-  lock.waitLock(25000);
+  if (!lock.tryLock(45000)) throw new Error("الخادم مشغول بمزامنة أخرى، أعد المحاولة بعد لحظات");
   try {
-    const result = {};
-    Object.keys(cols).forEach((name) => {
-      if (!isCol_(name)) return;
+    writes.forEach((name) => {
       const file = colFile_(name);
       const data = readData_(file);
       const incoming = cols[name] || {};

@@ -85,7 +85,8 @@
       COLS.forEach((name) => {
         const local = readCol(name);
         const mine = snap[name] || {};
-        local.forEach((r) => { if (mine[r.id] !== fingerprint(r)) r.updatedAt = now; });
+        const changed = local.filter((r) => mine[r.id] !== fingerprint(r));
+        changed.forEach((r) => { r.updatedAt = now; });
         const ids = new Set(local.map((r) => r.id));
         const deleted = {};
         Object.keys(mine).forEach((id) => { if (!ids.has(id)) deleted[id] = now; });
@@ -99,7 +100,8 @@
           blocked[name] = count;
           return;
         }
-        cols[name] = { records: local, deleted };
+        // قسم بلا تغييرات يُرسل فارغاً: الخادم يرجعه للقراءة فقط بلا كتابة
+        cols[name] = changed.length || Object.keys(deleted).length ? { records: local, deleted } : { records: [], deleted: {} };
       });
       const merged = await App.cloud.syncAll(cols);
       const next = {};
@@ -122,7 +124,9 @@
       rerender();
     } catch (e) {
       console.warn("مزامنة الأقسام:", e.message);
-      if (showErrors) ui.toast(e.message);
+      // الخادم مشغول: إعادة محاولة تلقائية بعد قليل
+      if (/مشغول|مهلة|Lock|timed out/i.test(e.message)) schedule(8000);
+      else if (showErrors) ui.toast(e.message);
     } finally {
       syncing = false;
       if (again) { again = false; schedule(500); }
