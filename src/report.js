@@ -5,7 +5,7 @@
   const $ = (id) => document.getElementById(id);
   const ATTENDANCE_THRESHOLD = 80;
   const ORD = ["أولاً", "ثانياً", "ثالثاً", "رابعاً", "خامساً", "سادساً", "سابعاً", "ثامناً", "تاسعاً", "عاشراً"];
-  const TEXTS = ["highlights", "challenges", "next"];
+  const TEXTS = ["highlights", "challenges", "next", "analysis"];
 
   const settings = () => (store.get().reportSettings = Object.assign({
     recipient: "مركز الملك سلمان للإغاثة والأعمال الإنسانية",
@@ -152,7 +152,7 @@
       });
     }
 
-    [["highlights", "أبرز الإنجازات"], ["challenges", "التحديات"], ["next", "الخطوات القادمة"]].forEach(([f, title]) => {
+    [["analysis", $("r-analysis-title").value.trim() || "تحليل الملفات المرفقة"], ["highlights", "أبرز الإنجازات"], ["challenges", "التحديات"], ["next", "الخطوات القادمة"]].forEach(([f, title]) => {
       if (!lines(v[f]).length) return;
       section(title);
       lines(v[f]).forEach((l) => out.push({ kind: "para", text: l }));
@@ -161,6 +161,97 @@
     out.push({ kind: "para", text: "" }, { kind: "title", text: "وتقبلوا منا فائق الاحترام والتقدير،،،" }, { kind: "para", text: "" });
     out.push({ kind: "signature", lines: [store.get().signerTitle, store.get().signer].filter(Boolean).length ? [store.get().signerTitle, store.get().signer].filter(Boolean) : [App.templates.PLACEHOLDER] });
     return out;
+  }
+
+  /* ===== تحليل ملفات مرفوعة بالذكاء الاصطناعي ===== */
+  let aiFiles = []; // { name, text, chars }
+  const MAX_CHARS = 60000;
+
+  /* استخراج نص كل نوع: Excel جدولاً، Word نصاً، PDF والصور عبر القراءة الضوئية على الخادم */
+  async function extractText(file) {
+    const name = file.name.toLowerCase();
+    if (/\.(xlsx|xlsm)$/.test(name)) {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+      return wb.worksheets.slice(0, 5).map((ws) => {
+        const rows = [];
+        ws.eachRow({ includeEmpty: false }, (row, i) => {
+          if (i > 400) return;
+          rows.push(row.values.slice(1).map((c) => (c == null ? "" : String(c.text || c.result || c))).join(" | "));
+        });
+        return `### ورقة: ${ws.name}\n${rows.join("\n")}`;
+      }).join("\n\n");
+    }
+    if (/\.docx$/.test(name)) {
+      const zip = await JSZip.loadAsync(await file.arrayBuffer());
+      const xml = await zip.file("word/document.xml").async("string");
+      return xml.replace(/<\/w:p>/g, "\n").replace(/<[^>]+>/g, "").replace(/\n{3,}/g, "\n\n");
+    }
+    if (/\.(txt|csv|json|md)$/.test(name)) return file.text();
+    if (/\.(pdf|jpe?g|png|tiff?|webp|heic)$/.test(name)) {
+      if (!(App.cloud && App.cloud.ready())) throw new Error("قراءة PDF والصور تحتاج الاتصال بخادم المركز");
+      const data = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result).split(",")[1]);
+        fr.onerror = () => reject(fr.error);
+        fr.readAsDataURL(file);
+      });
+      const r = await App.cloud.ocr(data, file.type || "application/pdf", file.name);
+      return r.text || "";
+    }
+    throw new Error("نوع غير مدعوم");
+  }
+
+  function renderAiFiles() {
+    const total = aiFiles.reduce((n, f) => n + f.chars, 0);
+    $("r-ai-list").innerHTML = aiFiles.length
+      ? aiFiles.map((f, i) => `<li><b>${ui.esc(f.name)}</b> <span class="reg-kind">${ui.fmt(f.chars)} حرف</span>
+          <button type="button" class="conv-link danger" data-ai-del="${i}">✕</button></li>`).join("")
+      : `<li class="conv-hint">لم تُضف ملفات بعد.</li>`;
+    $("r-ai-total").textContent = aiFiles.length ? `${ui.fmt(aiFiles.length)} ملف · ${ui.fmt(total)} حرف${total > MAX_CHARS ? ` (سيُرسل أول ${ui.fmt(MAX_CHARS)} حرف)` : ""}` : "";
+    $("r-ai-run").disabled = !aiFiles.length;
+  }
+
+  async function addAiFiles(files) {
+    for (const file of [...files]) {
+      $("r-ai-status").textContent = `جارٍ قراءة ${file.name}…`;
+      try {
+        const text = String(await extractText(file)).trim();
+        if (!text) throw new Error("لا يوجد نص قابل للقراءة");
+        aiFiles.push({ name: file.name, text, chars: text.length });
+      } catch (e) {
+        ui.toast(`${file.name}: ${e.message}`);
+      }
+      renderAiFiles();
+    }
+    $("r-ai-status").textContent = "";
+  }
+
+  async function runAnalysis() {
+    if (!App.ai.hasKey()) { ui.toast("أضف مفتاح الذكاء الاصطناعي من صفحة المراسلات ← إعدادات"); return; }
+    if (!aiFiles.length) return;
+    const ask = $("r-ai-ask").value.trim() || "حلّل الملفات واكتب أهم النتائج والأرقام والملاحظات في صيغة تقرير رسمي.";
+    let context = "";
+    for (const f of aiFiles) {
+      if (context.length >= MAX_CHARS) break;
+      context += `\n\n===== ملف: ${f.name} =====\n${f.text.slice(0, MAX_CHARS - context.length)}`;
+    }
+    $("r-ai-run").disabled = true;
+    $("r-ai-status").textContent = "جارٍ التحليل…";
+    const target = $("r-analysis");
+    target.value = "";
+    try {
+      await App.ai.generate({
+        request: `${ask}\n\nاكتب النتيجة بالعربية الفصحى، بنداً في كل سطر، بلا عناوين ولا مقدمات ولا خاتمة، ولا تكتب تحية أو توقيعاً. اعتمد على أرقام الملفات كما هي.`,
+        context,
+        onText: (t) => { target.value += t; renderPreview(); },
+      });
+      $("r-ai-status").textContent = target.value.trim() ? "تم التحليل — راجع النص وعدّله قبل التصدير" : "لم يصل رد من الخدمة";
+      renderPreview();
+    } catch (e) {
+      $("r-ai-status").textContent = e.message;
+    }
+    $("r-ai-run").disabled = false;
   }
 
   const fileBase = () => {
@@ -213,7 +304,26 @@
     $("r-date").value = today;
   }
 
+  function initAiFiles() {
+    $("r-ai-files").addEventListener("change", (e) => { addAiFiles(e.target.files); e.target.value = ""; });
+    $("r-ai-pick").addEventListener("click", () => $("r-ai-files").click());
+    $("r-ai-run").addEventListener("click", runAnalysis);
+    $("r-ai-clear").addEventListener("click", () => { aiFiles = []; renderAiFiles(); });
+    $("r-ai-list").addEventListener("click", (e) => {
+      const i = e.target.dataset.aiDel;
+      if (i == null) return;
+      aiFiles.splice(Number(i), 1);
+      renderAiFiles();
+    });
+    const drop = $("r-ai-drop");
+    ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+    ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+    drop.addEventListener("drop", (e) => { if (e.dataTransfer.files.length) addAiFiles(e.dataTransfer.files); });
+    renderAiFiles();
+  }
+
   function init() {
+    initAiFiles();
     const s = settings();
     defaultPeriod();
     $("r-recipient").value = s.recipient;

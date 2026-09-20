@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=65">
+  <link rel="stylesheet" href="styles/theme.css?v=66">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -197,6 +197,26 @@
             <p class="conv-hint" style="margin-top:-6px">تاريخا التدريب يُحفظان، ويُستخدمان لمقارنة الإنجاز الفعلي بالمخطط.</p>
             <label class="conv-check strong"><input type="checkbox" id="r-charts" checked> إدراج الرسوم البيانية</label><br>
             <label class="conv-check strong"><input type="checkbox" id="r-tasks" checked> إدراج جدول المهام المنجزة خلال الفترة</label>
+            <fieldset class="drv-users-box" style="margin-top:12px">
+              <legend>✨ تحليل ملفات بالذكاء الاصطناعي</legend>
+              <label class="rtl-drop" id="r-ai-drop">
+                <span class="rtl-drop-ico">📂</span>
+                <b>اسحب ملفات التقارير إلى هنا</b>
+                <span class="conv-hint">Excel و Word و PDF و صور و CSV — تُقرأ داخل المتصفح، وملفات PDF والصور تُقرأ ضوئياً على خادم المركز</span>
+                <button type="button" class="btn small" id="r-ai-pick">اختيار ملفات</button>
+                <input type="file" id="r-ai-files" multiple hidden accept=".xlsx,.xlsm,.docx,.pdf,.csv,.txt,.json,.md,image/*">
+              </label>
+              <ul class="rtl-list" id="r-ai-list"></ul>
+              <p class="conv-hint" id="r-ai-total"></p>
+              <label class="field"><span>ماذا تريد من التقرير؟</span><textarea id="r-ai-ask" rows="3" placeholder="مثال: قارن الحضور بين المسارات، واذكر أعلى وأدنى ثلاثة، ونسبة الإناث، وأبرز الملاحظات في جداول الدرجات."></textarea></label>
+              <label class="field"><span>عنوان القسم في التقرير</span><input type="text" id="r-analysis-title" placeholder="تحليل الملفات المرفقة"></label>
+              <div class="btn-row">
+                <button class="btn navy small" type="button" id="r-ai-run" disabled>✨ تحليل وكتابة القسم</button>
+                <button class="btn secondary small" type="button" id="r-ai-clear">مسح الملفات</button>
+                <span class="conv-hint" id="r-ai-status" aria-live="polite"></span>
+              </div>
+              <label class="field"><span>نص القسم (يمكنك تعديله)</span><textarea id="r-analysis" rows="6"></textarea></label>
+            </fieldset>
             <label class="field" style="margin-top:12px"><span>أبرز الإنجازات (كل سطر بند)</span><textarea id="r-highlights" rows="4"></textarea></label>
             <label class="field"><span>التحديات</span><textarea id="r-challenges" rows="3"></textarea></label>
             <label class="field"><span>الخطوات القادمة</span><textarea id="r-next" rows="3"></textarea></label>
@@ -701,35 +721,35 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=65"></script>
-  <script src="src/ui.js?v=65"></script>
-  <script src="src/templates.js?v=65"></script>
-  <script src="src/tracks.js?v=65"></script>
-  <script src="src/tasks.js?v=65"></script>
-  <script src="src/dashboard.js?v=65"></script>
-  <script src="src/letterhead-docx.js?v=65"></script>
-  <script src="src/docx.js?v=65"></script>
-  <script src="src/ai.js?v=65"></script>
-  <script src="src/doc-render.js?v=65"></script>
-  <script src="src/files-store.js?v=65"></script>
-  <script src="src/shared.js?v=65"></script>
-  <script src="src/cloud.js?v=65"></script>
-  <script src="src/drive.js?v=65"></script>
-  <script src="src/drive-ui.js?v=65"></script>
-  <script src="src/rtl-fixer.js?v=65"></script>
-  <script src="src/rtl-page.js?v=65"></script>
-  <script src="src/profile.js?v=65"></script>
-  <script src="src/registry.js?v=65"></script>
-  <script src="src/charts.js?v=65"></script>
-  <script src="src/meetings.js?v=65"></script>
-  <script src="src/report.js?v=65"></script>
-  <script src="src/letters.js?v=65"></script>
+  <script src="src/storage.js?v=66"></script>
+  <script src="src/ui.js?v=66"></script>
+  <script src="src/templates.js?v=66"></script>
+  <script src="src/tracks.js?v=66"></script>
+  <script src="src/tasks.js?v=66"></script>
+  <script src="src/dashboard.js?v=66"></script>
+  <script src="src/letterhead-docx.js?v=66"></script>
+  <script src="src/docx.js?v=66"></script>
+  <script src="src/ai.js?v=66"></script>
+  <script src="src/doc-render.js?v=66"></script>
+  <script src="src/files-store.js?v=66"></script>
+  <script src="src/shared.js?v=66"></script>
+  <script src="src/cloud.js?v=66"></script>
+  <script src="src/drive.js?v=66"></script>
+  <script src="src/drive-ui.js?v=66"></script>
+  <script src="src/rtl-fixer.js?v=66"></script>
+  <script src="src/rtl-page.js?v=66"></script>
+  <script src="src/profile.js?v=66"></script>
+  <script src="src/registry.js?v=66"></script>
+  <script src="src/charts.js?v=66"></script>
+  <script src="src/meetings.js?v=66"></script>
+  <script src="src/report.js?v=66"></script>
+  <script src="src/letters.js?v=66"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=65"></script>
-  <script src="src/converter-store.js?v=65"></script>
-  <script src="src/converter.js?v=65"></script>
-  <script src="src/app.js?v=65"></script>
+  <script src="src/converter-core.js?v=66"></script>
+  <script src="src/converter-store.js?v=66"></script>
+  <script src="src/converter.js?v=66"></script>
+  <script src="src/app.js?v=66"></script>
 </body>
 </html>
