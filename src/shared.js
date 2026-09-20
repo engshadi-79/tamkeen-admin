@@ -82,6 +82,7 @@
       if (!Object.keys(snap).length) { await firstSync(); snap = loadSnap(); }
       const now = new Date().toISOString();
       const cols = {};
+      const sentPrints = {};
       COLS.forEach((name) => {
         const local = readCol(name);
         const mine = snap[name] || {};
@@ -102,6 +103,9 @@
         }
         // قسم بلا تغييرات يُرسل فارغاً: الخادم يرجعه للقراءة فقط بلا كتابة
         cols[name] = changed.length || Object.keys(deleted).length ? { records: local, deleted } : { records: [], deleted: {} };
+        // بصمة ما أُرسل: ما يتغيّر بعدها (نقر المستخدم أثناء الطلب) يُحافظ عليه عند وصول الرد
+        sentPrints[name] = {};
+        local.forEach((r) => { sentPrints[name][r.id] = fingerprint(r); });
       });
       const merged = await App.cloud.syncAll(cols);
       const next = {};
@@ -114,9 +118,21 @@
           return;
         }
         const records = merged[name].records;
-        writeCol(name, records);
+        // تعديلات جرت أثناء الطلب: تبقى نسخة الجهاز وتُرفع في المزامنة التالية
+        const liveNow = new Map(readCol(name).map((r) => [r.id, r]));
+        const sent = sentPrints[name] || {};
+        const kept = [];
+        const final = records.map((r) => {
+          const live = liveNow.get(r.id);
+          if (live && sent[r.id] !== undefined && fingerprint(live) !== sent[r.id]) { kept.push(r.id); return live; }
+          return r;
+        });
+        // سجل أُضيف أثناء الطلب ولم يصل الخادم بعد
+        liveNow.forEach((live, id) => { if (sent[id] === undefined && !final.some((r) => r.id === id)) { final.push(live); kept.push(id); } });
+        writeCol(name, final);
+        if (kept.length) schedule(1200); // التعديلات التي حدثت أثناء الطلب تُرفع في الجولة التالية
         next[name] = {};
-        records.forEach((r) => { next[name][r.id] = fingerprint(r); });
+        final.forEach((r) => { if (kept.indexOf(r.id) === -1) next[name][r.id] = fingerprint(r); });
       });
       if (skipped.length) console.warn("أقسام لا يدعمها الخادم بعد:", skipped.join("، "));
       saveSnap(next);

@@ -232,6 +232,9 @@
       const ids = new Set(local.map((r) => r.id));
       const deleted = {};
       Object.keys(snap).forEach((id) => { if (!ids.has(id)) deleted[id] = now; });
+      // بصمة ما أُرسل: التعديلات التي تجري أثناء الطلب لا تُستبدل برد الخادم
+      const sentPrints = {};
+      local.forEach((r) => { sentPrints[r.id] = fingerprint(r); });
       // بلا تغييرات: طلب قراءة فقط، فلا يكتب الخادم شيئاً ولا يزدحم القفل
       const merged = await App.cloud.sync(changed.length || Object.keys(deleted).length ? local : [], deleted);
       // الملف المحلي (fileId) يخص هذا الجهاز فقط: يُحتفظ به إن كان القيد نفسه
@@ -240,8 +243,17 @@
         const mine = localFiles.get(r.id);
         if (mine && mine.fileName === r.fileName && mine.fileId !== r.fileId) r.localFileId = mine.fileId;
       });
-      store.get().registry = merged.records;
-      saveSnap(merged.records);
+      const liveNow = new Map(records().map((r) => [r.id, r]));
+      const kept = [];
+      const final = merged.records.map((r) => {
+        const live = liveNow.get(r.id);
+        if (live && sentPrints[r.id] !== undefined && fingerprint(live) !== sentPrints[r.id]) { kept.push(r.id); return live; }
+        return r;
+      });
+      liveNow.forEach((live, id) => { if (sentPrints[id] === undefined && !final.some((r) => r.id === id)) { final.push(live); kept.push(id); } });
+      store.get().registry = final;
+      saveSnap(final.filter((r) => kept.indexOf(r.id) === -1));
+      if (kept.length) scheduleSync(1200); // ما بقي من تعديلات يُرفع في الجولة التالية
       lastSync = Date.now();
       store.save();
       if ($("view-registry").classList.contains("active")) render();
