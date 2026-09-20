@@ -26,8 +26,14 @@
     return lines.join("\n");
   }
 
+  /* الترتيب الذي يحدده المستخدم (حقل order)، ثم الأقدم إضافةً */
+  function ordered() {
+    const list = store.get().tracks || [];
+    return list.slice().sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+  }
+
   function render() {
-    const { tracks } = store.get();
+    const tracks = ordered();
     const body = document.getElementById("tracks-body");
     body.innerHTML = tracks.map((t) => `
       <tr data-id="${t.id}">
@@ -49,7 +55,7 @@
   }
 
   function renderFoot() {
-    const { tracks } = store.get();
+    const tracks = ordered();
     const s = summary(tracks);
     document.getElementById("tracks-foot").innerHTML = `
       <tr>
@@ -83,7 +89,8 @@
 
   /* إضافة مسار جديد فارغ، والتركيز على اسمه */
   function addTrack() {
-    const t = { id: store.uid(), name: "", type: "craft", beneficiaries: 0, attendancePct: 0, hoursCompleted: 0 };
+    const list = store.get().tracks;
+    const t = { id: store.uid(), name: "", type: "craft", beneficiaries: 0, attendancePct: 0, hoursCompleted: 0, order: list.reduce((m, x) => Math.max(m, Number(x.order) || 0), 0) + 1 };
     store.get().tracks.push(t);
     store.save();
     render();
@@ -119,5 +126,5 @@
     document.getElementById("tracks-add").addEventListener("click", addTrack);
   }
 
-  App.tracks = { init, render, summary, hoursPct, textSummary, TYPE_LABEL };
+  App.tracks = { init, render, ordered, summary, hoursPct, textSummary, TYPE_LABEL };
 })(window.App = window.App || {});

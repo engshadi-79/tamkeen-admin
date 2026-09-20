@@ -34,7 +34,7 @@
   }
 
   function compute(v) {
-    const tracks = store.get().tracks;
+    const tracks = App.tracks.ordered();
     const sum = App.tracks.summary(tracks);
     const inRange = (d) => d && (!v.from || d >= v.from) && (!v.to || d <= v.to);
     const tasks = store.get().tasks;

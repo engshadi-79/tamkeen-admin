@@ -45,9 +45,6 @@
   const loadSnap = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "{}"); } catch (e) { return {}; } };
   const saveSnap = (snap) => { try { localStorage.setItem(SNAP_KEY, JSON.stringify(snap)); } catch (e) { /* تخزين غير متاح */ } };
 
-  // المسارات الافتراضية (بلا حضور ولا ساعات) لا تُصدَّر فوق بيانات حقيقية على الخادم
-  const pristineTracks = (list) => list.every((t) => !Number(t.attendancePct) && !Number(t.hoursCompleted));
-
   /* أول مزامنة على هذا الجهاز: تُقرأ بيانات الخادم أولاً ثم يُحسم مصدر كل قسم */
   async function firstSync() {
     const server = await App.cloud.syncAll({});
@@ -60,7 +57,7 @@
       const takeServer = () => { writeCol(name, remote); snap[name] = {}; remote.forEach((r) => { snap[name][r.id] = fingerprint(r); }); };
       if (!remote.length) { push[name] = true; return; } // الخادم فارغ: تُرفع بيانات هذا الجهاز
       if (name === "tracks") {
-        if (pristineTracks(remote) && !pristineTracks(local)) { push[name] = true; return; } // بيانات الجهاز أحدث من الافتراضية
+        // الخادم فيه مسارات: تُعتمد كما هي (منعاً لتكرار المسارات الافتراضية من كل جهاز)
         takeServer();
         return;
       }

@@ -4,7 +4,8 @@
   const ATTENDANCE_THRESHOLD = 80;
 
   function render() {
-    const { tracks: trackList, tasks } = store.get();
+    const { tasks } = store.get();
+    const trackList = App.tracks.ordered();
     const s = App.tracks.summary(trackList);
     const pending = tasks.filter((t) => !t.done);
     const overdue = pending.filter(ui.isOverdue);
