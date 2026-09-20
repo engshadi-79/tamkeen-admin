@@ -75,6 +75,10 @@
     document.querySelectorAll("[data-view]").forEach((btn) =>
       btn.addEventListener("click", () => show(btn.dataset.view))
     );
+    // تثبيت الأداة كتطبيق والعمل عند ضعف الإنترنت
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      navigator.serviceWorker.register("sw.js").catch(() => { /* غير متاح */ });
+    }
     window.addEventListener("hashchange", () => show(location.hash.slice(1)));
     show(location.hash.slice(1));
   });

@@ -162,9 +162,10 @@
     ui.toast(asPdf ? "اختر «حفظ بتنسيق PDF» ومقاس الورق Letter بدون هوامش" : "اختر الطابعة، ومقاس الورق Letter بدون هوامش");
   }
 
-  function exportWord(list, fileBase) {
+  function exportWord(list, fileBase, silent) {
     try {
       const blob = App.docx.build(list);
+      if (silent) return blob; // الإصدار الجماعي: تُجمع الملفات في ملف مضغوط واحد
       ui.download(fileBase + ".docx", blob);
       ui.toast("تم تصدير ملف Word على الترويسة الرسمية");
       return blob;

@@ -105,7 +105,7 @@
   const assignNumber = async (type, date) => (await assignNumbers(type, date, 1))[0];
 
   /* يُستدعى عند تصدير خطاب أو تقرير: يضيف قيداً صادراً أو يحدّث القيد الموجود بنفس الرقم */
-  async function upsertOutgoing({ number, date, party, subject, kind, category, file, replyTo }) {
+  async function upsertOutgoing({ number, date, party, subject, kind, category, file, replyTo, verifyId }) {
     if (!number) return null;
     let rec = records().find((r) => r.type === "out" && r.number === number);
     if (!rec) {
@@ -116,6 +116,7 @@
     Object.assign(rec, { date, party, subject, kind: kind || rec.kind || "", source: "letters", deletedAt: null });
     rec.category = category || rec.category || categoryOf(rec);
     if (!rec.track) rec.track = guessTrack(`${subject} ${party}`);
+    if (verifyId) rec.verifyId = verifyId; // رمز التحقق المطبوع على الخطاب
     // الرد على وارد: يُربط الصادر بالوارد ويُعلَّم الوارد «تمت المعالجة»
     const original = replyTo && records().find((r) => r.id === replyTo);
     if (original) {
@@ -524,7 +525,7 @@
         <td class="reg-num">${esc(r.number)}</td>
         <td class="nowrap">${esc(ui.formatDate(r.date))}</td>
         <td>${esc(r.party || "")}</td>
-        <td>${esc(r.subject || "")}<div class="reg-kind">${esc(categoryOf(r))}${r.kind && r.kind !== categoryOf(r) ? ` · ${esc(r.kind)}` : ""}${r.track ? ` · 🎓 ${esc(r.track)}` : ""}</div>${r.type === "in" ? dueBadge(r) : ""}${filter.content && inContent(r) && !textMatch(r, filter.content.q) ? `<span class="due-badge">📄 في المحتوى</span>` : ""}</td>
+        <td>${esc(r.subject || "")}<div class="reg-kind">${esc(categoryOf(r))}${r.kind && r.kind !== categoryOf(r) ? ` · ${esc(r.kind)}` : ""}${r.track ? ` · 🎓 ${esc(r.track)}` : ""}</div>${r.type === "in" ? dueBadge(r) : ""}${r.summary ? `<details class="reg-summary"><summary>✨ الملخص</summary>${esc(r.summary)}</details>` : ""}${filter.content && inContent(r) && !textMatch(r, filter.content.q) ? `<span class="due-badge">📄 في المحتوى</span>` : ""}</td>
         <td class="reg-file">${fileCell(r)}</td>
         <td class="nowrap">${r.fileId && r.fileDate ? esc(ui.formatDate(r.fileDate)) : "—"}</td>
         <td>${folderCell(r)}</td>
@@ -541,6 +542,7 @@
     }
     return (r.fileId ? `<button class="act-btn dl" data-download title="تحميل الملف إلى الجهاز">⬇ تحميل</button>` : "")
       + (r.type === "in" ? ` <button class="act-btn reply" data-reply title="إنشاء خطاب رد في المراسلات">↩ رد</button>` : "")
+      + (r.type === "in" && App.ai && App.ai.hasKey() ? ` <button class="act-btn ai" data-summarize title="تلخيص الخطاب بالذكاء الاصطناعي">✨ تلخيص</button>` : "")
       + (mod ? ` <button class="act-btn edit" data-edit title="تعديل القيد">✎ تعديل</button> <button class="act-btn del" data-del title="نقل إلى المحذوفات">🗑 حذف</button>`
         : ` <span class="reg-kind" title="التعديل لصاحب القيد أو المدير">🔒</span>`);
   }
@@ -831,6 +833,43 @@
     ui.toast(ok === recs.length ? `حُمّل ${ui.fmt(ok)} ملفاً` : `حُمّل ${ui.fmt(ok)} من ${ui.fmt(recs.length)}؛ بعضها لم يصل إلى الأرشيف بعد`);
   }
 
+  /* ===== تلخيص الوارد واقتراح الرد بالذكاء الاصطناعي ===== */
+  async function letterText(rec) {
+    const notes = String(rec.notes || "");
+    const marker = notes.indexOf("— نص الخطاب المقروء آلياً —");
+    if (marker >= 0) return notes.slice(marker);
+    if (notes.trim()) return notes;
+    // بلا نص محفوظ: يُقرأ الملف إن كان Word، وإلا يُطلب تشغيل القراءة الضوئية
+    const f = await getFile(rec).catch(() => null);
+    if (f && /\.docx$/i.test(f.name || "")) {
+      const zip = await JSZip.loadAsync(f.blob);
+      const xml = await zip.file("word/document.xml").async("string");
+      return xml.replace(/<\/w:p>/g, "\n").replace(/<[^>]+>/g, "").slice(0, 8000);
+    }
+    return "";
+  }
+
+  async function summarize(rec) {
+    if (!App.ai.hasKey()) { ui.toast("أضف مفتاح الذكاء الاصطناعي من صفحة المراسلات ← إعدادات"); return; }
+    ui.toast("جارٍ التلخيص…");
+    try {
+      const text = await letterText(rec);
+      if (!text.trim()) { ui.toast("لا يوجد نص للخطاب؛ استخدم «📷 قراءة الخطاب الممسوح» أولاً"); return; }
+      let outText = "";
+      await App.ai.generate({
+        request: "لخّص هذا الخطاب الوارد في ثلاث نقاط قصيرة بالعربية الفصحى: موضوعه، والمطلوب منا، والموعد إن وُجد. بلا مقدمات.",
+        context: `الجهة: ${rec.party || "—"}\nالرقم: ${rec.number}\nالتاريخ: ${rec.date}\n\n${text.slice(0, 8000)}`,
+        onText: (t) => { outText += t; },
+      });
+      if (!outText.trim()) { ui.toast("لم يصل رد من الخدمة"); return; }
+      rec.summary = outText.trim().slice(0, 1200);
+      logAction(rec, "تلخيص آلي");
+      store.save();
+      render();
+      ui.toast("تم التلخيص");
+    } catch (e) { ui.toast(e.message); }
+  }
+
   /* ===== سجل النشاط ===== */
   function openActivity() {
     const items = [];
@@ -1051,6 +1090,16 @@
 
   function initBulk() {
     $("reg-bulk").addEventListener("click", () => $("reg-bulk-input").click());
+    $("reg-camera").addEventListener("click", () => $("reg-camera-input").click());
+    $("reg-camera-input").addEventListener("change", (e) => {
+      const files = [...e.target.files].map((f, i) => {
+        // اسم واضح للصورة الملتقطة: تاريخ اليوم ورقم اللقطة
+        const name = /^image|^photo|\.jpe?g$/i.test(f.name) ? `خطاب وارد ${ui.todayISO()}${i ? ` (${i + 1})` : ""}.jpg` : f.name;
+        return new File([f], name, { type: f.type, lastModified: f.lastModified });
+      });
+      addBulkFiles(files);
+      e.target.value = "";
+    });
     $("reg-bulk-input").addEventListener("change", (e) => { addBulkFiles(e.target.files); e.target.value = ""; });
     $("bulk-more-input").addEventListener("change", (e) => { addBulkFiles(e.target.files); e.target.value = ""; });
     $("bulk-more").addEventListener("click", () => $("bulk-more-input").click());
@@ -1195,6 +1244,7 @@
       if (e.target.closest("[data-restore]")) { restoreRecord(rec); return; }
       if (e.target.closest("[data-purge]")) { purgeRecord(rec); return; }
       if (e.target.closest("[data-reply]")) { replyTo(rec); return; }
+      if (e.target.closest("[data-summarize]")) { summarize(rec); return; }
       if (e.target.closest("[data-open]")) openFile(rec, "view");
       else if (e.target.closest("[data-download]")) openFile(rec, "download");
       else if (e.target.closest("[data-archive]")) archiveNow([rec]);
@@ -1211,5 +1261,5 @@
     initBulk();
   }
 
-  App.registry = { assignNumber, followUps, statsCharts, live, logAction, syncShared, init, render, nextOutgoingNumber, upsertOutgoing, countInPeriod, guessCategory, guessDate };
+  App.registry = { fileOf: getFile, assignNumber, assignNumbers, followUps, statsCharts, live, logAction, syncShared, init, render, nextOutgoingNumber, upsertOutgoing, countInPeriod, guessCategory, guessDate };
 })(window.App = window.App || {});

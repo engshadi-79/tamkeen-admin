@@ -47,11 +47,18 @@
     e.preventDefault();
     const username = $("login-username").value.trim();
     const password = $("login-password").value;
-    if (!username || !password) { $("login-error").textContent = "أدخل اسم المستخدم وكلمة المرور"; return; }
+    if (!resetUser && (!username || !password)) { $("login-error").textContent = "أدخل اسم المستخدم وكلمة المرور"; return; }
     $("login-submit").disabled = true;
     $("login-error").textContent = "";
     try {
-      if (setupMode) {
+      if (resetUser) {
+        const pw = $("reset-password").value;
+        if (pw.length < 6) { $("login-error").textContent = "كلمة المرور 6 أحرف على الأقل"; return; }
+        await App.cloud.reset(resetUser, $("reset-code").value.trim(), pw);
+        resetUser = "";
+        $("login-reset").hidden = true;
+        $("login-fields").hidden = false;
+      } else if (setupMode) {
         await App.cloud.setup({ adminKey: $("login-admin-key").value.trim(), name: $("login-name").value.trim(), username, password });
       } else {
         await App.cloud.login(username, password);
@@ -78,6 +85,37 @@
   async function logout() {
     if (!confirm("تسجيل الخروج من هذا الجهاز؟")) return;
     await App.cloud.logout();
+  }
+
+  /* ===== نسيت كلمة المرور: رمز إلى البريد ثم كلمة مرور جديدة ===== */
+  let resetUser = "";
+
+  function showReset(username) {
+    resetUser = username;
+    $("login-reset").hidden = false;
+    $("login-fields").hidden = true;
+    $("login-title").textContent = "استعادة كلمة المرور";
+    $("login-sub").textContent = `أُرسل رمز من ستة أرقام إلى بريد الحساب «${username}» إن كان مسجّلاً. اكتب الرمز وكلمة المرور الجديدة.`;
+    $("login-submit").textContent = "تعيين كلمة المرور والدخول";
+    setTimeout(() => $("reset-code").focus(), 50);
+  }
+
+  function hideReset() {
+    resetUser = "";
+    $("login-reset").hidden = true;
+    $("login-fields").hidden = false;
+    showLogin();
+  }
+
+  async function forgot() {
+    const username = $("login-username").value.trim();
+    if (!username) { $("login-error").textContent = "اكتب اسم المستخدم أولاً ثم اضغط «نسيت كلمة المرور»"; $("login-username").focus(); return; }
+    $("login-error").textContent = "";
+    try {
+      const r = await App.cloud.forgot(username);
+      ui.toast(r.message || "أُرسل الرمز إن كان الحساب موجوداً");
+      showReset(username);
+    } catch (e) { $("login-error").textContent = e.message; }
   }
 
   /* ===== حسابي ===== */
@@ -200,6 +238,36 @@
     $("uf-password").type = "text";
   }
 
+  /* ===== نسخة احتياطية شاملة: السجل وكل الأقسام، مع الملفات اختيارياً ===== */
+  async function fullBackup() {
+    if (typeof JSZip === "undefined") { ui.toast("تعذّر تحميل مكتبة الضغط"); return; }
+    const withFiles = confirm("هل تريد تضمين ملفات الأرشيف نفسها؟\n«موافق» = السجل + كل الملفات (قد يستغرق وقتاً طويلاً)\n«إلغاء» = السجل والبيانات فقط");
+    const btn = $("acc-backup");
+    btn.disabled = true;
+    const label = btn.textContent;
+    try {
+      const zip = new JSZip();
+      const data = App.store.get();
+      zip.file("البيانات/النسخة-الكاملة.json", App.store.exportJSON());
+      zip.file("البيانات/الوارد-والصادر.json", JSON.stringify(data.registry || [], null, 2));
+      if (withFiles) {
+        const recs = (data.registry || []).filter((r) => !r.deletedAt && (r.driveId || r.fileId));
+        for (let i = 0; i < recs.length; i++) {
+          btn.textContent = `جارٍ التنزيل ${ui.fmt(i + 1)} من ${ui.fmt(recs.length)}…`;
+          try {
+            const f = await App.registry.fileOf(recs[i]);
+            if (f) zip.file(`الملفات/${String(recs[i].number).replace(/[\\/:*?"<>|]+/g, "-")} - ${f.name}`, f.blob);
+          } catch (e) { /* ملف تعذّر جلبه */ }
+        }
+      }
+      btn.textContent = "جارٍ الضغط…";
+      ui.download(`نسخة احتياطية - مساعد تمكين - ${ui.todayISO()}.zip`, await zip.generateAsync({ type: "blob" }));
+      ui.toast("تم تنزيل النسخة الاحتياطية");
+    } catch (e) { ui.toast(e.message); }
+    btn.textContent = label;
+    btn.disabled = false;
+  }
+
   function renderBadges() {
     const u = user();
     document.querySelectorAll("[data-profile]").forEach((b) => { b.textContent = u ? `👤 ${u.name}${u.admin ? " (مدير)" : ""}` : "👤 حسابي"; });
@@ -209,6 +277,13 @@
     $("login-form").addEventListener("submit", submitLogin);
     $("acc-password-form").addEventListener("submit", changePassword);
     $("acc-logout").addEventListener("click", logout);
+    $("acc-logout-all").addEventListener("click", async () => {
+      if (!confirm("تسجيل الخروج من كل الأجهزة التي دخلت منها؟")) return;
+      try { await App.cloud.logoutAll(); ui.toast("تم الخروج من كل الأجهزة"); await App.cloud.logout(); } catch (e) { ui.toast(e.message); }
+    });
+    $("login-forgot").addEventListener("click", forgot);
+    $("reset-cancel").addEventListener("click", hideReset);
+    $("acc-backup").addEventListener("click", fullBackup);
     $("acc-users").addEventListener("click", openUsers);
     $("profile-close").addEventListener("click", close);
     $("profile-modal").addEventListener("click", (e) => { if (e.target.id === "profile-modal") close(); });

@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0b1f3a">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>مساعد تمكين الإداري</title>
@@ -9,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=59">
+  <link rel="stylesheet" href="styles/theme.css?v=62">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -21,8 +24,16 @@
         <label class="field"><span>رمز المدير</span><input type="password" id="login-admin-key" dir="ltr" autocomplete="off"></label>
         <label class="field"><span>اسمك الظاهر</span><input type="text" id="login-name" maxlength="60"></label>
       </div>
-      <label class="field"><span>اسم المستخدم</span><input type="text" id="login-username" dir="ltr" autocomplete="username" spellcheck="false" autocapitalize="off"></label>
-      <label class="field"><span>كلمة المرور</span><input type="password" id="login-password" dir="ltr" autocomplete="current-password"></label>
+      <div id="login-fields">
+        <label class="field"><span>اسم المستخدم</span><input type="text" id="login-username" dir="ltr" autocomplete="username" spellcheck="false" autocapitalize="off"></label>
+        <label class="field"><span>كلمة المرور</span><input type="password" id="login-password" dir="ltr" autocomplete="current-password"></label>
+        <button type="button" class="conv-link" id="login-forgot">نسيت كلمة المرور؟</button>
+      </div>
+      <div id="login-reset" hidden>
+        <label class="field"><span>الرمز المرسل إلى بريدك</span><input type="text" id="reset-code" dir="ltr" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+        <label class="field"><span>كلمة المرور الجديدة</span><input type="password" id="reset-password" dir="ltr" autocomplete="new-password" minlength="6"></label>
+        <button type="button" class="conv-link" id="reset-cancel">رجوع إلى تسجيل الدخول</button>
+      </div>
       <p class="login-error" id="login-error" role="alert"></p>
       <button class="btn navy" type="submit" id="login-submit">دخول</button>
       <p class="login-foot">مساعد تمكين الإداري — مركز مسارات التمكين</p>
@@ -107,6 +118,7 @@
           <div class="btn-row no-print">
             <button class="btn" id="btn-copy">نسخ النص</button>
             <button class="btn navy" id="btn-word">تصدير Word</button>
+            <button class="btn" id="lb-open">📑 إصدار جماعي من Excel</button>
             <button class="btn navy" id="btn-pdf">تصدير PDF</button>
             <button class="btn navy" id="btn-print">🖨 طباعة</button>
           </div>
@@ -129,6 +141,7 @@
               <label class="field"><span>رقم الصادر <button type="button" class="conv-link" id="l-ref-auto" title="الرقم التالي في سجل الصادر">رقم تلقائي</button></span><input type="text" id="l-ref" placeholder="يُولَّد تلقائياً عند التصدير"></label>
             </div>
             <label class="field"><span>المرفقات (اختياري)</span><input type="text" id="l-attachments" placeholder="مثال: كشف الحضور"></label>
+            <label class="conv-check strong"><input type="checkbox" id="l-qr"> إضافة رمز QR للتحقق من صحة الخطاب</label>
             <div class="grid-fields">
               <label class="field"><span>اسم الموقّع</span><input type="text" id="l-signer" placeholder="يُحفظ تلقائياً"></label>
               <label class="field"><span>المسمى الوظيفي</span><input type="text" id="l-signerTitle" placeholder="مثال: مدير المشروع"></label>
@@ -244,6 +257,8 @@
             <button class="btn navy" id="reg-bulk">⬆ رفع ملفات</button>
             <input type="file" id="reg-bulk-input" multiple hidden>
             <button class="btn navy" id="reg-folder">📁 رفع مجلد</button>
+            <button class="btn navy" id="reg-camera">📷 تصوير خطاب</button>
+            <input type="file" id="reg-camera-input" accept="image/*" capture="environment" multiple hidden>
             <input type="file" id="reg-folder-input" webkitdirectory multiple hidden>
             <button class="btn" id="reg-add">+ قيد جديد</button>
             <button class="btn secondary" id="reg-export">تصدير Excel</button>
@@ -589,6 +604,8 @@
       </form>
       <div class="btn-row" style="margin-top:14px">
         <button class="btn navy" type="button" id="acc-users">👥 المستخدمون</button>
+        <button class="btn" type="button" id="acc-backup">⬇ نسخة احتياطية شاملة</button>
+        <button class="btn secondary" type="button" id="acc-logout-all">خروج من كل الأجهزة</button>
         <button class="btn danger" type="button" id="acc-logout">تسجيل الخروج</button>
         <button class="btn secondary" type="button" id="profile-close">إغلاق</button>
       </div>
@@ -661,37 +678,53 @@
 
   <datalist id="people-list"></datalist>
 
+  <!-- الإصدار الجماعي من ملف Excel -->
+  <div class="modal-backdrop" id="lb-modal" role="dialog" aria-modal="true" aria-labelledby="lb-title">
+    <div class="modal">
+      <h3 id="lb-title">📑 إصدار جماعي: خطاب أو شهادة لكل صف</h3>
+      <label class="field"><span>ملف Excel بالبيانات</span><input type="file" id="lb-file" accept=".xlsx,.xlsm"></label>
+      <div id="lb-info"></div>
+      <label class="conv-check strong"><input type="checkbox" id="lb-register"> ترقيم كل ملف وتسجيله في الصادر تلقائياً</label>
+      <p class="conv-hint" id="lb-progress" aria-live="polite"></p>
+      <div class="btn-row">
+        <button class="btn navy" type="button" id="lb-go" disabled>⬇ توليد الملفات (ملف مضغوط)</button>
+        <button class="btn secondary" type="button" id="lb-cancel">إلغاء</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=59"></script>
-  <script src="src/ui.js?v=59"></script>
-  <script src="src/templates.js?v=59"></script>
-  <script src="src/tracks.js?v=59"></script>
-  <script src="src/tasks.js?v=59"></script>
-  <script src="src/dashboard.js?v=59"></script>
-  <script src="src/letterhead-docx.js?v=59"></script>
-  <script src="src/docx.js?v=59"></script>
-  <script src="src/ai.js?v=59"></script>
-  <script src="src/doc-render.js?v=59"></script>
-  <script src="src/files-store.js?v=59"></script>
-  <script src="src/shared.js?v=59"></script>
-  <script src="src/cloud.js?v=59"></script>
-  <script src="src/drive.js?v=59"></script>
-  <script src="src/drive-ui.js?v=59"></script>
-  <script src="src/rtl-fixer.js?v=59"></script>
-  <script src="src/rtl-page.js?v=59"></script>
-  <script src="src/profile.js?v=59"></script>
-  <script src="src/registry.js?v=59"></script>
-  <script src="src/charts.js?v=59"></script>
-  <script src="src/meetings.js?v=59"></script>
-  <script src="src/report.js?v=59"></script>
-  <script src="src/letters.js?v=59"></script>
+  <script src="src/storage.js?v=62"></script>
+  <script src="src/ui.js?v=62"></script>
+  <script src="src/templates.js?v=62"></script>
+  <script src="src/tracks.js?v=62"></script>
+  <script src="src/tasks.js?v=62"></script>
+  <script src="src/dashboard.js?v=62"></script>
+  <script src="src/letterhead-docx.js?v=62"></script>
+  <script src="src/docx.js?v=62"></script>
+  <script src="src/ai.js?v=62"></script>
+  <script src="src/doc-render.js?v=62"></script>
+  <script src="src/files-store.js?v=62"></script>
+  <script src="src/shared.js?v=62"></script>
+  <script src="src/cloud.js?v=62"></script>
+  <script src="src/drive.js?v=62"></script>
+  <script src="src/drive-ui.js?v=62"></script>
+  <script src="src/rtl-fixer.js?v=62"></script>
+  <script src="src/rtl-page.js?v=62"></script>
+  <script src="src/profile.js?v=62"></script>
+  <script src="src/registry.js?v=62"></script>
+  <script src="src/charts.js?v=62"></script>
+  <script src="src/meetings.js?v=62"></script>
+  <script src="src/report.js?v=62"></script>
+  <script src="src/letters.js?v=62"></script>
+  <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=59"></script>
-  <script src="src/converter-store.js?v=59"></script>
-  <script src="src/converter.js?v=59"></script>
-  <script src="src/app.js?v=59"></script>
+  <script src="src/converter-core.js?v=62"></script>
+  <script src="src/converter-store.js?v=62"></script>
+  <script src="src/converter.js?v=62"></script>
+  <script src="src/app.js?v=62"></script>
 </body>
 </html>

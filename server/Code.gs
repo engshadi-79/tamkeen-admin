@@ -12,8 +12,35 @@ const BACKUP_FOLDER = "نسخ احتياطية للسجل";
 const BACKUP_KEEP = 180; // 30 يوماً × 6 ملفات
 const SESSION_DAYS = 30;
 
-function doGet() {
-  return ContentService.createTextOutput("مساعد تمكين: الخادم يعمل.");
+/* صفحة التحقق من صحة خطاب صادر: تُفتح بمسح رمز QR المطبوع عليه، بلا تسجيل دخول */
+function doGet(e) {
+  const code = e && e.parameter && e.parameter.v;
+  if (!code) return HtmlService.createHtmlOutput(page_("مساعد تمكين", "<p>الخادم يعمل.</p>"));
+  const rec = (readData_(dataFile_()).records || []).find((r) => r.verifyId === code && !r.deletedAt);
+  if (!rec) return HtmlService.createHtmlOutput(page_("تحقق من خطاب", "<p class='bad'>لا يوجد خطاب بهذا الرمز. تأكد من مسح الرمز كاملاً.</p>"));
+  const row = (k, v) => (v ? `<tr><th>${esc_(k)}</th><td>${esc_(v)}</td></tr>` : "");
+  return HtmlService.createHtmlOutput(page_("تحقق من خطاب", `
+    <p class="ok">✓ خطاب صادر فعلاً من مركز مسارات التمكين</p>
+    <table>
+      ${row("رقم الصادر", rec.number)}
+      ${row("التاريخ", rec.date)}
+      ${row("الموضوع", rec.subject)}
+      ${row("الجهة", rec.party)}
+      ${row("أصدره", rec.owner)}
+    </table>`));
+}
+
+const esc_ = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function page_(title, body) {
+  return `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc_(title)}</title>
+    <style>body{font-family:Tahoma,Arial;background:#f4f6fa;margin:0;padding:24px;color:#1b2433}
+    .card{max-width:520px;margin:0 auto;background:#fff;border-radius:14px;padding:22px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+    h1{font-size:19px;color:#0b1f3a;margin:0 0 14px}.ok{color:#0f8b8d;font-weight:700}.bad{color:#c0392b;font-weight:700}
+    table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border-bottom:1px solid #e6eaf0;padding:8px;text-align:right}
+    th{width:35%;color:#5f6b7d;font-weight:700}</style></head>
+    <body><div class="card"><h1>مساعد تمكين الإداري — التحقق من المراسلات</h1>${body}</div></body></html>`;
 }
 
 function doPost(e) {
@@ -23,16 +50,19 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 4, hasUsers: Object.keys(users_()).length > 0 });
+      case "status": return out_({ ok: true, version: 5, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
       case "login": return out_(login_(req.username, req.password));
+      case "forgot": return out_(forgot_(req.username));
+      case "reset": return out_(reset_(req.username, req.code, req.password));
     }
     const user = session_(req.token);
     if (!user) return out_({ error: "UNAUTHORIZED" });
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 4, user: publicUser_(user) });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 5, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
+      case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
       case "sync": return out_(sync_(req.records || [], req.deleted || {}, user));
       case "syncAll": return out_(syncAll_(req.cols || {}));
       case "people": return out_({ people: Object.keys(users_()).map((u) => users_()[u]).filter((u) => u.active !== false).map((u) => ({ name: u.name, username: u.username })) });
@@ -124,6 +154,42 @@ function session_(token) {
 function logout_(token) {
   PropertiesService.getScriptProperties().deleteProperty("SESS:" + token);
   return { ok: true };
+}
+
+/* نسيت كلمة المرور: رمز من 6 أرقام يصل إلى بريد المستخدم المسجّل، صالح 30 دقيقة */
+function forgot_(username) {
+  const u = users_()[normUser_(username)];
+  // الرد نفسه دائماً حتى لا يُكشف وجود الحساب أو بريده
+  const answer = { ok: true, message: "إن كان الحساب موجوداً وله بريد مسجّل فسيصلك رمز خلال دقائق." };
+  if (!u || !u.email || u.active === false) return answer;
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  PropertiesService.getScriptProperties().setProperty("RESET:" + u.username, JSON.stringify({ code, exp: Date.now() + 30 * 60000 }));
+  MailApp.sendEmail({
+    to: u.email,
+    subject: "مساعد تمكين: رمز استعادة كلمة المرور",
+    htmlBody: `<div dir="rtl" style="font-family:Tahoma,Arial"><p>مرحباً ${esc_(u.name)},</p>
+      <p>رمز استعادة كلمة المرور الخاص بك هو: <b style="font-size:20px;letter-spacing:3px">${code}</b></p>
+      <p>الرمز صالح لمدة 30 دقيقة. إن لم تطلبه فتجاهل هذه الرسالة.</p></div>`,
+  });
+  return answer;
+}
+
+function reset_(username, code, password) {
+  const key = "RESET:" + normUser_(username);
+  const props = PropertiesService.getScriptProperties();
+  let saved;
+  try { saved = JSON.parse(props.getProperty(key) || "null"); } catch (err) { saved = null; }
+  if (!saved || saved.exp < Date.now() || String(code || "").trim() !== saved.code) throw new Error("الرمز غير صحيح أو منتهي الصلاحية");
+  checkPassword_(password);
+  const all = users_();
+  const u = all[normUser_(username)];
+  if (!u) throw new Error("الحساب غير موجود");
+  const salt = Utilities.getUuid();
+  Object.assign(u, { salt, hash: hash_(password, salt) });
+  saveUsers_(all);
+  props.deleteProperty(key);
+  cleanSessions_(u.username); // خروج من كل الأجهزة بعد تغيير كلمة المرور
+  return login_(username, password);
 }
 
 /* الجلسات المنتهية أو لحسابات محذوفة تُزال */

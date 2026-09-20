@@ -25,12 +25,56 @@
   /* كتل المستند: البسملة، ثم الرقم والتاريخ والمرفقات، ثم نص القالب */
   function blocks() {
     const v = values();
-    const meta = [{ kind: "title", text: "بسم الله الرحمن الرحيم" }];
+    return [{ kind: "title", text: "بسم الله الرحمن الرحيم" }]
+      .concat(metaBlocks(v), templates.toBlocks(templates.render(current().bodyTemplate, v)), qrBlocks(v));
+  }
+
+  /* رمز QR للتحقق: يُولَّد من معرّف عشوائي يُحفظ مع قيد الصادر، ويفتح صفحة التحقق على الخادم */
+  let verifyId = "";
+  const newVerifyId = () => Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 8);
+
+  function verifyUrl(id) {
+    const base = (App.cloud && App.cloud.settings().url) || "";
+    return base ? `${base}?v=${id}` : "";
+  }
+
+  /* صورة الرمز كـ PNG لإدراجها في المعاينة وملف Word */
+  function qrImage(url, sizePt) {
+    if (typeof qrcode === "undefined" || !url) return null;
+    const qr = qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    const count = qr.getModuleCount();
+    const scale = 6;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = count * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#0b1f3a";
+    for (let r = 0; r < count; r++) {
+      for (let c = 0; c < count; c++) if (qr.isDark(r, c)) ctx.fillRect(c * scale, r * scale, scale, scale);
+    }
+    return { src: canvas.toDataURL("image/png"), widthPt: sizePt, heightPt: sizePt };
+  }
+
+  function qrBlocks(v) {
+    if (!$("l-qr").checked || !v.ref) return [];
+    if (!verifyId) verifyId = newVerifyId();
+    const img = qrImage(verifyUrl(verifyId), 64);
+    if (!img) return [];
+    return [{ kind: "image", src: img.src, widthPt: img.widthPt, heightPt: img.heightPt },
+      { kind: "meta", text: "للتحقق من صحة الخطاب امسح الرمز", sizePt: 9 }];
+  }
+
+  /* سطور الرقم والتاريخ والمرفقات فوق متن الخطاب */
+  function metaBlocks(v) {
+    const meta = [];
     if (v.ref) meta.push({ kind: "meta", text: `الرقم: ${v.ref}` });
     meta.push({ kind: "meta", text: `التاريخ: ${v.date || templates.PLACEHOLDER}`, sizePt: 12 });
     if (v.attachments) meta.push({ kind: "meta", text: `المرفقات: ${v.attachments}` });
     meta.push({ kind: "para", text: "" });
-    return meta.concat(templates.toBlocks(templates.render(current().bodyTemplate, v)));
+    return meta;
   }
 
   const plainText = () => blocks().map((b) => b.text).join("\n");
@@ -101,6 +145,7 @@
       subject: v.subject || current().name,
       kind: current().name,
       category: "خطابات",
+      verifyId: $("l-qr").checked ? verifyId : "",
       file,
       replyTo,
     });
@@ -118,6 +163,111 @@
   async function exportPDF(asPdf) {
     await registerOutgoing(null);
     App.docRender.print(blocks(), fileBase(), asPdf);
+  }
+
+  /* ===== الإصدار الجماعي: صف واحد في Excel = خطاب أو شهادة =====
+     أعمدة الملف تُطابق متغيرات القالب ({{recipient}} أو «المرسل إليه»)، والباقي يُؤخذ من الحقول الحالية. */
+  const VAR_LABELS = { recipient: "المرسل إليه", recipientTitle: "صفة المرسل إليه", subject: "الموضوع", details: "التفاصيل", attachments: "المرفقات", date: "التاريخ", ref: "رقم الصادر" };
+  let bulkRows = [];
+
+  const normKey = (s) => String(s || "").trim().replace(/[\u064B-\u0652]/g, "").replace(/[إأآ]/g, "ا").replace(/ة/g, "ه").replace(/\s+/g, " ").toLowerCase();
+
+  /* يربط عمود الملف بمتغير القالب: بالاسم الإنجليزي أو بالمسمى العربي */
+  function columnToVar(header) {
+    const n = normKey(header);
+    if (templates.VARS.includes(String(header).trim())) return String(header).trim();
+    const hit = Object.keys(VAR_LABELS).find((k) => normKey(VAR_LABELS[k]) === n || normKey(k) === n);
+    return hit || null;
+  }
+
+  async function readBulkFile(file) {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await file.arrayBuffer());
+    const sheet = wb.worksheets[0];
+    if (!sheet) throw new Error("لا توجد ورقة في الملف");
+    const headers = [];
+    sheet.getRow(1).eachCell({ includeEmpty: false }, (cell, col) => { headers[col - 1] = String(cell.text || "").trim(); });
+    const rows = [];
+    sheet.eachRow({ includeEmpty: false }, (row, i) => {
+      if (i === 1 || rows.length >= 500) return;
+      const rec = {};
+      headers.forEach((h, idx) => { if (h) rec[h] = String(row.getCell(idx + 1).text || "").trim(); });
+      if (Object.values(rec).some((v) => v)) rows.push(rec);
+    });
+    return { headers: headers.filter(Boolean), rows };
+  }
+
+  function openBulk() {
+    $("lb-file").value = "";
+    bulkRows = [];
+    $("lb-info").innerHTML = `<p class="conv-hint">ارفع ملف Excel صفه الأول عناوين الأعمدة، ثم صف لكل خطاب أو شهادة. الأعمدة المفهومة: ${Object.values(VAR_LABELS).map((v) => `«${v}»`).join("، ")}، أو أسماء المتغيرات نفسها مثل {{recipient}}. أي حقل غير موجود في الملف يؤخذ من القيم المكتوبة في الصفحة الآن.</p>`;
+    $("lb-go").disabled = true;
+    $("lb-register").checked = false;
+    $("lb-progress").textContent = "";
+    $("lb-modal").classList.add("open");
+  }
+  const closeBulk = () => $("lb-modal").classList.remove("open");
+
+  async function pickBulkFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const { headers, rows } = await readBulkFile(file);
+      if (!rows.length) throw new Error("لا توجد صفوف بيانات في الملف");
+      bulkRows = rows;
+      const mapped = headers.map((h) => ({ h, v: columnToVar(h) }));
+      const known = mapped.filter((m) => m.v);
+      const unknown = mapped.filter((m) => !m.v);
+      $("lb-info").innerHTML = `<p><b>${ui.fmt(rows.length)}</b> صفاً جاهزاً للإصدار بقالب «${ui.esc(current().name)}».</p>
+        <p class="conv-hint">أعمدة مفهومة: ${known.length ? known.map((m) => `«${ui.esc(m.h)}»`).join("، ") : "لا شيء"}.
+        ${unknown.length ? `<br>أعمدة إضافية تُستخدم كمتغيرات داخل القالب: ${unknown.map((m) => `{{${ui.esc(m.h)}}}`).join("، ")}.` : ""}</p>`;
+      $("lb-go").disabled = false;
+    } catch (err) {
+      $("lb-info").innerHTML = `<p class="conv-warn">${ui.esc(err.message)}</p>`;
+      $("lb-go").disabled = true;
+    }
+  }
+
+  async function runBulk() {
+    if (!bulkRows.length) return;
+    if (typeof JSZip === "undefined") { ui.toast("تعذّر تحميل مكتبة الضغط"); return; }
+    const register = $("lb-register").checked;
+    $("lb-go").disabled = true;
+    const zip = new JSZip();
+    const base = values();
+    let numbers = [];
+    try {
+      if (register) numbers = await App.registry.assignNumbers("out", $("l-date").value || ui.todayISO(), bulkRows.length);
+      for (let i = 0; i < bulkRows.length; i++) {
+        $("lb-progress").textContent = `جارٍ التوليد ${ui.fmt(i + 1)} من ${ui.fmt(bulkRows.length)}…`;
+        const row = bulkRows[i];
+        const v = Object.assign({}, base);
+        Object.keys(row).forEach((h) => { const k = columnToVar(h); v[k || h] = row[h]; });
+        if (register) v.ref = numbers[i];
+        const list = [{ kind: "title", text: "بسم الله الرحمن الرحيم" }]
+          .concat(metaBlocks(v), templates.toBlocks(templates.render(current().bodyTemplate, v)));
+        const name = App.docRender.cleanFileName([current().name, v.recipient || v.subject || i + 1].filter(Boolean).join(" - ")) + ".docx";
+        const blob = App.docRender.exportWord(list, name.replace(/\.docx$/, ""), true);
+        if (blob) {
+          zip.file(name, blob);
+          if (register) {
+            await App.registry.upsertOutgoing({
+              number: v.ref, date: $("l-date").value || ui.todayISO(),
+              party: [v.recipient, v.recipientTitle].filter(Boolean).join(" - "),
+              subject: v.subject || current().name, kind: current().name, category: "خطابات",
+              file: { blob, name },
+            });
+          }
+        }
+      }
+      ui.download(`${App.docRender.cleanFileName(current().name)} - ${ui.fmt(bulkRows.length)} ملف - ${ui.todayISO()}.zip`, await zip.generateAsync({ type: "blob" }));
+      ui.toast(register ? `صدر ${ui.fmt(bulkRows.length)} خطاباً وسُجّلت في الصادر` : `صدر ${ui.fmt(bulkRows.length)} ملفاً`);
+      closeBulk();
+    } catch (e) {
+      console.error(e);
+      $("lb-progress").textContent = e.message;
+    }
+    $("lb-go").disabled = false;
   }
 
   /* ===== إدارة القوالب المخصصة ===== */
@@ -283,7 +433,13 @@
       $("l-" + f).addEventListener("change", () => { store.get()[f] = $("l-" + f).value.trim(); store.save(); })
     );
     $("tpl-select").addEventListener("change", renderPreview);
+    $("l-qr").addEventListener("change", () => { verifyId = ""; renderPreview(); });
 
+    $("lb-open").addEventListener("click", openBulk);
+    $("lb-file").addEventListener("change", pickBulkFile);
+    $("lb-go").addEventListener("click", runBulk);
+    $("lb-cancel").addEventListener("click", closeBulk);
+    $("lb-modal").addEventListener("click", (e) => { if (e.target.id === "lb-modal") closeBulk(); });
     $("btn-copy").addEventListener("click", () => ui.copyText(plainText()));
     $("btn-word").addEventListener("click", exportWord);
     $("btn-pdf").addEventListener("click", () => exportPDF(true));
