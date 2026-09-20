@@ -152,6 +152,35 @@
     return headers;
   }
 
+  /* الحقول المكتوبة في القالب بصيغة {{اسم الحقل}} خارج صف العناوين (ترويسة، عنوان، تذييل) */
+  const PLACEHOLDER_RE = /\{\{\s*([^{}]{1,80}?)\s*\}\}/g;
+
+  async function readTemplatePlaceholders(buffer, isDocx) {
+    const found = new Set();
+    const collect = (text) => {
+      let m;
+      PLACEHOLDER_RE.lastIndex = 0;
+      while ((m = PLACEHOLDER_RE.exec(String(text))) !== null) found.add(m[1].trim());
+    };
+    try {
+      if (isDocx) {
+        const zip = await JSZip.loadAsync(buffer);
+        const file = zip.file("word/document.xml");
+        if (file) {
+          const xml = await file.async("string");
+          // Word قد يقسّم {{الاسم}} على عدة مقاطع: يُزال ترميز المقاطع قبل البحث
+          collect(xml.replace(/<[^>]+>/g, ""));
+        }
+      } else {
+        const sheet = await loadFirstSheet(buffer, "لم يتم العثور على أي ورقة في ملف القالب");
+        sheet.eachRow({ includeEmpty: false }, (row) => {
+          row.eachCell({ includeEmpty: false }, (cell) => collect(cell.text || ""));
+        });
+      }
+    } catch (e) { /* قالب بلا حقول */ }
+    return [...found];
+  }
+
   async function readDataFile(buffer) {
     const sheet = await loadFirstSheet(buffer, "لم يتم العثور على أي ورقة في ملف البيانات");
     const { headers, rows } = extractSheetData(sheet);
@@ -878,7 +907,7 @@
 
   App.converterCore = {
     MAX_ROWS, normalizeHeader, suggestColumnMapping, resolveDefaultColumn, computeGroupKey,
-    isDocxName, readTemplateHeaders, readDataFile, generate,
+    isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, generate,
     // للاختبار
     computeSessionDates, fillXlsxTemplate, fillDocxTemplate, extractHeadersFromDocxTable,
   };

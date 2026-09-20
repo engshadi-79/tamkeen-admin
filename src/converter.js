@@ -14,6 +14,7 @@
     selectedSavedId: "",
     parsed: null, // { templateHeaders, dataHeaders, dataRows, truncated, templateBuffer, templateIsDocx, templateName, savedId }
     mapping: {},
+    constants: {}, // قيمة ثابتة لكل حقل لا يوجد له عمود في ملف البيانات
     outputFormat: "xlsx",
     groupBy1: "",
     groupBy2: "",
@@ -100,6 +101,15 @@
 
       state.parsed = { templateHeaders, dataHeaders: data.headers, dataRows: data.rows, truncated: data.truncated, templateBuffer, templateIsDocx, templateName, savedId };
       state.mapping = core().suggestColumnMapping(templateHeaders, data.headers);
+      state.constants = {};
+      const placeholders = await core().readTemplatePlaceholders(templateBuffer, templateIsDocx);
+      // حقول القالب التي لا يوجد لها عمود في ملف البيانات ولا في عناوين القالب
+      const norm = core().normalizeHeader;
+      const dataNorm = data.headers.map(norm);
+      state.extraFields = placeholders.filter((ph) => {
+        const n = norm(ph);
+        return !dataNorm.some((d) => d === n || d.includes(n) || n.includes(d)) && !templateHeaders.some((h) => norm(h) === n) && !/^تاريخ\d+$/.test(ph);
+      });
       state.outputFormat = templateIsDocx ? "docx" : "xlsx";
 
       const defaults = (savedId && selectedSaved() && selectedSaved().defaultGroupBy) || [];
@@ -204,7 +214,25 @@
     const dataOptions = (selected, placeholder, exclude) =>
       opt("", placeholder, !selected) + p.dataHeaders.filter((h) => h !== exclude).map((h) => opt(h, h, h === selected)).join("");
 
-    let html = `<h3>اربط كل عمود في القالب بالعمود المقابل له في ملف البيانات</h3>
+    const missing = p.templateHeaders.filter((h) => !state.mapping[h]);
+    const extra = state.extraFields || [];
+    let html = "";
+    if (missing.length || extra.length) {
+      const field = (name, hint) => `
+        <div class="conv-map-row">
+          <span>${esc(name)}${hint ? `<small class="conv-hint"> ${esc(hint)}</small>` : ""}</span>
+          <input type="text" data-const="${esc(name)}" value="${esc(state.constants[name] || "")}" placeholder="اكتب القيمة لتُوضع في كل الصفوف">
+        </div>`;
+      html += `<div class="conv-section conv-missing">
+        <h3>⚠ حقول لم نجد لها بيانات في ملفك (${ui.fmt(missing.length + extra.length)})</h3>
+        <p class="conv-hint">اكتب قيمة كل حقل هنا، فتُوضع كما هي في كل صفوف القالب. أو اتركه فارغاً ليبقى فارغاً، أو اربطه بعمود من ملف البيانات في القائمة أدناه. وأعمدة التسلسل مثل «م» تُملأ من خيار «ترقيم تلقائي لعمود» أسفل الصفحة.</p>
+        <div class="conv-mapping">
+          ${missing.map((h) => field(h, "عمود في جدول القالب")).join("")}
+          ${extra.map((ph) => field(ph, "حقل في ترويسة القالب")).join("")}
+        </div>
+      </div>`;
+    }
+    html += `<h3>اربط كل عمود في القالب بالعمود المقابل له في ملف البيانات</h3>
       <div class="conv-mapping">
         ${p.templateHeaders.map((h, i) => `
           <div class="conv-map-row">
@@ -309,6 +337,19 @@
       else if (state.datesWeekdays.length > 0) sessionDates.weekdays = state.datesWeekdays;
     }
 
+    // القيم الثابتة تُضاف كأعمدة إلى كل صف ثم تُربط بحقول القالب
+    const filled = (() => {
+      const mapping = Object.assign({}, state.mapping);
+      const keys = Object.keys(state.constants).filter((k) => String(state.constants[k]).length);
+      const rows = p.dataRows.map((r) => {
+        const copy = Object.assign({}, r);
+        keys.forEach((k) => { copy[k] = state.constants[k]; });
+        return copy;
+      });
+      keys.forEach((k) => { if (p.templateHeaders.includes(k) && !mapping[k]) mapping[k] = k; });
+      return { mapping, rows };
+    })();
+
     setBusy("conv-generate", true, "جارٍ التوليد...");
     try {
       const { blob, filename } = await core().generate({
@@ -316,9 +357,9 @@
         templateIsDocx: p.templateIsDocx,
         templateName: p.templateName,
         templateHeaders: p.templateHeaders,
-        mapping: state.mapping,
+        mapping: filled.mapping,
         // نسخة من الصفوف: التوليد يرتّبها داخل المجموعات
-        dataRows: p.dataRows.map((r) => Object.assign({}, r)),
+        dataRows: filled.rows,
         outputFormat: state.outputFormat,
         groupByColumns: sameFormat && groups.length ? groups : undefined,
         autoNumberHeader: sameFormat ? state.autoNumberHeader || undefined : undefined,
@@ -342,6 +383,12 @@
     const p = state.parsed;
     if (t.dataset.map != null) {
       state.mapping[p.templateHeaders[Number(t.dataset.map)]] = t.value;
+      renderResult();
+      return;
+    }
+    if (t.dataset.const != null) {
+      const key = t.dataset.const;
+      if (t.value.trim()) state.constants[key] = t.value.trim(); else delete state.constants[key];
       return;
     }
     switch (t.id) {
@@ -399,6 +446,7 @@
     $("conv-save-btn").addEventListener("click", handleSaveTemplate);
     $("conv-parse").addEventListener("click", handleParse);
     $("conv-result").addEventListener("change", onResultChange);
+    $("conv-result").addEventListener("input", (e) => { if (e.target.dataset.const != null) onResultChange(e); });
     $("conv-result").addEventListener("click", onResultClick);
 
     refreshSaved().then(() => {
