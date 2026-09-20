@@ -415,6 +415,9 @@ body.locked .app { filter: blur(6px); pointer-events: none; user-select: none; }
 .ros-table td { padding: 4px 6px; }
 .ros-table input[type=text] { width: 100%; min-width: 90px; font-size: 13.5px; padding: 5px 7px; }
 .ros-table input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--teal-600); cursor: pointer; }
+.ros-sel { width: 100%; min-width: 96px; font-size: 13px; padding: 4px 6px; font-weight: 700; }
+.ros-sel.done { background: #e3f5ec; color: var(--ok); border-color: #a9dcc3; }
+.ros-sel.not { background: var(--danger-bg); color: var(--danger); border-color: #f1b0a8; }
 .ros-table tr.ros-new td { background: #fffaf0; }
 .ros-saved { color: var(--ok); font-weight: 700; }
 .ros-cols { list-style: none; padding: 0; margin: 10px 0; max-height: 55vh; overflow: auto; }

@@ -10,10 +10,19 @@
   const lines = (t) => String(t || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const meta = () => (store.get().rosterMeta = Object.assign({ columns: [], keyColumn: "", name: "", importedAt: "", lastImport: null }, store.get().rosterMeta));
 
+  const DONE = "تم";
+  const NOT_DONE = "لم يتم";
   const TRUE_WORDS = ["true", "نعم", "تم", "موقع", "موقّع", "✓", "yes", "1"];
-  const FALSE_WORDS = ["false", "لا", "لم", "غير", "no", "0", ""];
+  const FALSE_WORDS = ["false", "لا", "لم", "لم يتم", "غير", "no", "0", ""];
   const isBoolWord = (v) => TRUE_WORDS.includes(String(v).trim().toLowerCase()) || FALSE_WORDS.includes(String(v).trim().toLowerCase());
-  const toBool = (v) => TRUE_WORDS.includes(String(v).trim().toLowerCase());
+  const toBool = (v) => v === true || TRUE_WORDS.includes(String(v).trim().toLowerCase());
+  /* قيمة خلية القائمة: نص أحد الخيارات (القيم القديمة صح/خطأ تُترجم) */
+  const cellValue = (v, col) => {
+    if (v === true) return col.doneValue || DONE;
+    if (v === false) return (col.options || []).find((o) => o !== (col.doneValue || DONE)) || NOT_DONE;
+    return String(v == null ? "" : v);
+  };
+  const isDone = (rec, col) => cellValue(rec.values[col.key], col) === (col.doneValue || DONE);
 
   /* مفتاح لاتيني ثابت لكل عمود حتى لا يتأثر بتغيّر صياغة العنوان */
   function slug(label, used) {
@@ -24,12 +33,18 @@
     return key;
   }
 
-  /* نوع العمود: خانة تعليم إن كانت كل قيمه نعم/لا، وإلا نص */
-  function columnType(label, values) {
-    const filled = values.filter((v) => String(v).trim() !== "");
-    if (filled.length && filled.every(isBoolWord)) return "check";
-    if (/تعهد|توقيع|حضور|استلام|تسليم|تم |موافقة/.test(label) && filled.every((v) => isBoolWord(v) || v === "")) return "check";
-    return "text";
+  /* نوع العمود: قائمة اختيار إن كانت قيمه محدودة (نعم/لا أو خيارات قليلة)، وإلا حقل كتابة */
+  function columnMeta(label, values) {
+    const filled = values.map((v) => String(v == null ? "" : v).trim()).filter((v) => v !== "");
+    const pledge = /تعهد|توقيع|حضور|استلام|تسليم|موافقة|حالة/.test(label);
+    if ((filled.length && filled.every(isBoolWord)) || (pledge && filled.every((v) => isBoolWord(v)))) {
+      return { type: "select", options: [DONE, NOT_DONE], doneValue: DONE };
+    }
+    const distinct = [...new Set(filled)];
+    if (pledge && distinct.length && distinct.length <= 6 && distinct.every((v) => v.length <= 20)) {
+      return { type: "select", options: distinct, doneValue: distinct.find((v) => toBool(v)) || distinct[0] };
+    }
+    return { type: "text" };
   }
 
   const normId = (v) => String(v == null ? "" : v).replace(/[^\d٠-٩A-Za-z]/g, "").replace(/[٠-٩]/g, (c) => "٠١٢٣٤٥٦٧٨٩".indexOf(c));
@@ -56,17 +71,21 @@
     const used = system.map((c) => c.key);
     const columns = data.headers.map((h) => {
       const hit = system.length ? matchColumn(h, system) : null;
-      if (hit) return { key: hit.key, label: hit.label, type: hit.type, fileHeader: h };
+      if (hit) return Object.assign({}, hit, { fileHeader: h });
       const key = slug(h, used);
       used.push(key);
-      return { key, label: h, type: columnType(h, data.rows.map((r) => r[h])), fileHeader: h };
+      return Object.assign({ key, label: h, fileHeader: h }, columnMeta(h, data.rows.map((r) => r[h])));
     });
     const keyCol = columns.find((c) => /هوية|هويه|رقم.*وطني|id/i.test(c.label)) || columns[0];
     const records = data.rows.map((r) => {
       const rec = { id: store.uid(), values: {} };
       columns.forEach((c) => {
         const raw = r[c.fileHeader || c.label];
-        rec.values[c.key] = c.type === "check" ? toBool(raw) : String(raw == null ? "" : raw).trim();
+        if (c.type !== "select") { rec.values[c.key] = String(raw == null ? "" : raw).trim(); return; }
+        const text = String(raw == null ? "" : raw).trim();
+        // قيم الملف (true/نعم/تم…) تُترجم إلى أحد خيارات العمود
+        rec.values[c.key] = isBoolWord(text) ? (toBool(text) ? (c.doneValue || DONE) : (c.options || []).find((o) => o !== (c.doneValue || DONE)) || NOT_DONE)
+          : (c.options || []).includes(text) ? text : text;
       });
       return rec;
     });
@@ -146,7 +165,7 @@
       m.importedAt = new Date().toISOString();
       store.get().roster = pending.records.map((r) => {
         const values = {};
-        m.columns.forEach((c) => { values[c.key] = r.values[c.key] !== undefined ? r.values[c.key] : (c.type === "check" ? false : ""); });
+        m.columns.forEach((c) => { values[c.key] = r.values[c.key] !== undefined ? cellValue(r.values[c.key], c) : ""; });
         return Object.assign(r, { values, addedAt: m.importedAt, source: pending.fileName });
       });
       m.lastImport = { at: m.importedAt, file: pending.fileName, added: pending.records.length, changed: 0 };
@@ -158,12 +177,12 @@
       if ($("ros-add-columns") && $("ros-add-columns").checked) {
         cmp.extraColumns.forEach((c) => {
           m.columns.push(c);
-          rows().forEach((r) => { if (r.values[c.key] === undefined) r.values[c.key] = c.type === "check" ? false : ""; });
+          rows().forEach((r) => { if (r.values[c.key] === undefined) r.values[c.key] = ""; });
         });
       }
       cmp.added.forEach((rec) => {
         const values = {};
-        m.columns.forEach((c) => { values[c.key] = rec.values[c.key] !== undefined ? rec.values[c.key] : (c.type === "check" ? false : ""); });
+        m.columns.forEach((c) => { values[c.key] = rec.values[c.key] !== undefined ? cellValue(rec.values[c.key], c) : (c.type === "select" ? (c.options || []).find((o) => o !== (c.doneValue || DONE)) || "" : ""); });
         rec.values = values;
         rows().push(Object.assign(rec, { addedAt: now, source: pending.fileName, isNew: true }));
       });
@@ -190,11 +209,11 @@
   /* ===== التصفية ===== */
   const filter = { q: "", col: {}, only: "" };
 
-  function checkColumns() { return meta().columns.filter((c) => c.type === "check"); }
+  function checkColumns() { return meta().columns.filter((c) => c.type === "select"); }
   function facetColumns() {
     // أعمدة نصية قليلة القيم تصلح للتصفية (المسار، المجموعة…)
     return meta().columns.filter((c) => {
-      if (c.type === "check") return false;
+      if (c.type === "select") return false;
       const vals = new Set(rows().map((r) => String(r.values[c.key] || "").trim()).filter(Boolean));
       return vals.size > 1 && vals.size <= 30;
     });
@@ -208,19 +227,41 @@
         if (!val) continue;
         const col = meta().columns.find((c) => c.key === key);
         if (!col) continue;
-        if (col.type === "check") {
-          if (val === "yes" && !r.values[key]) return false;
-          if (val === "no" && r.values[key]) return false;
+        if (col.type === "select") {
+          if (cellValue(r.values[key], col) !== val) return false;
         } else if (String(r.values[key] || "") !== val) return false;
       }
       if (filter.only === "new" && !r.isNew) return false;
-      if (filter.only === "incomplete" && checkColumns().every((c) => r.values[c.key])) return false;
+      if (filter.only === "incomplete" && checkColumns().every((c) => isDone(r, c))) return false;
       return true;
     });
   }
 
+  /* ترقية القوائم القديمة: أعمدة الصح/الخطأ أو التي قيمها «تم / لم يتم» تصبح قوائم اختيار */
+  function migrate() {
+    const m = meta();
+    let changed = false;
+    m.columns.forEach((c) => {
+      if (c.type === "select") {
+        if (!c.options || !c.options.length) { c.options = [DONE, NOT_DONE]; c.doneValue = c.doneValue || DONE; changed = true; }
+        return;
+      }
+      const vals = rows().map((r) => r.values[c.key]);
+      const boolish = vals.length && vals.every((v) => v === true || v === false || isBoolWord(v));
+      if (c.type === "check" || boolish) {
+        c.type = "select";
+        c.options = [DONE, NOT_DONE];
+        c.doneValue = DONE;
+        rows().forEach((r) => { r.values[c.key] = cellValue(r.values[c.key], c); });
+        changed = true;
+      }
+    });
+    if (changed) store.save();
+  }
+
   /* ===== العرض ===== */
   function render() {
+    migrate();
     const m = meta();
     const has = rows().length > 0;
     $("ros-empty").hidden = has;
@@ -243,8 +284,7 @@
       }).join("")}
       ${checkColumns().map((c) => `<select data-facet="${esc(c.key)}">
           <option value="">${esc(c.label)}: الكل</option>
-          <option value="yes" ${filter.col[c.key] === "yes" ? "selected" : ""}>✔ تم</option>
-          <option value="no" ${filter.col[c.key] === "no" ? "selected" : ""}>✖ لم يتم</option>
+          ${(c.options || []).map((o) => `<option ${filter.col[c.key] === o ? "selected" : ""}>${esc(o)}</option>`).join("")}
         </select>`).join("")}
       <select id="ros-only">
         <option value="">كل السجلات</option>
@@ -255,7 +295,7 @@
     // مؤشرات التعليم
     const list = filtered();
     $("ros-stats").innerHTML = checkColumns().map((c) => {
-      const done = rows().filter((r) => r.values[c.key]).length;
+      const done = rows().filter((r) => isDone(r, c)).length;
       const pctAll = rows().length ? Math.round((done / rows().length) * 100) : 0;
       return `<div class="stat"><div class="label">${esc(c.label)}</div><div class="value">${ui.fmt(done)} / ${ui.fmt(rows().length)}</div>
         <div class="sub">${ui.fmt(pctAll)}% · المتبقي ${ui.fmt(rows().length - done)}</div></div>`;
@@ -266,9 +306,15 @@
     $("ros-head").innerHTML = `<tr><th>#</th>${m.columns.map((c) => `<th>${esc(c.label)}</th>`).join("")}<th></th></tr>`;
     $("ros-body").innerHTML = list.length ? list.map((r, i) => `<tr data-id="${r.id}" class="${r.isNew ? "ros-new" : ""}">
         <td class="nowrap">${ui.fmt(i + 1)}</td>
-        ${m.columns.map((c) => `<td>${c.type === "check"
-          ? `<input type="checkbox" data-k="${esc(c.key)}" ${r.values[c.key] ? "checked" : ""} aria-label="${esc(c.label)}">`
-          : `<input type="text" data-k="${esc(c.key)}" value="${esc(r.values[c.key] || "")}">`}</td>`).join("")}
+        ${m.columns.map((c) => {
+          if (c.type !== "select") return `<td><input type="text" data-k="${esc(c.key)}" value="${esc(r.values[c.key] || "")}"></td>`;
+          const v = cellValue(r.values[c.key], c);
+          const opts = [...new Set([...(c.options || []), v].filter(Boolean))];
+          return `<td><select data-k="${esc(c.key)}" class="ros-sel ${v === (c.doneValue || DONE) ? "done" : v ? "not" : ""}" aria-label="${esc(c.label)}">
+            <option value=""></option>
+            ${opts.map((o) => `<option ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("")}
+          </select></td>`;
+        }).join("")}
         <td class="reg-actions nowrap">
           <button class="act-btn edit" data-notes title="ملاحظات المتابعة">📝${(r.notes || []).length ? ` ${ui.fmt(r.notes.length)}` : ""}</button>
           <button class="act-btn del" data-del title="حذف السجل">🗑</button>
@@ -284,8 +330,10 @@
         <input type="text" data-col-label value="${esc(c.label)}" aria-label="اسم العمود">
         <select data-col-type>
           <option value="text" ${c.type === "text" ? "selected" : ""}>حقل كتابة</option>
-          <option value="check" ${c.type === "check" ? "selected" : ""}>خانة تعليم</option>
+          <option value="select" ${c.type === "select" ? "selected" : ""}>قائمة اختيار</option>
         </select>
+        ${c.type === "select" ? `<input type="text" data-col-options value="${esc((c.options || []).join("، "))}" title="الخيارات مفصولة بفاصلة" placeholder="تم، لم يتم">
+          <select data-col-done title="القيمة التي تعني الإنجاز">${(c.options || []).map((o) => `<option ${o === (c.doneValue || DONE) ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>` : ""}
         ${c.key === m.keyColumn ? `<span class="reg-kind">عمود المطابقة</span>` : `<button type="button" class="conv-link" data-col-key title="اجعله عمود المطابقة">🔑</button>`}
         <button type="button" class="conv-link" data-col-up ${i === 0 ? "disabled" : ""} title="تحريك لأعلى">▲</button>
         <button type="button" class="conv-link danger" data-col-del title="حذف العمود من النظام">✕</button>
@@ -322,9 +370,18 @@
     if (e.target.hasAttribute("data-col-label")) col.label = e.target.value;
     if (e.target.hasAttribute("data-col-type")) {
       col.type = e.target.value;
-      rows().forEach((r) => { r.values[col.key] = col.type === "check" ? toBool(r.values[col.key]) : String(r.values[col.key] === true ? "نعم" : r.values[col.key] || ""); });
+      if (col.type === "select") {
+        col.options = col.options && col.options.length ? col.options : [DONE, NOT_DONE];
+        col.doneValue = col.doneValue || col.options[0];
+      }
+      rows().forEach((r) => { r.values[col.key] = cellValue(r.values[col.key], col); });
       renderColumns();
     }
+    if (e.target.hasAttribute("data-col-options")) {
+      col.options = e.target.value.split(/[،,]/).map((o) => o.trim()).filter(Boolean);
+      if (!col.options.includes(col.doneValue)) col.doneValue = col.options[0] || DONE;
+    }
+    if (e.target.hasAttribute("data-col-done")) col.doneValue = e.target.value;
     autoSave();
     render();
   }
@@ -376,7 +433,7 @@
   function addRecord() {
     const m = meta();
     const rec = { id: store.uid(), values: {}, addedAt: new Date().toISOString(), source: "إضافة يدوية", isNew: true };
-    m.columns.forEach((c) => { rec.values[c.key] = c.type === "check" ? false : ""; });
+    m.columns.forEach((c) => { rec.values[c.key] = c.type === "select" ? (c.options || []).find((o) => o !== (c.doneValue || DONE)) || "" : ""; });
     rows().unshift(rec);
     store.save();
     filter.q = "";
@@ -392,11 +449,11 @@
   function addColumn() {
     const label = prompt("اسم العمود الجديد (مثال: تعهد استلام الأدوات)");
     if (!label || !label.trim()) return;
-    const type = confirm("هل هذا العمود خانة تعليم (نعم/لا)؟\nموافق = خانة تعليم، إلغاء = حقل كتابة") ? "check" : "text";
+    const isSelect = confirm("هل هذا العمود قائمة اختيار (تم / لم يتم)؟\nموافق = قائمة اختيار، إلغاء = حقل كتابة");
     const m = meta();
     const key = slug(label, m.columns.map((c) => c.key));
-    m.columns.push({ key, label: label.trim(), type });
-    rows().forEach((r) => { r.values[key] = type === "check" ? false : ""; });
+    m.columns.push(isSelect ? { key, label: label.trim(), type: "select", options: [DONE, NOT_DONE], doneValue: DONE } : { key, label: label.trim(), type: "text" });
+    rows().forEach((r) => { r.values[key] = isSelect ? NOT_DONE : ""; });
     store.save();
     render();
     ui.toast(`أُضيف عمود «${label.trim()}»`);
@@ -412,15 +469,19 @@
     if (!tr || !key) return;
     const rec = rows().find((r) => r.id === tr.dataset.id);
     if (!rec) return;
-    rec.values[key] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    rec.values[key] = e.target.value;
+    if (e.target.tagName === "SELECT") {
+      const col = meta().columns.find((c) => c.key === key);
+      e.target.className = `ros-sel ${e.target.value === (col.doneValue || DONE) ? "done" : e.target.value ? "not" : ""}`;
+    }
     rec.updatedAt = new Date().toISOString();
     rec.updatedBy = App.profile ? App.profile.name() : "";
     autoSave();
-    if (e.target.type === "checkbox") {
+    if (e.target.tagName === "SELECT") {
       // تحديث المؤشرات فقط، دون إعادة بناء الجدول أثناء الكتابة
       const m = meta();
-      $("ros-stats").innerHTML = m.columns.filter((c) => c.type === "check").map((c) => {
-        const done = rows().filter((r) => r.values[c.key]).length;
+      $("ros-stats").innerHTML = m.columns.filter((c) => c.type === "select").map((c) => {
+        const done = rows().filter((r) => isDone(r, c)).length;
         return `<div class="stat"><div class="label">${esc(c.label)}</div><div class="value">${ui.fmt(done)} / ${ui.fmt(rows().length)}</div>
           <div class="sub">${ui.fmt(rows().length ? Math.round((done / rows().length) * 100) : 0)}% · المتبقي ${ui.fmt(rows().length - done)}</div></div>`;
       }).join("");
@@ -437,7 +498,7 @@
       .concat([{ header: "ملاحظات المتابعة", key: "__notes", width: 40 }]);
     filtered().forEach((r) => {
       const row = {};
-      m.columns.forEach((c) => { row[c.key] = c.type === "check" ? (r.values[c.key] ? "تم" : "لم يتم") : r.values[c.key] || ""; });
+      m.columns.forEach((c) => { row[c.key] = c.type === "select" ? cellValue(r.values[c.key], c) : r.values[c.key] || ""; });
       row.__notes = (r.notes || []).map((n) => `${ui.formatDate(String(n.at).slice(0, 10))}: ${n.text}`).join(" | ");
       sh.addRow(row);
     });
@@ -472,21 +533,21 @@
         widths: [0.46, 0.18, 0.18, 0.18],
         align: [null, "center", "center", "center"],
         rows: checks.map((c) => {
-          const done = list.filter((r) => r.values[c.key]).length;
+          const done = list.filter((r) => isDone(r, c)).length;
           return [c.label, ui.fmt(done), ui.fmt(list.length - done), `${ui.fmt(list.length ? Math.round((done / list.length) * 100) : 0)}%`];
         }),
       });
     }
     const nameCol = m.columns.find((c) => /اسم/.test(c.label)) || m.columns[0];
     checks.forEach((c) => {
-      const missing = list.filter((r) => !r.values[c.key]);
+      const missing = list.filter((r) => !isDone(r, c));
       if (!missing.length) return;
       out.push({ kind: "para", text: "" }, { kind: "bold", text: `الذين لم يُنجزوا: ${c.label} (${ui.fmt(missing.length)})` });
       out.push({
         kind: "table",
-        headers: ["م", nameCol.label, ...m.columns.filter((x) => x.type !== "check" && x !== nameCol).slice(0, 3).map((x) => x.label)],
+        headers: ["م", nameCol.label, ...m.columns.filter((x) => x.type !== "select" && x !== nameCol).slice(0, 3).map((x) => x.label)],
         widths: null,
-        rows: missing.map((r, i) => [String(i + 1), r.values[nameCol.key] || "", ...m.columns.filter((x) => x.type !== "check" && x !== nameCol).slice(0, 3).map((x) => String(r.values[x.key] || ""))]),
+        rows: missing.map((r, i) => [String(i + 1), r.values[nameCol.key] || "", ...m.columns.filter((x) => x.type !== "select" && x !== nameCol).slice(0, 3).map((x) => String(r.values[x.key] || ""))]),
       });
     });
     const withNotes = list.filter((r) => (r.notes || []).length);
