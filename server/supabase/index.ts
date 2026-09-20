@@ -10,9 +10,24 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
+/* مفتاح الخدمة: المشاريع القديمة تضع SUPABASE_SERVICE_ROLE_KEY،
+   والجديدة تضع SUPABASE_SECRET_KEYS (خريطة JSON). نقبل الاثنين. */
+function serviceKey() {
+  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (legacy) return legacy;
+  const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (raw) {
+    try {
+      const map = JSON.parse(raw);
+      return map.default || Object.values(map)[0] as string;
+    } catch { /* تنسيق غير متوقّع */ }
+  }
+  throw new Error("مفتاح خدمة Supabase غير متاح للدالة");
+}
+
 const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  serviceKey(),
   { auth: { persistSession: false } },
 );
 

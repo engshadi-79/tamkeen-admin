@@ -35,9 +35,13 @@ Supabase ← **SQL Editor** ← **New query** ← ألصق كامل ملف [`sch
 ### 3. انشر الدالة الطرفية
 Supabase ← **Edge Functions** ← **Deploy a new function** ← **Via Editor**
 - الاسم: `tamkeen`
-- ألصق كامل ملف [`index.ts`](index.ts)
-- **أوقف خيار «Verify JWT»** — التحقق عندنا برمز الجلسة، لا بمفتاح Supabase. (إن نسيته سيرد الخادم `401`.)
-- **Deploy**
+- ألصق كامل ملف [`index.ts`](index.ts) مكان القالب
+- **أوقف خيار «Verify JWT»** — التحقق عندنا برمز جلسة الأداة، لا بمفتاح Supabase.
+  (إن نسيته سيرد الخادم `401` على كل طلب. يمكن تعديله لاحقاً من إعدادات الدالة.)
+- **Deploy function** (10–30 ثانية)
+
+الدالة تقرأ مفتاح الخدمة تلقائياً سواء كان مشروعك على نظام المفاتيح القديم
+(`SUPABASE_SERVICE_ROLE_KEY`) أو الجديد (`SUPABASE_SECRET_KEYS`) — لا تضعه بنفسك.
 
 ### 4. ضَع رمز المدير
 Edge Functions ← **Secrets** ← **Add new secret**:
