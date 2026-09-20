@@ -412,6 +412,13 @@ body.locked .app { filter: blur(6px); pointer-events: none; user-select: none; }
 .ai-chip:disabled { opacity: .6; cursor: default; }
 .ai-chip.undo { border-color: var(--border); background: var(--surface); color: var(--navy-800); }
 .m-dec .ai-chip-row { margin: 0; }
+.ros-table td { padding: 4px 6px; }
+.ros-table input[type=text] { width: 100%; min-width: 90px; font-size: 13.5px; padding: 5px 7px; }
+.ros-table input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--teal-600); cursor: pointer; }
+.ros-table tr.ros-new td { background: #fffaf0; }
+.ros-saved { color: var(--ok); font-weight: 700; }
+.ros-cmp { list-style: none; padding: 0; margin: 8px 0; }
+.ros-cmp li { padding: 5px 0; border-bottom: 1px solid var(--border); }
 .digest-box { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; }
 .user-off td { opacity: .55; }
 .reg-owner { font-size: 12px; color: var(--teal-600); font-weight: 700; }

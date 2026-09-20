@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=70">
+  <link rel="stylesheet" href="styles/theme.css?v=71">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -52,6 +52,7 @@
         <li><button data-view="report"><span class="ico">📊</span>التقرير الدوري</button></li>
         <li><button data-view="meetings"><span class="ico">📋</span>محاضر الاجتماعات</button></li>
         <li><button data-view="registry"><span class="ico">🗂</span>الوارد والصادر</button></li>
+        <li><button data-view="roster"><span class="ico">👥</span>المستفيدون والتعهدات</button></li>
         <li><button data-view="rtl"><span class="ico">⇆</span>تصحيح اتجاه Word</button></li>
         <li><button data-view="converter"><span class="ico">⇄</span>تحويل ملف حسب قالب</button></li>
         <li><button data-view="tasks"><span class="ico">☑</span>المهام والمتابعات</button></li>
@@ -351,6 +352,42 @@
             </table>
           </div>
           <p class="conv-hint">الخطابات والتقارير المصدَّرة (Word أو PDF أو طباعة) تُسجَّل في الصادر تلقائياً برقمها، وملف Word يُحفظ مرفقاً. اسحب ملفات أو مجلداً كاملاً إلى هذه الصفحة، أو اضغط «رفع ملفات» أو «رفع مجلد» لتسجيلها دفعة واحدة؛ تُرتَّب في Drive حسب: مجلد المستخدم / السنة / الشهر / الوارد أو الصادر / نوع المستند، وكل الملفات متاحة للجميع.</p>
+        </div>
+      </section>
+
+      <!-- ===== المستفيدون والتعهدات ===== -->
+      <section class="view" id="view-roster">
+        <div class="page-head">
+          <div><h2 id="ros-title">المستفيدون والتعهدات</h2><p id="ros-sub">ارفع ملف Excel لإنشاء القائمة، وأكملها هنا، وارفع ملفاً جديداً لاحقاً ليضيف الأسماء الجديدة</p></div>
+          <div class="btn-row no-print">
+            <button class="btn navy" data-ros-import>⬆ رفع ملف Excel</button>
+            <button class="btn secondary" id="ros-export">تصدير Excel</button>
+            <button class="btn" id="ros-report">🖨 تقرير المتابعة</button>
+            <button class="btn secondary" id="ros-report-word">تقرير Word</button>
+            <button class="btn danger" id="ros-clear">حذف القائمة</button>
+          </div>
+        </div>
+        <input type="file" id="ros-file" accept=".xlsx,.xlsm" hidden>
+        <div class="card" id="ros-empty">
+          <label class="rtl-drop" data-ros-import>
+            <span class="rtl-drop-ico">📋</span>
+            <b>ارفع ملف Excel الخاص بالقائمة</b>
+            <span class="conv-hint">الصف الأول عناوين الأعمدة. تُقرأ الأعمدة كما هي، وأعمدة نعم/لا تصبح خانات تعليم. البيانات تُحفظ تلقائياً وتُشارَك مع بقية المستخدمين.</span>
+          </label>
+        </div>
+        <div id="ros-main" hidden>
+          <div class="stats" id="ros-stats"></div>
+          <div class="card">
+            <div class="reg-toolbar" id="ros-filters"></div>
+            <p class="conv-hint"><span id="ros-count"></span> <span class="ros-saved" id="ros-saved"></span></p>
+            <div class="table-wrap">
+              <table class="reg-table ros-table">
+                <thead id="ros-head"></thead>
+                <tbody id="ros-body"></tbody>
+              </table>
+            </div>
+            <p class="conv-hint">كل تعديل يُحفظ تلقائياً ويُزامَن مع بقية الأجهزة. الصفوف المضافة في آخر رفع مميّزة بلون.</p>
+          </div>
         </div>
       </section>
 
@@ -727,39 +764,53 @@
     </div>
   </div>
 
+  <!-- رفع ملف القائمة -->
+  <div class="modal-backdrop" id="ros-import-modal" role="dialog" aria-modal="true" aria-labelledby="ros-import-title">
+    <div class="modal">
+      <h3 id="ros-import-title">⬆ رفع ملف القائمة</h3>
+      <div id="ros-import-body"></div>
+      <p class="conv-hint" id="ros-import-status" aria-live="polite"></p>
+      <div class="btn-row">
+        <button class="btn navy" type="button" id="ros-import-apply" disabled>تطبيق</button>
+        <button class="btn secondary" type="button" id="ros-import-cancel">إلغاء</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=70"></script>
-  <script src="src/ui.js?v=70"></script>
-  <script src="src/templates.js?v=70"></script>
-  <script src="src/tracks.js?v=70"></script>
-  <script src="src/tasks.js?v=70"></script>
-  <script src="src/dashboard.js?v=70"></script>
-  <script src="src/letterhead-docx.js?v=70"></script>
-  <script src="src/docx.js?v=70"></script>
-  <script src="src/ai.js?v=70"></script>
-  <script src="src/doc-render.js?v=70"></script>
-  <script src="src/files-store.js?v=70"></script>
-  <script src="src/shared.js?v=70"></script>
-  <script src="src/cloud.js?v=70"></script>
-  <script src="src/drive.js?v=70"></script>
-  <script src="src/drive-ui.js?v=70"></script>
-  <script src="src/rtl-fixer.js?v=70"></script>
-  <script src="src/rtl-page.js?v=70"></script>
-  <script src="src/profile.js?v=70"></script>
-  <script src="src/registry.js?v=70"></script>
-  <script src="src/charts.js?v=70"></script>
-  <script src="src/ai-assist.js?v=70"></script>
-  <script src="src/meetings.js?v=70"></script>
-  <script src="src/report.js?v=70"></script>
-  <script src="src/letters.js?v=70"></script>
+  <script src="src/storage.js?v=71"></script>
+  <script src="src/ui.js?v=71"></script>
+  <script src="src/templates.js?v=71"></script>
+  <script src="src/tracks.js?v=71"></script>
+  <script src="src/tasks.js?v=71"></script>
+  <script src="src/dashboard.js?v=71"></script>
+  <script src="src/letterhead-docx.js?v=71"></script>
+  <script src="src/docx.js?v=71"></script>
+  <script src="src/ai.js?v=71"></script>
+  <script src="src/doc-render.js?v=71"></script>
+  <script src="src/files-store.js?v=71"></script>
+  <script src="src/shared.js?v=71"></script>
+  <script src="src/cloud.js?v=71"></script>
+  <script src="src/drive.js?v=71"></script>
+  <script src="src/drive-ui.js?v=71"></script>
+  <script src="src/rtl-fixer.js?v=71"></script>
+  <script src="src/rtl-page.js?v=71"></script>
+  <script src="src/profile.js?v=71"></script>
+  <script src="src/roster.js?v=71"></script>
+  <script src="src/registry.js?v=71"></script>
+  <script src="src/charts.js?v=71"></script>
+  <script src="src/ai-assist.js?v=71"></script>
+  <script src="src/meetings.js?v=71"></script>
+  <script src="src/report.js?v=71"></script>
+  <script src="src/letters.js?v=71"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=70"></script>
-  <script src="src/converter-store.js?v=70"></script>
-  <script src="src/converter.js?v=70"></script>
-  <script src="src/app.js?v=70"></script>
+  <script src="src/converter-core.js?v=71"></script>
+  <script src="src/converter-store.js?v=71"></script>
+  <script src="src/converter.js?v=71"></script>
+  <script src="src/app.js?v=71"></script>
 </body>
 </html>

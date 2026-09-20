@@ -4,8 +4,8 @@
 (function (App) {
   const { store, ui } = App;
   const SNAP_KEY = "tamkeen-admin:sync2";
-  const SETTINGS_KEYS = ["registrySettings", "reportSettings", "signer", "signerTitle"];
-  const COLS = ["tracks", "tasks", "meetings", "customTemplates", "settings"];
+  const SETTINGS_KEYS = ["registrySettings", "reportSettings", "rosterMeta", "signer", "signerTitle"];
+  const COLS = ["tracks", "tasks", "meetings", "customTemplates", "roster", "settings"];
   let syncing = false, again = false, timer = null, people = [];
 
   /* الإعدادات ليست مصفوفة: تُعامل كعناصر { id: اسم الإعداد, value } */
@@ -105,6 +105,7 @@
     if (active("tracks")) App.tracks.render();
     if (active("meetings") && App.meetings.isIdle && App.meetings.isIdle()) App.meetings.render();
     if (active("letters") && App.letters.refreshTemplates) App.letters.refreshTemplates();
+    if (active("roster")) App.roster.render();
   }
 
   /* أسماء المستخدمين لاختيار المسؤول عن المهام والقرارات */

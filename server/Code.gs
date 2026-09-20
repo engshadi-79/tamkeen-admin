@@ -50,7 +50,7 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 5, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
+      case "status": return out_({ ok: true, version: 6, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
       case "login": return out_(login_(req.username, req.password));
       case "forgot": return out_(forgot_(req.username));
@@ -59,7 +59,7 @@ function doPost(e) {
     const user = session_(req.token);
     if (!user) return out_({ error: "UNAUTHORIZED" });
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 5, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 6, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
@@ -329,7 +329,9 @@ function sync_(records, deleted, user) {
 }
 
 /* ===== الأقسام المشتركة الأخرى: كل قسم ملف JSON مستقل، والدمج بنفس قاعدة السجل ===== */
-const COLS = { tracks: 1, tasks: 1, meetings: 1, customTemplates: 1, settings: 1 };
+// أقسام مشتركة: أي اسم لاتيني قصير مسموح، فلا يحتاج كل قسم جديد تحديث الخادم
+const COL_NAME = /^[A-Za-z][A-Za-z0-9]{2,24}$/;
+const isCol_ = (name) => COL_NAME.test(String(name || ""));
 
 function colFile_(name) {
   const root = root_();
@@ -344,7 +346,7 @@ function syncAll_(cols) {
   try {
     const result = {};
     Object.keys(cols).forEach((name) => {
-      if (!COLS[name]) return;
+      if (!isCol_(name)) return;
       const file = colFile_(name);
       const data = readData_(file);
       const incoming = cols[name] || {};
@@ -444,9 +446,14 @@ function backupDaily_(file) {
   if (props.getProperty("LAST_BACKUP") === today) return;
   const folder = subFolder_(root_(), BACKUP_FOLDER);
   file.makeCopy(`سجل الوارد والصادر - ${today}.json`, folder);
-  Object.keys(COLS).forEach((name) => {
-    try { colFile_(name).makeCopy(`${name} - ${today}.json`, folder); } catch (err) { /* قسم غير موجود بعد */ }
-  });
+  // نسخ احتياطية لكل ملفات الأقسام الموجودة في مجلد الأرشيف
+  const it2 = root_().getFiles();
+  while (it2.hasNext()) {
+    const f = it2.next();
+    if (/^tamkeen-.+\.json$/.test(f.getName()) && f.getName() !== DATA_NAME) {
+      try { f.makeCopy(`${f.getName().replace(/\.json$/, "")} - ${today}.json`, folder); } catch (err) { /* تجاهل */ }
+    }
+  }
   props.setProperty("LAST_BACKUP", today);
   const files = [];
   const it = folder.getFiles();
