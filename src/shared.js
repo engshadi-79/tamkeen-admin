@@ -56,13 +56,14 @@
       const remote = server[name].records;
       const takeServer = () => { writeCol(name, remote); snap[name] = {}; remote.forEach((r) => { snap[name][r.id] = fingerprint(r); }); };
       if (!remote.length) { push[name] = true; return; } // الخادم فارغ: تُرفع بيانات هذا الجهاز
-      if (name === "tracks") {
-        // الخادم فيه مسارات: تُعتمد كما هي (منعاً لتكرار المسارات الافتراضية من كل جهاز)
-        takeServer();
-        return;
-      }
-      if (name === "settings") { takeServer(); return; }
-      push[name] = true; // المهام والمحاضر والقوالب: تُدمج مع ما في الخادم
+      if (name === "tracks" || name === "settings") { takeServer(); return; }
+      // بقية الأقسام: تُعتمد نسخة الخادم، ويُحتفظ فقط بما أنشئ على هذا الجهاز خلال 24 ساعة
+      const fresh = Date.now() - 24 * 3600 * 1000;
+      const ids = new Set(remote.map((r) => r.id));
+      const mine = local.filter((r) => !ids.has(r.id) && Date.parse(r.createdAt || r.addedAt || 0) > fresh);
+      writeCol(name, remote.concat(mine));
+      snap[name] = {};
+      remote.forEach((r) => { snap[name][r.id] = fingerprint(r); });
     });
     saveSnap(snap);
     store.save();

@@ -51,7 +51,7 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 9, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
+      case "status": return out_({ ok: true, version: 10, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
       case "login": {
         const res = login_(req.username, req.password);
@@ -65,7 +65,7 @@ function doPost(e) {
     if (!user) return out_({ error: "UNAUTHORIZED" });
     logRequest_(user, req);
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 9, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 10, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
@@ -302,6 +302,15 @@ function readData_(file) {
 }
 
 const stamp_ = (r) => r.updatedAt || r.createdAt || "";
+const RESURRECT_MS = 24 * 3600 * 1000;
+/* سجل حُذف قبل قليل لا يعود إلا إذا أُعيد إنشاؤه فعلاً بعد الحذف بمدة كافية
+   (جهاز قديم يعيد رفع نسخته يختم سجلاته بوقت جديد، فيبدو أحدث من الحذف) */
+function resurrects_(rec, delAt) {
+  if (!delAt) return false;
+  const t = Date.parse(stamp_(rec));
+  const d = Date.parse(delAt);
+  return !(t && d) || t - d < RESURRECT_MS;
+}
 
 /* دمج سجل الجهاز مع السجل المشترك: الأحدث تعديلاً يفوز، والحذف يُسجَّل بتاريخه */
 function sync_(records, deleted, user) {
@@ -323,6 +332,7 @@ function sync_(records, deleted, user) {
     });
     records.forEach((r) => {
       if (!r || !r.id) return;
+      if (del[r.id] && resurrects_(r, del[r.id])) return; // قيد محذوف حديثاً لا يعود
       const cur = map[r.id];
       if (!cur) { if (!user.admin || !r.owner) r.owner = user.name; map[r.id] = r; return; }
       if (stamp_(r) <= stamp_(cur)) return;
@@ -374,7 +384,11 @@ function syncAll_(cols) {
       Object.keys(incoming.deleted || {}).forEach((id) => { if (!del[id] || incoming.deleted[id] > del[id]) del[id] = incoming.deleted[id]; });
       const map = {};
       (data.records || []).forEach((r) => { map[r.id] = r; });
-      (incoming.records || []).forEach((r) => { if (r && r.id && (!map[r.id] || stamp_(r) > stamp_(map[r.id]))) map[r.id] = r; });
+      (incoming.records || []).forEach((r) => {
+        if (!r || !r.id) return;
+        if (del[r.id] && resurrects_(r, del[r.id])) return; // محذوف حديثاً: يُتجاهل
+        if (!map[r.id] || stamp_(r) > stamp_(map[r.id])) map[r.id] = r;
+      });
       Object.keys(del).forEach((id) => { if (map[id] && stamp_(map[id]) <= del[id]) delete map[id]; });
       const merged = { records: Object.keys(map).map((k) => map[k]), deleted: del };
       const json = JSON.stringify(merged);
