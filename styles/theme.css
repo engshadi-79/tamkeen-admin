@@ -506,3 +506,18 @@ th.sortable.sorted::after { content: " " attr(data-arrow); color: var(--teal-600
   #print-root .lh-page { width: 8.5in; height: 11in; aspect-ratio: auto; box-shadow: none; break-after: page; }
   #print-root .lh-page:last-child { break-after: auto; }
 }
+
+/* شريط الخادم التجريبي: يظهر فقط عندما يكون هذا الجهاز موجّهاً إلى خادم غير الأساسي */
+.trial-bar {
+  position: fixed; inset: 0 0 auto 0; z-index: 200;   /* فوق شاشة الدخول (100) حتى يُرى عندها */
+  display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 16px; background: #fff3cd; color: #6b4e00;
+  border-bottom: 1px solid #e3cf8a; font-size: 13px; font-weight: 700;
+}
+body.has-trial-bar { padding-top: 38px; }
+body.has-trial-bar #login-screen { top: 38px; }
+.trial-bar button {
+  border: 1px solid #b08900; background: #fff; color: #6b4e00;
+  border-radius: 8px; padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.trial-bar button:hover { background: #fdf6e0; }

@@ -20,6 +20,45 @@
 
   const ready = () => { const s = settings(); return !!(s.url && s.token); };
   const user = () => settings().user;
+  const isTrial = () => settings().url !== DEFAULT_URL;
+
+  /* تحويل هذا الجهاز وحده إلى خادم آخر (النسخة التجريبية على Supabase مثلاً):
+     يُفتح الموقع بـ ‎?server=<الرابط>‎ ، والعودة بـ ‎?server=‎ فارغاً.
+     رمز الجلسة لا ينتقل بين الخادمين، فيُمسح عند التحويل. */
+  function useServer(url) {
+    const next = String(url || "").trim() || DEFAULT_URL;
+    if (next === settings().url) return false;
+    saveSettings({ url: next, token: "", user: null, owner: "" });
+    return true;
+  }
+
+  function applyOverride() {
+    const q = new URLSearchParams(location.search);
+    if (!q.has("server")) return;
+    useServer(q.get("server"));
+    q.delete("server");
+    const rest = q.toString();
+    history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
+  }
+
+  /* شريط ظاهر حتى لا ينسى أحد أنه يعمل على خادم تجريبي */
+  function banner() {
+    if (!isTrial()) return;
+    const bar = document.createElement("div");
+    bar.className = "trial-bar no-print";
+    bar.innerHTML = `<span>⚗ أنت على الخادم التجريبي (Supabase) — بياناته منفصلة عن الخادم الأساسي.</span>`;
+    const back = document.createElement("button");
+    back.type = "button";
+    back.textContent = "العودة إلى الخادم الأساسي";
+    back.addEventListener("click", () => { useServer(""); location.reload(); });
+    bar.append(back);
+    document.body.prepend(bar);
+    document.body.classList.add("has-trial-bar");
+  }
+
+  applyOverride();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", banner);
+  else banner();
 
   /* انتهاء الجلسة أو إيقاف الحساب: خروج على هذا الجهاز */
   function expire() {
@@ -108,6 +147,7 @@
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
+    isTrial, useServer, defaultUrl: DEFAULT_URL,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});
