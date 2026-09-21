@@ -128,10 +128,13 @@
         const liveNow = new Map(readCol(name).map((r) => [r.id, r]));
         const sent = sentPrints[name] || {};
         const kept = [];
-        const final = records.map((r) => {
+        const removed = []; // حُذف على الجهاز أثناء الطلب: لا يُعيده ردّ الخادم
+        const final = [];
+        records.forEach((r) => {
           const live = liveNow.get(r.id);
-          if (live && sent[r.id] !== undefined && fingerprint(live) !== sent[r.id]) { kept.push(r.id); return live; }
-          return r;
+          if (!live && sent[r.id] !== undefined) { removed.push(r.id); return; }
+          if (live && sent[r.id] !== undefined && fingerprint(live) !== sent[r.id]) { kept.push(r.id); final.push(live); return; }
+          final.push(r);
         });
         // سجل أُضيف أثناء الطلب ولم يصل الخادم بعد
         liveNow.forEach((live, id) => { if (sent[id] === undefined && !final.some((r) => r.id === id)) { final.push(live); kept.push(id); } });
@@ -139,6 +142,9 @@
         if (kept.length) schedule(1200); // التعديلات التي حدثت أثناء الطلب تُرفع في الجولة التالية
         next[name] = {};
         final.forEach((r) => { if (kept.indexOf(r.id) === -1) next[name][r.id] = fingerprint(r); });
+        // يبقى المحذوف في البصمات حتى تُرسل الجولة التالية حذفه إلى الخادم
+        removed.forEach((id) => { next[name][id] = sent[id]; });
+        if (removed.length) schedule(1200);
       });
       if (skipped.length) console.warn("أقسام لا يدعمها الخادم بعد:", skipped.join("، "));
       saveSnap(next);

@@ -253,14 +253,24 @@
       });
       const liveNow = new Map(records().map((r) => [r.id, r]));
       const kept = [];
-      const final = merged.records.map((r) => {
+      const removed = []; // حُذف على الجهاز أثناء الطلب: لا يُعيده ردّ الخادم
+      const final = [];
+      merged.records.forEach((r) => {
         const live = liveNow.get(r.id);
-        if (live && sentPrints[r.id] !== undefined && fingerprint(live) !== sentPrints[r.id]) { kept.push(r.id); return live; }
-        return r;
+        if (!live && sentPrints[r.id] !== undefined) { removed.push(r.id); return; }
+        if (live && sentPrints[r.id] !== undefined && fingerprint(live) !== sentPrints[r.id]) { kept.push(r.id); final.push(live); return; }
+        final.push(r);
       });
       liveNow.forEach((live, id) => { if (sentPrints[id] === undefined && !final.some((r) => r.id === id)) { final.push(live); kept.push(id); } });
       store.get().registry = final;
       saveSnap(final.filter((r) => kept.indexOf(r.id) === -1));
+      if (removed.length) {
+        // يبقى المحذوف في البصمات حتى تُرسل الجولة التالية حذفه
+        const snap = loadSnap();
+        removed.forEach((id) => { snap[id] = sentPrints[id]; });
+        try { localStorage.setItem(SNAP_KEY, JSON.stringify(snap)); } catch (e) { /* تخزين غير متاح */ }
+        scheduleSync(1200);
+      }
       if (kept.length) scheduleSync(1200); // ما بقي من تعديلات يُرفع في الجولة التالية
       lastSync = Date.now();
       store.save();
