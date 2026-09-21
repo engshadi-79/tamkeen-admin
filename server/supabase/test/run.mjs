@@ -218,5 +218,28 @@ check("وسجل الوارد والصادر استُقبل", moved.records.some(
 check("والقيد المنقول نُسب لصاحبه", moved.records.find((r) => r.id === "g1").owner === "شادي");
 check("الاعتماد مسجّل في الأحداث", (await post({ action: "events", token: T, days: 1, limit: 80 })).events.some((e) => e.action === "اعتماد بيانات جهاز"));
 
+/* ===== 14. النقل الكامل: وضع الاستبدال ===== */
+console.log("\n[14] النقل الكامل (استبدال)");
+// على الخادم مسارات زائدة وشاهد حذف قديم، كما حدث أمس
+await post({ action: "syncAll", token: T, cols: { tracks: { records: [
+  { id: "dup1", name: "مكرر", updatedAt: new Date().toISOString() },
+  { id: "dup2", name: "مكرر", updatedAt: new Date().toISOString() },
+], deleted: { r77: new Date().toISOString() } } } });
+const before14 = await post({ action: "syncAll", token: T, cols: { tracks: { records: [], deleted: {} } } });
+check("قبل النقل: المكررات والشاهد موجودة", before14.tracks.records.some((x) => x.id === "dup1") && !!before14.tracks.deleted.r77);
+
+const eight = Array.from({ length: 8 }, (_, i) => ({ id: "k" + i, name: "مسار " + i, updatedAt: new Date().toISOString() }));
+const rep = await post({ action: "adopt", token: T, replace: true, cols: { tracks: { records: eight }, meetings: { records: [] } } });
+check("الاستبدال كتب 8 مسارات", rep.adopted.tracks === 8, rep);
+check("وحذف كل ما ليس في المُرسَل", rep.removed.tracks > 0, rep.removed);
+const after14 = await post({ action: "syncAll", token: T, cols: { tracks: { records: [], deleted: {} } } });
+check("القسم صار نسخة مطابقة تماماً", after14.tracks.records.map((x) => x.id).sort().join() === eight.map((x) => x.id).sort().join(), after14.tracks.records.map((x) => x.id));
+check("وشواهد الحذف القديمة مُسحت", !Object.keys(after14.tracks.deleted).length, after14.tracks.deleted);
+const other = await post({ action: "sync", token: T, records: [], deleted: {} });
+check("والأقسام غير المُرسَلة لم تُمسّ", other.records.some((r) => r.id === "g1"));
+
+const up14 = await post({ action: "upload", token: T, name: "م.pdf", mime: "application/pdf", path: ["شادي"], data: Buffer.from("x").toString("base64") });
+check("رابط الملف دائم لا ينتهي", up14.link === "supabase:" + up14.id && up14.folderId === "", up14);
+
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);

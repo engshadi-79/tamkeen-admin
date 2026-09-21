@@ -157,7 +157,7 @@
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
-    isTrial, useServer, defaultUrl: DEFAULT_URL, exportUsers, importUsers, adopt, backupDays, restoreDay,
+    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, exportUsers, importUsers, adopt, backupDays, restoreDay,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});

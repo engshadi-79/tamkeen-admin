@@ -601,7 +601,8 @@
     if (r.driveLink) {
       const path = r.drivePath || [DIR_FOLDER[r.type], String(r.date).slice(0, 4), String(r.date).slice(5, 7)]; // أرشفة سابقة بالترتيب القديم
       const text = esc(pathText(path));
-      return r.driveFolderId ? `<a class="conv-link reg-path" href="${esc(App.drive.folderLink(r.driveFolderId))}" target="_blank" rel="noopener" title="فتح المجلد في Google Drive">📁 ${text}</a>` : `<span class="reg-path">📁 ${text}</span>`;
+      // معرّف مجلد Drive وحده يُفتح في Drive؛ الملفات على خادم آخر تُعرض بمسارها فقط
+      return /^[\w-]{20,}$/.test(r.driveFolderId || "") ? `<a class="conv-link reg-path" href="${esc(App.drive.folderLink(r.driveFolderId))}" target="_blank" rel="noopener" title="فتح المجلد في Google Drive">📁 ${text}</a>` : `<span class="reg-path">📁 ${text}</span>`;
     }
     return `<span class="reg-path pending" title="لم يُرفع بعد إلى Drive">📁 ${esc(pathText(archivePath(r)))}</span>`;
   }
@@ -616,7 +617,7 @@
   function fileCell(r) {
     if (!r.fileId) return "—";
     const drive = r.driveLink
-      ? `<a class="conv-link" href="${esc(r.driveLink)}" target="_blank" rel="noopener" title="فتح في Google Drive">☁ Drive</a>`
+      ? (/^https?:/.test(r.driveLink) ? `<a class="conv-link" href="${esc(r.driveLink)}" target="_blank" rel="noopener" title="فتح في Google Drive">☁ Drive</a>` : "")
       : App.cloud && App.cloud.ready() ? `<span class="reg-pending" title="الملف على جهاز من رفعه ولم يصل إلى أرشيف المركز بعد">⏳ بانتظار الرفع</span>`
       : App.drive && App.drive.isConfigured() ? `<button class="conv-link" data-archive title="${r.drivePending ? "بانتظار الأرشفة" : "أرشفة في Google Drive"}">${r.drivePending ? "⏳" : "☁"} أرشفة</button>` : "";
     return `<div class="reg-fname" title="${esc(r.fileName || "")}">${nameHtml(r.fileName)}</div>${r.owner ? `<div class="reg-owner">👤 ${esc(r.owner)}</div>` : ""}

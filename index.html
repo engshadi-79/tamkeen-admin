@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=100">
+  <link rel="stylesheet" href="styles/theme.css?v=101">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -384,6 +384,7 @@
           <div class="btn-row no-print">
             <button class="btn secondary" id="adm-refresh">🔄 تحديث</button>
             <button class="btn secondary" id="adm-export" title="ملف فيه الحسابات وبصمات كلمات المرور، لنقلها إلى خادم آخر">⬇ تصدير الحسابات</button>
+            <button class="btn navy" id="adm-move" title="نسخ المرفقات والبيانات والحسابات إلى خادم Supabase؛ الخادم الحالي لا يُمسّ">🚚 نقل كل شيء إلى Supabase</button>
             <button class="btn secondary" id="adm-restore" title="استعادة سجلات ناقصة من النسخ الاحتياطية اليومية">♻ استعادة من نسخة</button>
             <button class="btn navy" id="adm-adopt" title="يرفع كل بيانات هذا الجهاز إلى الخادم الحالي ويعتمدها">⤴ اعتماد بيانات هذا الجهاز</button>
             <button class="btn secondary" id="adm-import" title="استيراد حسابات من خادم آخر؛ الموجود لا يُستبدل">⬆ استيراد الحسابات</button>
@@ -934,6 +935,28 @@
     </div>
   </div>
 
+  <!-- نقل كل شيء إلى Supabase -->
+  <div class="modal-backdrop" id="mv-modal" role="dialog" aria-modal="true" aria-labelledby="mv-title">
+    <div class="modal">
+      <h3 id="mv-title">🚚 نقل كل شيء إلى Supabase</h3>
+      <p class="conv-hint">تُنسخ المرفقات واحداً واحداً، ثم البيانات كاملة، ثم الحسابات. كل قسم على الخادم الجديد يصبح نسخة مطابقة لما هنا.
+        <b>الخادم الحالي لا يُمسّ</b>، وإن توقّف النقل فأعد تشغيله ويكمل من حيث توقّف.</p>
+      <ul class="mv-summary" id="mv-summary"></ul>
+      <label class="field"><span>رابط الخادم الجديد</span><input id="mv-url" dir="ltr" spellcheck="false"></label>
+      <div class="grid-2">
+        <label class="field"><span>اسم المستخدم على الخادم الجديد</span><input id="mv-user" autocomplete="username" dir="ltr"></label>
+        <label class="field"><span>كلمة المرور هناك</span><input id="mv-pass" type="password" autocomplete="current-password" dir="ltr"></label>
+      </div>
+      <div class="mv-progress"><div class="mv-bar" id="mv-bar"></div></div>
+      <div class="mv-step" id="mv-step"></div>
+      <ul class="mv-log" id="mv-log"></ul>
+      <div class="btn-row">
+        <button class="btn navy" type="button" id="mv-run">ابدأ النقل</button>
+        <button class="btn secondary" type="button" id="mv-cancel">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
   <!-- استعادة من نسخة احتياطية -->
   <div class="modal-backdrop" id="adm-restore-modal" role="dialog" aria-modal="true" aria-labelledby="adm-restore-title">
     <div class="modal">
@@ -950,38 +973,38 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=100"></script>
-  <script src="src/ui.js?v=100"></script>
-  <script src="src/templates.js?v=100"></script>
-  <script src="src/tracks.js?v=100"></script>
-  <script src="src/tasks.js?v=100"></script>
-  <script src="src/dashboard.js?v=100"></script>
-  <script src="src/letterhead-docx.js?v=100"></script>
-  <script src="src/docx.js?v=100"></script>
-  <script src="src/ai.js?v=100"></script>
-  <script src="src/doc-render.js?v=100"></script>
-  <script src="src/files-store.js?v=100"></script>
-  <script src="src/shared.js?v=100"></script>
-  <script src="src/cloud.js?v=100"></script>
-  <script src="src/drive.js?v=100"></script>
-  <script src="src/drive-ui.js?v=100"></script>
-  <script src="src/rtl-fixer.js?v=100"></script>
-  <script src="src/rtl-page.js?v=100"></script>
-  <script src="src/profile.js?v=100"></script>
-  <script src="src/admin.js?v=100"></script>
-  <script src="src/roster.js?v=100"></script>
-  <script src="src/registry.js?v=100"></script>
-  <script src="src/charts.js?v=100"></script>
-  <script src="src/ai-assist.js?v=100"></script>
-  <script src="src/meetings.js?v=100"></script>
-  <script src="src/report.js?v=100"></script>
-  <script src="src/letters.js?v=100"></script>
+  <script src="src/storage.js?v=101"></script>
+  <script src="src/ui.js?v=101"></script>
+  <script src="src/templates.js?v=101"></script>
+  <script src="src/tracks.js?v=101"></script>
+  <script src="src/tasks.js?v=101"></script>
+  <script src="src/dashboard.js?v=101"></script>
+  <script src="src/letterhead-docx.js?v=101"></script>
+  <script src="src/docx.js?v=101"></script>
+  <script src="src/ai.js?v=101"></script>
+  <script src="src/doc-render.js?v=101"></script>
+  <script src="src/files-store.js?v=101"></script>
+  <script src="src/shared.js?v=101"></script>
+  <script src="src/cloud.js?v=101"></script>
+  <script src="src/drive.js?v=101"></script>
+  <script src="src/drive-ui.js?v=101"></script>
+  <script src="src/rtl-fixer.js?v=101"></script>
+  <script src="src/rtl-page.js?v=101"></script>
+  <script src="src/profile.js?v=101"></script>
+  <script src="src/admin.js?v=101"></script>
+  <script src="src/roster.js?v=101"></script>
+  <script src="src/registry.js?v=101"></script>
+  <script src="src/charts.js?v=101"></script>
+  <script src="src/ai-assist.js?v=101"></script>
+  <script src="src/meetings.js?v=101"></script>
+  <script src="src/report.js?v=101"></script>
+  <script src="src/letters.js?v=101"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=100"></script>
-  <script src="src/converter-store.js?v=100"></script>
-  <script src="src/converter.js?v=100"></script>
-  <script src="src/app.js?v=100"></script>
+  <script src="src/converter-core.js?v=101"></script>
+  <script src="src/converter-store.js?v=101"></script>
+  <script src="src/converter.js?v=101"></script>
+  <script src="src/app.js?v=101"></script>
 </body>
 </html>

@@ -456,14 +456,28 @@ async function syncAll(cols: Record<string, any>, user: any) {
 /* اعتماد بيانات جهاز كاملة على هذا الخادم (للنقل بين الخوادم).
    بخلاف المزامنة: يُكتب كل سجل بلا مقارنة وقت، وتُزال شواهد الحذف عن معرّفاته
    حتى لا يمنعها حارس منع عودة المحذوف. للمدير وحده، وبتأكيد منه. */
-async function adopt(cols: Record<string, any>, user: any) {
+async function adopt(cols: Record<string, any>, user: any, replace = false) {
   const adopted: Record<string, number> = {};
+  const removed: Record<string, number> = {};
   for (const name of Object.keys(cols || {})) {
     if (!COL_NAME.test(name)) continue;
     const recs = (cols[name].records || []).filter((r: any) => r && r.id);
-    adopted[name] = 0;
-    if (!recs.length) continue;
     const ids = recs.map((r: any) => String(r.id));
+    adopted[name] = 0;
+    if (replace) {
+      // القسم يصبح نسخة مطابقة لما أُرسل: يُحذف ما ليس فيه، وتُمسح شواهد الحذف كلها
+      const keep = new Set(ids);
+      const stale: string[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data } = await db.from("records").select("id").eq("col", name).range(from, from + 999);
+        (data || []).forEach((r: any) => { if (!keep.has(r.id)) stale.push(r.id); });
+        if (!data || data.length < 1000) break;
+      }
+      for (const part of chunk(stale, 100)) await db.from("records").delete().eq("col", name).in("id", part);
+      await db.from("deletions").delete().eq("col", name);
+      removed[name] = stale.length;
+    }
+    if (!recs.length) continue;
     for (const part of chunk(ids, 100)) await db.from("deletions").delete().eq("col", name).in("id", part);
     const now = new Date().toISOString();
     const rows = recs.map((r: any) => {
@@ -485,8 +499,8 @@ async function adopt(cols: Record<string, any>, user: any) {
     }
     adopted[name] = rows.length;
   }
-  await log(user.name, "اعتماد بيانات جهاز", Object.keys(adopted).map((k) => `${k}: ${adopted[k]}`).join(" · "));
-  return { adopted };
+  await log(user.name, replace ? "نقل كامل إلى هذا الخادم" : "اعتماد بيانات جهاز", Object.keys(adopted).map((k) => `${k}: ${adopted[k]}`).join(" · "));
+  return { adopted, removed };
 }
 
 /* ===== حجز أرقام الصادر ===== */
@@ -519,8 +533,9 @@ async function upload(req: any, user: any) {
     id, name: safe, mime: req.mime || "application/octet-stream",
     size: bytes.length, folder, owner: user.name,
   });
-  const { data: signed } = await db.storage.from(BUCKET).createSignedUrl(id, 60 * 60 * 24 * 7);
-  return { id, link: signed?.signedUrl || "", folderId: folder };
+  // الموقع يعتبر وجود الرابط علامةً على أن الملف مؤرشف، فيجب أن يبقى دائماً:
+  // رابط موقّع ينتهي بعد أيام لا يصلح. العرض والتحميل يمرّان عبر إجراء file بمعرّف الملف.
+  return { id, link: `supabase:${id}`, folderId: "" };
 }
 
 async function fileOf(id: unknown) {
@@ -692,7 +707,7 @@ Deno.serve(async (httpReq) => {
         return json({ users: (data || []).map(publicUser) });
       }
       case "saveUser": return json(await saveUser(req.user, user));
-      case "adopt": return json(await adopt(req.cols || {}, user));
+      case "adopt": return json(await adopt(req.cols || {}, user, req.replace === true));
       case "exportUsers": return json(await exportUsers());
       case "importUsers": return json(await importUsers(req.users, user));
       case "deleteUser": return json(await deleteUser(req.username, user));

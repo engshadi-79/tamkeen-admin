@@ -236,6 +236,115 @@
     $("adm-restore-run").disabled = false;
   }
 
+  /* ===== نقل كل شيء إلى خادم Supabase من داخل الخادم الحالي =====
+     الملفات تُنسخ واحداً واحداً (ويُحفظ ما نُسخ فلا يعاد عند التكرار)،
+     ثم تُرسل البيانات كاملة والقيود تشير إلى النسخ الجديدة، ثم الحسابات. الخادم الحالي لا يُمسّ. */
+  const MOVE_TARGET = "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen";
+  const MOVE_MAP = "tamkeen-admin:move-map";
+
+  function moveLog(text, cls) {
+    const li = document.createElement("li");
+    li.textContent = text;
+    if (cls) li.className = cls;
+    $("mv-log").append(li);
+    li.scrollIntoView({ block: "nearest" });
+  }
+
+  function openMove() {
+    const s = store.get();
+    const reg = s.registry || [];
+    const files = reg.filter((r) => r.driveId).length;
+    const cols = App.shared.collect();
+    $("mv-url").value = $("mv-url").value || MOVE_TARGET;
+    $("mv-summary").innerHTML = [
+      `الوارد والصادر: <b>${ui.fmt(reg.length)}</b> قيداً، منها <b>${ui.fmt(files)}</b> بمرفق`,
+      ...Object.keys(cols).filter((k) => cols[k].records.length).map((k) => `${esc(LABEL[k] || k)}: <b>${ui.fmt(cols[k].records.length)}</b>`),
+    ].map((t) => `<li>${t}</li>`).join("");
+    $("mv-log").innerHTML = "";
+    $("mv-bar").style.width = "0";
+    $("mv-modal").classList.add("open");
+  }
+
+  async function runMove() {
+    const url = $("mv-url").value.trim();
+    const username = $("mv-user").value.trim();
+    const password = $("mv-pass").value;
+    if (!/^https:\/\/.+/.test(url)) { ui.toast("رابط الخادم الجديد غير صحيح"); return; }
+    if (url === App.cloud.settings().url) { ui.toast("هذا هو الخادم الذي أنت عليه الآن"); return; }
+    if (!username || !password) { ui.toast("اكتب اسم المستخدم وكلمة المرور على الخادم الجديد"); return; }
+    $("mv-run").disabled = true;
+    $("mv-log").innerHTML = "";
+    let token = "";
+    const remote = async (action, payload) => {
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ token, action }, payload || {})) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error === "UNAUTHORIZED" ? "انتهت الجلسة على الخادم الجديد" : data.error);
+      return data;
+    };
+    try {
+      // 1) الدخول إلى الخادم الجديد
+      const login = await remote("login", { username, password });
+      token = login.token;
+      $("mv-pass").value = "";
+      if (!login.user.admin) throw new Error("الحساب على الخادم الجديد ليس مديراً");
+      moveLog(`✓ دخول إلى الخادم الجديد باسم ${login.user.name}`, "ok");
+
+      // 2) الملفات: من الخادم الحالي إلى الجديد، واحداً واحداً
+      let map = {};
+      try { map = JSON.parse(localStorage.getItem(MOVE_MAP) || "{}"); } catch (e) { map = {}; }
+      if (map.__target !== url) map = { __target: url };
+      const saveMap = () => { try { localStorage.setItem(MOVE_MAP, JSON.stringify(map)); } catch (e) { /* تخزين غير متاح */ } };
+      const withFiles = (store.get().registry || []).filter((r) => r.driveId);
+      const failed = [];
+      let done = 0;
+      for (const r of withFiles) {
+        done++;
+        $("mv-bar").style.width = `${Math.round((done / Math.max(1, withFiles.length)) * 90)}%`;
+        $("mv-step").textContent = `المرفقات ${ui.fmt(done)} / ${ui.fmt(withFiles.length)}`;
+        if (map[r.driveId]) continue; // نُسخ في محاولة سابقة
+        try {
+          const f = await App.cloud.download(r.driveId);
+          const path = Array.isArray(r.drivePath) ? r.drivePath : String(r.drivePath || "أرشيف").split("/").map((x) => x.trim()).filter(Boolean);
+          const up = await remote("upload", { name: r.fileName || f.name, mime: f.blob.type || "application/octet-stream", path, data: await App.cloud.toBase64(f.blob) });
+          map[r.driveId] = { id: up.id, link: up.link };
+          saveMap();
+        } catch (e) {
+          failed.push(r);
+          moveLog(`✗ ${r.number || ""} — ${r.fileName || ""}: ${e.message}`, "bad");
+        }
+      }
+      moveLog(`${failed.length ? "⚠" : "✓"} المرفقات: نُسخ ${ui.fmt(withFiles.length - failed.length)} من ${ui.fmt(withFiles.length)}`, failed.length ? "warn" : "ok");
+
+      // 3) البيانات: القيود تشير إلى النسخ الجديدة، وكل قسم يصبح نسخة مطابقة
+      $("mv-step").textContent = "البيانات…";
+      const registry = (store.get().registry || []).map((r) => {
+        const m = r.driveId && map[r.driveId];
+        return m ? Object.assign({}, r, { driveId: m.id, driveLink: m.link, driveFolderId: "", legacyDriveId: r.driveId }) : r;
+      });
+      const cols = App.shared.collect();
+      cols.registry = { records: registry };
+      const ad = await remote("adopt", { cols, replace: true });
+      Object.keys(ad.adopted || {}).forEach((k) => {
+        if (ad.adopted[k] || (ad.removed || {})[k]) moveLog(`✓ ${LABEL[k] || k}: ${ui.fmt(ad.adopted[k])}${(ad.removed || {})[k] ? ` (وحُذف ${ui.fmt(ad.removed[k])} زائداً)` : ""}`, "ok");
+      });
+
+      // 4) الحسابات
+      $("mv-step").textContent = "الحسابات…";
+      const users = await App.cloud.exportUsers();
+      const imp = await remote("importUsers", { users });
+      moveLog(`✓ الحسابات: أُضيف ${ui.fmt(imp.added)}، وكان موجوداً ${ui.fmt((imp.skipped || []).length)}`, "ok");
+
+      try { await remote("logout"); } catch (e) { /* الجلسة تنتهي وحدها */ }
+      $("mv-bar").style.width = "100%";
+      $("mv-step").textContent = failed.length ? `انتهى — ${ui.fmt(failed.length)} مرفقاً لم يُنسخ، أعد التشغيل لإكمالها` : "انتهى النقل بنجاح";
+      moveLog("الخادم الحالي لم يُمسّ، وما زال يعمل للجميع.", "");
+    } catch (e) {
+      moveLog(`✗ ${e.message}`, "bad");
+      $("mv-step").textContent = "توقّف النقل — يمكن إعادة التشغيل ويكمل من حيث توقّف";
+    }
+    $("mv-run").disabled = false;
+  }
+
   function suggestPassword() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
     const a = new Uint32Array(10);
@@ -267,6 +376,9 @@
     $("adm-refresh").addEventListener("click", load);
     $("adm-export").addEventListener("click", exportUsers);
     $("adm-adopt").addEventListener("click", adoptDevice);
+    $("adm-move").addEventListener("click", openMove);
+    $("mv-run").addEventListener("click", runMove);
+    $("mv-cancel").addEventListener("click", () => $("mv-modal").classList.remove("open"));
     $("adm-restore").addEventListener("click", openRestore);
     $("adm-restore-run").addEventListener("click", runRestore);
     $("adm-restore-cancel").addEventListener("click", () => $("adm-restore-modal").classList.remove("open"));
