@@ -220,6 +220,70 @@
     return GRADE_SCALE.find((g) => n >= g.min).label;
   }
 
+  /* ===== مدربو المسارات (من صفحة المسارات) =====
+     لكل صف يُؤخذ مساره من عمود المسار (أو مسار ثابت لكل الصفوف)، ويُضاف مدرّباه كأعمدة.
+     أسماء مميّزة حتى لا تختلط بأعمدة بالاسم نفسه في ملف البيانات. */
+  const TRAINER_COLS = { t1: "المدرب الأول (من المسارات)", t2: "المدرب الثاني (من المسارات)", both: "المدربان (من المسارات)" };
+  const TRAINER_LIST = [TRAINER_COLS.t1, TRAINER_COLS.t2, TRAINER_COLS.both];
+  const trackKey = (v) => normalizeHeader(v == null ? "" : v).replace(/^مسار\s*/, "").trim();
+
+  /* المسار المطابق لقيمة مثل «الحلاقة» أو «مسار الحلاقة الرجالية»: تطابق تام ثم احتواء */
+  function findTrack(tracks, value) {
+    const k = trackKey(value);
+    if (!k) return null;
+    const list = (tracks || []).filter((t) => t && t.name).map((t) => ({ t, k: trackKey(t.name) })).filter((x) => x.k);
+    const exact = list.find((x) => x.k === k);
+    if (exact) return exact.t;
+    const near = list.filter((x) => x.k.includes(k) || k.includes(x.k)).sort((a, b) => b.k.length - a.k.length);
+    return near.length === 1 || (near.length && near[0].k.length !== (near[1] || {}).k?.length) ? near[0].t : null;
+  }
+
+  const guessTrackColumn = (headers) => headers.find((h) => !TRAINER_LIST.includes(h) && /مسار/.test(normalizeHeader(h))) || "";
+
+  /* source: { column } عمود المسار في البيانات، أو { track } معرّف مسار ثابت لكل الصفوف، أو {} بلا مدربين */
+  function addTrainerColumns(data, tracks, source) {
+    // ما أضيف في مرة سابقة يُزال أولاً حتى لا تبقى قيم مسار سابق
+    for (let i = data.headers.length - 1; i >= 0; i--) if (TRAINER_LIST.includes(data.headers[i])) data.headers.splice(i, 1);
+    data.rows.forEach((row) => TRAINER_LIST.forEach((h) => { delete row[h]; }));
+    const src = source === undefined ? { column: guessTrackColumn(data.headers) } : source || {};
+    const fixed = src.track ? (tracks || []).find((t) => t.id === src.track) : null;
+    const column = fixed ? "" : src.column && data.headers.includes(src.column) ? src.column : "";
+    const report = { column, track: fixed ? fixed.id : "", trackName: fixed ? fixed.name : "", filled: 0, unmatched: [], noTrainers: [] };
+    if (!column && !fixed) return report;
+    TRAINER_LIST.forEach((h) => data.headers.push(h));
+    const unmatched = new Set();
+    const noTrainers = new Set();
+    data.rows.forEach((row) => {
+      const track = fixed || findTrack(tracks, row[column]);
+      if (!track) { if (row[column] != null && String(row[column]).trim()) unmatched.add(String(row[column]).trim()); return; }
+      const a = String(track.trainer1 || "").trim();
+      const b = String(track.trainer2 || "").trim();
+      if (!a && !b) { noTrainers.add(track.name); return; }
+      row[TRAINER_COLS.t1] = a;
+      row[TRAINER_COLS.t2] = b;
+      row[TRAINER_COLS.both] = [a, b].filter(Boolean).join("، ");
+      report.filled++;
+    });
+    report.unmatched = [...unmatched].slice(0, 8);
+    report.noTrainers = [...noTrainers];
+    return report;
+  }
+
+  /* أيّ مدرب: «الأول» أو «الثاني» أو كلاهما («اسم المدرب»، «المدربون») */
+  function trainerColumnFor(name) {
+    const n = normalizeHeader(name);
+    if (!/مدرب/.test(n)) return "";
+    if (/اول|\b1\b|١/.test(n)) return TRAINER_COLS.t1;
+    if (/ثان|\b2\b|٢/.test(n)) return TRAINER_COLS.t2;
+    return TRAINER_COLS.both;
+  }
+
+  function preferTrainers(mapping, templateHeaders, dataHeaders) {
+    if (!dataHeaders.includes(TRAINER_COLS.both)) return mapping;
+    templateHeaders.forEach((h) => { const col = trainerColumnFor(h); if (col) mapping[h] = col; });
+    return mapping;
+  }
+
   const guessAverageColumn = (headers) => headers.find((h) => h !== GRADE_COLUMN && /معدل/.test(normalizeHeader(h))) || "";
 
   /* يُضاف عمود التقدير المحسوب إلى البيانات من عمود المعدل (المختار، أو أول عمود اسمه فيه «معدل»).
@@ -471,6 +535,8 @@
 
   function resolvePlaceholderValue(key, values) {
     if (key in values) return values[key];
+    const trainer = trainerColumnFor(key);
+    if (trainer && trainer in values) return values[trainer];
     const normKey = normalizeHeader(key);
     const matchKey = Object.keys(values).find((k) => {
       const normK = normalizeHeader(k);
@@ -1086,6 +1152,7 @@
     MAX_ROWS, normalizeHeader, suggestColumnMapping, resolveDefaultColumn, computeGroupKey,
     isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, guessKey, generate,
     gradeOf, addComputedGrade, preferComputedGrade, guessAverageColumn, GRADE_COLUMN,
+    addTrainerColumns, preferTrainers, trainerColumnFor, guessTrackColumn, TRAINER_COLS,
     // للاختبار
     computeSessionDates, fillXlsxTemplate, fillDocxTemplate, extractHeadersFromDocxTable,
   };

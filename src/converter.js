@@ -151,6 +151,49 @@
     </div>`;
   }
 
+  const tracksList = () => ((App.store.get() || {}).tracks || []).filter((t) => t && t.name);
+
+  /* المدربون من صفحة المسارات: يظهر إن كان في القالب عمود أو حقل ترويسة فيه «مدرب» */
+  function trainerControl() {
+    const p = state.parsed;
+    const wants = p.templateHeaders.concat(state.placeholders || []).filter((h) => core().trainerColumnFor(h));
+    if (!wants.length) return "";
+    const r = state.trainers || {};
+    const current = r.track ? `track:${r.track}` : r.column ? `col:${r.column}` : "";
+    const tracks = tracksList();
+    const cols = p.dataHeaders.filter((h) => !Object.values(core().TRAINER_COLS).includes(h) && h !== core().GRADE_COLUMN);
+    const options = opt("", "— لا تضف المدربين —", !current)
+      + `<optgroup label="حسب عمود المسار في البيانات">${cols.map((h) => opt(`col:${h}`, h, `col:${h}` === current)).join("")}</optgroup>`
+      + `<optgroup label="مسار واحد لكل الصفوف">${tracks.map((t) => opt(`track:${t.id}`, t.name, `track:${t.id}` === current)).join("")}</optgroup>`;
+    let status;
+    if (!current) {
+      status = `<span class="warn">القالب يطلب المدرب (${wants.map(esc).join("، ")})، ولم نجد عموداً اسمه «المسار» في بياناتك؛ اختر العمود أو المسار من القائمة.</span>`;
+    } else {
+      status = `عُبّئ المدربون لـ <b>${ui.fmt(r.filled)}</b> صفاً${r.trackName ? ` من مسار «${esc(r.trackName)}»` : ""}.`;
+      if (r.noTrainers && r.noTrainers.length) status += ` <span class="warn">لم يُحدَّد مدربون بعد لـ: ${r.noTrainers.map(esc).join("، ")} — أضفهم من <a href="#tracks">صفحة المسارات</a>.</span>`;
+      if (r.unmatched && r.unmatched.length) status += ` <span class="warn">مسارات في بياناتك ليست في صفحة المسارات: ${r.unmatched.map(esc).join("، ")}.</span>`;
+    }
+    return `<div class="conv-grade-note">
+      <label>👨‍🏫 المدربون من صفحة المسارات <select data-trainer-from>${options}</select></label>
+      <div>${status}</div>
+      <small>«المدرب الأول» و«المدرب الثاني» يأخذ كلٌّ مدرّبه، و«اسم المدرب» يأخذ الاثنين — في الجدول وفي حقول الترويسة مثل {{اسم المدرب}}.</small>
+    </div>`;
+  }
+
+  function setTrainerSource(value) {
+    const p = state.parsed;
+    const source = value.startsWith("track:") ? { track: value.slice(6) } : value.startsWith("col:") ? { column: value.slice(4) } : {};
+    state.trainers = core().addTrainerColumns({ headers: p.dataHeaders, rows: p.dataRows }, tracksList(), source);
+    const T = Object.values(core().TRAINER_COLS);
+    Object.keys(state.mapping).forEach((k) => { if (T.includes(state.mapping[k])) state.mapping[k] = ""; });
+    core().preferTrainers(state.mapping, p.templateHeaders, p.dataHeaders);
+    (state.extras || []).forEach((t) => {
+      Object.keys(t.mapping).forEach((k) => { if (T.includes(t.mapping[k])) t.mapping[k] = ""; });
+      core().preferTrainers(t.mapping, t.headers, p.dataHeaders);
+    });
+    renderResult();
+  }
+
   function setGradeSource(header) {
     const p = state.parsed;
     const G = core().GRADE_COLUMN;
@@ -307,9 +350,11 @@
 
       state.parsed = { templateHeaders, dataHeaders: data.headers, dataRows: data.rows, truncated: data.truncated, templateBuffer, templateIsDocx, templateName, savedId };
       state.grade = core().addComputedGrade(data);
-      state.mapping = core().preferComputedGrade(core().suggestColumnMapping(templateHeaders, data.headers), templateHeaders, data.headers);
+      state.trainers = core().addTrainerColumns(data, tracksList());
+      state.mapping = core().preferTrainers(core().preferComputedGrade(core().suggestColumnMapping(templateHeaders, data.headers), templateHeaders, data.headers), templateHeaders, data.headers);
       state.constants = {};
       const placeholders = await core().readTemplatePlaceholders(templateBuffer, templateIsDocx);
+      state.placeholders = placeholders;
       // حقول القالب التي لا يوجد لها عمود في ملف البيانات ولا في عناوين القالب
       const norm = core().normalizeHeader;
       const dataNorm = data.headers.map(norm);
@@ -353,7 +398,7 @@
       const buffer = await saved.file.arrayBuffer();
       const isDocx = saved.format === "docx";
       const headers = saved.headers && saved.headers.length ? saved.headers : await core().readTemplateHeaders(buffer, isDocx);
-      const mapping = core().preferComputedGrade(core().suggestColumnMapping(headers, data.headers), headers, data.headers);
+      const mapping = core().preferTrainers(core().preferComputedGrade(core().suggestColumnMapping(headers, data.headers), headers, data.headers), headers, data.headers);
       const placeholders = await core().readTemplatePlaceholders(buffer, isDocx);
       const extraFields = placeholders.filter((ph) => {
         const n = norm(ph);
@@ -450,6 +495,7 @@
     const extra = [...new Set((state.extraFields || []).concat(fromExtras))].filter((f) => !missing.includes(f));
     let html = "";
     html += gradeControl();
+    html += trainerControl();
     if (missing.length || extra.length) {
       const field = (name, hint) => `
         <div class="conv-map-row">
@@ -647,6 +693,7 @@
     const t = e.target;
     const p = state.parsed;
     if (t.dataset.gradeFrom != null) { setGradeSource(t.value); return; }
+    if (t.dataset.trainerFrom != null) { setTrainerSource(t.value); return; }
     if (t.dataset.map != null) {
       state.mapping[p.templateHeaders[Number(t.dataset.map)]] = t.value;
       renderResult();

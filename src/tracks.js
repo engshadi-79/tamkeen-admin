@@ -38,6 +38,8 @@
     body.innerHTML = tracks.map((t) => `
       <tr data-id="${t.id}">
         <td><input type="text" data-f="name" value="${ui.esc(t.name)}" aria-label="اسم المسار"></td>
+        <td><input type="text" data-f="trainer1" value="${ui.esc(t.trainer1 || "")}" placeholder="—" aria-label="المدرب الأول"></td>
+        <td><input type="text" data-f="trainer2" value="${ui.esc(t.trainer2 || "")}" placeholder="—" aria-label="المدرب الثاني"></td>
         <td>
           <select data-f="type" aria-label="نوع المسار">
             <option value="craft" ${t.type === "craft" ? "selected" : ""}>${TYPE_LABEL.craft}</option>
@@ -49,7 +51,7 @@
         <td><input type="number" min="0" max="${store.TOTAL_HOURS}" data-f="hoursCompleted" value="${t.hoursCompleted}" aria-label="الساعات المكتملة"></td>
         <td style="min-width:150px" data-progress>${ui.progressBar(hoursPct(t))}</td>
         <td class="reg-actions">${!App.profile.can || App.profile.can("delete") ? `<button class="act-btn del" data-del title="حذف المسار">🗑</button>` : ""}</td>
-      </tr>`).join("") || `<tr><td colspan="7" class="empty">لا توجد مسارات. اضغط «+ مسار جديد».</td></tr>`;
+      </tr>`).join("") || `<tr><td colspan="9" class="empty">لا توجد مسارات. اضغط «+ مسار جديد».</td></tr>`;
 
     renderFoot();
   }
@@ -59,7 +61,7 @@
     const s = summary(tracks);
     document.getElementById("tracks-foot").innerHTML = `
       <tr>
-        <th>الإجمالي / المتوسط (${ui.fmt(tracks.length)} مسار)</th><th></th>
+        <th>الإجمالي / المتوسط (${ui.fmt(tracks.length)} مسار)</th><th></th><th></th><th></th>
         <th>${ui.fmt(s.beneficiaries)}</th>
         <th>${ui.fmt(s.attendancePct, 1)}%</th>
         <th>${ui.fmt(tracks.reduce((a, t) => a + Number(t.hoursCompleted || 0), 0))} / ${ui.fmt(store.TOTAL_HOURS * tracks.length)}</th>
@@ -75,7 +77,7 @@
     const track = store.get().tracks.find((t) => t.id === row.dataset.id);
     if (!track) return;
 
-    if (f === "name" || f === "type") {
+    if (f === "name" || f === "type" || f === "trainer1" || f === "trainer2") {
       track[f] = input.value;
     } else {
       const max = f === "attendancePct" ? 100 : f === "hoursCompleted" ? store.TOTAL_HOURS : Infinity;
@@ -177,6 +179,8 @@
         beneficiaries: rosterName ? counts[rosterName] : (prev ? Number(prev.beneficiaries) || 0 : 0),
         attendancePct: prev ? Number(prev.attendancePct) || 0 : 0,
         hoursCompleted: prev ? Number(prev.hoursCompleted) || 0 : 0,
+        trainer1: prev ? prev.trainer1 || "" : "",
+        trainer2: prev ? prev.trainer2 || "" : "",
         order: i + 1,
       };
     });
