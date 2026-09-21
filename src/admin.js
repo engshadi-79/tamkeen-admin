@@ -283,6 +283,9 @@
     };
     try {
       // 1) الدخول إلى الخادم الجديد
+      // النسخ الأقدم من الدالة تُنشئ روابط ملفات تنتهي بعد أيام ولا تعرف وضع الاستبدال
+      const st = await remote("status");
+      if (!(Number(st.version) >= 12)) throw new Error(`دالة الخادم الجديد قديمة (النسخة ${st.version || "؟"})؛ حدّثها إلى النسخة 12 ثم أعد المحاولة`);
       const login = await remote("login", { username, password });
       token = login.token;
       $("mv-pass").value = "";

@@ -31,7 +31,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 11;
+const VERSION = 12;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
