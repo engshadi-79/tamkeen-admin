@@ -189,6 +189,51 @@
     return { headers, rows, truncated: rows.length >= MAX_ROWS };
   }
 
+  /* ===== التقدير من المعدل (من 100) =====
+     السلّم المعتمد: 90 فأكثر ممتاز، 80–89 جيد جداً، 75–79 جيد، أقل من 75 راسب.
+     المعدل العشري يتبع الحد الأدنى لكل فئة (89.5 جيد جداً لأنه لم يبلغ 90). */
+  const GRADE_SCALE = [
+    { min: 90, label: "ممتاز" },
+    { min: 80, label: "جيد جداً" },
+    { min: 75, label: "جيد" },
+    { min: 0, label: "راسب" },
+  ];
+  const GRADE_COLUMN = "التقدير (محسوب من المعدل)";
+
+  function parseScore(value) {
+    if (value == null || value === "") return null;
+    const s = String(value)
+      .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+      .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+      .replace(/[٫,]/g, ".")
+      .replace(/[%٪\s]/g, "");
+    if (!/^\d+(\.\d+)?$/.test(s)) return null;
+    const n = Number(s);
+    return n >= 0 && n <= 100 ? n : null;
+  }
+
+  function gradeOf(value) {
+    const n = parseScore(value);
+    if (n == null) return "";
+    return GRADE_SCALE.find((g) => n >= g.min).label;
+  }
+
+  /* يُضاف عمود التقدير المحسوب إلى البيانات إن وُجد عمود معدل؛ يعيد اسم عمود المعدل أو null */
+  function addComputedGrade(data) {
+    const avg = data.headers.find((h) => h !== GRADE_COLUMN && /معدل/.test(normalizeHeader(h)));
+    if (!avg) return null;
+    if (!data.headers.includes(GRADE_COLUMN)) data.headers.push(GRADE_COLUMN);
+    data.rows.forEach((row) => { row[GRADE_COLUMN] = gradeOf(row[avg]); });
+    return avg;
+  }
+
+  /* عمود «التقدير» في القالب يُربط بالتقدير المحسوب بدل عمود جاهز في البيانات */
+  function preferComputedGrade(mapping, templateHeaders, dataHeaders) {
+    if (!dataHeaders.includes(GRADE_COLUMN)) return mapping;
+    templateHeaders.forEach((h) => { if (/تقدير/.test(normalizeHeader(h))) mapping[h] = GRADE_COLUMN; });
+    return mapping;
+  }
+
   /* ===== دمج عدة ملفات بيانات لنفس الأشخاص =====
      كل ملف فيه جزء من بياناتهم؛ تُربط الصفوف بعمود مشترك (رقم الهوية غالباً) فيصير لكل شخص صف واحد. */
   const KEY_HINTS = [/هويه|سجل مدني|رقم وطني|national|^id$/, /جوال|هاتف|موبايل|mobile|phone/, /اسم/];
@@ -997,6 +1042,7 @@
   App.converterCore = {
     MAX_ROWS, normalizeHeader, suggestColumnMapping, resolveDefaultColumn, computeGroupKey,
     isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, generate,
+    gradeOf, addComputedGrade, preferComputedGrade, GRADE_COLUMN,
     // للاختبار
     computeSessionDates, fillXlsxTemplate, fillDocxTemplate, extractHeadersFromDocxTable,
   };

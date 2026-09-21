@@ -149,6 +149,7 @@
     const m = core().mergeDataFiles(state.merge.files, key);
     state.merge = Object.assign(state.merge, { key: m.key, keys: m.keys, stats: m.stats });
     state.parsed.dataRows = m.rows;
+    core().addComputedGrade({ headers: state.parsed.dataHeaders, rows: m.rows });
     renderResult();
   }
 
@@ -200,7 +201,8 @@
       const data = await readData(dataFiles);
 
       state.parsed = { templateHeaders, dataHeaders: data.headers, dataRows: data.rows, truncated: data.truncated, templateBuffer, templateIsDocx, templateName, savedId };
-      state.mapping = core().suggestColumnMapping(templateHeaders, data.headers);
+      state.gradeFrom = core().addComputedGrade(data);
+      state.mapping = core().preferComputedGrade(core().suggestColumnMapping(templateHeaders, data.headers), templateHeaders, data.headers);
       state.constants = {};
       const placeholders = await core().readTemplatePlaceholders(templateBuffer, templateIsDocx);
       // حقول القالب التي لا يوجد لها عمود في ملف البيانات ولا في عناوين القالب
@@ -246,7 +248,7 @@
       const buffer = await saved.file.arrayBuffer();
       const isDocx = saved.format === "docx";
       const headers = saved.headers && saved.headers.length ? saved.headers : await core().readTemplateHeaders(buffer, isDocx);
-      const mapping = core().suggestColumnMapping(headers, data.headers);
+      const mapping = core().preferComputedGrade(core().suggestColumnMapping(headers, data.headers), headers, data.headers);
       const placeholders = await core().readTemplatePlaceholders(buffer, isDocx);
       const extraFields = placeholders.filter((ph) => {
         const n = norm(ph);
@@ -342,6 +344,9 @@
     const fromExtras = (state.extras || []).reduce((all, t) => all.concat(t.missing), []);
     const extra = [...new Set((state.extraFields || []).concat(fromExtras))].filter((f) => !missing.includes(f));
     let html = mergeSummary();
+    if (state.gradeFrom && Object.values(state.mapping).includes(core().GRADE_COLUMN)) {
+      html += `<p class="conv-grade-note">ⓘ «التقدير» يُحسب تلقائياً من «${esc(state.gradeFrom)}»: 90 فأكثر ممتاز، 80–89 جيد جداً، 75–79 جيد، أقل من 75 راسب. ويمكن ربطه بعمود آخر من القائمة أدناه.</p>`;
+    }
     if (missing.length || extra.length) {
       const field = (name, hint) => `
         <div class="conv-map-row">

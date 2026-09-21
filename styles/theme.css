@@ -545,3 +545,5 @@ body.has-trial-bar #login-screen { top: 38px; }
 .conv-merge .warn { color: var(--warn); font-weight: 700; }
 .conv-merge-key { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; font-size: 13.5px; }
 .conv-merge-key select { width: auto; min-width: 180px; }
+
+.conv-grade-note { background: var(--navy-100); color: var(--navy-800); border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 700; margin: 0 0 12px; }
