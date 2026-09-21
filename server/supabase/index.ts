@@ -25,13 +25,27 @@ function serviceKey() {
   throw new Error("مفتاح خدمة Supabase غير متاح للدالة");
 }
 
+/* المفتاح العام لقناة البث الفوري: مصمّم ليُستعمل في المتصفح، ولا يصل إلى الجداول (مقفلة بـ RLS) */
+function publicKey() {
+  const legacy = Deno.env.get("SUPABASE_ANON_KEY");
+  if (legacy) return legacy;
+  const raw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  if (raw) {
+    try {
+      const map = JSON.parse(raw);
+      return (map.default || Object.values(map)[0]) as string;
+    } catch { /* تنسيق غير متوقّع */ }
+  }
+  return "";
+}
+
 const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
   serviceKey(),
   { auth: { persistSession: false } },
 );
 
-const VERSION = 15;
+const VERSION = 16;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -677,7 +691,11 @@ Deno.serve(async (httpReq) => {
 
     switch (req.action) {
       case "ping":
-        return json({ ok: true, owner: "Supabase", root: "قاعدة بيانات Supabase", version: VERSION, user: publicUser(user), webUrl: httpReq.url });
+        return json({
+          ok: true, owner: "Supabase", root: "قاعدة بيانات Supabase", version: VERSION, user: publicUser(user), webUrl: httpReq.url,
+          // قناة التحديث الفوري بين الأجهزة (إشارات فقط، بلا بيانات)
+          realtime: publicKey() ? { url: Deno.env.get("SUPABASE_URL"), key: publicKey() } : null,
+        });
       case "logout":
         await db.from("sessions").delete().eq("token", String(req.token));
         return json({ ok: true });

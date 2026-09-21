@@ -161,6 +161,9 @@
       saveSnap(next);
       store.save();
       rerender();
+      // إشارة فورية لبقية الأجهزة بالأقسام التي أرسلنا تغييراتها
+      const sentCols = COLS.filter((n) => cols[n] && ((cols[n].records || []).length || Object.keys(cols[n].deleted || {}).length));
+      if (sentCols.length && App.realtime) App.realtime.notify(sentCols);
     } catch (e) {
       console.warn("مزامنة الأقسام:", e.message);
       // الخادم مشغول: إعادة محاولة تلقائية بعد قليل
@@ -175,13 +178,31 @@
 
   const active = (view) => document.getElementById("view-" + view).classList.contains("active");
 
+  /* حقل يكتب فيه المستخدم الآن: إعادة رسم الصفحة تنتظر حتى يخرج منه، لا تسحبه من تحت يده */
+  function editingIn(viewId) {
+    const a = document.activeElement;
+    return !!(a && a.closest && a.closest("#" + viewId) && (a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !/^(checkbox|radio|button|file)$/.test(a.type))));
+  }
+  // يُفحص كل 0.7 ثانية لا عند حدث الخروج من الحقل وحده: ذلك الحدث قد لا يصل (نافذة أخرى في الواجهة)
+  const idleWaits = {};
+  function renderWhenIdle(viewId, fn) {
+    if (!editingIn(viewId)) { fn(); return; }
+    if (idleWaits[viewId]) return; // انتظار واحد لكل صفحة يكفي: الرسم يأخذ آخر البيانات
+    idleWaits[viewId] = setInterval(() => {
+      if (editingIn(viewId)) return;
+      clearInterval(idleWaits[viewId]);
+      delete idleWaits[viewId];
+      fn();
+    }, 700);
+  }
+
   function rerender() {
     App.dashboard.render();
     App.tasks.render();
-    if (active("tracks")) App.tracks.render();
+    if (active("tracks")) renderWhenIdle("view-tracks", () => App.tracks.render());
     if (active("meetings") && App.meetings.isIdle && App.meetings.isIdle()) App.meetings.render();
     if (active("letters") && App.letters.refreshTemplates) App.letters.refreshTemplates();
-    if (active("roster")) App.roster.render();
+    if (active("roster")) renderWhenIdle("view-roster", () => App.roster.render());
     if (active("converter") && App.converter.refresh) App.converter.refresh();
   }
 

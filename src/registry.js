@@ -281,6 +281,7 @@
       store.save();
       if ($("view-registry").classList.contains("active")) render();
       if (App.dashboard && document.getElementById("view-dashboard").classList.contains("active")) App.dashboard.render();
+      if ((changed.length || Object.keys(deleted).length) && App.realtime) App.realtime.notify(["registry"]);
       uploadPendingToCenter();
       purgeTrash();
     } catch (e) {

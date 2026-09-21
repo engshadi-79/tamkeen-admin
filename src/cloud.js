@@ -128,7 +128,7 @@
   }
   async function refreshUser() {
     const r = await call("ping");
-    saveSettings({ user: r.user, owner: r.owner || "" });
+    saveSettings({ user: r.user, owner: r.owner || "", realtime: r.realtime || null });
     return r.user;
   }
   const changePassword = (current, password) => call("password", { current, password });
