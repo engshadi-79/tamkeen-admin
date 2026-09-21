@@ -28,6 +28,21 @@
     window.scrollTo(0, 0);
   }
 
+  /* زر «تثبيت التطبيق»: يظهر حين يسمح المتصفح بالتثبيت (كروم وإيدج وأندرويد) */
+  function initInstall() {
+    let prompt = null;
+    const btn = document.getElementById("pwa-install");
+    window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); prompt = e; btn.hidden = false; });
+    window.addEventListener("appinstalled", () => { btn.hidden = true; ui.toast("ثُبّت مساعد تمكين على هذا الجهاز"); });
+    btn.addEventListener("click", async () => {
+      if (!prompt) return;
+      prompt.prompt();
+      await prompt.userChoice.catch(() => null);
+      prompt = null;
+      btn.hidden = true;
+    });
+  }
+
   function initBackup() {
     document.getElementById("btn-export").addEventListener("click", () => {
       ui.download(`نسخة-احتياطية-تمكين-${ui.todayISO()}.json`, store.exportJSON(), "application/json");
@@ -76,6 +91,9 @@
     App.converter.init();
     App.hospitality.init();
     App.history.init();
+    App.notify.init();
+    App.search.init();
+    initInstall();
     initBackup();
 
     // تحديث الأقسام التي لا تحتوي على حقول قيد التحرير

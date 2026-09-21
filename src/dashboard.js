@@ -44,10 +44,119 @@
       </tr>`;
     }).join("");
 
+    charts();
+
     const next = App.tasks.sorted(pending).slice(0, 5);
     document.getElementById("dash-tasks").innerHTML = next.length
       ? next.map((t) => App.tasks.itemHTML(t, { actions: false })).join("")
       : `<li class="empty">لا توجد مهام غير منجزة.</li>`;
+  }
+
+  /* ===== الرسوم البيانية (SVG بلا مكتبات) ===== */
+  const MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+
+  /* أعمدة رأسية، مجمّعة أو مكدّسة. الترتيب من اليمين (الأقدم) إلى اليسار كقراءة العربية */
+  function bars({ labels, series, stacked, height }) {
+    const H = height || 190;
+    const slot = Math.max(28, Math.min(64, 640 / Math.max(1, labels.length)));
+    const W = Math.max(300, slot * labels.length + 40);
+    const top = 16, bottom = 34, left = 30;
+    const plotH = H - top - bottom;
+    const totals = labels.map((_, i) => (stacked ? series.reduce((a, s) => a + (s.values[i] || 0), 0) : Math.max(0, ...series.map((s) => s.values[i] || 0))));
+    const max = Math.max(1, ...totals);
+    const step = Math.pow(10, Math.floor(Math.log10(max)));
+    const nice = Math.ceil(max / step) * step;
+    const y = (v) => top + plotH - (v / nice) * plotH;
+    let out = "";
+    for (let g = 0; g <= 4; g++) {
+      const v = (nice / 4) * g;
+      out += `<line x1="${left}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="ch-grid"/><text x="${left - 4}" y="${y(v) + 4}" class="ch-axis" text-anchor="end">${ui.fmt(v)}</text>`;
+    }
+    labels.forEach((lab, i) => {
+      const x0 = W - (i + 1) * slot; // اليمين أولاً
+      const inner = slot * 0.72;
+      const bx = x0 + (slot - inner) / 2;
+      if (stacked) {
+        let acc = 0;
+        series.forEach((s) => {
+          const v = s.values[i] || 0;
+          if (!v) return;
+          out += `<rect x="${bx}" y="${y(acc + v)}" width="${inner}" height="${y(acc) - y(acc + v)}" fill="${s.color}" rx="2"><title>${ui.esc(lab)} — ${ui.esc(s.name)}: ${ui.fmt(v)}</title></rect>`;
+          acc += v;
+        });
+        if (acc) out += `<text x="${bx + inner / 2}" y="${y(acc) - 3}" class="ch-val" text-anchor="middle">${ui.fmt(acc)}</text>`;
+      } else {
+        const w = inner / series.length;
+        series.forEach((s, k) => {
+          const v = s.values[i] || 0;
+          const x = bx + inner - (k + 1) * w; // السلسلة الأولى يميناً
+          if (v) out += `<rect x="${x}" y="${y(v)}" width="${w - 1}" height="${y(0) - y(v)}" fill="${s.color}" rx="2"><title>${ui.esc(lab)} — ${ui.esc(s.name)}: ${ui.fmt(v)}</title></rect><text x="${x + w / 2}" y="${y(v) - 3}" class="ch-val" text-anchor="middle">${ui.fmt(v)}</text>`;
+        });
+      }
+      out += `<text x="${x0 + slot / 2}" y="${H - bottom + 16}" class="ch-axis" text-anchor="middle">${ui.esc(lab)}</text>`;
+    });
+    const legend = series.map((s) => `<span><i style="background:${s.color}"></i>${ui.esc(s.name)}</span>`).join("");
+    return `<div class="ch-legend">${legend}</div><div class="ch-scroll"><svg viewBox="0 0 ${W} ${H}" class="ch-svg" style="min-width:${Math.min(W, 560)}px" role="img">${out}</svg></div>`;
+  }
+
+  function charts() {
+    const el = document.getElementById("dash-charts");
+    if (!el) return;
+    const now = new Date();
+
+    // ١. الوارد والصادر آخر 12 شهراً
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: MONTHS[d.getMonth()].slice(0, 5) });
+    }
+    const reg = App.registry ? App.registry.live() : [];
+    const count = (type) => months.map((m) => reg.filter((r) => r.type === type && String(r.date || "").startsWith(m.key)).length);
+    const inC = count("in"), outC = count("out");
+    const regHtml = reg.length ? bars({
+      labels: months.map((m) => m.label),
+      series: [{ name: "الوارد", color: "#1c3a66", values: inC }, { name: "الصادر", color: "#14a3a5", values: outC }],
+    }) : `<p class="empty">لا توجد قيود بعد.</p>`;
+
+    // ٢. الضيافة هذا الشهر
+    let hosHtml = `<p class="empty">لا توجد بيانات.</p>`;
+    let hosSum = "";
+    if (App.hospitality && App.hospitality.monthTotals) {
+      const days = App.hospitality.monthTotals(now.getFullYear(), now.getMonth());
+      const tr = days.reduce((a, d) => a + d.trainees, 0);
+      const st = days.reduce((a, d) => a + d.staff, 0);
+      hosSum = `${ui.fmt(tr + st)} وجبة (${ui.fmt(tr)} متدربون · ${ui.fmt(st)} موظفون)`;
+      if (tr + st) {
+        hosHtml = bars({
+          labels: days.map((d) => d.date.slice(0, 2)),
+          series: [{ name: "المتدربون", color: "#2E75B6", values: days.map((d) => d.trainees) }, { name: "الموظفون", color: "#548235", values: days.map((d) => d.staff) }],
+          stacked: true,
+        });
+      }
+    }
+
+    // ٣. المهام غير المنجزة حسب المسؤول
+    const pending = (store.get().tasks || []).filter((t) => !t.done);
+    const byOwner = new Map();
+    pending.forEach((t) => {
+      const k = t.owner || "بلا مسؤول";
+      const e = byOwner.get(k) || { late: 0, open: 0 };
+      if (ui.isOverdue(t)) e.late++; else e.open++;
+      byOwner.set(k, e);
+    });
+    const owners = [...byOwner.entries()].sort((a, b) => (b[1].late + b[1].open) - (a[1].late + a[1].open)).slice(0, 8);
+    const maxT = Math.max(1, ...owners.map(([, e]) => e.late + e.open));
+    const taskHtml = owners.length ? `<div class="ch-legend"><span><i style="background:var(--danger)"></i>متأخرة</span><span><i style="background:#1c3a66"></i>في موعدها</span></div>
+      <div class="hbars">${owners.map(([name, e]) => `<div class="hbar">
+        <span class="hbar-name" title="${ui.esc(name)}">${ui.esc(name)}</span>
+        <span class="hbar-track"><span class="late" style="width:${(e.late / maxT) * 100}%"></span><span class="open" style="width:${(e.open / maxT) * 100}%"></span></span>
+        <span class="hbar-n">${ui.fmt(e.late + e.open)}${e.late ? ` <small>(${ui.fmt(e.late)} متأخرة)</small>` : ""}</span>
+      </div>`).join("")}</div>` : `<p class="empty">لا توجد مهام غير منجزة.</p>`;
+
+    el.innerHTML = `
+      <div class="card ch-card ch-wide"><h3>الوارد والصادر — آخر 12 شهراً <small>${ui.fmt(inC.reduce((a, b) => a + b, 0))} وارد · ${ui.fmt(outC.reduce((a, b) => a + b, 0))} صادر</small></h3>${regHtml}</div>
+      <div class="card ch-card"><h3>الضيافة — ${MONTHS[now.getMonth()]} <small>${hosSum}</small> <a href="#hospitality" class="ch-link">فتح الكشف</a></h3>${hosHtml}</div>
+      <div class="card ch-card"><h3>المهام غير المنجزة حسب المسؤول <a href="#tasks" class="ch-link">فتح المهام</a></h3>${taskHtml}</div>`;
   }
 
   App.dashboard = { render };

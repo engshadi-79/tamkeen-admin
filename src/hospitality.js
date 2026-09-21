@@ -124,6 +124,76 @@
       ${sumRow("الإجمالي الكلي (متدربين + موظفين)", t.all, "gt", "hos-grand")}
     </tbody>`;
     $("hos-summary").textContent = `${ui.fmt(days.length)} يوم دوام · ${ui.fmt(t.sum(t.trainees))} وجبة للمتدربين · ${ui.fmt(t.sum(t.staff))} للموظفين · المجموع ${ui.fmt(t.sum(t.all))}`;
+    const m = mode();
+    $("hos-day").hidden = m !== "day";
+    $("hos-wrap").hidden = m === "day";
+    $("hos-mode-day").classList.toggle("active", m === "day");
+    $("hos-mode-month").classList.toggle("active", m !== "day");
+    if (m === "day") renderDay();
+  }
+
+  /* ===== إدخال يوم واحد: بطاقات كبيرة تناسب الجوال ===== */
+  const MODE_KEY = "tamkeen-admin:hos-mode";
+  let pickedDay = "";
+  const mode = () => {
+    try { const m = localStorage.getItem(MODE_KEY); if (m) return m; } catch (e) { /* تخزين غير متاح */ }
+    return window.innerWidth < 760 ? "day" : "month";
+  };
+  function setMode(m) {
+    try { localStorage.setItem(MODE_KEY, m); } catch (e) { /* تخزين غير متاح */ }
+    render();
+  }
+
+  /* اليوم الافتراضي: اليوم إن كان يوم دوام في الشهر المعروض، وإلا أقرب يوم دوام قبله، وإلا أول الشهر */
+  function defaultDay(days) {
+    const today = ui.todayISO();
+    const before = days.filter((d) => d.key <= today);
+    return (days.find((d) => d.key === today) || before[before.length - 1] || days[0] || {}).key || "";
+  }
+
+  function renderDay() {
+    const box = $("hos-day");
+    const days = workdays(current.year, current.month);
+    const month = ym();
+    if (!days.some((d) => d.key === pickedDay)) pickedDay = defaultDay(days);
+    const d = days.find((x) => x.key === pickedDay);
+    if (!d) { box.innerHTML = `<p class="empty">لا توجد أيام دوام في هذا الشهر.</p>`; return; }
+    const def = rowsDef();
+    const trackCard = (r) => {
+      const v = cellValue(month, r.key, d.key);
+      return `<label class="hd-row hd-track"><span>${esc(r.name)}</span>
+        <input type="number" min="0" inputmode="numeric" data-row="${esc(r.key)}" data-day="${d.key}" value="${v || ""}" placeholder="0"></label>`;
+    };
+    const staffCard = (r) => {
+      const v = cellValue(month, r.key, d.key);
+      if (isVariable(r)) return `<label class="hd-row hd-staff"><span>${esc(r.name)}</span>
+        <input type="number" min="0" inputmode="numeric" data-row="${esc(r.key)}" data-day="${d.key}" value="${v || ""}" placeholder="0"></label>`;
+      return `<button type="button" class="hd-row hd-staff hd-tick ${v ? "on" : ""}" data-toggle="${esc(r.key)}" data-value="${staffValue(r)}" data-day="${d.key}" aria-pressed="${v ? "true" : "false"}">
+        <span>${esc(r.name)}</span><b>${v ? `✓ ${v}` : staffValue(r) > 1 ? `+${staffValue(r)}` : "+"}</b></button>`;
+    };
+    box.innerHTML = `
+      <div class="hd-bar">
+        <button type="button" class="btn secondary" data-day-step="-1" aria-label="اليوم السابق">→</button>
+        <select id="hos-day-pick" aria-label="اليوم">${days.map((x) => `<option value="${x.key}" ${x.key === d.key ? "selected" : ""}>${x.day} ${x.date}${x.key === ui.todayISO() ? " (اليوم)" : ""}</option>`).join("")}</select>
+        <button type="button" class="btn secondary" data-day-step="1" aria-label="اليوم التالي">←</button>
+      </div>
+      <h4 class="hd-head">المسارات — عدد المتدربين</h4>
+      <div class="hd-list">${def.tracks.map(trackCard).join("")}</div>
+      <h4 class="hd-head">الموظفون — اضغط عند الاستلام</h4>
+      <div class="hd-list">${def.staff.map(staffCard).join("")}</div>
+      <div class="hd-total" id="hos-day-total"></div>`;
+    dayTotal();
+  }
+
+  function dayTotal() {
+    const el = $("hos-day-total");
+    if (!el || !pickedDay) return;
+    const def = rowsDef();
+    const month = ym();
+    const sum = (list) => list.reduce((a, r) => a + cellValue(month, r.key, pickedDay), 0);
+    const tr = sum(def.tracks);
+    const st = sum(def.staff);
+    el.innerHTML = `<span>المتدربون <b>${ui.fmt(tr)}</b></span><span>الموظفون <b>${ui.fmt(st)}</b></span><span>مجموع اليوم <b>${ui.fmt(tr + st)}</b></span>`;
   }
 
   /* تحديث المجاميع وحدها بعد كل إدخال، دون إعادة بناء الجدول (فلا يضيع موضع الكتابة) */
@@ -134,6 +204,7 @@
     const t = totals(month, days);
     const set = (sel, v) => { const el = $("hos-table").querySelector(sel); if (el) el.textContent = v || ""; };
     def.tracks.concat(def.staff).forEach((r) => set(`[data-rowtotal="${CSS.escape(r.key)}"]`, t.rowTotal(r.key)));
+    dayTotal();
     [["tt", t.trainees], ["st", t.staff], ["gt", t.all]].forEach(([id, arr]) => {
       arr.forEach((v, i) => set(`[data-${id}="${i}"]`, v));
       set(`[data-${id}="all"]`, t.sum(arr));
@@ -332,26 +403,41 @@
     $("hos-prev").addEventListener("click", () => { current.month--; if (current.month < 0) { current.month = 11; current.year--; } render(); });
     $("hos-next").addEventListener("click", () => { current.month++; if (current.month > 11) { current.month = 0; current.year++; } render(); });
 
-    // خانة مسار: عدد
-    $("hos-table").addEventListener("input", (e) => {
+    // خانة مسار أو صف متغيّر: عدد
+    const onInput = (e) => {
       const el = e.target;
       if (!el.dataset.row) return;
       const n = Math.max(0, Math.floor(Number(el.value) || 0));
       setCell(ym(), el.dataset.row, el.dataset.day, n);
       refreshTotals();
-    });
-    // خانة موظف: (1) أو فارغة
-    $("hos-table").addEventListener("click", (e) => {
+    };
+    // خانة موظف: قيمته أو فارغة
+    const onClick = (e) => {
+      const step = e.target.closest("[data-day-step]");
+      if (step) {
+        const days = workdays(current.year, current.month);
+        const i = days.findIndex((d) => d.key === pickedDay) + Number(step.dataset.dayStep);
+        if (i >= 0 && i < days.length) { pickedDay = days[i].key; renderDay(); }
+        return;
+      }
       const b = e.target.closest("[data-toggle]");
       if (!b) return;
       const on = !b.classList.contains("on");
       b.classList.toggle("on", on);
       const val = Number(b.dataset.value) || 1;
-      b.textContent = on ? String(val) : "";
+      if (b.classList.contains("hd-tick")) b.querySelector("b").textContent = on ? `✓ ${val}` : val > 1 ? `+${val}` : "+";
+      else b.textContent = on ? String(val) : "";
       b.setAttribute("aria-pressed", on ? "true" : "false");
       setCell(ym(), b.dataset.toggle, b.dataset.day, on ? val : 0);
       refreshTotals();
-    });
+    };
+    $("hos-table").addEventListener("input", onInput);
+    $("hos-table").addEventListener("click", onClick);
+    $("hos-day").addEventListener("input", onInput);
+    $("hos-day").addEventListener("click", onClick);
+    $("hos-day").addEventListener("change", (e) => { if (e.target.id === "hos-day-pick") { pickedDay = e.target.value; renderDay(); } });
+    $("hos-mode-day").addEventListener("click", () => setMode("day"));
+    $("hos-mode-month").addEventListener("click", () => setMode("month"));
 
     $("hos-export").addEventListener("click", () => exportXlsx(false).catch((e) => ui.toast(e.message)));
     $("hos-export-year").addEventListener("click", () => exportXlsx(true).catch((e) => ui.toast(e.message)));
@@ -362,5 +448,13 @@
     $("hos-rows-modal").addEventListener("click", (e) => { if (e.target.id === "hos-rows-modal") e.currentTarget.classList.remove("open"); });
   }
 
-  App.hospitality = { init, render, workdays, printSheet, rows: rowsDef };
+  /* مجاميع شهر لكل يوم دوام (للّوحة الرئيسية) */
+  function monthTotals(year, month) {
+    const key = `${year}-${String(month + 1).padStart(2, "0")}`;
+    const days = workdays(year, month);
+    const t = totals(key, days);
+    return days.map((d, i) => ({ date: d.date, day: d.day, trainees: t.trainees[i], staff: t.staff[i] }));
+  }
+
+  App.hospitality = { init, render, workdays, printSheet, rows: rowsDef, monthTotals, MONTHS };
 })(window.App = window.App || {});

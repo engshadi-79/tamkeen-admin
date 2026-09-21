@@ -743,6 +743,7 @@
     $("reg-track").innerHTML = trackOptions(rec ? rec.track || "" : "");
     $("reg-due").value = rec ? rec.dueDate || "" : "";
     $("reg-done").checked = !!(rec && rec.done);
+    $("reg-assignee").value = rec ? rec.assignee || "" : "";
     syncFollowUp();
     $("reg-number").value = rec ? rec.number : "";
     $("reg-party").value = rec ? rec.party || "" : "";
@@ -790,7 +791,12 @@
     } else logAction(rec, "تعديل");
     const moved = rec.driveLink && pathText(archivePath(rec)) !== pathText(archivePath({ type, date, category: $("reg-category").value }));
     Object.assign(rec, { type, date, number, category: $("reg-category").value, track: $("reg-track").value, party: $("reg-party").value.trim(), subject: $("reg-subject").value.trim(), notes: $("reg-notes").value.trim() });
-    if (type === "in") Object.assign(rec, { dueDate: $("reg-due").value || null, done: $("reg-done").checked });
+    if (type === "in") {
+      const assignee = $("reg-assignee").value.trim();
+      // وقت الإحالة يحدّد «جديد» في تنبيهات المحال إليه
+      if (assignee !== (rec.assignee || "")) rec.assignedAt = assignee ? nowISO() : null;
+      Object.assign(rec, { dueDate: $("reg-due").value || null, done: $("reg-done").checked, assignee });
+    }
     const file = $("reg-file").files[0];
     if (file) { await attachFile(rec, file, file.name, localISO(new Date(file.lastModified))); logAction(rec, `إرفاق ملف: ${file.name}`); }
     store.save();

@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=126">
+  <link rel="stylesheet" href="styles/theme.css?v=127">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -72,12 +72,24 @@
     </aside>
 
     <main class="main">
+      <div class="top-tools no-print">
+        <button type="button" class="tt-search" id="gs-open" title="بحث شامل (Ctrl+K)">🔍 <span>بحث في كل الأقسام…</span><kbd>Ctrl K</kbd></button>
+        <button type="button" class="tt-btn" id="pwa-install" hidden title="تثبيت النظام تطبيقاً على هذا الجهاز">⤓ <span>تثبيت التطبيق</span></button>
+        <div class="tt-bell-wrap">
+          <button type="button" class="tt-btn tt-bell" id="notif-bell" aria-label="التنبيهات" hidden>🔔<span class="notif-count" id="notif-count" hidden>0</span></button>
+          <div class="notif-panel" id="notif-panel" hidden>
+            <div class="notif-head"><b>التنبيهات</b><button type="button" class="conv-link" id="notif-push" hidden>🔔 تفعيل إشعارات المتصفح</button></div>
+            <ul class="notif-list" id="notif-list"></ul>
+          </div>
+        </div>
+      </div>
       <!-- ===== اللوحة الرئيسية ===== -->
       <section class="view" id="view-dashboard">
         <div class="page-head">
           <div><h2>اللوحة الرئيسية</h2><p>نظرة شاملة على مؤشرات المشروع والمهام</p></div>
         </div>
         <div class="stats" id="stats"></div>
+        <div class="ch-grid-wrap" id="dash-charts"></div>
         <div class="card">
           <h3>التنبيهات</h3>
           <ul class="alerts" id="alerts"></ul>
@@ -599,14 +611,19 @@
         </div>
         <div class="card">
           <div class="hos-bar no-print">
-            <button class="btn secondary" id="hos-prev" title="الشهر السابق">›</button>
+            <button class="btn secondary" id="hos-prev" title="الشهر السابق">→</button>
             <select id="hos-month" aria-label="الشهر"></select>
             <input type="number" id="hos-year" min="2020" max="2100" aria-label="السنة">
-            <button class="btn secondary" id="hos-next" title="الشهر التالي">‹</button>
+            <button class="btn secondary" id="hos-next" title="الشهر التالي">←</button>
             <span class="hos-summary" id="hos-summary"></span>
           </div>
+          <div class="hos-modes no-print" role="tablist">
+            <button type="button" class="btn small secondary" id="hos-mode-day">📱 إدخال يوم واحد</button>
+            <button type="button" class="btn small secondary" id="hos-mode-month">🗓 الشهر كاملاً</button>
+          </div>
           <h3 class="hos-title" id="hos-title"></h3>
-          <div class="table-wrap hos-wrap"><table class="hos-table" id="hos-table"></table></div>
+          <div class="hos-day" id="hos-day" hidden></div>
+          <div class="table-wrap hos-wrap" id="hos-wrap"><table class="hos-table" id="hos-table"></table></div>
         </div>
       </section>
 
@@ -788,6 +805,7 @@
       <label class="field"><span>ملاحظات</span><textarea id="reg-notes" rows="2"></textarea></label>
       <div class="grid-fields" id="reg-follow">
         <label class="field"><span>مطلوب المعالجة أو الرد قبل (اختياري)</span><input type="date" id="reg-due"></label>
+        <label class="field"><span>المحال إليه (يصله تنبيه)</span><input type="text" id="reg-assignee" list="people-list" placeholder="اختر مستخدماً"></label>
         <label class="conv-check strong" style="align-self:end;margin-bottom:14px"><input type="checkbox" id="reg-done"> تمت المعالجة</label>
       </div>
       <label class="field"><span>المرفق (اختياري)</span><input type="file" id="reg-file"></label>
@@ -928,6 +946,15 @@
 
   <datalist id="people-list"></datalist>
 
+  <!-- البحث الشامل -->
+  <div class="modal-backdrop gs-backdrop" id="gs-modal" role="dialog" aria-modal="true" aria-label="بحث شامل">
+    <div class="modal gs-box">
+      <input type="search" id="gs-input" placeholder="ابحث برقم قيد، جهة، اسم مستفيد، مهمة، محضر…" autocomplete="off">
+      <div class="gs-results" id="gs-results"></div>
+      <p class="gs-keys">↑↓ للتنقل · Enter للفتح · Esc للإغلاق</p>
+    </div>
+  </div>
+
   <!-- الإصدار الجماعي من ملف Excel -->
   <div class="modal-backdrop" id="lb-modal" role="dialog" aria-modal="true" aria-labelledby="lb-title">
     <div class="modal">
@@ -1053,42 +1080,44 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=126"></script>
-  <script src="src/ui.js?v=126"></script>
-  <script src="src/templates.js?v=126"></script>
-  <script src="src/tracks.js?v=126"></script>
-  <script src="src/tasks.js?v=126"></script>
-  <script src="src/dashboard.js?v=126"></script>
-  <script src="src/letterhead-docx.js?v=126"></script>
-  <script src="src/docx.js?v=126"></script>
-  <script src="src/ai.js?v=126"></script>
-  <script src="src/doc-render.js?v=126"></script>
-  <script src="src/files-store.js?v=126"></script>
-  <script src="src/shared.js?v=126"></script>
-  <script src="src/cloud.js?v=126"></script>
-  <script src="src/drive.js?v=126"></script>
-  <script src="src/drive-ui.js?v=126"></script>
-  <script src="src/rtl-fixer.js?v=126"></script>
-  <script src="src/rtl-page.js?v=126"></script>
-  <script src="src/profile.js?v=126"></script>
-  <script src="src/admin.js?v=126"></script>
-  <script src="src/roster.js?v=126"></script>
-  <script src="src/registry.js?v=126"></script>
-  <script src="src/charts.js?v=126"></script>
-  <script src="src/ai-assist.js?v=126"></script>
-  <script src="src/meetings.js?v=126"></script>
-  <script src="src/report.js?v=126"></script>
-  <script src="src/letters.js?v=126"></script>
+  <script src="src/storage.js?v=127"></script>
+  <script src="src/ui.js?v=127"></script>
+  <script src="src/templates.js?v=127"></script>
+  <script src="src/tracks.js?v=127"></script>
+  <script src="src/tasks.js?v=127"></script>
+  <script src="src/dashboard.js?v=127"></script>
+  <script src="src/letterhead-docx.js?v=127"></script>
+  <script src="src/docx.js?v=127"></script>
+  <script src="src/ai.js?v=127"></script>
+  <script src="src/doc-render.js?v=127"></script>
+  <script src="src/files-store.js?v=127"></script>
+  <script src="src/shared.js?v=127"></script>
+  <script src="src/cloud.js?v=127"></script>
+  <script src="src/drive.js?v=127"></script>
+  <script src="src/drive-ui.js?v=127"></script>
+  <script src="src/rtl-fixer.js?v=127"></script>
+  <script src="src/rtl-page.js?v=127"></script>
+  <script src="src/profile.js?v=127"></script>
+  <script src="src/admin.js?v=127"></script>
+  <script src="src/roster.js?v=127"></script>
+  <script src="src/registry.js?v=127"></script>
+  <script src="src/charts.js?v=127"></script>
+  <script src="src/ai-assist.js?v=127"></script>
+  <script src="src/meetings.js?v=127"></script>
+  <script src="src/report.js?v=127"></script>
+  <script src="src/letters.js?v=127"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=126"></script>
-  <script src="src/converter-store.js?v=126"></script>
-  <script src="src/converter.js?v=126"></script>
+  <script src="src/converter-core.js?v=127"></script>
+  <script src="src/converter-store.js?v=127"></script>
+  <script src="src/converter.js?v=127"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=126"></script>
-  <script src="src/history.js?v=126"></script>
-  <script src="src/realtime.js?v=126"></script>
-  <script src="src/app.js?v=126"></script>
+  <script src="src/hospitality.js?v=127"></script>
+  <script src="src/history.js?v=127"></script>
+  <script src="src/notify.js?v=127"></script>
+  <script src="src/search.js?v=127"></script>
+  <script src="src/realtime.js?v=127"></script>
+  <script src="src/app.js?v=127"></script>
 </body>
 </html>

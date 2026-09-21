@@ -283,5 +283,7 @@
   const isIdle = () => !currentId && !$("m-title").value.trim() && !$("m-discussion").value.trim();
   const decisionVote = (d) => d.vote || "";
 
-  App.meetings = { isIdle, init, render: () => { renderDecisions(); renderPreview(); }, inPeriod };
+  const openById = (id) => { const m = meetings().find((x) => x.id === id); if (m) load(m); };
+
+  App.meetings = { isIdle, init, render: () => { renderDecisions(); renderPreview(); }, inPeriod, openById };
 })(window.App = window.App || {});
