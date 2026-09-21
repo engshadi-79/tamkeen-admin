@@ -271,6 +271,90 @@
     </div>`;
   }
 
+  /* ===== الإعدادات الافتراضية لكل قالب =====
+     تُحفظ مرتبطة بأعمدة القالب (لا باسم ملفه)، فتُطبَّق على القالب المحفوظ وعلى نسخة مرفوعة منه من جديد،
+     وتُزامَن لكل المستخدمين (إعداد مشترك convDefaults). */
+  const templateSig = (headers) => headers.map((h) => core().normalizeHeader(h)).join("|");
+  const profiles = () => (App.store.get() || {}).convDefaults || {};
+  const currentProfile = () => state.parsed && profiles()[templateSig(state.parsed.templateHeaders)];
+
+  function applyProfile() {
+    const p = state.parsed;
+    const prof = currentProfile();
+    state.profileApplied = false;
+    if (!prof) return;
+    const col = (name) => (name ? core().resolveDefaultColumn(name, p.dataHeaders) || "" : "");
+    const data = { headers: p.dataHeaders, rows: p.dataRows };
+    if (prof.gradeFrom !== undefined) {
+      const from = col(prof.gradeFrom);
+      state.grade = from ? core().addComputedGrade(data, from) : { from: "" };
+    }
+    if (prof.trainerFrom !== undefined) {
+      const v = prof.trainerFrom || "";
+      const source = v.startsWith("track:") ? { track: v.slice(6) } : v.startsWith("col:") ? { column: col(v.slice(4)) } : {};
+      state.trainers = core().addTrainerColumns(data, tracksList(), source);
+    }
+    const virtual = [core().GRADE_COLUMN].concat(Object.values(core().TRAINER_COLS));
+    Object.keys(prof.mapping || {}).forEach((h) => {
+      if (!p.templateHeaders.includes(h)) return;
+      const src = prof.mapping[h];
+      if (!src) { state.mapping[h] = ""; return; }
+      const c = virtual.includes(src) ? (p.dataHeaders.includes(src) ? src : "") : col(src);
+      if (c) state.mapping[h] = c; // عمود غير موجود في هذا الملف: يبقى الربط التلقائي
+    });
+    state.groupBy1 = col(prof.groupBy1);
+    state.groupBy2 = col(prof.groupBy2);
+    if (prof.autoNumberHeader && p.templateHeaders.includes(prof.autoNumberHeader)) state.autoNumberHeader = prof.autoNumberHeader;
+    state.sortRowsBy = col(prof.sortRowsBy);
+    if (prof.filterCol !== undefined) { state.filterCol = col(prof.filterCol); state.filterOut = new Set(); }
+    reapplyFixed();
+    state.profileApplied = true;
+  }
+
+  function saveProfile() {
+    const p = state.parsed;
+    const r = state.trainers || {};
+    const mapping = {};
+    p.templateHeaders.forEach((h) => { mapping[h] = state.mapping[h] || ""; });
+    const all = Object.assign({}, profiles());
+    all[templateSig(p.templateHeaders)] = {
+      mapping,
+      gradeFrom: (state.grade || {}).from || "",
+      trainerFrom: r.track ? `track:${r.track}` : r.column ? `col:${r.column}` : "",
+      groupBy1: state.groupBy1 || "",
+      groupBy2: state.groupBy2 || "",
+      autoNumberHeader: state.autoNumberHeader || "",
+      sortRowsBy: state.sortRowsBy || "",
+      filterCol: state.filterCol || "",
+      template: p.templateName,
+      savedAt: new Date().toISOString(),
+      by: ((App.cloud && App.cloud.user()) || {}).name || "",
+    };
+    App.store.get().convDefaults = all;
+    App.store.save();
+    state.profileApplied = true;
+    renderResult();
+    ui.toast("حُفظت الإعدادات كافتراضية لهذا القالب — تُطبَّق تلقائياً في كل مرة ولكل المستخدمين");
+  }
+
+  function deleteProfile() {
+    if (!confirm("حذف الإعدادات الافتراضية لهذا القالب؟ يعود الربط التلقائي من التحليل القادم.")) return;
+    const all = Object.assign({}, profiles());
+    delete all[templateSig(state.parsed.templateHeaders)];
+    App.store.get().convDefaults = all;
+    App.store.save();
+    state.profileApplied = false;
+    renderResult();
+    ui.toast("حُذفت الإعدادات الافتراضية لهذا القالب");
+  }
+
+  function profileNote() {
+    const prof = currentProfile();
+    if (!prof) return "";
+    const when = prof.savedAt ? ui.formatDate(String(prof.savedAt).slice(0, 10)) : "";
+    return `<p class="conv-grade-note">⚙ طُبِّقت الإعدادات الافتراضية المحفوظة لهذا القالب${prof.by ? ` (${esc(prof.by)}${when ? "، " + esc(when) : ""})` : ""}: الربط، والتجميع، والترقيم، والترتيب، ومصدر التقدير والمدربين. ما تغيّره الآن لهذا الكشف فقط حتى تحفظه. <button type="button" class="conv-link danger" id="conv-profile-delete">حذفها</button></p>`;
+  }
+
   const tracksList = () => ((App.store.get() || {}).tracks || []).filter((t) => t && t.name);
 
   /* المدربون من صفحة المسارات: يظهر إن كان في القالب عمود أو حقل ترويسة فيه «مدرب» */
@@ -498,6 +582,7 @@
       state.sortRowsBy = "";
       state.groupWeekdays = {};
       state.datesWeekdays = [];
+      applyProfile();
       renderResult();
       $("conv-result").scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (e) {
@@ -618,7 +703,7 @@
     const missing = p.templateHeaders.filter((h) => !state.mapping[h]);
     const fromExtras = (state.extras || []).reduce((all, t) => all.concat(t.missing), []);
     const extra = [...new Set((state.extraFields || []).concat(fromExtras))].filter((f) => !missing.includes(f));
-    let html = "";
+    let html = profileNote();
     if (state.fixedUsed && state.fixedUsed.length) {
       html += `<p class="conv-grade-note">📌 عُبّئ من البيانات الثابتة: ${state.fixedUsed.map(esc).join("، ")} — تظهر قيمها في «حقول لم نجد لها بيانات» ويمكن تغييرها هناك لهذا الكشف فقط.</p>`;
     }
@@ -724,7 +809,10 @@
       }
     }
 
-    html += `<button type="button" class="btn" id="conv-generate">⬇ توليد الملف وتنزيله</button>`;
+    html += `<div class="btn-row conv-final">
+      <button type="button" class="btn" id="conv-generate">⬇ توليد الملف وتنزيله</button>
+      <button type="button" class="btn secondary" id="conv-profile-save" title="الربط والتجميع والترقيم والترتيب ومصدر التقدير والمدربين — تُطبَّق تلقائياً مع هذا القالب">💾 اعتماد هذه الإعدادات كافتراضية لهذا القالب</button>
+    </div>`;
     box.innerHTML = html;
     lastDistinctGroups = distinctGroups();
   }
@@ -877,6 +965,8 @@
     if (!t) return;
     if (t.dataset.out) { state.outputFormat = t.dataset.out; renderResult(); return; }
     if (t.id === "conv-generate") { handleGenerate(); return; }
+    if (t.id === "conv-profile-save") { saveProfile(); return; }
+    if (t.id === "conv-profile-delete") { deleteProfile(); return; }
     if (t.id === "conv-save-default") {
       try {
         await store().setDefaultGroupBy(state.parsed.savedId, activeGroupColumns());
