@@ -1,12 +1,14 @@
 /* نسخة احتياطية يومية من Supabase إلى Google Drive.
-   يُضاف هذا الملف إلى مشروع سكربت Google نفسه (بجانب Code.gs) ويستعمل دواله: root_() و subFolder_().
+   ملف مستقل: يعمل في أي مشروع سكربت Google، جديد أو قديم، ولا يحتاج Code.gs.
+   قبل التشغيل: في «إعدادات المشروع» أضف خاصية نص برمجي BACKUP_KEY قيمتها رمز المدير في Supabase.
    التشغيل مرة واحدة: اختر الدالة setupSupabaseBackup من الأعلى ثم «تشغيل» ووافق على الأذونات.
    بعدها يعمل وحده كل ليلة:
      - لقطة كاملة (كل الأقسام + الحسابات + فهرس الملفات) في «نسخ Supabase اليومية»، ويُبقى آخر 30 يوماً.
      - الملفات المرفوعة (الأرشيف والقوالب) تُنسخ مرة واحدة إلى «ملفات Supabase» بمجلداتها،
        ولا يُعاد نسخ ما نُسخ. إن طالت القائمة يكمل في دفعة بعد دقائق.
-   الرمز: رمز المدير (ADMIN_KEY في Code.gs)، أو خاصية سكربت باسم BACKUP_KEY إن كانا مختلفين. */
+   المجلد: «أرشيف مساعد تمكين» في جذر Drive (يُستعمل الموجود أو يُنشأ). */
 
+const SB_ROOT = "أرشيف مساعد تمكين";
 const SB_URL = "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen";
 const SB_JSON_FOLDER = "نسخ Supabase اليومية";
 const SB_FILES_FOLDER = "ملفات Supabase";
@@ -31,8 +33,26 @@ function supabaseBackupContinue() { return sbRun_(true); }
 function sbKey_() {
   const own = PropertiesService.getScriptProperties().getProperty("BACKUP_KEY");
   const key = own || (typeof ADMIN_KEY !== "undefined" ? ADMIN_KEY : "");
-  if (!key || key === "PUT-ADMIN-CODE-HERE") throw new Error("لا يوجد رمز: ضع رمز المدير في ADMIN_KEY أو أضف خاصية BACKUP_KEY");
+  if (!key || key === "PUT-ADMIN-CODE-HERE") throw new Error("لا يوجد رمز: أضف في «إعدادات المشروع» خاصية نص برمجي BACKUP_KEY قيمتها رمز المدير في Supabase");
   return key;
+}
+
+/* مجلد الأرشيف في جذر Drive؛ معرّفه يُحفظ حتى لا يتأثر بإعادة التسمية */
+function sbRoot_() {
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty("SB_ROOT_ID");
+  if (id) {
+    try { const f = DriveApp.getFolderById(id); if (!f.isTrashed()) return f; } catch (err) { /* حُذف المجلد */ }
+  }
+  const it = DriveApp.getRootFolder().getFoldersByName(SB_ROOT);
+  const folder = it.hasNext() ? it.next() : DriveApp.createFolder(SB_ROOT);
+  props.setProperty("SB_ROOT_ID", folder.getId());
+  return folder;
+}
+
+function sbSub_(parent, name) {
+  const it = parent.getFoldersByName(String(name));
+  return it.hasNext() ? it.next() : parent.createFolder(String(name));
 }
 
 function sbCall_(body) {
@@ -47,10 +67,10 @@ function sbCall_(body) {
 
 function sbRun_(filesOnly) {
   const started = Date.now();
-  const root = root_();
-  const jsonFolder = subFolder_(root, SB_JSON_FOLDER);
-  const filesFolder = subFolder_(root, SB_FILES_FOLDER);
   const key = sbKey_();
+  const root = sbRoot_();
+  const jsonFolder = sbSub_(root, SB_JSON_FOLDER);
+  const filesFolder = sbSub_(root, SB_FILES_FOLDER);
   try {
     const snap = sbCall_({ action: "driveSnapshot", key: key });
     const day = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
@@ -81,7 +101,7 @@ function sbRun_(filesOnly) {
         const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
         if (res.getResponseCode() !== 200) continue;
         let folder = filesFolder;
-        String(f.folder || "").split("/").filter(String).forEach((p) => { folder = subFolder_(folder, p); });
+        String(f.folder || "").split("/").filter(String).forEach((p) => { folder = sbSub_(folder, p); });
         const blob = res.getBlob().setName(f.name || f.id.split("/").pop());
         if (f.mime) blob.setContentType(f.mime);
         const file = folder.createFile(blob);
