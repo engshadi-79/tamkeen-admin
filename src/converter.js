@@ -11,6 +11,8 @@
   const state = {
     mode: "upload",
     savedTemplates: [],
+    mg: { files: [], merged: null }, // الخطوة ①: ملفات الدمج ونتيجته
+    mergedData: null,                // الملف المدموج المعتمد كملف بيانات
     selectedSavedId: "",
     extraSavedIds: [], // قوالب محفوظة إضافية: يُولَّد ملف لكل قالب من نفس البيانات
     parsed: null, // { templateHeaders, dataHeaders, dataRows, truncated, templateBuffer, templateIsDocx, templateName, savedId }
@@ -129,53 +131,122 @@
 
   const readFile = (file) => file.arrayBuffer();
 
-  /* ملف بيانات واحد، أو عدة ملفات لنفس الأشخاص تُدمج في صف واحد لكل شخص */
+  /* ملف البيانات: الملف المدموج في الخطوة ① إن اعتُمد، وإلا الملف المختار هنا */
   async function readData(files) {
-    state.merge = null;
-    if (files.length === 1) return core().readDataFile(await readFile(files[0]));
-    const list = [];
-    for (const f of files) {
-      let d;
-      try { d = await core().readDataFile(await readFile(f)); } catch (e) { throw new Error(`«${f.name}»: ${e.message}`); }
-      list.push({ name: f.name.replace(/\.xlsx$/i, ""), headers: d.headers, rows: d.rows, truncated: d.truncated });
+    if (state.mergedData) {
+      // نسخة مستقلة: التحليل يضيف أعمدة محسوبة (التقدير) ولا يُمس المدموج
+      return { headers: state.mergedData.headers.slice(), rows: state.mergedData.rows.map((r) => Object.assign({}, r)), truncated: false };
     }
-    const m = core().mergeDataFiles(list);
-    state.merge = { files: list, key: m.key, keys: m.keys, stats: m.stats };
-    return { headers: m.headers, rows: m.rows, truncated: list.some((x) => x.truncated) };
+    if (files.length > 1) throw new Error("لدمج أكثر من ملف استخدم الخطوة «① دمج ملفات البيانات» أعلى الصفحة");
+    return core().readDataFile(await readFile(files[0]));
   }
 
-  /* تغيير عمود الربط: تتغيّر الصفوف وحدها، وتبقى الأعمدة والربط والقيم المكتوبة كما هي */
-  function remerge(key) {
-    const m = core().mergeDataFiles(state.merge.files, key);
-    state.merge = Object.assign(state.merge, { key: m.key, keys: m.keys, stats: m.stats });
-    state.parsed.dataRows = m.rows;
-    core().addComputedGrade({ headers: state.parsed.dataHeaders, rows: m.rows });
-    renderResult();
+  /* ===== الخطوة ①: دمج عدة ملفات لنفس الأشخاص في ملف واحد =====
+     تُرفع الملفات، ويُختار في كل ملف عمود الربط، فيظهر الملف المدموج للمراجعة والتنزيل،
+     ثم يُستخدم كملف بيانات واحد في المقارنة مع القالب. */
+  async function onMergeFiles(fileList) {
+    state.mg = { files: [], merged: null };
+    const files = [...fileList];
+    if (!files.length) { renderMerge(); return; }
+    $("mg-body").innerHTML = `<p class="conv-hint">…جارٍ قراءة ${ui.fmt(files.length)} ملفات</p>`;
+    try {
+      for (const f of files) {
+        let d;
+        try { d = await core().readDataFile(await readFile(f)); } catch (e) { throw new Error(`«${f.name}»: ${e.message}`); }
+        const file = { name: f.name.replace(/\.xlsx$/i, ""), headers: d.headers, rows: d.rows };
+        file.key = core().guessKey(file);
+        state.mg.files.push(file);
+      }
+    } catch (e) {
+      state.mg = { files: [], merged: null };
+      $("mg-body").innerHTML = `<p class="conv-error">${esc(e.message)}</p>`;
+      return;
+    }
+    renderMerge();
   }
 
-  function mergeSummary() {
-    const m = state.merge;
-    if (!m) return "";
-    const st = m.stats;
-    const files = st.perFile.map((f) => `<li><b>${esc(f.name)}</b>: ${ui.fmt(f.rows)} صفاً${f.missing
-      ? ` — <span class="warn">ليس فيه ${ui.fmt(f.missing)} شخصاً</span>: ${f.missingNames.map(esc).join("، ")}${f.missing > f.missingNames.length ? "…" : ""}`
-      : " — فيه كل الأشخاص"}</li>`).join("");
-    return `<div class="conv-section conv-merge">
-      <h3>📎 دُمجت ${ui.fmt(m.files.length)} ملفات لنفس الأشخاص</h3>
-      <label class="conv-merge-key">الربط بين الملفات بعمود
-        <select data-merge-key>${m.keys.map((k) => opt(k, k, k === m.key)).join("")}</select></label>
-      <p><b>${ui.fmt(st.total)}</b> شخصاً، منهم <b>${ui.fmt(st.inAll)}</b> موجودون في كل الملفات.</p>
-      <ul>${files}</ul>
-      ${st.conflicts ? `<p class="warn">⚠ ${ui.fmt(st.conflicts)} قيمة مختلفة للشخص نفسه بين الملفات؛ أُخذت قيمة الملف الأول.</p>` : ""}
-      ${st.noKey ? `<p class="warn">⚠ ${ui.fmt(st.noKey)} صفاً بلا قيمة في عمود الربط؛ أُضيفت كما هي دون دمج.</p>` : ""}
-    </div>`;
+  function runMerge() {
+    const mg = state.mg;
+    if (mg.files.length < 2) { ui.toast("اختر ملفين أو أكثر للدمج"); return; }
+    const noKey = mg.files.filter((f) => !f.key).map((f) => f.name);
+    if (noKey.length) { ui.toast(`اختر عمود الربط في: ${noKey.join("، ")}`); return; }
+    try { mg.merged = core().mergeDataFiles(mg.files); } catch (e) { ui.toast(e.message); return; }
+    renderMerge();
+    $("mg-result").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderMerge() {
+    const box = $("mg-body");
+    const mg = state.mg;
+    if (!mg.files.length) { box.innerHTML = ""; return; }
+    const files = mg.files.map((f, i) => `<div class="mg-file">
+        <span class="mg-name">📄 ${esc(f.name)} <small>(${ui.fmt(f.rows.length)} صفاً، ${ui.fmt(f.headers.length)} عموداً)</small></span>
+        <label>عمود الربط <select data-mg-key="${i}">${opt("", "— اختر —", !f.key)}${f.headers.map((h) => opt(h, h, h === f.key)).join("")}</select></label>
+      </div>`).join("");
+    let html = `<p class="conv-hint">اختر في كل ملف العمود الذي يحدّد الشخص (رقم الهوية عادةً)، ولو اختلف اسمه بين الملفات.</p>
+      <div class="mg-files">${files}</div>
+      <button type="button" class="btn" id="mg-run">🔗 دمج الملفات</button>`;
+    const m = mg.merged;
+    if (m) {
+      const st = m.stats;
+      const perFile = st.perFile.map((f) => `<li><b>${esc(f.name)}</b>: ${ui.fmt(f.rows)} صفاً${f.missing
+        ? ` — <span class="warn">ليس فيه ${ui.fmt(f.missing)} شخصاً</span>: ${f.missingNames.map(esc).join("، ")}${f.missing > f.missingNames.length ? "…" : ""}`
+        : " — فيه كل الأشخاص"}</li>`).join("");
+      const shown = m.rows.slice(0, 15);
+      const cell = (v) => (v == null || v === "" ? `<td class="mg-empty">—</td>` : `<td>${esc(String(v))}</td>`);
+      html += `<div class="conv-merge" id="mg-result">
+        <h3>✓ الملف المدموج: ${ui.fmt(st.total)} شخصاً · ${ui.fmt(m.headers.length)} عموداً</h3>
+        <p>منهم <b>${ui.fmt(st.inAll)}</b> موجودون في كل الملفات.</p>
+        <ul>${perFile}</ul>
+        ${st.conflicts ? `<p class="warn">⚠ ${ui.fmt(st.conflicts)} قيمة مختلفة للشخص نفسه بين الملفات؛ أُخذت قيمة الملف الأول.</p>` : ""}
+        ${st.noKey ? `<p class="warn">⚠ ${ui.fmt(st.noKey)} صفاً بلا قيمة في عمود الربط؛ أُضيفت كما هي دون دمج.</p>` : ""}
+        <div class="table-wrap mg-preview"><table>
+          <thead><tr>${m.headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+          <tbody>${shown.map((r, i) => `<tr class="${m.coverage[i] < mg.files.length ? "mg-partial" : ""}">${m.headers.map((h) => cell(r[h])).join("")}</tr>`).join("")}</tbody>
+        </table></div>
+        <p class="conv-hint">${m.rows.length > shown.length ? `تُعرض أول ${ui.fmt(shown.length)} صفاً من ${ui.fmt(m.rows.length)}، والملف المنزَّل فيه كل الصفوف. ` : ""}الصفوف الملوّنة ناقصة من ملف واحد على الأقل.</p>
+        <div class="btn-row">
+          <button type="button" class="btn secondary" id="mg-download">⬇ تنزيل الملف المدموج</button>
+          <button type="button" class="btn navy" id="mg-use">➜ استخدامه في المقارنة مع القالب</button>
+        </div>
+      </div>`;
+    }
+    box.innerHTML = html;
+  }
+
+  async function downloadMerged() {
+    const m = state.mg.merged;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("البيانات المدموجة", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+    ws.addRow(m.headers);
+    m.rows.forEach((r) => ws.addRow(m.headers.map((h) => (r[h] == null ? "" : r[h]))));
+    ws.getRow(1).font = { bold: true };
+    ws.columns.forEach((c) => { c.width = 20; });
+    const buf = await wb.xlsx.writeBuffer();
+    ui.download(`ملف مدموج - ${ui.todayISO()}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  }
+
+  function useMerged() {
+    const m = state.mg.merged;
+    state.mergedData = { headers: m.headers.slice(), rows: m.rows.map((r) => Object.assign({}, r)), count: m.rows.length };
+    $("conv-data-file").value = "";
+    renderMergedChip();
+    ui.toast("سيُستخدم الملف المدموج كملف بيانات — اختر القالب ثم اضغط «تحليل الملفين»");
+    $("conv-parse").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function renderMergedChip() {
+    const on = !!state.mergedData;
+    $("conv-merged-chip").hidden = !on;
+    $("conv-data-field").hidden = on;
+    if (on) $("conv-merged-text").textContent = `ملف البيانات: الملف المدموج (${ui.fmt(state.mergedData.count)} شخصاً، ${ui.fmt(state.mergedData.headers.length)} عموداً)`;
   }
 
   async function handleParse() {
     setError("");
     if (!librariesReady()) { setError("تعذّر تحميل مكتبات Excel/Word من مجلد vendor."); return; }
     const dataFiles = [...$("conv-data-file").files];
-    if (!dataFiles.length) { setError("اختر ملف البيانات"); return; }
+    if (!dataFiles.length && !state.mergedData) { setError("اختر ملف البيانات، أو ادمج عدة ملفات في الخطوة ①"); return; }
 
     let templateBuffer, templateIsDocx, templateName, savedId = null, templateHeaders = null;
     if (state.mode === "upload") {
@@ -343,7 +414,7 @@
     const missing = p.templateHeaders.filter((h) => !state.mapping[h]);
     const fromExtras = (state.extras || []).reduce((all, t) => all.concat(t.missing), []);
     const extra = [...new Set((state.extraFields || []).concat(fromExtras))].filter((f) => !missing.includes(f));
-    let html = mergeSummary();
+    let html = "";
     if (state.gradeFrom && Object.values(state.mapping).includes(core().GRADE_COLUMN)) {
       html += `<p class="conv-grade-note">ⓘ «التقدير» يُحسب تلقائياً من «${esc(state.gradeFrom)}»: 90 فأكثر ممتاز، 80–89 جيد جداً، 75–79 جيد، أقل من 75 راسب. ويمكن ربطه بعمود آخر من القائمة أدناه.</p>`;
     }
@@ -543,7 +614,6 @@
   function onResultChange(e) {
     const t = e.target;
     const p = state.parsed;
-    if (t.dataset.mergeKey != null) { remerge(t.value); return; }
     if (t.dataset.map != null) {
       state.mapping[p.templateHeaders[Number(t.dataset.map)]] = t.value;
       renderResult();
@@ -619,6 +689,22 @@
     $("conv-save-cancel").addEventListener("click", () => { $("conv-save-form").hidden = true; $("conv-save-toggle").hidden = false; $("conv-save-error").textContent = ""; });
     $("conv-save-btn").addEventListener("click", handleSaveTemplate);
     $("conv-parse").addEventListener("click", handleParse);
+    // الخطوة ①: دمج الملفات
+    $("mg-files").addEventListener("change", (e) => onMergeFiles(e.target.files));
+    $("mg-body").addEventListener("change", (e) => {
+      const i = e.target.dataset.mgKey;
+      if (i == null) return;
+      state.mg.files[Number(i)].key = e.target.value;
+      state.mg.merged = null; // عمود ربط جديد يحتاج دمجاً جديداً
+      renderMerge();
+    });
+    $("mg-body").addEventListener("click", (e) => {
+      if (e.target.id === "mg-run") runMerge();
+      else if (e.target.id === "mg-download") downloadMerged().catch((err) => ui.toast(err.message));
+      else if (e.target.id === "mg-use") useMerged();
+    });
+    $("conv-merged-clear").addEventListener("click", () => { state.mergedData = null; renderMergedChip(); });
+    $("conv-data-file").addEventListener("change", () => { if ($("conv-data-file").files.length) { state.mergedData = null; renderMergedChip(); } });
     $("conv-share-now").addEventListener("click", shareNow);
     $("conv-share-again").addEventListener("click", async () => {
       if (!confirm("إعادة القوالب المحذوفة من القائمة المشتركة من نسخة هذا الجهاز؟ ستظهر لكل المستخدمين من جديد.")) return;

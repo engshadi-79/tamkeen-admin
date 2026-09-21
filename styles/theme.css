@@ -547,3 +547,17 @@ body.has-trial-bar #login-screen { top: 38px; }
 .conv-merge-key select { width: auto; min-width: 180px; }
 
 .conv-grade-note { background: var(--navy-100); color: var(--navy-800); border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 700; margin: 0 0 12px; }
+
+/* الخطوة ①: دمج ملفات البيانات */
+.mg-card h3, .card > h3 { margin-top: 0; }
+.mg-files { display: grid; gap: 8px; margin: 8px 0 12px; }
+.mg-file { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--border); border-radius: 9px; background: #fafbfd; }
+.mg-name { font-weight: 700; }
+.mg-name small { color: var(--muted); font-weight: 400; }
+.mg-file label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+.mg-file select { width: auto; min-width: 180px; }
+.mg-preview { max-height: 360px; overflow: auto; margin: 10px 0; background: #fff; border-radius: 8px; }
+.mg-preview th, .mg-preview td { white-space: nowrap; font-size: 12.5px; padding: 6px 8px; }
+.mg-preview tr.mg-partial td { background: var(--warn-bg); }
+.mg-preview td.mg-empty { color: var(--muted); text-align: center; }
+.conv-merged-chip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 22px 0 12px; padding: 8px 12px; background: var(--teal-100); border-radius: 9px; font-weight: 700; font-size: 13.5px; }

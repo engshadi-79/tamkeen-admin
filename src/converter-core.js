@@ -265,30 +265,52 @@
       .map((c) => sets[0].get(c.n));
   }
 
-  function mergeDataFiles(files, key) {
-    const keys = keyCandidates(files);
-    if (!keys.length) {
-      throw new Error("لا يوجد عمود مشترك بين كل الملفات يصلح لربط الأشخاص (مثل رقم الهوية)؛ تأكد أن العمود موجود بالاسم نفسه في كل ملف");
-    }
-    const keyHeader = key && keys.includes(key) ? key : keys[0];
-    const keyNorm = normalizeHeader(keyHeader);
+  /* أفضل عمود لربط الأشخاص في ملف واحد: الهوية ثم الجوال ثم الاسم، وقيمه شبه فريدة */
+  function guessKey(file) {
+    const uniqueness = (h) => {
+      const vals = file.rows.map((r) => normalizeKeyValue(r[h])).filter(Boolean);
+      return vals.length ? new Set(vals).size / vals.length : 0;
+    };
+    const rank = (h) => { const i = KEY_HINTS.findIndex((re) => re.test(normalizeHeader(h))); return i === -1 ? KEY_HINTS.length : i; };
+    const best = file.headers
+      .map((h) => ({ h, r: rank(h), u: uniqueness(h) }))
+      .filter((c) => c.r < KEY_HINTS.length && c.u >= 0.9)
+      .sort((a, b) => a.r - b.r || b.u - a.u)[0];
+    return best ? best.h : "";
+  }
 
-    // أعمدة الناتج: كل أعمدة الملفات، والعمود المتكرر بين ملفين يصير عموداً واحداً
+  /* دمج الملفات: لكل ملف عمود ربط (f.key) ولو اختلف اسمه بين الملفات،
+     وبدونه يُبحث عن عمود مشترك بالاسم نفسه في كل الملفات */
+  function mergeDataFiles(files, key) {
+    let keys = [];
+    if (!files.every((f) => f.key)) {
+      keys = keyCandidates(files);
+      if (!keys.length) {
+        throw new Error("لا يوجد عمود مشترك بين كل الملفات يصلح لربط الأشخاص (مثل رقم الهوية)؛ اختر عمود الربط في كل ملف");
+      }
+      const k = normalizeHeader(key && keys.includes(key) ? key : keys[0]);
+      files = files.map((f) => Object.assign({}, f, { key: f.headers.find((h) => normalizeHeader(h) === k) }));
+    }
+    const keyHeader = files[0].key;
+
+    // أعمدة الناتج بترتيب الملف الأول ثم ما يزيد في البقية؛ عمود الربط في كل ملف يصبح عموداً واحداً،
+    // والعمود المتكرر بالاسم نفسه بين ملفين يصبح عموداً واحداً أيضاً
     const headers = [];
     const canon = new Map();
-    files.forEach((f) => f.headers.forEach((h) => {
+    files.forEach((f, fi) => f.headers.forEach((h) => {
+      if (fi > 0 && h === f.key) return;
       const n = normalizeHeader(h);
       if (!canon.has(n)) { canon.set(n, h); headers.push(h); }
     }));
+    const outName = (f, h) => (h === f.key ? keyHeader : canon.get(normalizeHeader(h)));
 
     const byKey = new Map();
     const people = [];
     let conflicts = 0;
     let noKey = 0;
     files.forEach((f, fi) => {
-      const fileKey = f.headers.find((h) => normalizeHeader(h) === keyNorm);
       f.rows.forEach((row) => {
-        const kv = normalizeKeyValue(row[fileKey]);
+        const kv = normalizeKeyValue(row[f.key]);
         let person = kv && byKey.get(kv);
         if (!person) {
           person = { values: {}, files: new Set() };
@@ -299,7 +321,7 @@
         f.headers.forEach((h) => {
           const v = row[h];
           if (v == null || v === "") return;
-          const out = canon.get(normalizeHeader(h));
+          const out = outName(f, h);
           const cur = person.values[out];
           if (cur == null || cur === "") person.values[out] = v;
           else if (normalizeKeyValue(cur) !== normalizeKeyValue(v)) conflicts++; // تبقى قيمة الملف الأول
@@ -316,6 +338,7 @@
     return {
       headers,
       rows: people.map((p) => p.values),
+      coverage: people.map((p) => p.files.size),
       key: keyHeader,
       keys,
       stats: { total: people.length, inAll: people.filter((p) => p.files.size === files.length).length, perFile, conflicts, noKey },
@@ -1041,7 +1064,7 @@
 
   App.converterCore = {
     MAX_ROWS, normalizeHeader, suggestColumnMapping, resolveDefaultColumn, computeGroupKey,
-    isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, generate,
+    isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, guessKey, generate,
     gradeOf, addComputedGrade, preferComputedGrade, GRADE_COLUMN,
     // للاختبار
     computeSessionDates, fillXlsxTemplate, fillDocxTemplate, extractHeadersFromDocxTable,
