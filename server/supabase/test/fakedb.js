@@ -4,7 +4,7 @@
 const PK = {
   app_users: ["username"], sessions: ["token"], resets: ["username"],
   records: ["col", "id"], deletions: ["col", "id"], counters: ["head"],
-  kv: ["key"], files: ["id"], events: ["id"],
+  kv: ["key"], files: ["id"], events: ["id"], revisions: ["id"],
 };
 
 /* الأعمدة الإلزامية بلا قيمة افتراضية في schema.sql */
@@ -17,6 +17,7 @@ const NOT_NULL = {
   counters: ["head"],
   kv: ["key", "value"],
   files: ["id", "name"],
+  revisions: ["col", "rec_id"],
 };
 
 export function makeDb() {
@@ -24,6 +25,7 @@ export function makeDb() {
   const buckets = {};
   for (const t of Object.keys(PK)) tables[t] = [];
   let eventId = 1;
+  let revId = 1;
 
   const keyOf = (table, row, cols) => (cols || PK[table]).map((c) => String(row[c])).join("\u0000");
 
@@ -33,7 +35,7 @@ export function makeDb() {
     eq(c, v) { this.filters.push((r) => String(r[c]) === String(v)); return this; }
     in(c, list) { const set = new Set(list.map(String)); this.filters.push((r) => set.has(String(r[c]))); return this; }
     gte(c, v) { this.filters.push((r) => String(r[c]) >= String(v)); return this; }
-    lt(c, v) { this.filters.push((r) => String(r[c]) < String(v)); return this; }
+    lt(c, v) { this.filters.push((r) => (typeof r[c] === "number" ? r[c] < Number(v) : String(r[c]) < String(v))); return this; }
     ilike(c, pat) { const re = new RegExp("^" + pat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$", "i"); this.filters.push((r) => re.test(String(r[c] ?? ""))); return this; }
     order(c, opts) { this._order = { c, asc: !opts || opts.ascending !== false }; return this; }
     limit(n) { this._limit = n; return this; }
@@ -58,6 +60,8 @@ export function makeDb() {
         for (const row of this.rows) {
           if (this.table === "events" && row.id === undefined) row.id = eventId++;
           if (this.table === "events" && !row.at) row.at = new Date().toISOString();
+          if (this.table === "revisions" && row.id === undefined) row.id = revId++;
+          if (this.table === "revisions" && !row.at) row.at = new Date().toISOString();
           const k = keyOf(this.table, row, cols);
           const at = rows.findIndex((r) => keyOf(this.table, r, cols) === k);
           if (at >= 0) {
@@ -76,7 +80,11 @@ export function makeDb() {
         return { data: null, error: null };
       }
       let out = rows.filter(match);
-      if (this._order) out.sort((a, b) => (String(a[this._order.c]) < String(b[this._order.c]) ? -1 : 1) * (this._order.asc ? 1 : -1));
+      if (this._order) {
+        const c = this._order.c;
+        const less = (a, b) => (typeof a[c] === "number" && typeof b[c] === "number" ? a[c] < b[c] : String(a[c]) < String(b[c]));
+        out.sort((a, b) => (less(a, b) ? -1 : 1) * (this._order.asc ? 1 : -1));
+      }
       if (this._range) out = out.slice(this._range[0], this._range[1] + 1);
       if (this._limit != null) out = out.slice(0, this._limit);
       const count = this._count ? rows.filter(match).length : null;

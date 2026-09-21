@@ -172,11 +172,13 @@
   const forgot = (username) => call("forgot", { username });
   const reset = async (username, code, password) => signedIn(await call("reset", { username, code, password }));
   const logoutAll = () => call("logoutAll");
+  const history = async (opts) => (await call("history", opts || {})).revisions || [];
+  const revert = (revId) => call("revert", { revId });
 
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
-    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay,
+    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay, history, revert,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});

@@ -166,7 +166,7 @@ check("إيقاف الحساب يُخرجه من كل الأجهزة", (await po
 
 /* ===== 11. ما ليس متاحاً على النسخة التجريبية ===== */
 console.log("\n[11] حدود النسخة التجريبية");
-check("القراءة الضوئية ترد برسالة مفهومة", (await post({ action: "ocr", token: T, data: "" })).error?.includes("غير متاحة"));
+check("القراءة الضوئية بلا مساعد ترد برسالة مفهومة", (await post({ action: "ocr", token: T, data: "" })).error?.includes("مساعد Google"));
 check("إجراء غير معروف", (await post({ action: "بلا", token: T })).error === "إجراء غير معروف");
 
 /* ===== 12. ناقل الحسابات ===== */
@@ -272,6 +272,67 @@ check("استُعيد الناقص فقط", res15.restored.tracks === 1, res15);
 const after15 = await post({ action: "syncAll", token: T, cols: { tracks: { records: [], deleted: {} } } });
 check("المفقود عاد والموجود لم يُستبدل", after15.tracks.records.some((x) => x.id === "lost1") && after15.tracks.records.find((x) => x.id === "k0").name === "مسار 0");
 check("غير المدير لا يستعيد", (await post({ action: "restoreDay", token: (await post({ action: "saveUser", token: T, user: { username: "omar15", name: "o", password: "omar1234" } }), await post({ action: "login", username: "omar15", password: "omar1234" })).token, day: day15 })).error === "هذا الإجراء للمدير فقط");
+
+/* ===== 16. سجل التعديلات والتراجع، ومساعد Google ===== */
+console.log("\n[16] سجل التعديلات والتراجع ومساعد Google");
+const ts = (m) => new Date(Date.now() + m * 1000).toISOString();
+await post({ action: "syncAll", token: T, cols: { tasks: { records: [{ id: "h1", text: "أصل", updatedAt: ts(1) }], deleted: {} } } });
+await post({ action: "syncAll", token: T, cols: { tasks: { records: [{ id: "h1", text: "معدّل", updatedAt: ts(2) }], deleted: {} } } });
+await post({ action: "syncAll", token: T, cols: { tasks: { records: [{ id: "h1", text: "معدّل", updatedAt: (globalThis.last16 = ts(3)) }], deleted: {} } } });
+let h16 = (await post({ action: "history", token: T, col: "tasks", recId: "h1" })).revisions;
+check("الإضافة والتعديل مسجّلان، ولمس الوقت وحده لا يُسجَّل", h16.length === 2 && h16[0].action === "edit" && h16[1].action === "add", h16.map((r) => r.action));
+check("التعديل يحفظ القيمة قبله وبعده", h16[0].before.text === "أصل" && h16[0].after.text === "معدّل" && h16[0].who === "شادي", h16[0]);
+
+const editId = h16[0].id;
+const rv = await post({ action: "revert", token: T, revId: editId });
+check("التراجع أعاد القيمة السابقة", rv.restored === true, rv);
+let t16 = (await post({ action: "syncAll", token: T, cols: { tasks: { records: [], deleted: {} } } })).tasks.records.find((x) => x.id === "h1");
+check("والقيد صار «أصل» بوقت جديد", t16.text === "أصل" && t16.updatedAt > globalThis.last16, t16);
+h16 = (await post({ action: "history", token: T, col: "tasks", recId: "h1" })).revisions;
+check("التراجع نفسه مسجّل ويشير إلى الأصل", h16[0].action === "revert" && h16[0].ref === editId, h16[0]);
+
+await post({ action: "syncAll", token: T, cols: { tasks: { records: [], deleted: { h1: ts(10) } } } });
+h16 = (await post({ action: "history", token: T, col: "tasks", recId: "h1" })).revisions;
+check("الحذف مسجّل بقيمته", h16[0].action === "delete" && h16[0].before.text === "أصل", h16[0]);
+await post({ action: "revert", token: T, revId: h16[0].id });
+t16 = (await post({ action: "syncAll", token: T, cols: { tasks: { records: [], deleted: {} } } })).tasks;
+check("التراجع عن الحذف أعاد القيد وأزال شاهد الحذف", t16.records.some((x) => x.id === "h1") && !t16.deleted.h1);
+
+await post({ action: "syncAll", token: T, cols: { tasks: { records: [{ id: "h2", text: "جديد", updatedAt: ts(20) }], deleted: {} } } });
+const add16 = (await post({ action: "history", token: T, col: "tasks", recId: "h2" })).revisions[0];
+await post({ action: "revert", token: T, revId: add16.id });
+t16 = (await post({ action: "syncAll", token: T, cols: { tasks: { records: [], deleted: {} } } })).tasks;
+check("التراجع عن إضافة يحذفها", !t16.records.some((x) => x.id === "h2") && !!t16.deleted.h2);
+
+await post({ action: "saveUser", token: T, user: { username: "lina16", name: "لينا", password: "lina1234" } });
+const L = (await post({ action: "login", username: "lina16", password: "lina1234" })).token;
+check("المستخدم لا يرى تعديلات غيره", (await post({ action: "history", token: L })).revisions.length === 0);
+check("ولا يتراجع عنها", (await post({ action: "revert", token: L, revId: add16.id })).error === "تستطيع التراجع عن تعديلاتك أنت فقط");
+await post({ action: "syncAll", token: L, cols: { tasks: { records: [{ id: "h3", text: "للينا", updatedAt: ts(30) }], deleted: {} } } });
+check("ويرى تعديلاته هو", (await post({ action: "history", token: L })).revisions.some((r) => r.rec_id === "h3"));
+
+// مساعد Google
+check("رابط مساعد غير صحيح لا يُحفظ", (await post({ action: "helperHello", key: "SECRET123", url: "https://evil.example/exec" })).helper === false);
+const HURL = "https://script.google.com/macros/s/AKfy-test_1/exec";
+const realFetch = globalThis.fetch;
+globalThis.fetch = async () => new Response(JSON.stringify({ error: "UNAUTHORIZED" })); // الخادم القديم لم يُحدَّث بعد
+check("رابط لا يخدم المساعد يُرفض", (await post({ action: "helperHello", key: "SECRET123", url: HURL })).helper === false);
+globalThis.fetch = async () => new Response(JSON.stringify({ ok: true, name: "مساعد Google لمساعد تمكين" }));
+check("رابط المساعد المتحقَّق منه يُحفظ", (await post({ action: "helperHello", key: "SECRET123", url: HURL })).helper === true);
+globalThis.fetch = realFetch;
+let sent16 = null;
+globalThis.fetch = async (url, init) => { sent16 = { url, body: JSON.parse(init.body) }; return new Response(JSON.stringify({ text: "نص مقروء" })); };
+const o16 = await post({ action: "ocr", token: T, data: "QUJD", mime: "application/pdf", name: "خطاب" });
+globalThis.fetch = realFetch;
+check("القراءة الضوئية تمرّ عبر المساعد بالرمز", o16.text === "نص مقروء" && sent16.url === HURL && sent16.body.key === "SECRET123" && sent16.body.action === "ocr", { o16, sent16 });
+
+check("الملخص المعطّل لا يعيد بيانات", (await post({ action: "digestData", key: "SECRET123" })).enabled === false);
+await post({ action: "syncAll", token: T, cols: { tasks: { records: [{ id: "d1", text: "مستحقة", dueDate: "2026-01-01", owner: "شادي", done: false, updatedAt: ts(40) }], deleted: {} } } });
+const dg = await post({ action: "digest", token: T, enabled: true, hour: 8 });
+check("تفعيل الملخص يُحفظ", dg.enabled === true && dg.hour === 8 && !dg.error, dg);
+const dd = await post({ action: "digestData", key: "SECRET123" });
+check("بيانات الملخص فيها المهام المستحقة", dd.enabled && dd.hour === 8 && dd.lateTasks.some((t) => t.text === "مستحقة"), dd);
+check("بيانات الملخص تحتاج الرمز", (await post({ action: "digestData", key: "x" })).error === "رمز النسخ غير صحيح");
 
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);

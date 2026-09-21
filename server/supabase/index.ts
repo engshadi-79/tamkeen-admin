@@ -45,13 +45,14 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 17;
+const VERSION = 18;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
 const BUCKET = "tamkeen";
 const BACKUP_BUCKET = "tamkeen-backups";
 const BACKUP_KEEP = 30;
+const REVISION_DAYS = 180;   // سجل التعديلات يُحتفظ به ستة أشهر
 
 /* ===== أدوات ===== */
 const enc = new TextEncoder();
@@ -375,6 +376,10 @@ async function mergeCol(col: string, incoming: any[], deleted: Record<string, st
     // المستخدم يعدّل ويحذف قيوده فقط، والمدير كل القيود (والقيد بلا صاحب للمدير)
     const mayEdit = (row: any) => !ownerRules || user.admin || (row.owner && row.owner === user.name);
 
+    // سجل التعديلات: القيمة قبل كل تعديل وبعده، لمعرفة من غيّر ماذا والتراجع عنه
+    const revs: any[] = [];
+    const body = (d: any) => { if (!d) return ""; const { updatedAt: _u, ...rest } = d; return JSON.stringify(rest); };
+
     const newTombs: any[] = [];
     for (const id of delIds) {
       const row = cur.get(id);
@@ -408,6 +413,9 @@ async function mergeCol(col: string, incoming: any[], deleted: Record<string, st
           next = { ...row.data, driveId: rec.driveId, driveLink: rec.driveLink, driveFolderId: rec.driveFolderId, drivePath: rec.drivePath, drivePending: false, updatedAt: rec.updatedAt };
         } else continue;
       }
+      if (!row || body(row.data) !== body(next)) {
+        revs.push({ col, rec_id: id, who: user.name, action: row ? "edit" : "add", before: row ? row.data : null, after: next });
+      }
       writes.push({
         col,
         id,
@@ -432,9 +440,116 @@ async function mergeCol(col: string, incoming: any[], deleted: Record<string, st
       return stamp !== undefined && stamp <= at;
     });
     for (const part of chunk(drop, 100)) await db.from("records").delete().eq("col", col).in("id", part);
+    const tombed = new Set(newTombs.map((t) => t.id));
+    for (const id of drop) {
+      const was = cur.get(id);
+      if (was && tombed.has(id)) revs.push({ col, rec_id: id, who: user.name, action: "delete", before: was.data, after: null });
+    }
+    await saveRevisions(revs);
   }
 
   return await readCol(col);
+}
+
+/* يُحفظ السجل ولا يعطّل المزامنة إن تعذّر (مثلاً قبل إنشاء الجدول) */
+async function saveRevisions(revs: any[]) {
+  for (const part of chunk(revs, 200)) {
+    const { error } = await db.from("revisions").insert(part);
+    if (error) { console.warn("revisions:", error.message); return; }
+  }
+}
+
+const REV_MISSING = "سجل التعديلات يحتاج تشغيل ملف revisions.sql في Supabase مرة واحدة";
+
+async function history(req: any, user: any) {
+  let q = db.from("revisions").select("id, at, col, rec_id, who, action, before, after, ref")
+    .order("id", { ascending: false }).limit(Math.min(200, Math.max(1, Number(req.limit) || 100)));
+  if (!user.admin) q = q.eq("who", user.name); // المستخدم يرى تعديلاته، والمدير يرى الجميع
+  if (req.col) q = q.eq("col", String(req.col));
+  if (req.recId) q = q.eq("rec_id", String(req.recId));
+  if (req.who && user.admin) q = q.eq("who", String(req.who));
+  if (req.beforeId) q = q.lt("id", Number(req.beforeId));
+  const { data, error } = await q;
+  if (error) throw new Error(/revisions/.test(error.message) ? REV_MISSING : error.message);
+  return { revisions: data || [] };
+}
+
+/* التراجع عن تعديل: يعود القيد إلى ما كان عليه قبله (أو يُحذف إن كان التعديل إضافة).
+   يُكتب بوقت جديد حتى تأخذه كل الأجهزة، ويُسجَّل التراجع نفسه فيمكن التراجع عنه أيضاً. */
+async function revert(revId: unknown, user: any) {
+  const { data: rev, error } = await db.from("revisions").select("*").eq("id", Number(revId)).maybeSingle();
+  if (error) throw new Error(/revisions/.test(error.message) ? REV_MISSING : error.message);
+  if (!rev) throw new Error("التعديل غير موجود");
+  if (!user.admin && rev.who !== user.name) throw new Error("تستطيع التراجع عن تعديلاتك أنت فقط");
+  const col = String(rev.col);
+  const id = String(rev.rec_id);
+  const { data: row } = await db.from("records").select("owner, data").eq("col", col).eq("id", id).maybeSingle();
+  // أحدث دائماً من وقت القيد الحالي، حتى لو كانت ساعة جهاز ما متقدمة
+  const curAt = Date.parse(stampOf(row?.data)) || 0;
+  const now = new Date(Math.max(Date.now(), curAt + 1)).toISOString();
+  if (!rev.before) {
+    if (row) {
+      await db.from("deletions").upsert({ col, id, at: now }, { onConflict: "col,id" });
+      await db.from("records").delete().eq("col", col).eq("id", id);
+    }
+    await saveRevisions([{ col, rec_id: id, who: user.name, action: "revert", before: row?.data ?? null, after: null, ref: rev.id }]);
+    await log(user.name, "تراجع عن إضافة", `${col}: ${id}`);
+    return { col, id, removed: true };
+  }
+  const data = { ...rev.before, updatedAt: now };
+  await db.from("deletions").delete().eq("col", col).eq("id", id);
+  const { error: e2 } = await db.from("records").upsert({
+    col, id, owner: String(data.owner || row?.owner || ""), stamp: now, data, search: searchText(data), updated_at: now,
+  }, { onConflict: "col,id" });
+  if (e2) throw new Error(e2.message);
+  await saveRevisions([{ col, rec_id: id, who: user.name, action: "revert", before: row?.data ?? null, after: data, ref: rev.id }]);
+  await log(user.name, "تراجع عن تعديل", `${col}: ${id}`);
+  return { col, id, restored: true };
+}
+
+/* ===== مساعد Google (سكربت Apps Script): القراءة الضوئية وإرسال الملخص اليومي ===== */
+const kvGet = async (key: string) => (await db.from("kv").select("value").eq("key", key).maybeSingle()).data?.value ?? null;
+const HELPER_URL = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+
+/* يُقبل رابط المساعد فقط إن كان يخدم كود المساعد فعلاً (لا الخادم القديم ولا غيره) */
+async function verifyHelper(url: string) {
+  if (!HELPER_URL.test(url)) return false;
+  try {
+    const res = await fetch(url, { redirect: "follow" });
+    const out = await res.json();
+    return typeof out?.name === "string" && out.name.includes("مساعد Google");
+  } catch { return false; }
+}
+
+async function ocrViaHelper(req: any) {
+  const url = await kvGet("helper_url");
+  if (!url) throw new Error("القراءة الضوئية تحتاج مساعد Google: حدّث سكربت Google وانشره ثم شغّل setupSupabaseBackup");
+  const res = await fetch(String(url), {
+    method: "POST",
+    headers: { "content-type": "text/plain" },
+    body: JSON.stringify({ key: Deno.env.get("BACKUP_KEY") || Deno.env.get("ADMIN_KEY") || "", action: "ocr", data: req.data, mime: req.mime, name: req.name, lang: req.lang || "ar" }),
+    redirect: "follow",
+  });
+  let out: any = null;
+  try { out = await res.json(); } catch { /* ردّ غير JSON */ }
+  if (!out) throw new Error("مساعد Google لم يرد (" + res.status + ")");
+  if (out.error) throw new Error(out.error);
+  return { text: String(out.text || "") };
+}
+
+/* بيانات الملخص اليومي: المساعد يقرّر الساعة ويرسل من Gmail */
+async function digestData() {
+  const cfg = (await kvGet("digest")) || { enabled: false, hour: 7 };
+  if (!cfg.enabled) return { enabled: false, hour: cfg.hour };
+  const reg = (await readCol("registry")).records.filter((r: any) => r && !r.deletedAt && r.type === "in" && r.dueDate && !r.done)
+    .map((r: any) => ({ number: r.number || "", subject: r.subject || "", party: r.party || "", dueDate: r.dueDate, owner: r.owner || "" }));
+  const tasks = (await readCol("tasks")).records.filter((t: any) => t && !t.done && t.dueDate)
+    .map((t: any) => ({ text: t.text || "", dueDate: t.dueDate, owner: t.owner || "" }));
+  const { data: users } = await db.from("app_users").select("name, email, admin, active");
+  return {
+    enabled: true, hour: cfg.hour, lateIn: reg, lateTasks: tasks,
+    users: (users || []).filter((u: any) => u.email && u.active !== false).map((u: any) => ({ name: u.name, email: u.email, admin: !!u.admin })),
+  };
 }
 
 /* القسم كاملاً كما تتوقعه الأداة: { records, deleted } */
@@ -590,7 +705,7 @@ async function log(who: string, action: string, details: string) {
 
 async function logRequest(user: any, req: any) {
   const a = req.action;
-  if (["ping", "status", "people", "events", "backups"].includes(a)) return;
+  if (["ping", "status", "people", "events", "backups", "history", "revert"].includes(a)) return;
   if (a === "sync") {
     const n = (req.records || []).length;
     const d = Object.keys(req.deleted || {}).length;
@@ -648,6 +763,8 @@ async function backupDaily() {
   const { data: old } = await db.storage.from(BACKUP_BUCKET).list("", { limit: 500, sortBy: { column: "name", order: "desc" } });
   const extra = (old || []).slice(BACKUP_KEEP).map((f: any) => f.name);
   if (extra.length) await db.storage.from(BACKUP_BUCKET).remove(extra);
+  const cut = new Date(Date.now() - REVISION_DAYS * 86400000).toISOString();
+  await db.from("revisions").delete().lt("at", cut);
 }
 
 /* الأيام التي لها نسخة، وعدد سجلات كل نسخة (لنافذة الاستعادة) */
@@ -761,6 +878,8 @@ Deno.serve(async (httpReq) => {
       // النسخة الخارجية على Drive: برمز النسخ لا بجلسة مستخدم
       case "driveSnapshot":
       case "driveFileUrls":
+      case "digestData":
+      case "helperHello":
       case "driveDone": {
         if (!backupKeyOk(req.key)) {
           await new Promise((r) => setTimeout(r, 1500));
@@ -768,7 +887,13 @@ Deno.serve(async (httpReq) => {
         }
         if (req.action === "driveSnapshot") return json(await driveSnapshot());
         if (req.action === "driveFileUrls") return json(await driveFileUrls(req.ids));
+        if (req.action === "digestData") return json(await digestData());
         const info = req.info && typeof req.info === "object" ? req.info : {};
+        // رابط المساعد المنشور: يُحفظ ليستعمله الخادم في القراءة الضوئية
+        const helper = String(req.url || info.helper || "");
+        const good = !!helper && (helper === (await kvGet("helper_url")) || await verifyHelper(helper));
+        if (good) await db.from("kv").upsert({ key: "helper_url", value: helper });
+        if (req.action === "helperHello") return json({ ok: true, helper: good });
         await db.from("kv").upsert({ key: "drive_backup", value: { ...info, at: new Date().toISOString() } });
         return json({ ok: true });
       }
@@ -811,8 +936,12 @@ Deno.serve(async (httpReq) => {
       case "search": return json(await search(req.q));
       case "backups": return json(await listBackups());
       case "events": return json({ events: await readLog(Number(req.days) || 3, Number(req.limit) || 300) });
-      case "ocr":
-        throw new Error("القراءة الضوئية غير متاحة على الخادم التجريبي؛ استخدمها من الخادم الأساسي.");
+      case "ocr": return json(await ocrViaHelper(req));
+      case "history": return json(await history(req, user));
+      case "revert": {
+        const r = await revert(req.revId, user);
+        return json(r);
+      }
     }
 
     if (!user.admin) return json({ error: "هذا الإجراء للمدير فقط" });
@@ -832,7 +961,10 @@ Deno.serve(async (httpReq) => {
         const hour = Math.min(23, Math.max(0, Number(req.hour) || 7));
         const value = { enabled: !!req.enabled, hour };
         await db.from("kv").upsert({ key: "digest", value });
-        if (value.enabled) throw new Error("الملخص اليومي بالبريد غير مفعّل على الخادم التجريبي؛ يحتاج مفتاح بريد (Resend).");
+        // الإرسال من مساعد Google (Gmail) كل ساعة يتحقق؛ بلا مساعد لا يصل شيء فننبّه
+        if (value.enabled && !(await kvGet("helper_url"))) {
+          return json({ ...value, warning: "حُفظ، لكن الإرسال يحتاج مساعد Google منشوراً (سكربت Google)" });
+        }
         return json(value);
       }
     }

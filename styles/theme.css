@@ -612,3 +612,20 @@ body.has-trial-bar #login-screen { top: 38px; }
 
 .conv-hint.warn { background: var(--warn-bg); color: var(--warn); padding: 8px 10px; border-radius: 8px; }
 #adm-drive { margin: 0 0 12px; }
+
+/* ===== سجل التعديلات ===== */
+.hist-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.hist-bar select, .hist-bar input { width: auto; min-width: 150px; }
+.hist-bar input { flex: 1; min-width: 180px; }
+.hist-status { color: var(--muted, #667); font-size: .85rem; }
+.hist-table td { vertical-align: top; font-size: .88rem; }
+.hist-when { white-space: nowrap; color: var(--muted, #667); }
+.hist-title { font-weight: 600; max-width: 260px; }
+.hist-detail { max-width: 360px; line-height: 1.6; }
+.hist-detail s { color: #b3261e; opacity: .8; }
+.hist-muted, .hist-more { color: var(--muted, #667); font-size: .85rem; }
+.hist-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .8rem; font-weight: 700; background: #eef1f6; white-space: nowrap; }
+.hist-tag.add { background: #e3f4e5; color: #1e6b2b; }
+.hist-tag.edit { background: #e5eefb; color: #1f3864; }
+.hist-tag.del { background: #fbe4e2; color: #9b1c12; }
+.hist-tag.rev { background: #fff2cc; color: #7a5a00; }

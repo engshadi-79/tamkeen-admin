@@ -1,4 +1,4 @@
-/* نسخة احتياطية يومية من Supabase إلى Google Drive.
+/* مساعد Google لمساعد تمكين: نسخة احتياطية يومية من Supabase إلى Drive، والقراءة الضوئية، والملخص اليومي بالبريد.
    ملف مستقل: يعمل في أي مشروع سكربت Google، جديد أو قديم، ولا يحتاج Code.gs.
    قبل التشغيل: في «إعدادات المشروع» أضف خاصية نص برمجي BACKUP_KEY قيمتها رمز المدير في Supabase.
    التشغيل مرة واحدة: اختر الدالة setupSupabaseBackup من الأعلى ثم «تشغيل» ووافق على الأذونات.
@@ -6,10 +6,14 @@
      - لقطة كاملة (كل الأقسام + الحسابات + فهرس الملفات) في «نسخ Supabase اليومية»، ويُبقى آخر 30 يوماً.
      - الملفات المرفوعة (الأرشيف والقوالب) تُنسخ مرة واحدة إلى «ملفات Supabase» بمجلداتها،
        ولا يُعاد نسخ ما نُسخ. إن طالت القائمة يكمل في دفعة بعد دقائق.
-   المجلد: «أرشيف مساعد تمكين» في جذر Drive (يُستعمل الموجود أو يُنشأ). */
+   المجلد: «أرشيف مساعد تمكين» في جذر Drive (يُستعمل الموجود أو يُنشأ).
+   القراءة الضوئية تحتاج نشر المشروع «تطبيق ويب» (نشر ← إدارة عمليات النشر ← تعديل ← إصدار جديد)،
+   ثم تشغيل setupSupabaseBackup مرة ليعرف الخادم رابطه. الملخص يُرسل من Gmail صاحب المشروع. */
 
 const SB_ROOT = "أرشيف مساعد تمكين";
 const SB_URL = "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen";
+// رابط النشر الحالي لهذا المشروع (كان الخادم القديم)؛ بعد تحديث النشر يصير رابط المساعد
+const SB_KNOWN_EXEC = "https://script.google.com/macros/s/AKfycbyvEVh6eb827Ue-sgDtQNz1bHt-9wakgLZiVD1YNN0lIRofr5Q5CbxPBs_6jqVQsLwFbg/exec";
 const SB_JSON_FOLDER = "نسخ Supabase اليومية";
 const SB_FILES_FOLDER = "ملفات Supabase";
 const SB_INDEX = "فهرس-الملفات.json";
@@ -20,11 +24,118 @@ const SB_BUDGET_MS = 4.5 * 60 * 1000; // حدّ Google لتشغيل السكرب
 function setupSupabaseBackup() {
   ScriptApp.getProjectTriggers().forEach((t) => {
     const h = t.getHandlerFunction();
-    if (h === "supabaseBackup" || h === "supabaseBackupContinue") ScriptApp.deleteTrigger(t);
+    if (h === "supabaseBackup" || h === "supabaseBackupContinue" || h === "digestTick" || h === "dailyDigest") ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger("supabaseBackup").timeBased().atHour(SB_HOUR).everyDays(1).create();
+  ScriptApp.newTrigger("digestTick").timeBased().everyHours(1).create();
+  // الخادم يتحقق من كل رابط قبل قبوله، فنجرّب المرشّحين بالترتيب
+  let helper = false;
+  for (const url of sbHelperCandidates_()) {
+    if (sbCall_({ action: "helperHello", key: sbKey_(), url: url }).helper) { helper = true; break; }
+  }
+  Logger.log(helper ? "✓ القراءة الضوئية مفعّلة عبر هذا المشروع" : "القراءة الضوئية غير مفعّلة: حدّث نشر المشروع (إصدار جديد) ثم شغّل هذه الدالة مرة أخرى");
   const r = supabaseBackup();
-  Logger.log("فُعّلت النسخة اليومية الساعة " + SB_HOUR + ":00 — أول نسخة: " + JSON.stringify(r));
+  Logger.log("فُعّلت النسخة اليومية الساعة " + SB_HOUR + ":00 والملخص يُفحص كل ساعة — آخر نسخة: " + JSON.stringify(r));
+}
+
+/* رابط النشر (/exec) إن كان المشروع منشوراً تطبيق ويب */
+function sbHelperUrl_() {
+  try {
+    const url = ScriptApp.getService().getUrl() || "";
+    return /\/exec$/.test(url) ? url : "";
+  } catch (e) { return ""; }
+}
+
+function sbHelperCandidates_() {
+  const own = PropertiesService.getScriptProperties().getProperty("HELPER_URL");
+  return [own, sbHelperUrl_(), SB_KNOWN_EXEC].filter((u, i, a) => u && a.indexOf(u) === i);
+}
+
+/* ===== طلبات الخادم إلى المساعد: القراءة الضوئية فقط، وبالرمز ===== */
+function doPost(e) {
+  let req = {};
+  try { req = JSON.parse((e && e.postData && e.postData.contents) || "{}"); } catch (err) { return sbOut_({ error: "طلب غير صالح" }); }
+  try {
+    if (String(req.key || "") !== sbKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز غير صحيح" }); }
+    if (req.action === "ocr") return sbOut_(sbOcr_(req));
+    return sbOut_({ error: "إجراء غير معروف" });
+  } catch (err) {
+    return sbOut_({ error: String(err.message || err) });
+  }
+}
+
+function doGet() {
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين" });
+}
+
+function sbOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/* قراءة ملف ممسوح: يُحوَّل إلى مستند Google مؤقت ويُستخرج نصه ثم يُحذف */
+function sbOcr_(req) {
+  if (!req.data) throw new Error("لا يوجد ملف");
+  const token = ScriptApp.getOAuthToken();
+  const boundary = "tamkeenocr" + Utilities.getUuid();
+  const meta = JSON.stringify({ name: "OCR " + (req.name || "ملف"), mimeType: "application/vnd.google-apps.document" });
+  const payload = Utilities.newBlob(
+    "--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + meta + "\r\n" +
+    "--" + boundary + "\r\nContent-Type: " + (req.mime || "application/pdf") + "\r\nContent-Transfer-Encoding: base64\r\n\r\n" + req.data + "\r\n" +
+    "--" + boundary + "--"
+  ).getBytes();
+  const up = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=" + encodeURIComponent(req.lang || "ar"), {
+    method: "post",
+    contentType: "multipart/related; boundary=" + boundary,
+    payload: payload,
+    headers: { Authorization: "Bearer " + token },
+    muteHttpExceptions: true,
+  });
+  if (up.getResponseCode() >= 300) throw new Error("تعذّرت قراءة الملف: " + up.getContentText().slice(0, 150));
+  const id = JSON.parse(up.getContentText()).id;
+  try {
+    const res = UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/files/" + id + "/export?mimeType=text/plain", {
+      headers: { Authorization: "Bearer " + token },
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() >= 300) throw new Error("تعذّر استخراج النص");
+    return { text: res.getContentText().slice(0, 20000) };
+  } finally {
+    try { DriveApp.getFileById(id).setTrashed(true); } catch (err) { /* الملف المؤقت */ }
+  }
+}
+
+/* ===== الملخص اليومي: يُفحص كل ساعة، ويُرسل مرة في اليوم في الساعة التي اختارها المدير ===== */
+function digestTick() {
+  const d = sbCall_({ action: "digestData", key: sbKey_() });
+  if (!d.enabled) return;
+  const tz = Session.getScriptTimeZone();
+  const now = new Date();
+  if (Number(Utilities.formatDate(now, tz, "H")) !== Number(d.hour)) return;
+  const today = Utilities.formatDate(now, tz, "yyyy-MM-dd");
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty("DIGEST_SENT") === today) return;
+  props.setProperty("DIGEST_SENT", today);
+  const lateIn = (d.lateIn || []).filter((r) => r.dueDate <= today);
+  const lateTasks = (d.lateTasks || []).filter((t) => t.dueDate <= today);
+  const esc = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  (d.users || []).forEach((u) => {
+    const mine = (list) => (u.admin ? list : list.filter((x) => (x.owner || "") === u.name));
+    const rows = mine(lateIn);
+    const tasks = mine(lateTasks);
+    if (!rows.length && !tasks.length) return;
+    const li = (t) => "<li>" + t + "</li>";
+    const html = '<div dir="rtl" style="font-family:Tahoma,Arial">' +
+      "<h3>مساعد تمكين: متابعة " + today + "</h3>" +
+      (rows.length ? "<p><b>وارد بحاجة إلى رد أو معالجة (" + rows.length + "):</b></p><ul>" +
+        rows.map((r) => li(esc(r.number) + " — " + esc(r.subject) + (r.party ? " (" + esc(r.party) + ")" : "") + " — حتى " + esc(r.dueDate))).join("") + "</ul>" : "") +
+      (tasks.length ? "<p><b>مهام مستحقة (" + tasks.length + "):</b></p><ul>" +
+        tasks.map((t) => li(esc(t.text) + " — حتى " + esc(t.dueDate) + (t.owner ? " — " + esc(t.owner) : ""))).join("") + "</ul>" : "") +
+      '<p><a href="https://tamkeen-admin.vercel.app/">فتح مساعد تمكين</a></p>' +
+      '<p style="color:#5f6b7d;font-size:12px">رسالة تلقائية من مساعد تمكين الإداري.</p></div>';
+    try {
+      MailApp.sendEmail({ to: u.email, subject: "مساعد تمكين: " + (rows.length + tasks.length) + " بند يحتاج متابعة", htmlBody: html, name: "مساعد تمكين" });
+    } catch (err) { console.warn("تعذّر الإرسال إلى " + u.email + ": " + err.message); }
+  });
 }
 
 function supabaseBackup() { return sbRun_(false); }
@@ -117,6 +228,7 @@ function sbRun_(filesOnly) {
     const info = {
       ok: true, day: day, records: records, users: (snap.users || []).length,
       filesTotal: Object.keys(index).length, filesNew: added, pending: pending, folder: root.getUrl(),
+      helper: sbHelperUrl_(),
     };
     sbCall_({ action: "driveDone", key: key, info: info });
     return info;

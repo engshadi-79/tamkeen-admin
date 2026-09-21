@@ -17,6 +17,7 @@
     { id: "rtl", label: "تصحيح اتجاه Word" },
     { id: "converter", label: "تحويل ملف حسب قالب" },
     { id: "hospitality", label: "كشف توزيع الضيافة" },
+    { id: "history", label: "سجل التعديلات" },
     { id: "tasks", label: "المهام والمتابعات" },
   ];
 
@@ -406,7 +407,7 @@
   async function saveDigest() {
     try {
       const r = await App.cloud.digest($("adm-digest-on").checked, Number($("adm-digest-hour").value));
-      ui.toast(r.enabled ? `الملخص اليومي مفعّل الساعة ${String(r.hour).padStart(2, "0")}:00` : "أُوقف الملخص اليومي");
+      ui.toast(r.warning || (r.enabled ? `الملخص اليومي مفعّل الساعة ${String(r.hour).padStart(2, "0")}:00` : "أُوقف الملخص اليومي"));
     } catch (e) { ui.toast(e.message); }
   }
 

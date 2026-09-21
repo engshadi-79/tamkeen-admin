@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=125">
+  <link rel="stylesheet" href="styles/theme.css?v=126">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -57,6 +57,7 @@
         <li><button data-view="converter"><span class="ico">⇄</span>تحويل ملف حسب قالب</button></li>
         <li><button data-view="admin" data-admin-only hidden><span class="ico">⚙</span>لوحة التحكم</button></li>
         <li><button data-view="hospitality"><span class="ico">☕</span>كشف توزيع الضيافة</button></li>
+        <li><button data-view="history"><span class="ico">🕘</span>سجل التعديلات</button></li>
         <li><button data-view="tasks"><span class="ico">☑</span>المهام والمتابعات</button></li>
       </ul>
       <div class="sidebar-foot">
@@ -609,6 +610,29 @@
         </div>
       </section>
 
+      <!-- ===== سجل التعديلات ===== -->
+      <section class="view" id="view-history">
+        <div class="page-head">
+          <div><h2>سجل التعديلات</h2><p>كل إضافة وتعديل وحذف في الأقسام: من فعله ومتى وما الذي تغيّر. زر «تراجع» يعيد القيد كما كان قبل التعديل، ويصل التراجع إلى كل المستخدمين.</p></div>
+          <div class="btn-row no-print"><button class="btn secondary" id="hist-refresh">🔄 تحديث</button></div>
+        </div>
+        <div class="card">
+          <div class="hist-bar">
+            <select id="hist-col" aria-label="القسم"></select>
+            <span id="hist-who-wrap"><select id="hist-who" aria-label="المستخدم"><option value="">كل المستخدمين</option></select></span>
+            <input type="search" id="hist-q" placeholder="بحث باسم القيد أو المستخدم…">
+            <span class="hist-status" id="hist-status"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="hist-table">
+              <thead><tr><th>الوقت</th><th>المستخدم</th><th>القسم</th><th>القيد</th><th>العملية</th><th>ما الذي تغيّر</th><th></th></tr></thead>
+              <tbody id="hist-body"></tbody>
+            </table>
+          </div>
+          <div class="btn-row" style="justify-content:center;margin-top:10px"><button class="btn secondary" id="hist-more" hidden>تحميل الأقدم</button></div>
+        </div>
+      </section>
+
       <section class="view" id="view-tasks">
         <div class="page-head">
           <div><h2>المهام والمتابعات</h2><p id="task-counts"></p></div>
@@ -1029,41 +1053,42 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=125"></script>
-  <script src="src/ui.js?v=125"></script>
-  <script src="src/templates.js?v=125"></script>
-  <script src="src/tracks.js?v=125"></script>
-  <script src="src/tasks.js?v=125"></script>
-  <script src="src/dashboard.js?v=125"></script>
-  <script src="src/letterhead-docx.js?v=125"></script>
-  <script src="src/docx.js?v=125"></script>
-  <script src="src/ai.js?v=125"></script>
-  <script src="src/doc-render.js?v=125"></script>
-  <script src="src/files-store.js?v=125"></script>
-  <script src="src/shared.js?v=125"></script>
-  <script src="src/cloud.js?v=125"></script>
-  <script src="src/drive.js?v=125"></script>
-  <script src="src/drive-ui.js?v=125"></script>
-  <script src="src/rtl-fixer.js?v=125"></script>
-  <script src="src/rtl-page.js?v=125"></script>
-  <script src="src/profile.js?v=125"></script>
-  <script src="src/admin.js?v=125"></script>
-  <script src="src/roster.js?v=125"></script>
-  <script src="src/registry.js?v=125"></script>
-  <script src="src/charts.js?v=125"></script>
-  <script src="src/ai-assist.js?v=125"></script>
-  <script src="src/meetings.js?v=125"></script>
-  <script src="src/report.js?v=125"></script>
-  <script src="src/letters.js?v=125"></script>
+  <script src="src/storage.js?v=126"></script>
+  <script src="src/ui.js?v=126"></script>
+  <script src="src/templates.js?v=126"></script>
+  <script src="src/tracks.js?v=126"></script>
+  <script src="src/tasks.js?v=126"></script>
+  <script src="src/dashboard.js?v=126"></script>
+  <script src="src/letterhead-docx.js?v=126"></script>
+  <script src="src/docx.js?v=126"></script>
+  <script src="src/ai.js?v=126"></script>
+  <script src="src/doc-render.js?v=126"></script>
+  <script src="src/files-store.js?v=126"></script>
+  <script src="src/shared.js?v=126"></script>
+  <script src="src/cloud.js?v=126"></script>
+  <script src="src/drive.js?v=126"></script>
+  <script src="src/drive-ui.js?v=126"></script>
+  <script src="src/rtl-fixer.js?v=126"></script>
+  <script src="src/rtl-page.js?v=126"></script>
+  <script src="src/profile.js?v=126"></script>
+  <script src="src/admin.js?v=126"></script>
+  <script src="src/roster.js?v=126"></script>
+  <script src="src/registry.js?v=126"></script>
+  <script src="src/charts.js?v=126"></script>
+  <script src="src/ai-assist.js?v=126"></script>
+  <script src="src/meetings.js?v=126"></script>
+  <script src="src/report.js?v=126"></script>
+  <script src="src/letters.js?v=126"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=125"></script>
-  <script src="src/converter-store.js?v=125"></script>
-  <script src="src/converter.js?v=125"></script>
+  <script src="src/converter-core.js?v=126"></script>
+  <script src="src/converter-store.js?v=126"></script>
+  <script src="src/converter.js?v=126"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=125"></script>
-  <script src="src/realtime.js?v=125"></script>
-  <script src="src/app.js?v=125"></script>
+  <script src="src/hospitality.js?v=126"></script>
+  <script src="src/history.js?v=126"></script>
+  <script src="src/realtime.js?v=126"></script>
+  <script src="src/app.js?v=126"></script>
 </body>
 </html>

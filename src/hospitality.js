@@ -362,5 +362,5 @@
     $("hos-rows-modal").addEventListener("click", (e) => { if (e.target.id === "hos-rows-modal") e.currentTarget.classList.remove("open"); });
   }
 
-  App.hospitality = { init, render, workdays, printSheet };
+  App.hospitality = { init, render, workdays, printSheet, rows: rowsDef };
 })(window.App = window.App || {});
