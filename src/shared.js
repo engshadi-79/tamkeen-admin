@@ -5,9 +5,9 @@
   const { store, ui } = App;
   const SNAP_KEY = "tamkeen-admin:sync2";
   const SETTINGS_KEYS = ["registrySettings", "reportSettings", "rosterMeta", "aiSettings", "signer", "signerTitle"];
-  const COLS = ["tracks", "tasks", "meetings", "customTemplates", "roster", "settings"];
+  const COLS = ["tracks", "tasks", "meetings", "customTemplates", "roster", "settings", "convTemplates"];
   let syncing = false, again = false, timer = null, people = [];
-  const LABELS = { tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات" };
+  const LABELS = { tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات", convTemplates: "قوالب التحويل" };
   const confirmedWipe = {}; // أقسام وافق المستخدم على حذفها الجماعي من هذا الجهاز
   const blocked = {};
 
@@ -171,6 +171,7 @@
     if (active("meetings") && App.meetings.isIdle && App.meetings.isIdle()) App.meetings.render();
     if (active("letters") && App.letters.refreshTemplates) App.letters.refreshTemplates();
     if (active("roster")) App.roster.render();
+    if (active("converter") && App.converter.refresh) App.converter.refresh();
   }
 
   /* أسماء المستخدمين لاختيار المسؤول عن المهام والقرارات */

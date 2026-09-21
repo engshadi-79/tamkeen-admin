@@ -103,7 +103,8 @@
       templateIsDocx = core().isDocxName(templateFile.name);
       templateName = templateFile.name.replace(/\.[^.]+$/, "") || "converted";
     } else {
-      const saved = state.selectedSavedId && (await store().get(state.selectedSavedId));
+      let saved;
+      try { saved = state.selectedSavedId && (await store().get(state.selectedSavedId)); } catch (e) { setError(e.message); return; }
       if (!saved) { setError("اختر قالباً محفوظاً"); return; }
       templateBuffer = await saved.file.arrayBuffer();
       templateIsDocx = saved.format === "docx";
@@ -201,7 +202,7 @@
       $("conv-save-name").value = "";
       state.selectedSavedId = id;
       await refreshSaved();
-      ui.toast("تم حفظ القالب على هذا الجهاز");
+      ui.toast("حُفظ القالب، ويظهر لكل المستخدمين");
     } catch (e) {
       console.error(e);
       errBox.textContent = e && e.message && /[؀-ۿ]/.test(e.message) ? e.message : "تعذّر العثور على صف عناوين في هذا الملف";
@@ -220,8 +221,10 @@
   }
 
   async function handleDownloadSaved() {
-    const t = state.selectedSavedId && (await store().get(state.selectedSavedId));
-    if (t) ui.download(`${t.name}.${t.format}`, t.file);
+    try {
+      const t = state.selectedSavedId && (await store().get(state.selectedSavedId));
+      if (t) ui.download(`${t.name}.${t.format}`, t.file);
+    } catch (e) { ui.toast(e.message); }
   }
 
   /* ===== قسم الربط والخيارات ===== */
@@ -538,5 +541,5 @@
     });
   }
 
-  App.converter = { init, render: renderSource };
+  App.converter = { init, render: renderSource, refresh: refreshSaved };
 })(window.App = window.App || {});

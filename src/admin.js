@@ -32,7 +32,7 @@
   let info = {};
 
   const viewLabel = (id) => (VIEWS.find((v) => v.id === id) || {}).label || id;
-  const LABEL = { registry: "الوارد والصادر", tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "المستفيدون", settings: "الإعدادات" };
+  const LABEL = { registry: "الوارد والصادر", tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "المستفيدون", settings: "الإعدادات", convTemplates: "قوالب التحويل" };
 
   async function load() {
     if (!App.profile.isAdmin()) return;
@@ -318,7 +318,23 @@
           if (failed.length >= 5 && failed.length === done) throw new Error("فشل نسخ أول 5 ملفات كلها، فأُوقف النقل حتى يُعالج السبب");
         }
       }
-      moveLog(`${failed.length ? "⚠" : "✓"} المرفقات: نُسخ ${ui.fmt(withFiles.length - failed.length)} من ${ui.fmt(withFiles.length)}`, failed.length ? "warn" : "ok");
+      const regFailed = failed.length;
+      // ملفات قوالب التحويل المشتركة
+      const tpls = (store.get().convTemplates || []).filter((t) => t.fileId);
+      for (const t of tpls) {
+        if (map[t.fileId]) continue;
+        try {
+          const f = await App.cloud.download(t.fileId);
+          const up = await remote("upload", { name: `${t.name}.${t.format === "docx" ? "docx" : "xlsx"}`, mime: f.blob.type || "application/octet-stream", path: ["قوالب التحويل"], data: await App.cloud.toBase64(f.blob) });
+          map[t.fileId] = { id: up.id, link: up.link };
+          saveMap();
+        } catch (e) {
+          failed.push(t);
+          moveLog(`✗ قالب «${t.name}»: ${e.message}`, "bad");
+        }
+      }
+      if (tpls.length) moveLog(`✓ ملفات القوالب: ${ui.fmt(tpls.filter((t) => map[t.fileId]).length)} من ${ui.fmt(tpls.length)}`, "ok");
+      moveLog(`${regFailed ? "⚠" : "✓"} المرفقات: نُسخ ${ui.fmt(withFiles.length - regFailed)} من ${ui.fmt(withFiles.length)}`, failed.length ? "warn" : "ok");
 
       // 3) البيانات: القيود تشير إلى النسخ الجديدة، وكل قسم يصبح نسخة مطابقة
       $("mv-step").textContent = "البيانات…";
@@ -328,6 +344,8 @@
       });
       const cols = App.shared.collect();
       cols.registry = { records: registry };
+      // القوالب تشير إلى نسخ ملفاتها على الخادم الجديد
+      if (cols.convTemplates) cols.convTemplates.records = cols.convTemplates.records.map((t) => (t.fileId && map[t.fileId] ? Object.assign({}, t, { fileId: map[t.fileId].id }) : t));
       const ad = await remote("adopt", { cols, replace: true });
       Object.keys(ad.adopted || {}).forEach((k) => {
         if (ad.adopted[k] || (ad.removed || {})[k]) moveLog(`✓ ${LABEL[k] || k}: ${ui.fmt(ad.adopted[k])}${(ad.removed || {})[k] ? ` (وحُذف ${ui.fmt(ad.removed[k])} زائداً)` : ""}`, "ok");
