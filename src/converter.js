@@ -452,8 +452,45 @@
     const noKey = mg.files.filter((f) => !f.key).map((f) => f.name);
     if (noKey.length) { ui.toast(`اختر عمود الربط في: ${noKey.join("، ")}`); return; }
     try { mg.merged = core().mergeDataFiles(mg.files); } catch (e) { ui.toast(e.message); return; }
+    mg.hidden = new Set();
     renderMerge();
     $("mg-result").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  /* الحقول المختارة في الملف المدموج (يُحفظ المستبعَد، والترتيب ترتيب الدمج) */
+  const mgCols = () => state.mg.merged.headers.filter((h) => !(state.mg.hidden || new Set()).has(h));
+  const mgColCount = () => {
+    const all = state.mg.merged.headers.length;
+    const n = mgCols().length;
+    return n === all ? `كل الحقول (${ui.fmt(all)})` : `${ui.fmt(n)} حقلاً من ${ui.fmt(all)}`;
+  };
+
+  function mgPreview() {
+    const m = state.mg.merged;
+    const cols = mgCols();
+    if (!cols.length) return `<p class="warn">لم تختر أي حقل.</p>`;
+    const shown = m.rows.slice(0, 15);
+    const cell = (v) => (v == null || v === "" ? `<td class="mg-empty">—</td>` : `<td>${esc(String(v))}</td>`);
+    return `<div class="table-wrap mg-preview"><table>
+        <thead><tr>${cols.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+        <tbody>${shown.map((r, i) => `<tr class="${m.coverage[i] < state.mg.files.length ? "mg-partial" : ""}">${cols.map((h) => cell(r[h])).join("")}</tr>`).join("")}</tbody>
+      </table></div>
+      <p class="conv-hint">${m.rows.length > shown.length ? `تُعرض أول ${ui.fmt(shown.length)} صفاً من ${ui.fmt(m.rows.length)}، والملف المنزَّل فيه كل الصفوف. ` : ""}الصفوف الملوّنة ناقصة من ملف واحد على الأقل.</p>`;
+  }
+
+  function mgFieldPicker() {
+    const m = state.mg.merged;
+    const hidden = state.mg.hidden || new Set();
+    // من أي ملف جاء كل حقل: يساعد على الاختيار عند تشابه الأسماء
+    const norm = core().normalizeHeader;
+    const origin = (h) => state.mg.files.filter((f) => f.headers.some((x) => x === h || norm(x) === norm(h) || x === f.key && h === m.key)).map((f) => f.name);
+    return `<div class="conv-grade-note conv-filter">
+        <b>🧩 الحقول في الملف المدموج</b>
+        <div class="conv-filter-list">${m.headers.map((h) => `<label class="conv-check" title="${esc(origin(h).join("، "))}">
+            <input type="checkbox" data-mg-col="${esc(h)}" ${hidden.has(h) ? "" : "checked"}> ${esc(h)}${h === m.key ? " <small>(الربط)</small>" : ""}
+          </label>`).join("")}</div>
+        <div><button type="button" class="conv-link" data-mg-all>تحديد الكل</button> · <button type="button" class="conv-link" data-mg-none>إلغاء الكل</button> — <b id="mg-col-count">${mgColCount()}</b></div>
+      </div>`;
   }
 
   function renderMerge() {
@@ -473,19 +510,14 @@
       const perFile = st.perFile.map((f) => `<li><b>${esc(f.name)}</b>: ${ui.fmt(f.rows)} صفاً${f.missing
         ? ` — <span class="warn">ليس فيه ${ui.fmt(f.missing)} شخصاً</span>: ${f.missingNames.map(esc).join("، ")}${f.missing > f.missingNames.length ? "…" : ""}`
         : " — فيه كل الأشخاص"}</li>`).join("");
-      const shown = m.rows.slice(0, 15);
-      const cell = (v) => (v == null || v === "" ? `<td class="mg-empty">—</td>` : `<td>${esc(String(v))}</td>`);
       html += `<div class="conv-merge" id="mg-result">
         <h3>✓ الملف المدموج: ${ui.fmt(st.total)} شخصاً · ${ui.fmt(m.headers.length)} عموداً</h3>
         <p>منهم <b>${ui.fmt(st.inAll)}</b> موجودون في كل الملفات.</p>
         <ul>${perFile}</ul>
         ${st.conflicts ? `<p class="warn">⚠ ${ui.fmt(st.conflicts)} قيمة مختلفة للشخص نفسه بين الملفات؛ أُخذت قيمة الملف الأول.</p>` : ""}
         ${st.noKey ? `<p class="warn">⚠ ${ui.fmt(st.noKey)} صفاً بلا قيمة في عمود الربط؛ أُضيفت كما هي دون دمج.</p>` : ""}
-        <div class="table-wrap mg-preview"><table>
-          <thead><tr>${m.headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
-          <tbody>${shown.map((r, i) => `<tr class="${m.coverage[i] < mg.files.length ? "mg-partial" : ""}">${m.headers.map((h) => cell(r[h])).join("")}</tr>`).join("")}</tbody>
-        </table></div>
-        <p class="conv-hint">${m.rows.length > shown.length ? `تُعرض أول ${ui.fmt(shown.length)} صفاً من ${ui.fmt(m.rows.length)}، والملف المنزَّل فيه كل الصفوف. ` : ""}الصفوف الملوّنة ناقصة من ملف واحد على الأقل.</p>
+        ${mgFieldPicker()}
+        <div id="mg-preview-box">${mgPreview()}</div>
         <div class="btn-row">
           <button type="button" class="btn secondary" id="mg-download">⬇ تنزيل الملف المدموج</button>
           <button type="button" class="btn navy" id="mg-use">➜ استخدامه في المقارنة مع القالب</button>
@@ -497,10 +529,12 @@
 
   async function downloadMerged() {
     const m = state.mg.merged;
+    const cols = mgCols();
+    if (!cols.length) { ui.toast("اختر حقلاً واحداً على الأقل"); return; }
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("البيانات المدموجة", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
-    ws.addRow(m.headers);
-    m.rows.forEach((r) => ws.addRow(m.headers.map((h) => (r[h] == null ? "" : r[h]))));
+    ws.addRow(cols);
+    m.rows.forEach((r) => ws.addRow(cols.map((h) => (r[h] == null ? "" : r[h]))));
     ws.getRow(1).font = { bold: true };
     ws.columns.forEach((c) => { c.width = 20; });
     const buf = await wb.xlsx.writeBuffer();
@@ -509,7 +543,10 @@
 
   function useMerged() {
     const m = state.mg.merged;
-    state.mergedData = { headers: m.headers.slice(), rows: m.rows.map((r) => Object.assign({}, r)), count: m.rows.length };
+    const cols = mgCols();
+    if (!cols.length) { ui.toast("اختر حقلاً واحداً على الأقل"); return; }
+    const pick = (r) => { const o = {}; cols.forEach((h) => { o[h] = r[h]; }); return o; };
+    state.mergedData = { headers: cols.slice(), rows: m.rows.map(pick), count: m.rows.length };
     $("conv-data-file").value = "";
     renderMergedChip();
     ui.toast("سيُستخدم الملف المدموج كملف بيانات — اختر القالب ثم اضغط «تحليل الملفين»");
@@ -1025,6 +1062,13 @@
     });
     renderFixed();
     $("mg-body").addEventListener("change", (e) => {
+      const col = e.target.dataset.mgCol;
+      if (col != null) {
+        if (e.target.checked) state.mg.hidden.delete(col); else state.mg.hidden.add(col);
+        $("mg-col-count").textContent = mgColCount();
+        $("mg-preview-box").innerHTML = mgPreview();
+        return;
+      }
       const i = e.target.dataset.mgKey;
       if (i == null) return;
       state.mg.files[Number(i)].key = e.target.value;
@@ -1032,6 +1076,8 @@
       renderMerge();
     });
     $("mg-body").addEventListener("click", (e) => {
+      if (e.target.closest("[data-mg-all]")) { state.mg.hidden = new Set(); renderMerge(); return; }
+      if (e.target.closest("[data-mg-none]")) { state.mg.hidden = new Set(state.mg.merged.headers); renderMerge(); return; }
       if (e.target.id === "mg-run") runMerge();
       else if (e.target.id === "mg-download") downloadMerged().catch((err) => ui.toast(err.message));
       else if (e.target.id === "mg-use") useMerged();
