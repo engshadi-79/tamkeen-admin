@@ -334,6 +334,23 @@ const dd = await post({ action: "digestData", key: "SECRET123" });
 check("بيانات الملخص فيها المهام المستحقة", dd.enabled && dd.hour === 8 && dd.lateTasks.some((t) => t.text === "مستحقة"), dd);
 check("بيانات الملخص تحتاج الرمز", (await post({ action: "digestData", key: "x" })).error === "رمز النسخ غير صحيح");
 
+/* ===== 18. المرفقات القديمة على Drive ===== */
+console.log("\n[18] المرفقات القديمة على Drive");
+{
+  const DRIVE_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz012345";
+  const realF = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url, init) => { calls++; const b = JSON.parse(init.body); return new Response(JSON.stringify(b.action === "driveFile" && b.id === DRIVE_ID ? { name: "كشف.pdf", mime: "application/pdf", data: Buffer.from("PDF!").toString("base64") } : { error: "x" })); };
+  const f18 = await post({ action: "file", token: T, id: DRIVE_ID });
+  check("الملف القديم يُجلب من Drive عبر المساعد", f18.name === "كشف.pdf" && Buffer.from(f18.data, "base64").toString() === "PDF!", f18);
+  const f18b = await post({ action: "file", token: T, id: DRIVE_ID });
+  check("والمرة الثانية من Supabase بلا Drive", f18b.name === "كشف.pdf" && calls === 1, { calls });
+  check("النسخ المسبق يعرف أنه منسوخ", (await post({ action: "legacyCopy", token: T, id: DRIVE_ID })).copied === false);
+  check("معرّف Supabase لا يُعامل كقديم", (await post({ action: "legacyCopy", token: T, id: "f/2026-09/x.pdf" })).skipped === true);
+  check("ملف مفقود فعلاً يرد برسالة واضحة", (await post({ action: "file", token: T, id: "f/none.pdf" })).error === "الملف غير موجود على الخادم");
+  globalThis.fetch = realF;
+}
+
 /* ===== 17. الإحالة في الوارد ===== */
 console.log("\n[17] الإحالة في الوارد");
 const A = (await post({ action: "login", username: "lina16", password: "lina1234" })).token;

@@ -174,11 +174,12 @@
   const logoutAll = () => call("logoutAll");
   const history = async (opts) => (await call("history", opts || {})).revisions || [];
   const revert = (revId) => call("revert", { revId });
+  const legacyCopy = (id) => call("legacyCopy", { id });
 
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
-    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay, history, revert,
+    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay, history, revert, legacyCopy,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});

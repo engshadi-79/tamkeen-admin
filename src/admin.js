@@ -54,6 +54,9 @@
       $("adm-backups").hidden = !info.folder;
       $("adm-restore").hidden = !info.folder && !info.restore; // Supabase يعلن الاستعادة صراحة
       renderDrive(info);
+      const legacy = legacyRecords().length;
+      $("adm-legacy").hidden = !legacy || !info.restore;
+      $("adm-legacy").textContent = `📥 نسخ مرفقات Drive القديمة (${ui.fmt(legacy)})`;
       $("adm-move").hidden = App.cloud.settings().url === MOVE_TARGET;
       $("adm-digest-on").checked = !!(info.digest || {}).enabled;
       $("adm-digest-hour").value = String((info.digest || {}).hour || 7);
@@ -231,6 +234,37 @@
       renderStats();
     } catch (e) { ui.toast(e.message); }
     $("adm-adopt").disabled = false;
+  }
+
+  /* ===== مرفقات ما زالت تشير إلى Google Drive (من الخادم القديم) =====
+     الخادم يجلب كل ملف عبر مساعد Google ويحفظ نسخته، فلا يعود الاعتماد على Drive. القيود لا تتغيّر. */
+  const LEGACY = /^[A-Za-z0-9_-]{20,}$/;
+  const legacyRecords = () => (store.get().registry || []).filter((r) => r.driveId && LEGACY.test(r.driveId) && !r.deletedAt);
+
+  async function copyLegacy() {
+    const list = legacyRecords();
+    if (!list.length) { ui.toast("لا توجد مرفقات قديمة"); return; }
+    if (!confirm(`نسخ ${list.length} مرفقاً من Google Drive إلى Supabase؟\nقد يستغرق دقائق، واترك الصفحة مفتوحة.`)) return;
+    const btn = $("adm-legacy");
+    btn.disabled = true;
+    let done = 0, fresh = 0;
+    const failed = [];
+    for (const r of list) {
+      btn.textContent = `📥 جارٍ النسخ ${ui.fmt(done + 1)} من ${ui.fmt(list.length)}…`;
+      try {
+        const res = await App.cloud.legacyCopy(r.driveId);
+        if (res.copied) fresh++;
+      } catch (e) {
+        failed.push(`${r.number || r.fileName || r.driveId}: ${e.message}`);
+        if (/حدّث سكربت Google|مساعد Google/.test(e.message)) { failed.push("توقّف النسخ: " + e.message); break; }
+      }
+      done++;
+    }
+    btn.disabled = false;
+    btn.textContent = `📥 نسخ مرفقات Drive القديمة (${ui.fmt(list.length)})`;
+    if (failed.length) {
+      alert(`نُسخ ${fresh} ملفاً جديداً، وتعذّر ${failed.length}:\n\n${failed.slice(0, 15).join("\n")}${failed.length > 15 ? "\n…" : ""}`);
+    } else ui.toast(`✓ كل المرفقات (${ui.fmt(list.length)}) صارت على Supabase — ${ui.fmt(fresh)} نُسخ الآن`);
   }
 
   /* استعادة من النسخ الاحتياطية اليومية — تُضيف الناقص ولا تحذف شيئاً */
@@ -431,6 +465,7 @@
     $("mv-run").addEventListener("click", runMove);
     $("mv-cancel").addEventListener("click", () => $("mv-modal").classList.remove("open"));
     $("adm-restore").addEventListener("click", openRestore);
+    $("adm-legacy").addEventListener("click", copyLegacy);
     $("adm-restore-run").addEventListener("click", runRestore);
     $("adm-restore-cancel").addEventListener("click", () => $("adm-restore-modal").classList.remove("open"));
     $("adm-import").addEventListener("click", () => $("adm-import-file").click());

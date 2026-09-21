@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 19;
+const VERSION = 20;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -682,9 +682,47 @@ async function fileOf(id: unknown) {
   const path = String(id || "");
   const { data: meta } = await db.from("files").select("name, mime").eq("id", path).maybeSingle();
   const { data, error } = await db.storage.from(BUCKET).download(path);
-  if (error || !data) throw new Error("الملف غير موجود على الخادم التجريبي (المرفقات القديمة ما زالت على Drive)");
-  const bytes = new Uint8Array(await data.arrayBuffer());
-  return { name: meta?.name || path.split("/").pop(), mime: meta?.mime || data.type, data: b64(bytes) };
+  if (!error && data) {
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    return { name: meta?.name || path.split("/").pop(), mime: meta?.mime || data.type, data: b64(bytes) };
+  }
+  // قيد يشير إلى ملف على Drive (من الخادم القديم): يُجلب عبر مساعد Google ويُحفظ هنا
+  if (LEGACY_ID.test(path)) return await legacyFile(path, true);
+  throw new Error("الملف غير موجود على الخادم");
+}
+
+/* ===== المرفقات القديمة على Google Drive =====
+   معرّف Drive حروف لاتينية وأرقام بلا «/»، ومعرّفات Supabase تبدأ بـ f/.
+   النسخة المحفوظة هنا مفتاحها legacy/<معرّف Drive>، فلا يتغيّر شيء في القيود نفسها. */
+const LEGACY_ID = /^[A-Za-z0-9_-]{20,}$/;
+
+async function legacyFile(driveId: string, withData: boolean) {
+  const key = `legacy/${driveId}`;
+  const { data: meta } = await db.from("files").select("name, mime").eq("id", key).maybeSingle();
+  if (meta) {
+    if (!withData) return { ok: true, copied: false };
+    const { data } = await db.storage.from(BUCKET).download(key);
+    if (data) return { name: meta.name, mime: meta.mime, data: b64(new Uint8Array(await data.arrayBuffer())) };
+  }
+  const url = await kvGet("helper_url");
+  if (!url) throw new Error("الملف على Google Drive، وجلبه يحتاج مساعد Google");
+  const res = await fetch(String(url), {
+    method: "POST",
+    headers: { "content-type": "text/plain" },
+    body: JSON.stringify({ key: Deno.env.get("BACKUP_KEY") || Deno.env.get("ADMIN_KEY") || "", action: "driveFile", id: driveId }),
+    redirect: "follow",
+  });
+  let out: any = null;
+  try { out = await res.json(); } catch { /* ردّ غير JSON */ }
+  if (!out) throw new Error("مساعد Google لم يرد (" + res.status + ")");
+  if (out.error) throw new Error(/إجراء غير معروف/.test(out.error) ? "حدّث سكربت Google (إصدار جديد) ليجلب الملفات القديمة من Drive" : out.error);
+  const bytes = unb64(String(out.data || ""));
+  const mime = String(out.mime || "application/octet-stream");
+  const { error } = await db.storage.from(BUCKET).upload(key, bytes, { contentType: mime, upsert: true });
+  if (!error) {
+    await db.from("files").upsert({ id: key, name: String(out.name || driveId), mime, size: bytes.length, folder: "من Drive", owner: "" }, { onConflict: "id" });
+  }
+  return withData ? { name: String(out.name || driveId), mime, data: String(out.data || "") } : { ok: true, copied: !error, name: out.name };
 }
 
 /* بحث داخل أسماء الملفات ومحتوى القيود (بدل فهرسة Drive لمحتوى الملفات) */
@@ -935,6 +973,11 @@ Deno.serve(async (httpReq) => {
       }
       case "upload": return json(await upload(req, user));
       case "file": return json(await fileOf(req.id));
+      case "legacyCopy": {
+        const id = String(req.id || "");
+        if (!LEGACY_ID.test(id)) return json({ ok: true, skipped: true });
+        return json(await legacyFile(id, false));
+      }
       case "reserve": return json(await reserve(req.head, req.count));
       case "search": return json(await search(req.q));
       case "backups": return json(await listBackups());

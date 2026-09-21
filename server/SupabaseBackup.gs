@@ -58,10 +58,22 @@ function doPost(e) {
   try {
     if (String(req.key || "") !== sbKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز غير صحيح" }); }
     if (req.action === "ocr") return sbOut_(sbOcr_(req));
+    if (req.action === "driveFile") return sbOut_(sbDriveFile_(req.id));
     return sbOut_({ error: "إجراء غير معروف" });
   } catch (err) {
     return sbOut_({ error: String(err.message || err) });
   }
+}
+
+/* ملف قديم من أرشيف Drive (رفعه الخادم القديم) يُرسل إلى Supabase ليُحفظ هناك */
+function sbDriveFile_(id) {
+  if (!/^[A-Za-z0-9_-]{20,}$/.test(String(id || ""))) throw new Error("معرّف غير صالح");
+  let file;
+  try { file = DriveApp.getFileById(id); } catch (e) { throw new Error("الملف غير موجود على Drive"); }
+  if (file.isTrashed()) throw new Error("الملف في سلة مهملات Drive");
+  if (file.getSize() > 40 * 1024 * 1024) throw new Error("الملف أكبر من 40 ميغابايت");
+  const blob = file.getBlob();
+  return { name: file.getName(), mime: blob.getContentType() || file.getMimeType(), data: Utilities.base64Encode(blob.getBytes()) };
 }
 
 function doGet() {
