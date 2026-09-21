@@ -278,6 +278,50 @@
     ui.download(name, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
 
+  /* طباعة الكشف وحده: صفحة A4 أفقية فيها العنوان والملاحظة والجدول فقط، في إطار مخفي */
+  function printSheet() {
+    const table = $("hos-table").cloneNode(true);
+    table.querySelectorAll("input").forEach((i) => { i.replaceWith(document.createTextNode(i.value || "")); });
+    table.querySelectorAll("button").forEach((b) => { b.replaceWith(document.createTextNode(b.textContent || "")); });
+    table.removeAttribute("id");
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc($("hos-title").textContent)}</title>
+      <style>
+        @page { size: A4 landscape; margin: 7mm; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { margin: 0; font-family: Arial, "Segoe UI", Tahoma, sans-serif; color: #111; }
+        h1 { margin: 0; padding: 6px; background: #1F3864; color: #fff; text-align: center; font-size: 14pt; }
+        .note { margin: 4px 0 6px; color: #7F7F7F; font-style: italic; font-size: 7.5pt; text-align: center; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.5pt; }
+        th, td { border: 1px solid #8c8c8c; text-align: center; padding: 2px 1px; height: 19px; overflow: hidden; }
+        thead th { background: #1F3864; color: #fff; font-weight: 700; line-height: 1.15; }
+        thead th small { font-weight: 400; }
+        .hos-name { width: 130px; text-align: right; padding: 0 5px; white-space: nowrap; font-weight: 700; }
+        thead th:last-child, td.hos-total, tr > td:last-child { width: 52px; }
+        .hos-track .hos-name { background: #2E75B6; color: #fff; }
+        .hos-staff .hos-name { background: #548235; color: #fff; }
+        .hos-track td, .hos-staff td { background: #DDEBF7; }
+        td.hos-total { font-weight: 700; }
+        .hos-sum th, .hos-sum td { background: #FFE699; font-weight: 700; }
+        .hos-grand th, .hos-grand td { background: #1F3864; color: #fff; font-weight: 700; }
+      </style></head><body>
+      <h1>${esc($("hos-title").textContent)}</h1>
+      <p class="note">${esc(NOTE)}</p>
+      ${table.outerHTML}
+    </body></html>`;
+    const old = document.getElementById("hos-print-frame");
+    if (old) old.remove();
+    const frame = document.createElement("iframe");
+    frame.id = "hos-print-frame";
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;width:0;height:0;border:0;left:0;bottom:0;visibility:hidden";
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument;
+    doc.open();
+    doc.write(html);
+    doc.close();
+    setTimeout(() => { frame.contentWindow.focus(); frame.contentWindow.print(); }, 150);
+  }
+
   function init() {
     $("hos-month").innerHTML = MONTHS.map((m, i) => `<option value="${i}">${m}</option>`).join("");
     $("hos-month").addEventListener("change", (e) => { current.month = Number(e.target.value); render(); });
@@ -311,11 +355,12 @@
 
     $("hos-export").addEventListener("click", () => exportXlsx(false).catch((e) => ui.toast(e.message)));
     $("hos-export-year").addEventListener("click", () => exportXlsx(true).catch((e) => ui.toast(e.message)));
+    $("hos-print").addEventListener("click", printSheet);
     $("hos-rows").addEventListener("click", openRows);
     $("hos-rows-apply").addEventListener("click", applyRows);
     $("hos-rows-cancel").addEventListener("click", () => $("hos-rows-modal").classList.remove("open"));
     $("hos-rows-modal").addEventListener("click", (e) => { if (e.target.id === "hos-rows-modal") e.currentTarget.classList.remove("open"); });
   }
 
-  App.hospitality = { init, render, workdays };
+  App.hospitality = { init, render, workdays, printSheet };
 })(window.App = window.App || {});
