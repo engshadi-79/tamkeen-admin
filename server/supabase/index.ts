@@ -31,7 +31,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 12;
+const VERSION = 13;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -523,7 +523,10 @@ async function upload(req: any, user: any) {
   if (bytes.length > 45 * 1024 * 1024) throw new Error("الملف أكبر من 45 ميغابايت");
   const folder = (req.path || []).map((p: string) => String(p).replace(/[/\\]/g, "-")).join("/");
   const safe = String(req.name || "ملف").replace(/[/\\]/g, "-");
-  const id = `${folder ? folder + "/" : ""}${crypto.randomUUID()}-${safe}`;
+  // Supabase Storage لا يقبل إلا حروف S3 الآمنة في اسم الملف، فلا عربية فيه:
+  // المفتاح لاتيني (الشهر ومعرّف عشوائي والامتداد)، والاسم والمجلد العربيان في جدول files
+  const ext = (/\.([A-Za-z0-9]{1,8})$/.exec(safe) || [])[1];
+  const id = `f/${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}${ext ? "." + ext.toLowerCase() : ""}`;
   const { error } = await db.storage.from(BUCKET).upload(id, bytes, {
     contentType: req.mime || "application/octet-stream",
     upsert: false,
@@ -619,7 +622,7 @@ async function backupDaily() {
   const snapshot: Record<string, unknown> = {};
   for (const name of names) snapshot[name] = await readCol(name);
   await db.storage.from(BACKUP_BUCKET).upload(
-    `نسخة ${today}.json`,
+    `backup-${today}.json`, // لاتيني: Supabase Storage يرفض الحروف العربية في أسماء الملفات
     new Blob([JSON.stringify(snapshot)], { type: "application/json" }),
     { upsert: true },
   );

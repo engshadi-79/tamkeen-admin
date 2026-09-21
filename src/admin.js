@@ -285,7 +285,7 @@
       // 1) الدخول إلى الخادم الجديد
       // النسخ الأقدم من الدالة تُنشئ روابط ملفات تنتهي بعد أيام ولا تعرف وضع الاستبدال
       const st = await remote("status");
-      if (!(Number(st.version) >= 12)) throw new Error(`دالة الخادم الجديد قديمة (النسخة ${st.version || "؟"})؛ حدّثها إلى النسخة 12 ثم أعد المحاولة`);
+      if (!(Number(st.version) >= 13)) throw new Error(`دالة الخادم الجديد قديمة (النسخة ${st.version || "؟"})؛ حدّثها إلى النسخة 13 ثم أعد المحاولة`);
       const login = await remote("login", { username, password });
       token = login.token;
       $("mv-pass").value = "";
@@ -314,6 +314,8 @@
         } catch (e) {
           failed.push(r);
           moveLog(`✗ ${r.number || ""} — ${r.fileName || ""}: ${e.message}`, "bad");
+          // أول خمسة ملفات تفشل كلها: الخلل عام لا خاص، فلا داعي لتكراره مئة مرة
+          if (failed.length >= 5 && failed.length === done) throw new Error("فشل نسخ أول 5 ملفات كلها، فأُوقف النقل حتى يُعالج السبب");
         }
       }
       moveLog(`${failed.length ? "⚠" : "✓"} المرفقات: نُسخ ${ui.fmt(withFiles.length - failed.length)} من ${ui.fmt(withFiles.length)}`, failed.length ? "warn" : "ok");

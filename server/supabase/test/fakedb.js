@@ -75,6 +75,10 @@ export function makeDb() {
       const b = buckets[name];
       return {
         async upload(path, body, opts) {
+          // قاعدة Supabase Storage نفسها لأسماء الملفات: حروف S3 الآمنة فقط، فلا عربية
+          if (!(path.length > 0 && /^(\w|\/|!|-|\.|\*|'|\(|\)| |&|\$|@|=|;|:|\+|,|\?)*$/.test(path))) {
+            return { data: null, error: { message: `Invalid key: ${path}` } };
+          }
           if (b.has(path) && !(opts && opts.upsert)) return { data: null, error: { message: "exists" } };
           b.set(path, { body, created_at: new Date().toISOString() });
           return { data: { path }, error: null };

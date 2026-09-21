@@ -129,7 +129,9 @@ check("طلبان متزامنان لا يأخذان الرقم نفسه", both[
 /* ===== 8. الملفات ===== */
 console.log("\n[8] الملفات");
 const up = await post({ action: "upload", token: S, name: "خطاب.pdf", mime: "application/pdf", path: ["سارة", "2026", "09", "الوارد"], data: Buffer.from("مرحبا").toString("base64") });
-check("رُفع الملف وعاد معرّفه", !!up.id && up.id.includes("سارة/2026/09/الوارد/"), up);
+check("رُفع ملف باسم ومجلد عربيين", !!up.id, up);
+check("ومفتاحه في التخزين لاتيني خالص", /^[\x20-\x7e]+$/.test(up.id) && up.id.endsWith(".pdf"), up.id);
+check("والمجلد العربي محفوظ في جدول الملفات", globalThis.__fakeDb._tables.files.some((f) => f.id === up.id && f.folder === "سارة/2026/09/الوارد"));
 const got = await post({ action: "file", token: T, id: up.id });
 check("ونُزّل بمحتواه", Buffer.from(got.data, "base64").toString("utf8") === "مرحبا" && got.name === "خطاب.pdf", got);
 check("ملف غير موجود يعطي رسالة واضحة", (await post({ action: "file", token: T, id: "لا-يوجد" })).error?.includes("غير موجود"));
@@ -142,7 +144,7 @@ check("الدخول مسجَّل", ev.events.some((e) => e.action === "دخول"
 check("رفع الملف مسجَّل باسم صاحبه", ev.events.some((e) => e.action === "رفع ملف" && e.user === "سارة"), ev.events.slice(0, 3));
 check("القراءة فقط لا تُسجَّل", !ev.events.some((e) => e.action === "ping"));
 const bk = await post({ action: "backups", token: T });
-check("أُنشئت نسخة احتياطية يومية", bk.backups.length === 1 && bk.backups[0].name.startsWith("نسخة "), bk.backups);
+check("أُنشئت نسخة احتياطية يومية", bk.backups.length === 1 && bk.backups[0].name.startsWith("backup-"), bk.backups);
 
 /* ===== 10. تغيير كلمة المرور والخروج ===== */
 console.log("\n[10] كلمة المرور والجلسات");
