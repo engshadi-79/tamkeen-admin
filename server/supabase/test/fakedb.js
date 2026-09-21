@@ -104,8 +104,9 @@ export function makeDb() {
         async download(path) {
           if (!b.has(path)) return { data: null, error: { message: "not found" } };
           const v = b.get(path).body;
+          if (v instanceof Blob) return { data: v, error: null };
           const bytes = v instanceof Uint8Array ? v : new TextEncoder().encode(String(v));
-          return { data: { arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), type: "application/octet-stream" }, error: null };
+          return { data: new Blob([bytes], { type: "application/octet-stream" }), error: null };
         },
         async list(_p, opts) {
           let names = [...b.entries()].map(([name, v]) => ({ name, created_at: v.created_at }));

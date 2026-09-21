@@ -51,12 +51,36 @@
       $("adm-backups").href = info.folder || "#";
       $("adm-log").hidden = !info.logFolder;
       $("adm-backups").hidden = !info.folder;
-      $("adm-restore").hidden = !info.folder; // الاستعادة من نسخ Drive اليومية فقط
+      $("adm-restore").hidden = !info.folder && !info.restore; // Supabase يعلن الاستعادة صراحة
+      renderDrive(info);
       $("adm-move").hidden = App.cloud.settings().url === MOVE_TARGET;
       $("adm-digest-on").checked = !!(info.digest || {}).enabled;
       $("adm-digest-hour").value = String((info.digest || {}).hour || 7);
     } catch (e) { /* يظهر الخطأ في قائمة المستخدمين */ }
     renderStats();
+  }
+
+  /* حالة النسخة الخارجية اليومية على Google Drive (خادم Supabase وحده) */
+  function renderDrive(i) {
+    const el = $("adm-drive");
+    if (!("drive" in i)) { el.hidden = true; return; }
+    const d = i.drive;
+    el.hidden = false;
+    if (!d) {
+      el.className = "conv-hint warn";
+      el.innerHTML = "☁ لم تصل بعد أي نسخة إلى Google Drive. شغّل الدالة <b>setupSupabaseBackup</b> مرة واحدة في سكربت Google.";
+      return;
+    }
+    const when = new Date(d.at).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" });
+    const late = Date.now() - Date.parse(d.at) > 36 * 3600000;
+    const link = d.folder ? ` · <a href="${esc(d.folder)}" target="_blank" rel="noopener">فتح المجلد</a>` : "";
+    if (d.ok === false) {
+      el.className = "conv-hint warn";
+      el.innerHTML = `⚠ فشلت آخر نسخة إلى Google Drive (${esc(when)}): ${esc(d.error || "خطأ غير معروف")}${link}`;
+      return;
+    }
+    el.className = late ? "conv-hint warn" : "conv-hint";
+    el.innerHTML = `☁ آخر نسخة على Google Drive: <b>${esc(when)}</b> · ${ui.fmt(d.records || 0)} سجلاً · ${ui.fmt(d.filesTotal || 0)} ملفاً محفوظاً${d.filesNew ? ` (${ui.fmt(d.filesNew)} جديد)` : ""}${d.pending ? ` · ${ui.fmt(d.pending)} ملفاً يُكمَل في الدفعة التالية` : ""}${late ? " — <b>متأخرة أكثر من يوم</b>" : ""}${link}`;
   }
 
   function renderStats() {
@@ -208,7 +232,7 @@
     $("adm-adopt").disabled = false;
   }
 
-  /* استعادة من النسخ الاحتياطية اليومية على Drive — تُضيف الناقص ولا تحذف شيئاً */
+  /* استعادة من النسخ الاحتياطية اليومية — تُضيف الناقص ولا تحذف شيئاً */
   async function openRestore() {
     $("adm-restore").disabled = true;
     try {

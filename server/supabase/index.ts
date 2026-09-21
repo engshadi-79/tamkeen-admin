@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 16;
+const VERSION = 17;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -650,6 +650,80 @@ async function backupDaily() {
   if (extra.length) await db.storage.from(BACKUP_BUCKET).remove(extra);
 }
 
+/* الأيام التي لها نسخة، وعدد سجلات كل نسخة (لنافذة الاستعادة) */
+async function backupDays() {
+  const { data } = await db.storage.from(BACKUP_BUCKET).list("", { limit: 60, sortBy: { column: "name", order: "desc" } });
+  const days = [];
+  for (const f of data || []) {
+    const m = /^backup-(\d{4}-\d{2}-\d{2})\.json$/.exec(f.name);
+    if (!m) continue;
+    let records = 0;
+    try {
+      const { data: blob } = await db.storage.from(BACKUP_BUCKET).download(f.name);
+      const snap = JSON.parse(await blob!.text());
+      for (const k of Object.keys(snap)) records += ((snap[k] || {}).records || []).length;
+    } catch { /* نسخة تالفة تُعرض بلا عدد */ }
+    days.push({ day: m[1], files: 1, records });
+  }
+  return { days };
+}
+
+/* استعادة نسخة يوم: تُضاف السجلات الناقصة فقط، ولا يُحذف أو يُستبدل شيء موجود.
+   المستعاد تُزال عنه شواهد الحذف (عبر adopt) حتى لا تعود المزامنة فتحذفه. */
+async function restoreDay(day: unknown, user: any) {
+  const d = String(day || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error("اختر تاريخ النسخة");
+  const { data: blob, error } = await db.storage.from(BACKUP_BUCKET).download(`backup-${d}.json`);
+  if (error || !blob) throw new Error("لا توجد نسخة بهذا التاريخ");
+  const snap = JSON.parse(await blob.text());
+  const missing: Record<string, any> = {};
+  for (const name of Object.keys(snap || {})) {
+    if (!COL_NAME.test(name)) continue;
+    const recs = ((snap[name] || {}).records || []).filter((r: any) => r && r.id);
+    const have = new Set((await readCol(name)).records.map((r: any) => String(r.id)));
+    missing[name] = { records: recs.filter((r: any) => !have.has(String(r.id))) };
+  }
+  const { adopted } = await adopt(missing, user);
+  await log(user.name, "استعادة نسخة احتياطية", d + " — " + Object.keys(adopted).map((k) => `${k}: ${adopted[k]}`).join(" · "));
+  return { day: d, restored: adopted };
+}
+
+/* ===== نسخة خارجية يومية على Google Drive =====
+   سكربت Google (SupabaseBackup.gs) يطلب كل ليلة لقطة كاملة ويحفظها في Drive، ثم ينسخ الملفات
+   الجديدة عبر روابط موقّعة قصيرة العمر. الدخول برمز النسخ (BACKUP_KEY) أو رمز المدير. */
+function backupKeyOk(key: unknown) {
+  const want = Deno.env.get("BACKUP_KEY") || Deno.env.get("ADMIN_KEY") || "";
+  const got = String(key || "");
+  if (!want || got.length !== want.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ got.charCodeAt(i);
+  return diff === 0;
+}
+
+async function driveSnapshot() {
+  const { data: cols } = await db.from("records").select("col");
+  const names = [...new Set((cols || []).map((c: any) => c.col))];
+  const data: Record<string, unknown> = {};
+  for (const name of names) data[name] = await readCol(name);
+  const files: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data: part } = await db.from("files").select("id, name, mime, size, folder, created_at").order("id").range(from, from + 999);
+    files.push(...(part || []));
+    if (!part || part.length < 1000) break;
+  }
+  return { ok: true, version: VERSION, at: new Date().toISOString(), data, users: (await exportUsers()).users, files };
+}
+
+async function driveFileUrls(ids: unknown) {
+  const list = (Array.isArray(ids) ? ids : []).slice(0, 50).map(String);
+  const urls: Record<string, string> = {};
+  for (const id of list) {
+    const { data } = await db.storage.from(BUCKET).createSignedUrl(id, 3600);
+    if (data?.signedUrl) urls[id] = data.signedUrl;
+  }
+  return { urls };
+}
+
 async function listBackups() {
   const { data } = await db.storage.from(BACKUP_BUCKET).list("", { limit: 60, sortBy: { column: "name", order: "desc" } });
   const backups = [];
@@ -658,7 +732,8 @@ async function listBackups() {
     backups.push({ name: f.name, link: signed?.signedUrl || "", at: f.created_at || "" });
   }
   const { data: d } = await db.from("kv").select("value").eq("key", "digest").maybeSingle();
-  return { folder: "", logFolder: "", backups, digest: d?.value || { enabled: false, hour: 7 } };
+  const { data: drive } = await db.from("kv").select("value").eq("key", "drive_backup").maybeSingle();
+  return { folder: "", logFolder: "", backups, digest: d?.value || { enabled: false, hour: 7 }, drive: drive?.value || null, restore: true };
 }
 
 /* ===== التوجيه ===== */
@@ -683,6 +758,20 @@ Deno.serve(async (httpReq) => {
       }
       case "forgot": return json(await forgot(req.username));
       case "reset": return json(await resetPassword(req.username, req.code, req.password));
+      // النسخة الخارجية على Drive: برمز النسخ لا بجلسة مستخدم
+      case "driveSnapshot":
+      case "driveFileUrls":
+      case "driveDone": {
+        if (!backupKeyOk(req.key)) {
+          await new Promise((r) => setTimeout(r, 1500));
+          return json({ error: "رمز النسخ غير صحيح" });
+        }
+        if (req.action === "driveSnapshot") return json(await driveSnapshot());
+        if (req.action === "driveFileUrls") return json(await driveFileUrls(req.ids));
+        const info = req.info && typeof req.info === "object" ? req.info : {};
+        await db.from("kv").upsert({ key: "drive_backup", value: { ...info, at: new Date().toISOString() } });
+        return json({ ok: true });
+      }
     }
 
     const user = await session(req.token);
@@ -735,6 +824,8 @@ Deno.serve(async (httpReq) => {
       case "saveUser": return json(await saveUser(req.user, user));
       case "adopt": return json(await adopt(req.cols || {}, user, req.replace === true));
       case "exportUsers": return json(await exportUsers());
+      case "backupDays": return json(await backupDays());
+      case "restoreDay": return json(await restoreDay(req.day, user));
       case "importUsers": return json(await importUsers(req.users, user));
       case "deleteUser": return json(await deleteUser(req.username, user));
       case "digest": {

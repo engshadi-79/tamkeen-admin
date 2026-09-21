@@ -251,5 +251,27 @@ check("والأقسام غير المُرسَلة لم تُمسّ", other.record
 const up14 = await post({ action: "upload", token: T, name: "م.pdf", mime: "application/pdf", path: ["شادي"], data: Buffer.from("x").toString("base64") });
 check("رابط الملف دائم لا ينتهي", up14.link === "supabase:" + up14.id && up14.folderId === "", up14);
 
+/* ===== 15. النسخة الخارجية على Drive والاستعادة ===== */
+console.log("\n[15] النسخ إلى Drive والاستعادة");
+check("رمز نسخ خاطئ يُرفض", (await post({ action: "driveSnapshot", key: "nope" })).error === "رمز النسخ غير صحيح");
+const snap15 = await post({ action: "driveSnapshot", key: "SECRET123" });
+check("اللقطة فيها الأقسام والحسابات والملفات", !!snap15.data.tracks && snap15.users.length >= 1 && snap15.files.some((f) => f.id === up14.id), Object.keys(snap15));
+const urls15 = await post({ action: "driveFileUrls", key: "SECRET123", ids: [up14.id] });
+check("رابط موقّع لكل ملف", !!urls15.urls[up14.id], urls15);
+await post({ action: "driveDone", key: "SECRET123", info: { ok: true, files: 1 } });
+check("آخر نسخة Drive تظهر في لوحة المدير", (await post({ action: "backups", token: T })).drive.files === 1);
+
+// نسخة يوم سابق فيها مسار حُذف اليوم
+const day15 = "2026-01-15";
+const blob15 = new Blob([JSON.stringify({ tracks: { records: [{ id: "lost1", name: "مفقود", updatedAt: "2026-01-15T10:00:00Z" }, { id: "k0", name: "قديم" }], deleted: {} } })]);
+await globalThis.__fakeDb.storage.from("tamkeen-backups").upload(`backup-${day15}.json`, blob15, { upsert: true });
+const days15 = await post({ action: "backupDays", token: T });
+check("أيام النسخ تظهر بعدد سجلاتها", days15.days.some((d) => d.day === day15 && d.records === 2), days15);
+const res15 = await post({ action: "restoreDay", token: T, day: day15 });
+check("استُعيد الناقص فقط", res15.restored.tracks === 1, res15);
+const after15 = await post({ action: "syncAll", token: T, cols: { tracks: { records: [], deleted: {} } } });
+check("المفقود عاد والموجود لم يُستبدل", after15.tracks.records.some((x) => x.id === "lost1") && after15.tracks.records.find((x) => x.id === "k0").name === "مسار 0");
+check("غير المدير لا يستعيد", (await post({ action: "restoreDay", token: (await post({ action: "saveUser", token: T, user: { username: "omar15", name: "o", password: "omar1234" } }), await post({ action: "login", username: "omar15", password: "omar1234" })).token, day: day15 })).error === "هذا الإجراء للمدير فقط");
+
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);

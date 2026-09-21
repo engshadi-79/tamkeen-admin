@@ -609,3 +609,6 @@ body.has-trial-bar #login-screen { top: 38px; }
   .hos-table .hos-name { min-width: 0; position: static; }
   .hos-title { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+.conv-hint.warn { background: var(--warn-bg); color: var(--warn); padding: 8px 10px; border-radius: 8px; }
+#adm-drive { margin: 0 0 12px; }
