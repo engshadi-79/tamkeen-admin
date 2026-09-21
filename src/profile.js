@@ -319,12 +319,15 @@
   function renderBadges() {
     const u = user();
     document.querySelectorAll("[data-profile]").forEach((b) => { b.textContent = u ? `👤 ${u.name}${u.admin ? " (مدير)" : ""}` : "👤 حسابي"; });
+    const out = $("tt-logout");
+    if (out) out.hidden = !u;
   }
 
   function init() {
     $("login-form").addEventListener("submit", submitLogin);
     $("acc-password-form").addEventListener("submit", changePassword);
     $("acc-logout").addEventListener("click", logout);
+    $("tt-logout").addEventListener("click", logout);
     $("acc-logout-all").addEventListener("click", async () => {
       if (!confirm("تسجيل الخروج من كل الأجهزة التي دخلت منها؟")) return;
       try { await App.cloud.logoutAll(); ui.toast("تم الخروج من كل الأجهزة"); await App.cloud.logout(); } catch (e) { ui.toast(e.message); }

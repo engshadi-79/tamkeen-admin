@@ -662,7 +662,10 @@ body.has-trial-bar #login-screen { top: 38px; }
 .tt-search:hover { border-color: var(--teal-500); }
 .tt-btn { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 7px 11px; font: inherit; font-size: .9rem; cursor: pointer; color: var(--text); }
 .tt-btn:hover { border-color: var(--teal-500); }
-.tt-bell-wrap { position: relative; margin-inline-start: auto; }
+.tt-account { margin-inline-start: auto; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-logout { color: var(--danger); }
+.tt-logout:hover { border-color: var(--danger); background: var(--danger-bg); }
+.tt-bell-wrap { position: relative; }
 .tt-bell { position: relative; font-size: 1.05rem; }
 .tt-bell.has-danger { border-color: var(--danger); }
 .notif-count { position: absolute; top: -6px; inset-inline-end: -6px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
@@ -713,7 +716,8 @@ body.has-trial-bar #login-screen { top: 38px; }
 
 @media (max-width: 760px) {
   .top-tools { margin: 0 0 12px; }
-  .tt-search span, .tt-search kbd, #pwa-install span { display: none; }
+  .tt-search span, .tt-search kbd, #pwa-install span, .tt-logout span { display: none; }
+  .tt-account { max-width: 120px; }
   .tt-search { flex: 0 0 auto; }
   .hd-list { grid-template-columns: 1fr; }
   .hos-bar select, .hos-bar input { min-width: 0; }
