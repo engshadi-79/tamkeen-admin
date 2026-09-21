@@ -570,3 +570,9 @@ body.has-trial-bar #login-screen { top: 38px; }
 .fx-card > summary { cursor: pointer; }
 .fx-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(200px, 2fr) auto; gap: 8px; align-items: center; margin: 8px 0; }
 @media (max-width: 640px) { .fx-row { grid-template-columns: 1fr; } }
+
+/* اختيار المسارات في الكشف */
+.conv-filter-list { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 4px 0; }
+.conv-filter-list .conv-check { font-weight: 400; }
+.conv-filter-list small { color: var(--muted); }
+.conv-filter .warn { color: var(--warn); font-weight: 700; margin: 4px 0; }

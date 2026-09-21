@@ -232,6 +232,45 @@
       </div>`).join("") || `<p class="conv-hint">لا توجد بيانات ثابتة بعد.</p>`;
   }
 
+  /* ===== اختيار المسارات التي تظهر في الكشف =====
+     تصفية الصفوف حسب قيم عمود (عمود المسار افتراضياً). يُحفظ المستبعَد لا المختار، فكل قيمة جديدة تدخل افتراضياً. */
+  const FILTER_MAX = 40;
+  const filterKey = (v) => (v == null ? "" : String(v).trim());
+  const keepRow = (r) => !state.filterCol || !state.filterOut || !state.filterOut.has(filterKey(r[state.filterCol]));
+
+  function filterValues() {
+    const counts = new Map();
+    state.parsed.dataRows.forEach((r) => { const k = filterKey(r[state.filterCol]); counts.set(k, (counts.get(k) || 0) + 1); });
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0], "ar"));
+  }
+
+  const filterCountText = () => {
+    const total = state.parsed.dataRows.length;
+    const kept = state.parsed.dataRows.filter(keepRow).length;
+    return kept === total ? `كل الصفوف (${ui.fmt(total)}) في الكشف` : `سيظهر في الكشف ${ui.fmt(kept)} صفاً من ${ui.fmt(total)}`;
+  };
+
+  function filterControl() {
+    const p = state.parsed;
+    const hidden = Object.values(core().TRAINER_COLS).concat(core().GRADE_COLUMN);
+    const cols = p.dataHeaders.filter((h) => !hidden.includes(h));
+    let body = "";
+    if (state.filterCol) {
+      const values = filterValues();
+      body = values.length > FILTER_MAX
+        ? `<p class="warn">هذا العمود فيه ${ui.fmt(values.length)} قيمة مختلفة؛ اختر عمود المسار.</p>`
+        : `<div class="conv-filter-list">${values.map(([v, n]) => `<label class="conv-check">
+              <input type="checkbox" data-filter-val="${esc(v)}" ${state.filterOut.has(v) ? "" : "checked"}> ${v ? esc(v) : "<i>(بلا مسار)</i>"} <small>(${ui.fmt(n)})</small>
+            </label>`).join("")}</div>
+          <div><button type="button" class="conv-link" data-filter-all>تحديد الكل</button> · <button type="button" class="conv-link" data-filter-none>إلغاء الكل</button> — <b id="conv-filter-count">${filterCountText()}</b></div>`;
+    }
+    return `<div class="conv-grade-note conv-filter">
+      <label>🎯 المسارات التي تظهر في الكشف — حسب عمود
+        <select data-filter-col>${opt("", "— كل الصفوف، بلا تصفية —", !state.filterCol)}${cols.map((h) => opt(h, h, h === state.filterCol)).join("")}</select></label>
+      ${body}
+    </div>`;
+  }
+
   const tracksList = () => ((App.store.get() || {}).tracks || []).filter((t) => t && t.name);
 
   /* المدربون من صفحة المسارات: يظهر إن كان في القالب عمود أو حقل ترويسة فيه «مدرب» */
@@ -446,6 +485,8 @@
       state.outputFormat = templateIsDocx ? "docx" : "xlsx";
       await prepareExtras(data);
       state.fixedOrigin = {};
+      state.filterCol = core().guessTrackColumn(data.headers.filter((h) => !Object.values(core().TRAINER_COLS).includes(h)));
+      state.filterOut = new Set();
       state.fixedUsed = applyFixed(templateHeaders, state.mapping, placeholders);
       (state.extras || []).forEach((t) => applyFixed(t.headers, t.mapping, []));
 
@@ -583,6 +624,7 @@
     }
     html += gradeControl();
     html += trainerControl();
+    html += filterControl();
     if (missing.length || extra.length) {
       const field = (name, hint) => `
         <div class="conv-map-row">
@@ -704,12 +746,13 @@
       else if (state.datesWeekdays.length > 0) sessionDates.weekdays = state.datesWeekdays;
     }
 
+    if (!p.dataRows.some(keepRow)) { setError("لم تختر أي مسار؛ حدّد مساراً واحداً على الأقل في «المسارات التي تظهر في الكشف»"); return; }
     reapplyFixed(); // حقول ثابتة أُضيفت أو عُدِّلت بعد التحليل
     // القيم الثابتة تُضاف كأعمدة إلى كل صف ثم تُربط بحقول القالب
     const filled = (() => {
       const mapping = Object.assign({}, state.mapping);
       const keys = Object.keys(state.constants).filter((k) => String(state.constants[k]).length);
-      const rows = p.dataRows.map((r) => {
+      const rows = p.dataRows.filter(keepRow).map((r) => {
         const copy = Object.assign({}, r);
         keys.forEach((k) => { copy[k] = state.constants[k]; });
         return copy;
@@ -782,6 +825,13 @@
     const p = state.parsed;
     if (t.dataset.gradeFrom != null) { setGradeSource(t.value); return; }
     if (t.dataset.trainerFrom != null) { setTrainerSource(t.value); return; }
+    if (t.dataset.filterCol != null) { state.filterCol = t.value; state.filterOut = new Set(); renderResult(); return; }
+    if (t.dataset.filterVal != null) {
+      if (t.checked) state.filterOut.delete(t.dataset.filterVal); else state.filterOut.add(t.dataset.filterVal);
+      const c = $("conv-filter-count");
+      if (c) c.textContent = filterCountText();
+      return;
+    }
     if (t.dataset.map != null) {
       state.mapping[p.templateHeaders[Number(t.dataset.map)]] = t.value;
       renderResult();
@@ -821,6 +871,8 @@
   }
 
   async function onResultClick(e) {
+    if (e.target.closest("[data-filter-all]")) { state.filterOut = new Set(); renderResult(); return; }
+    if (e.target.closest("[data-filter-none]")) { state.filterOut = new Set(filterValues().map(([v]) => v)); renderResult(); return; }
     const t = e.target.closest("button");
     if (!t) return;
     if (t.dataset.out) { state.outputFormat = t.dataset.out; renderResult(); return; }
