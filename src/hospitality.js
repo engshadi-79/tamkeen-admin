@@ -19,8 +19,10 @@
     tracks: ["الحلاقة الرجالية", "التجميل النسائي", "التطريز والخياطة", "صناعة الإكسسوارات", "المساعد الافتراضي"]
       .map((name, i) => ({ key: `t${i + 1}`, name })),
     staff: ["م.شادي القططي", "د.يوسف جربوع", "أميرة ابو ريدة", "رشا بركة", "طلعت بركة", "عائد الوزير", "وردة ابو عيادة", "ايه زعرب", "علاء ابو صلاح", "ابو العبد فروانة", "رجال الامن", "ضيوف + أطفال"]
-      .map((name, i) => ({ key: `s${i + 1}`, name })),
+      .map((name, i) => ({ key: `s${i + 1}`, name, value: name === "رجال الامن" ? 2 : 1 })),
   };
+  // قيمة الاستلام للموظف: 1 افتراضياً، ولبعض الصفوف أكثر (رجال الأمن = 2)
+  const staffValue = (r) => Math.max(1, Math.floor(Number(r && r.value) || (r && /رجال\s*ال[اأ]من/.test(r.name) ? 2 : 1)));
 
   const rowsDef = () => {
     const r = store.get().hospitalityRows;
@@ -107,7 +109,7 @@
       }).join("")}<td class="hos-total" data-rowtotal="${esc(r.key)}">${t.rowTotal(r.key) || ""}</td></tr>`;
     const staffRow = (r) => `<tr class="hos-staff"><th class="hos-name">${esc(r.name)}</th>${days.map((d) => {
         const v = cellValue(month, r.key, d.key);
-        return `<td><button type="button" class="hos-tick ${v ? "on" : ""}" data-toggle="${esc(r.key)}" data-day="${d.key}" aria-pressed="${v ? "true" : "false"}" title="${esc(r.name)} — ${d.day} ${d.date}">${v ? "1" : ""}</button></td>`;
+        return `<td><button type="button" class="hos-tick ${v ? "on" : ""}" data-toggle="${esc(r.key)}" data-value="${staffValue(r)}" data-day="${d.key}" aria-pressed="${v ? "true" : "false"}" title="${esc(r.name)} — ${d.day} ${d.date} (${staffValue(r)})">${v || ""}</button></td>`;
       }).join("")}<td class="hos-total" data-rowtotal="${esc(r.key)}">${t.rowTotal(r.key) || ""}</td></tr>`;
     const sumRow = (label, arr, id, cls) => `<tr class="${cls}"><th class="hos-name">${label}</th>${arr.map((v, i) => `<td data-${id}="${i}">${v || ""}</td>`).join("")}<td data-${id}="all">${t.sum(arr) || ""}</td></tr>`;
 
@@ -140,7 +142,7 @@
   function openRows() {
     const def = rowsDef();
     $("hos-rows-tracks").value = def.tracks.map((r) => r.name).join("\n");
-    $("hos-rows-staff").value = def.staff.map((r) => r.name).join("\n");
+    $("hos-rows-staff").value = def.staff.map((r) => (staffValue(r) > 1 ? `${r.name} = ${staffValue(r)}` : r.name)).join("\n");
     $("hos-rows-modal").classList.add("open");
   }
 
@@ -148,12 +150,18 @@
     const def = rowsDef();
     const norm = (s) => String(s || "").trim().replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/\s+/g, " ");
     // الاسم الباقي يحتفظ بمفتاحه (فتبقى أرقامه)، والجديد يأخذ مفتاحاً جديداً
-    const build = (text, old) => text.split("\n").map((l) => l.trim()).filter(Boolean).map((name) => {
+    // «الاسم = 2» تجعل استلام هذا الصف بقيمة 2 بدل 1
+    const build = (text, old, withValue) => text.split("\n").map((l) => l.trim()).filter(Boolean).map((line) => {
+      const m = withValue && line.match(/^(.*?)\s*=\s*([0-9\u0660-\u0669]+)\s*$/);
+      const name = m ? m[1].trim() : line;
+      const value = m ? Number(m[2].replace(/[\u0660-\u0669]/g, (c) => c.charCodeAt(0) - 0x660)) : 1;
       const prev = old.find((r) => norm(r.name) === norm(name));
-      return { key: prev ? prev.key : store.uid(), name };
+      const row = { key: prev ? prev.key : store.uid(), name };
+      if (withValue) row.value = Math.max(1, value || 1);
+      return row;
     });
     const tracks = build($("hos-rows-tracks").value, def.tracks);
-    const staff = build($("hos-rows-staff").value, def.staff);
+    const staff = build($("hos-rows-staff").value, def.staff, true);
     if (!tracks.length && !staff.length) { ui.toast("اكتب صفاً واحداً على الأقل"); return; }
     store.get().hospitalityRows = { tracks, staff };
     store.save();
@@ -289,9 +297,10 @@
       if (!b) return;
       const on = !b.classList.contains("on");
       b.classList.toggle("on", on);
-      b.textContent = on ? "1" : "";
+      const val = Number(b.dataset.value) || 1;
+      b.textContent = on ? String(val) : "";
       b.setAttribute("aria-pressed", on ? "true" : "false");
-      setCell(ym(), b.dataset.toggle, b.dataset.day, on ? 1 : 0);
+      setCell(ym(), b.dataset.toggle, b.dataset.day, on ? val : 0);
       refreshTotals();
     });
 
