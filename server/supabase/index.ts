@@ -31,7 +31,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 14;
+const VERSION = 15;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -428,7 +428,8 @@ async function readCol(col: string) {
   const records: any[] = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.from("records").select("data").eq("col", col).range(from, from + PAGE - 1);
+    // ترتيب ثابت: بدونه تعيد Postgres الصفوف بلا ترتيب (المعدَّل في موضع جديد)، وقد تتداخل الصفحات
+    const { data, error } = await db.from("records").select("data").eq("col", col).order("id").range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     records.push(...(data || []).map((r: any) => r.data));
     if (!data || data.length < PAGE) break;
@@ -436,7 +437,7 @@ async function readCol(col: string) {
   const deleted: Record<string, string> = {};
   const cutoff = new Date(Date.now() - TOMBSTONE_DAYS * 86400000).toISOString();
   for (let from = 0; ; from += PAGE) {
-    const { data } = await db.from("deletions").select("id, at").eq("col", col).gte("at", cutoff).range(from, from + PAGE - 1);
+    const { data } = await db.from("deletions").select("id, at").eq("col", col).gte("at", cutoff).order("id").range(from, from + PAGE - 1);
     (data || []).forEach((r: any) => { deleted[r.id] = r.at; });
     if (!data || data.length < PAGE) break;
   }

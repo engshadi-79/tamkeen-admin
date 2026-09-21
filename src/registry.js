@@ -264,7 +264,10 @@
         final.push(r);
       });
       liveNow.forEach((live, id) => { if (sentPrints[id] === undefined && !final.some((r) => r.id === id)) { final.push(live); kept.push(id); } });
-      store.get().registry = final;
+      // ترتيب الجهاز يبقى كما هو: ردّ الخادم لا يحفظ الترتيب، والجديد يُلحق في الآخر
+      const pos = new Map(records().map((r, i) => [r.id, i]));
+      const rank = (r, i) => (pos.has(r.id) ? pos.get(r.id) : pos.size + i);
+      store.get().registry = final.map((r, i) => [r, rank(r, i)]).sort((a, b) => a[1] - b[1]).map((x) => x[0]);
       saveSnap(final.filter((r) => kept.indexOf(r.id) === -1));
       if (removed.length) {
         // يبقى المحذوف في البصمات حتى تُرسل الجولة التالية حذفه

@@ -42,6 +42,15 @@
     for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
     return String(h);
   }
+  /* ردّ الخادم لا يحفظ الترتيب (تعديل سجل يغيّر موضعه في قاعدة البيانات)، فيُعاد ترتيبه
+     على ترتيب الجهاز، ويُلحق ما لا يعرفه الجهاز في آخر القائمة بترتيب وصوله */
+  function keepOrder(records, local) {
+    const pos = new Map(local.map((r, i) => [r.id, i]));
+    return records
+      .map((r, i) => [r, pos.has(r.id) ? pos.get(r.id) : local.length + i])
+      .sort((a, b) => a[1] - b[1])
+      .map((x) => x[0]);
+  }
   const loadSnap = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "{}"); } catch (e) { return {}; } };
   const saveSnap = (snap) => { try { localStorage.setItem(SNAP_KEY, JSON.stringify(snap)); } catch (e) { /* تخزين غير متاح */ } };
 
@@ -61,7 +70,7 @@
       const fresh = Date.now() - 24 * 3600 * 1000;
       const ids = new Set(remote.map((r) => r.id));
       const mine = local.filter((r) => !ids.has(r.id) && Date.parse(r.createdAt || r.addedAt || 0) > fresh);
-      writeCol(name, remote.concat(mine));
+      writeCol(name, keepOrder(remote.concat(mine), local));
       snap[name] = {};
       remote.forEach((r) => { snap[name][r.id] = fingerprint(r); });
     });
@@ -140,7 +149,7 @@
         });
         // سجل أُضيف أثناء الطلب ولم يصل الخادم بعد
         liveNow.forEach((live, id) => { if (sent[id] === undefined && !final.some((r) => r.id === id)) { final.push(live); kept.push(id); } });
-        writeCol(name, final);
+        writeCol(name, keepOrder(final, readCol(name)));
         if (kept.length) schedule(1200); // التعديلات التي حدثت أثناء الطلب تُرفع في الجولة التالية
         next[name] = {};
         final.forEach((r) => { if (kept.indexOf(r.id) === -1) next[name][r.id] = fingerprint(r); });
