@@ -160,7 +160,13 @@
     { name: "نوع التدريب", value: "دورة" },
   ];
   const fixedFields = () => { const f = (App.store.get() || {}).fixedFields; return Array.isArray(f) ? f : DEFAULT_FIXED; };
-  const saveFixed = (list) => { App.store.get().fixedFields = list; App.store.save(); };
+  let fixedTimer = null;
+  const saveFixed = (list) => {
+    App.store.get().fixedFields = list;
+    App.store.save();
+    clearTimeout(fixedTimer);
+    fixedTimer = setTimeout(() => { if (state.parsed) { reapplyFixed(); renderResult(); } }, 500);
+  };
 
   // «نوع التدريب» يطابق «نوع التدريب(دورة - دبلوم)»: تطابق تام أو احتواء لاسمين غير قصيرين
   function sameField(a, b) {
@@ -172,25 +178,48 @@
   const columnEmpty = (col) => !state.parsed.dataRows.some((r) => r[col] != null && String(r[col]).trim() !== "");
 
   /* حقل يطابق بياناً ثابتاً يأخذ قيمته، إلا إن كان في ملف البيانات عمود مربوط به فيه قيم */
+  // قيمة من البيانات الثابتة لا تحلّ محل قيمة كتبها المستخدم بنفسه لهذا الكشف
+  function setFixedConstant(key, value) {
+    const cur = state.constants[key];
+    if (cur != null && cur !== "" && cur !== state.fixedOrigin[key]) return false;
+    state.constants[key] = value;
+    state.fixedOrigin[key] = value;
+    return true;
+  }
+
   function applyFixed(headers, mapping, placeholders) {
+    state.fixedOrigin = state.fixedOrigin || {};
     const used = [];
     fixedFields().filter((f) => f && f.name && String(f.value || "").trim()).forEach((f) => {
+      const value = String(f.value).trim();
       headers.forEach((h) => {
         if (!sameField(h, f.name)) return;
         if (mapping[h] && !columnEmpty(mapping[h])) return; // بيانات الملف أولى
         mapping[h] = "";
-        state.constants[h] = String(f.value).trim();
-        used.push(f.name);
+        if (setFixedConstant(h, value)) used.push(f.name);
       });
       (placeholders || []).forEach((ph) => {
         if (!sameField(ph, f.name)) return;
         const col = state.parsed.dataHeaders.find((d) => sameField(d, ph));
         if (col && !columnEmpty(col)) return;
-        state.constants[ph] = String(f.value).trim();
-        used.push(f.name);
+        if (setFixedConstant(ph, value)) used.push(f.name);
       });
     });
     return [...new Set(used)];
+  }
+
+  /* إعادة تطبيق البيانات الثابتة على الكشف المحلَّل حالياً: حقل أُضيف أو عُدِّل أو حُذف بعد التحليل.
+     ما جاء من القائمة سابقاً يُزال ثم يُطبَّق من جديد، وما غيّره المستخدم بنفسه يبقى. */
+  function reapplyFixed() {
+    const p = state.parsed;
+    if (!p) return;
+    state.fixedOrigin = state.fixedOrigin || {};
+    Object.keys(state.fixedOrigin).forEach((k) => {
+      if (state.constants[k] === state.fixedOrigin[k]) delete state.constants[k];
+      delete state.fixedOrigin[k];
+    });
+    state.fixedUsed = applyFixed(p.templateHeaders, state.mapping, state.placeholders);
+    (state.extras || []).forEach((t) => applyFixed(t.headers, t.mapping, []));
   }
 
   function renderFixed() {
@@ -416,6 +445,7 @@
       });
       state.outputFormat = templateIsDocx ? "docx" : "xlsx";
       await prepareExtras(data);
+      state.fixedOrigin = {};
       state.fixedUsed = applyFixed(templateHeaders, state.mapping, placeholders);
       (state.extras || []).forEach((t) => applyFixed(t.headers, t.mapping, []));
 
@@ -674,6 +704,7 @@
       else if (state.datesWeekdays.length > 0) sessionDates.weekdays = state.datesWeekdays;
     }
 
+    reapplyFixed(); // حقول ثابتة أُضيفت أو عُدِّلت بعد التحليل
     // القيم الثابتة تُضاف كأعمدة إلى كل صف ثم تُربط بحقول القالب
     const filled = (() => {
       const mapping = Object.assign({}, state.mapping);
