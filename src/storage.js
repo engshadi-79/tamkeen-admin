@@ -34,10 +34,12 @@
   }
 
   let state;
+  let lastRaw = null; // آخر نسخة محفوظة قرأها أو كتبها هذا التبويب
 
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
+      lastRaw = raw;
       state = raw ? Object.assign(defaultState(), JSON.parse(raw)) : defaultState();
     } catch (e) {
       console.warn("تعذّر قراءة البيانات المحفوظة، سيتم استخدام القيم الافتراضية.", e);
@@ -47,10 +49,13 @@
   }
 
   const listeners = [];
+  const external = [];
 
   function save() {
     try {
-      localStorage.setItem(KEY, JSON.stringify(state));
+      const raw = JSON.stringify(state);
+      localStorage.setItem(KEY, raw);
+      lastRaw = raw;
     } catch (e) {
       App.ui && App.ui.toast("تعذّر حفظ البيانات في المتصفح");
     }
@@ -76,6 +81,25 @@
     save();
   }
 
+  /* تبويب آخر من الموقع حفظ بعدنا: تُؤخذ نسخته. بدون هذا يبقى هذا التبويب ببيانات قديمة في الذاكرة،
+     بينما بصمات المزامنة (المشتركة بين التبويبات) تعرف سجلات لا يملكها، فيُرسلها للخادم محذوفة.
+     تُستدعى قبل كل مزامنة، وعند كل حفظ من تبويب آخر. التحديث في المكان نفسه حتى تبقى المراجع صحيحة. */
+  function reloadIfChanged() {
+    let raw;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return false; }
+    if (!raw || raw === lastRaw || !state) return false;
+    let next;
+    try { next = JSON.parse(raw); } catch (e) { return false; }
+    Object.keys(state).forEach((k) => { delete state[k]; });
+    const base = defaultState();
+    delete base.tracks; // المسارات الافتراضية بمعرّفات جديدة تُرفع كمسارات إضافية
+    Object.assign(state, base, { tracks: [] }, next);
+    lastRaw = raw;
+    external.forEach((fn) => { try { fn(state); } catch (e) { console.warn(e); } });
+    return true;
+  }
+  try { window.addEventListener("storage", (e) => { if (e.key === KEY) reloadIfChanged(); }); } catch (e) { /* بيئة بلا نافذة */ }
+
   const clamp = (n, min, max) => Math.min(max, Math.max(min, Number(n) || 0));
 
   App.store = {
@@ -83,5 +107,8 @@
     load, save, reset, exportJSON, importJSON,
     get: () => state,
     onChange: (fn) => listeners.push(fn),
+    // لإعادة الرسم فقط عند حفظ تبويب آخر؛ لا تُطلق مزامنة حتى لا يتقاذف التبويبان الطلبات
+    onExternal: (fn) => external.push(fn),
+    reloadIfChanged,
   };
 })(window.App = window.App || {});

@@ -100,6 +100,12 @@
     else if (st.waiting) { text = `⏳ ${ui.fmt(st.waiting)} قالباً على هذا الجهاز لم يصل ${server} بعد.`; cls = "warn"; }
     else { text = `✓ كل القوالب (${ui.fmt(st.total)}) على ${server}.`; cls = "ok"; }
     if (st.signedIn && st.remoteMissing) text += ` و${ui.fmt(st.remoteMissing)} قالباً بانتظار أن يرفعه جهاز من حفظه.`;
+    if (st.signedIn && st.orphans) {
+      const note = `⚠ على هذا الجهاز ${ui.fmt(st.orphans)} قالباً حُذف من القائمة المشتركة، ويمكن إعادة مشاركته.`;
+      text = st.waiting ? `${text} ${note}` : note;
+      cls = "warn";
+    }
+    $("conv-share-again").hidden = !(st.signedIn && st.orphans);
     $("conv-share-text").textContent = text;
     box.className = `conv-share ${cls}`;
     $("conv-share-now").hidden = !st.waiting;
@@ -567,6 +573,18 @@
     $("conv-save-btn").addEventListener("click", handleSaveTemplate);
     $("conv-parse").addEventListener("click", handleParse);
     $("conv-share-now").addEventListener("click", shareNow);
+    $("conv-share-again").addEventListener("click", async () => {
+      if (!confirm("إعادة القوالب المحذوفة من القائمة المشتركة من نسخة هذا الجهاز؟ ستظهر لكل المستخدمين من جديد.")) return;
+      const b = $("conv-share-again");
+      b.disabled = true;
+      try {
+        const n = await store().reshare();
+        ui.toast(`أُعيدت مشاركة ${ui.fmt(n)} قالباً`);
+        if (App.shared) await App.shared.sync(true);
+      } catch (e) { ui.toast(e.message); }
+      b.disabled = false;
+      await refreshSaved();
+    });
     $("conv-result").addEventListener("change", onResultChange);
     $("conv-result").addEventListener("input", (e) => { if (e.target.dataset.const != null) onResultChange(e); });
     $("conv-result").addEventListener("click", onResultClick);

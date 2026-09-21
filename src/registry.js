@@ -224,6 +224,8 @@
     syncing = true;
     clearTimeout(syncTimer);
     try {
+      // بيانات أحدث حفظها تبويب آخر تُؤخذ قبل حساب المحذوف
+      store.reloadIfChanged();
       const now = new Date().toISOString();
       const snap = loadSnap();
       const local = records();
@@ -1209,6 +1211,7 @@
     // السجل المشترك: مزامنة عند الفتح، وبعد كل تعديل، وكل دقيقة، وعند العودة إلى الصفحة
     if (App.cloud) {
       store.onChange(() => { if (!syncing) scheduleSync(1500); });
+      store.onExternal(() => { if ($("view-registry").classList.contains("active")) render(); });
       setTimeout(() => syncShared(false), 800);
       setInterval(() => { if (document.visibilityState === "visible") syncShared(false); }, 60000);
       document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - lastSync > 15000) syncShared(false); });

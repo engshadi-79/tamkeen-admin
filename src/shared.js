@@ -76,6 +76,8 @@
     syncing = true;
     clearTimeout(timer);
     try {
+      // بيانات أحدث حفظها تبويب آخر تُؤخذ قبل حساب المحذوف
+      store.reloadIfChanged();
       let snap = loadSnap();
       if (!Object.keys(snap).length) { await firstSync(); snap = loadSnap(); }
       const now = new Date().toISOString();
@@ -187,6 +189,7 @@
   function init() {
     if (!App.cloud) return;
     store.onChange(() => { if (!syncing) schedule(1500); });
+    store.onExternal(() => rerender());
     App.cloud.onAuth((kind) => {
       if (kind === "login") { saveSnap({}); sync(true); loadPeople(); }
       else { try { localStorage.removeItem(SNAP_KEY); } catch (e) { /* تخزين غير متاح */ } }

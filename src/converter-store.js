@@ -144,7 +144,27 @@
     try { local = (await tx("readonly", (s) => s.getAll())) || []; } catch (e) { /* IndexedDB غير متاح */ }
     const waiting = local.filter((r) => r.file && (!r.migrated || (find(r.id) && !find(r.id).fileId))).length;
     const remoteMissing = meta().filter((t) => !t.fileId && !local.some((r) => r.id === t.id)).length;
-    return { signedIn: cloudOn(), waiting, remoteMissing, total: meta().length };
+    // محفوظة هنا وليست في القائمة المشتركة: حُذفت منها (عمداً أو بخطأ)
+    const orphans = local.filter((r) => r.migrated && r.file && !find(r.id)).length;
+    return { signedIn: cloudOn(), waiting, remoteMissing, orphans, total: meta().length };
+  }
+
+  /* إعادة مشاركة قوالب هذا الجهاز التي خرجت من القائمة المشتركة — بمعرّفات جديدة،
+     لأن الخادم يرفض إعادة معرّف حُذف خلال 24 ساعة. بطلب صريح من المستخدم فقط. */
+  async function reshare() {
+    if (!cloudOn()) throw new Error("سجّل الدخول أولاً");
+    const local = (await tx("readonly", (s) => s.getAll())) || [];
+    const orphans = local.filter((r) => r.migrated && r.file && !find(r.id));
+    let done = 0;
+    for (const r of orphans) {
+      const m = { id: App.store.uid(), name: r.name, format: r.format, headers: r.headers || [], defaultGroupBy: r.defaultGroupBy || [], createdAt: now(), updatedAt: now(), fileId: null, owner: me() };
+      await tx("readwrite", (s) => { s.delete(r.id); s.put(Object.assign({}, m, { file: r.file, migrated: true })); });
+      meta().push(m);
+      App.store.save();
+      await uploadFile(m.id, r.file);
+      done++;
+    }
+    return done;
   }
 
   let timer = null;
@@ -153,5 +173,5 @@
   if (App.cloud) App.cloud.onAuth((kind) => { if (kind === "login") schedule(4000); });
   schedule(4000);
 
-  App.converterStore = { list, get, save, setDefaultGroupBy, remove, reconcile, status };
+  App.converterStore = { list, get, save, setDefaultGroupBy, remove, reconcile, status, reshare };
 })(window.App = window.App || {});
