@@ -87,6 +87,7 @@
       console.error(e);
     }
     renderSource();
+    renderFixed();
     await renderShareStatus();
   }
 
@@ -149,6 +150,57 @@
       <div>${status}</div>
       <small>السلّم: 90 فأكثر ممتاز، 80–89 جيد جداً، 75–79 جيد، أقل من 75 راسب.</small>
     </div>`;
+  }
+
+  /* ===== البيانات الثابتة: تُحفظ مرة وتُعبّأ في كل كشف فيه حقل بالاسم نفسه =====
+     القائمة إعداد مشترك (fixedFields) يصل كل المستخدمين. القيم الافتراضية في الكود لا تُحفظ
+     إلا عند أول تعديل، حتى لا يكتب جهاز قديم فوق قائمة عدّلها غيره. */
+  const DEFAULT_FIXED = [
+    { name: "اسم المركز", value: "مركز مسارات التمكين للتدريب والتطوير" },
+    { name: "نوع التدريب", value: "دورة" },
+  ];
+  const fixedFields = () => { const f = (App.store.get() || {}).fixedFields; return Array.isArray(f) ? f : DEFAULT_FIXED; };
+  const saveFixed = (list) => { App.store.get().fixedFields = list; App.store.save(); };
+
+  // «نوع التدريب» يطابق «نوع التدريب(دورة - دبلوم)»: تطابق تام أو احتواء لاسمين غير قصيرين
+  function sameField(a, b) {
+    const n = core().normalizeHeader;
+    const x = n(a);
+    const y = n(b);
+    return x === y || (x.length >= 4 && y.length >= 4 && (x.includes(y) || y.includes(x)));
+  }
+  const columnEmpty = (col) => !state.parsed.dataRows.some((r) => r[col] != null && String(r[col]).trim() !== "");
+
+  /* حقل يطابق بياناً ثابتاً يأخذ قيمته، إلا إن كان في ملف البيانات عمود مربوط به فيه قيم */
+  function applyFixed(headers, mapping, placeholders) {
+    const used = [];
+    fixedFields().filter((f) => f && f.name && String(f.value || "").trim()).forEach((f) => {
+      headers.forEach((h) => {
+        if (!sameField(h, f.name)) return;
+        if (mapping[h] && !columnEmpty(mapping[h])) return; // بيانات الملف أولى
+        mapping[h] = "";
+        state.constants[h] = String(f.value).trim();
+        used.push(f.name);
+      });
+      (placeholders || []).forEach((ph) => {
+        if (!sameField(ph, f.name)) return;
+        const col = state.parsed.dataHeaders.find((d) => sameField(d, ph));
+        if (col && !columnEmpty(col)) return;
+        state.constants[ph] = String(f.value).trim();
+        used.push(f.name);
+      });
+    });
+    return [...new Set(used)];
+  }
+
+  function renderFixed() {
+    const box = $("fx-list");
+    if (!box) return;
+    box.innerHTML = fixedFields().map((f, i) => `<div class="fx-row">
+        <input type="text" data-fx-name="${i}" value="${esc(f.name || "")}" placeholder="اسم الحقل كما في القالب">
+        <input type="text" data-fx-value="${i}" value="${esc(f.value || "")}" placeholder="القيمة">
+        <button type="button" class="act-btn del" data-fx-del="${i}" title="حذف الحقل">🗑</button>
+      </div>`).join("") || `<p class="conv-hint">لا توجد بيانات ثابتة بعد.</p>`;
   }
 
   const tracksList = () => ((App.store.get() || {}).tracks || []).filter((t) => t && t.name);
@@ -364,6 +416,8 @@
       });
       state.outputFormat = templateIsDocx ? "docx" : "xlsx";
       await prepareExtras(data);
+      state.fixedUsed = applyFixed(templateHeaders, state.mapping, placeholders);
+      (state.extras || []).forEach((t) => applyFixed(t.headers, t.mapping, []));
 
       const defaults = (savedId && selectedSaved() && selectedSaved().defaultGroupBy) || [];
       const usable = defaults.map((h) => core().resolveDefaultColumn(h, data.headers)).filter(Boolean);
@@ -494,6 +548,9 @@
     const fromExtras = (state.extras || []).reduce((all, t) => all.concat(t.missing), []);
     const extra = [...new Set((state.extraFields || []).concat(fromExtras))].filter((f) => !missing.includes(f));
     let html = "";
+    if (state.fixedUsed && state.fixedUsed.length) {
+      html += `<p class="conv-grade-note">📌 عُبّئ من البيانات الثابتة: ${state.fixedUsed.map(esc).join("، ")} — تظهر قيمها في «حقول لم نجد لها بيانات» ويمكن تغييرها هناك لهذا الكشف فقط.</p>`;
+    }
     html += gradeControl();
     html += trainerControl();
     if (missing.length || extra.length) {
@@ -771,6 +828,29 @@
     $("conv-parse").addEventListener("click", handleParse);
     // الخطوة ①: دمج الملفات
     $("mg-files").addEventListener("change", (e) => onMergeFiles(e.target.files));
+    // البيانات الثابتة: تُحفظ أثناء الكتابة، ويُعاد الرسم عند الإضافة والحذف فقط
+    $("fx-list").addEventListener("input", (e) => {
+      const i = e.target.dataset.fxName != null ? e.target.dataset.fxName : e.target.dataset.fxValue;
+      if (i == null) return;
+      const list = fixedFields().map((f) => Object.assign({}, f));
+      list[Number(i)][e.target.dataset.fxName != null ? "name" : "value"] = e.target.value;
+      saveFixed(list);
+    });
+    $("fx-list").addEventListener("click", (e) => {
+      const i = e.target.dataset.fxDel;
+      if (i == null) return;
+      const list = fixedFields().map((f) => Object.assign({}, f));
+      list.splice(Number(i), 1);
+      saveFixed(list);
+      renderFixed();
+    });
+    $("fx-add").addEventListener("click", () => {
+      saveFixed(fixedFields().map((f) => Object.assign({}, f)).concat({ name: "", value: "" }));
+      renderFixed();
+      const inputs = $("fx-list").querySelectorAll("[data-fx-name]");
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    });
+    renderFixed();
     $("mg-body").addEventListener("change", (e) => {
       const i = e.target.dataset.mgKey;
       if (i == null) return;

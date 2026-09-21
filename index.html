@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=112">
+  <link rel="stylesheet" href="styles/theme.css?v=113">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -525,6 +525,12 @@
         <div class="page-head">
           <div><h2>تحويل ملف حسب قالب</h2><p>اختر قالباً (Excel أو Word) يحدّد شكل المخرجات، وملف بيانات Excel، ثم اربط الأعمدة واحصل على ملف واحد مطابق للقالب</p></div>
         </div>
+        <details class="card fx-card" id="fx-card">
+          <summary><b>📌 البيانات الثابتة</b> <small class="conv-hint">— تُعبّأ تلقائياً في كل كشف فيه حقل بالاسم نفسه، وتظهر لكل المستخدمين</small></summary>
+          <p class="conv-hint">اكتب اسم الحقل كما يظهر في القالب (عموداً أو حقلاً مثل {{اسم المركز}}) وقيمته. إن كان في ملف البيانات عمود بالاسم نفسه فيه قيم، فهو أولى.</p>
+          <div id="fx-list"></div>
+          <button type="button" class="conv-link" id="fx-add">+ إضافة حقل</button>
+        </details>
         <div class="card mg-card">
           <h3>① دمج ملفات البيانات في ملف واحد <small class="conv-hint">— اختياري: عندما تكون بيانات الأشخاص أنفسهم موزّعة على أكثر من ملف</small></h3>
           <label class="field"><span>ملفات Excel (حدّد عدة ملفات معاً بالضغط على Ctrl)</span><input type="file" id="mg-files" accept=".xlsx" multiple></label>
@@ -983,38 +989,38 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=112"></script>
-  <script src="src/ui.js?v=112"></script>
-  <script src="src/templates.js?v=112"></script>
-  <script src="src/tracks.js?v=112"></script>
-  <script src="src/tasks.js?v=112"></script>
-  <script src="src/dashboard.js?v=112"></script>
-  <script src="src/letterhead-docx.js?v=112"></script>
-  <script src="src/docx.js?v=112"></script>
-  <script src="src/ai.js?v=112"></script>
-  <script src="src/doc-render.js?v=112"></script>
-  <script src="src/files-store.js?v=112"></script>
-  <script src="src/shared.js?v=112"></script>
-  <script src="src/cloud.js?v=112"></script>
-  <script src="src/drive.js?v=112"></script>
-  <script src="src/drive-ui.js?v=112"></script>
-  <script src="src/rtl-fixer.js?v=112"></script>
-  <script src="src/rtl-page.js?v=112"></script>
-  <script src="src/profile.js?v=112"></script>
-  <script src="src/admin.js?v=112"></script>
-  <script src="src/roster.js?v=112"></script>
-  <script src="src/registry.js?v=112"></script>
-  <script src="src/charts.js?v=112"></script>
-  <script src="src/ai-assist.js?v=112"></script>
-  <script src="src/meetings.js?v=112"></script>
-  <script src="src/report.js?v=112"></script>
-  <script src="src/letters.js?v=112"></script>
+  <script src="src/storage.js?v=113"></script>
+  <script src="src/ui.js?v=113"></script>
+  <script src="src/templates.js?v=113"></script>
+  <script src="src/tracks.js?v=113"></script>
+  <script src="src/tasks.js?v=113"></script>
+  <script src="src/dashboard.js?v=113"></script>
+  <script src="src/letterhead-docx.js?v=113"></script>
+  <script src="src/docx.js?v=113"></script>
+  <script src="src/ai.js?v=113"></script>
+  <script src="src/doc-render.js?v=113"></script>
+  <script src="src/files-store.js?v=113"></script>
+  <script src="src/shared.js?v=113"></script>
+  <script src="src/cloud.js?v=113"></script>
+  <script src="src/drive.js?v=113"></script>
+  <script src="src/drive-ui.js?v=113"></script>
+  <script src="src/rtl-fixer.js?v=113"></script>
+  <script src="src/rtl-page.js?v=113"></script>
+  <script src="src/profile.js?v=113"></script>
+  <script src="src/admin.js?v=113"></script>
+  <script src="src/roster.js?v=113"></script>
+  <script src="src/registry.js?v=113"></script>
+  <script src="src/charts.js?v=113"></script>
+  <script src="src/ai-assist.js?v=113"></script>
+  <script src="src/meetings.js?v=113"></script>
+  <script src="src/report.js?v=113"></script>
+  <script src="src/letters.js?v=113"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=112"></script>
-  <script src="src/converter-store.js?v=112"></script>
-  <script src="src/converter.js?v=112"></script>
-  <script src="src/app.js?v=112"></script>
+  <script src="src/converter-core.js?v=113"></script>
+  <script src="src/converter-store.js?v=113"></script>
+  <script src="src/converter.js?v=113"></script>
+  <script src="src/app.js?v=113"></script>
 </body>
 </html>

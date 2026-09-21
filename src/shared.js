@@ -4,7 +4,7 @@
 (function (App) {
   const { store, ui } = App;
   const SNAP_KEY = "tamkeen-admin:sync2";
-  const SETTINGS_KEYS = ["registrySettings", "reportSettings", "rosterMeta", "aiSettings", "signer", "signerTitle"];
+  const SETTINGS_KEYS = ["registrySettings", "reportSettings", "rosterMeta", "aiSettings", "signer", "signerTitle", "fixedFields"];
   const COLS = ["tracks", "tasks", "meetings", "customTemplates", "roster", "settings", "convTemplates"];
   let syncing = false, again = false, timer = null, people = [];
   const LABELS = { tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات", convTemplates: "قوالب التحويل" };

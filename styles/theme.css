@@ -565,3 +565,8 @@ body.has-trial-bar #login-screen { top: 38px; }
 .mg-preview tr.mg-partial td { background: var(--warn-bg); }
 .mg-preview td.mg-empty { color: var(--muted); text-align: center; }
 .conv-merged-chip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 22px 0 12px; padding: 8px 12px; background: var(--teal-100); border-radius: 9px; font-weight: 700; font-size: 13.5px; }
+
+/* البيانات الثابتة */
+.fx-card > summary { cursor: pointer; }
+.fx-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(200px, 2fr) auto; gap: 8px; align-items: center; margin: 8px 0; }
+@media (max-width: 640px) { .fx-row { grid-template-columns: 1fr; } }
