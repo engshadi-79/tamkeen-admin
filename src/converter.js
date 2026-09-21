@@ -131,6 +131,40 @@
 
   const readFile = (file) => file.arrayBuffer();
 
+  /* ===== التقدير من المعدل: ظاهر وقابل للتغيير بدل أن يجري بصمت =====
+     يظهر إن كان في القالب عمود تقدير: من أي عمود يُحسب، وكم صفاً حُسب وكم تعذّر ولماذا. */
+  function gradeControl() {
+    const p = state.parsed;
+    const norm = core().normalizeHeader;
+    const col = p.templateHeaders.find((h) => /تقدير/.test(norm(h)));
+    if (!col) return "";
+    const g = state.grade || { from: "" };
+    const choices = p.dataHeaders.filter((h) => h !== core().GRADE_COLUMN);
+    const status = !g.from
+      ? `<span class="warn">لم نجد عموداً اسمه «المعدل» في بياناتك؛ اختره من القائمة ليُحسب التقدير.</span>`
+      : `حُسب التقدير لـ <b>${ui.fmt(g.ok)}</b> صفاً${g.bad ? `، <span class="warn">وتعذّر في ${ui.fmt(g.bad)} صفاً لأن المعدل فيها ليس رقماً (مثل «-» أو «غائب»)</span>` : ""}.${g.fraction ? " المعدل مكتوب كنسبة (0.86) فعومل كـ 86." : ""}${g.ok === 0 && !g.bad ? ` <span class="warn">العمود المختار فارغ.</span>` : ""}`;
+    return `<div class="conv-grade-note">
+      <label>ⓘ «${esc(col)}» يُحسب من عمود
+        <select data-grade-from>${opt("", "— لا تحسبه —", !g.from)}${choices.map((h) => opt(h, h, h === g.from)).join("")}</select></label>
+      <div>${status}</div>
+      <small>السلّم: 90 فأكثر ممتاز، 80–89 جيد جداً، 75–79 جيد، أقل من 75 راسب.</small>
+    </div>`;
+  }
+
+  function setGradeSource(header) {
+    const p = state.parsed;
+    const G = core().GRADE_COLUMN;
+    if (header) {
+      state.grade = core().addComputedGrade({ headers: p.dataHeaders, rows: p.dataRows }, header);
+      core().preferComputedGrade(state.mapping, p.templateHeaders, p.dataHeaders);
+      (state.extras || []).forEach((t) => core().preferComputedGrade(t.mapping, t.headers, p.dataHeaders));
+    } else {
+      state.grade = { from: "" };
+      Object.keys(state.mapping).forEach((k) => { if (state.mapping[k] === G) state.mapping[k] = ""; });
+    }
+    renderResult();
+  }
+
   /* ملف البيانات: الملف المدموج في الخطوة ① إن اعتُمد، وإلا الملف المختار هنا */
   async function readData(files) {
     if (state.mergedData) {
@@ -272,7 +306,7 @@
       const data = await readData(dataFiles);
 
       state.parsed = { templateHeaders, dataHeaders: data.headers, dataRows: data.rows, truncated: data.truncated, templateBuffer, templateIsDocx, templateName, savedId };
-      state.gradeFrom = core().addComputedGrade(data);
+      state.grade = core().addComputedGrade(data);
       state.mapping = core().preferComputedGrade(core().suggestColumnMapping(templateHeaders, data.headers), templateHeaders, data.headers);
       state.constants = {};
       const placeholders = await core().readTemplatePlaceholders(templateBuffer, templateIsDocx);
@@ -415,9 +449,7 @@
     const fromExtras = (state.extras || []).reduce((all, t) => all.concat(t.missing), []);
     const extra = [...new Set((state.extraFields || []).concat(fromExtras))].filter((f) => !missing.includes(f));
     let html = "";
-    if (state.gradeFrom && Object.values(state.mapping).includes(core().GRADE_COLUMN)) {
-      html += `<p class="conv-grade-note">ⓘ «التقدير» يُحسب تلقائياً من «${esc(state.gradeFrom)}»: 90 فأكثر ممتاز، 80–89 جيد جداً، 75–79 جيد، أقل من 75 راسب. ويمكن ربطه بعمود آخر من القائمة أدناه.</p>`;
-    }
+    html += gradeControl();
     if (missing.length || extra.length) {
       const field = (name, hint) => `
         <div class="conv-map-row">
@@ -614,6 +646,7 @@
   function onResultChange(e) {
     const t = e.target;
     const p = state.parsed;
+    if (t.dataset.gradeFrom != null) { setGradeSource(t.value); return; }
     if (t.dataset.map != null) {
       state.mapping[p.templateHeaders[Number(t.dataset.map)]] = t.value;
       renderResult();

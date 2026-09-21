@@ -212,19 +212,33 @@
     return n >= 0 && n <= 100 ? n : null;
   }
 
-  function gradeOf(value) {
-    const n = parseScore(value);
+  // fraction: المعدل مكتوب كنسبة عشرية (0.86 تعني 86)
+  function gradeOf(value, fraction) {
+    let n = parseScore(value);
     if (n == null) return "";
+    if (fraction) n *= 100;
     return GRADE_SCALE.find((g) => n >= g.min).label;
   }
 
-  /* يُضاف عمود التقدير المحسوب إلى البيانات إن وُجد عمود معدل؛ يعيد اسم عمود المعدل أو null */
-  function addComputedGrade(data) {
-    const avg = data.headers.find((h) => h !== GRADE_COLUMN && /معدل/.test(normalizeHeader(h)));
-    if (!avg) return null;
+  const guessAverageColumn = (headers) => headers.find((h) => h !== GRADE_COLUMN && /معدل/.test(normalizeHeader(h))) || "";
+
+  /* يُضاف عمود التقدير المحسوب إلى البيانات من عمود المعدل (المختار، أو أول عمود اسمه فيه «معدل»).
+     يعيد { from, ok, bad, fraction }: كم صفاً حُسب له تقدير، وكم تعذّر (قيمة غير رقمية). */
+  function addComputedGrade(data, avgHeader) {
+    const avg = avgHeader === undefined ? guessAverageColumn(data.headers) : avgHeader;
+    if (!avg || !data.headers.includes(avg)) return { from: "", ok: 0, bad: 0, fraction: false };
     if (!data.headers.includes(GRADE_COLUMN)) data.headers.push(GRADE_COLUMN);
-    data.rows.forEach((row) => { row[GRADE_COLUMN] = gradeOf(row[avg]); });
-    return avg;
+    // عمود كل قيمه بين 0 و 1 معدلات مكتوبة كنسب (خلية بصيغة % في Excel)
+    const nums = data.rows.map((r) => parseScore(r[avg])).filter((n) => n != null);
+    const fraction = nums.length > 0 && Math.max(...nums) <= 1 && nums.some((n) => n > 0);
+    let ok = 0;
+    let bad = 0;
+    data.rows.forEach((row) => {
+      const g = gradeOf(row[avg], fraction);
+      row[GRADE_COLUMN] = g;
+      if (g) ok++; else if (row[avg] != null && String(row[avg]).trim() !== "") bad++;
+    });
+    return { from: avg, ok, bad, fraction };
   }
 
   /* عمود «التقدير» في القالب يُربط بالتقدير المحسوب بدل عمود جاهز في البيانات */
@@ -599,7 +613,13 @@
 
     function addDataRow(row, counter) {
       const newRow = sheet.addRow(buildRowValues(templateHeaders, mapping, row, options.autoNumberHeader, counter));
-      for (let col = 1; col <= columnCount; col++) newRow.getCell(col).style = dataCellStyles[col - 1];
+      for (let col = 1; col <= columnCount; col++) {
+        const cell = newRow.getCell(col);
+        cell.style = dataCellStyles[col - 1];
+        // خلية بصيغة نسبة مئوية في القالب ورقم مثل 86: يُكتب 0.86 فيظهر 86% لا 8600%
+        const fmt = String((dataCellStyles[col - 1] || {}).numFmt || "");
+        if (fmt.includes("%") && typeof cell.value === "number" && cell.value > 1) cell.value = cell.value / 100;
+      }
       if (dataRowHeight) newRow.height = dataRowHeight;
     }
 
@@ -1065,7 +1085,7 @@
   App.converterCore = {
     MAX_ROWS, normalizeHeader, suggestColumnMapping, resolveDefaultColumn, computeGroupKey,
     isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, guessKey, generate,
-    gradeOf, addComputedGrade, preferComputedGrade, GRADE_COLUMN,
+    gradeOf, addComputedGrade, preferComputedGrade, guessAverageColumn, GRADE_COLUMN,
     // للاختبار
     computeSessionDates, fillXlsxTemplate, fillDocxTemplate, extractHeadersFromDocxTable,
   };
