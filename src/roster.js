@@ -212,6 +212,29 @@
   /* ===== التصفية ===== */
   const filter = { q: "", col: {}, only: "" };
 
+  /* ترتيب العرض فقط (لا يمسّ ترتيب البيانات المحفوظة)، ويتذكّره كل جهاز */
+  const SORT_KEY = "tamkeen-admin:ros-sort";
+  const SORTS = [
+    { id: "track", label: "المسار ثم الاسم" },
+    { id: "name", label: "الاسم أبجدياً" },
+    { id: "group", label: "المجموعة ثم الاسم" },
+    { id: "none", label: "كما هي بلا ترتيب" },
+  ];
+  let sortMode = (() => { try { return localStorage.getItem(SORT_KEY) || "track"; } catch (e) { return "track"; } })();
+  const normLabel = (s) => String(s || "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه");
+  const colBy = (re) => meta().columns.find((c) => re.test(normLabel(c.label)));
+  const collator = new Intl.Collator("ar", { numeric: true, sensitivity: "base" });
+
+  function sortRows(list) {
+    if (sortMode === "none") return list;
+    const name = colBy(/اسم/);
+    const second = sortMode === "track" ? colBy(/مسار/) : sortMode === "group" ? colBy(/مجموعه/) : null;
+    const val = (r, c) => (c ? String(r.values[c.key] == null ? "" : r.values[c.key]).trim() : "");
+    // الفارغ في الآخر، والتساوي يحفظ الترتيب الأصلي (الترتيب مستقر)
+    const cmp = (a, b) => (!a && b ? 1 : a && !b ? -1 : collator.compare(a, b));
+    return list.slice().sort((a, b) => (second ? cmp(val(a, second), val(b, second)) : 0) || cmp(val(a, name), val(b, name)));
+  }
+
   function checkColumns() { return meta().columns.filter((c) => c.type === "select"); }
   function facetColumns() {
     // أعمدة نصية قليلة القيم تصلح للتصفية (المسار، المجموعة…)
@@ -224,7 +247,7 @@
 
   function filtered() {
     const q = filter.q.trim();
-    return rows().filter((r) => {
+    const list = rows().filter((r) => {
       if (q && !Object.values(r.values).some((v) => String(v).includes(q))) return false;
       for (const [key, val] of Object.entries(filter.col)) {
         if (!val) continue;
@@ -238,6 +261,7 @@
       if (filter.only === "incomplete" && checkColumns().every((c) => isDone(r, c))) return false;
       return true;
     });
+    return sortRows(list);
   }
 
   /* إن ضاع تعريف الأعمدة (مزامنة قديمة أو جهاز آخر) تُعاد بناؤه من مفاتيح البيانات نفسها */
@@ -311,6 +335,7 @@
           <option value="">${esc(c.label)}: الكل</option>
           ${(c.options || []).map((o) => `<option ${filter.col[c.key] === o ? "selected" : ""}>${esc(o)}</option>`).join("")}
         </select>`).join("")}
+      <select id="ros-sort" title="ترتيب العرض">${SORTS.map((s) => `<option value="${s.id}" ${sortMode === s.id ? "selected" : ""}>ترتيب: ${s.label}</option>`).join("")}</select>
       <select id="ros-only">
         <option value="">كل السجلات</option>
         <option value="incomplete" ${filter.only === "incomplete" ? "selected" : ""}>الناقص فقط</option>
@@ -625,6 +650,10 @@
     $("ros-filters").addEventListener("change", (e) => {
       if (e.target.dataset.facet) filter.col[e.target.dataset.facet] = e.target.value;
       if (e.target.id === "ros-only") filter.only = e.target.value;
+      if (e.target.id === "ros-sort") {
+        sortMode = e.target.value;
+        try { localStorage.setItem(SORT_KEY, sortMode); } catch (err) { /* تخزين غير متاح */ }
+      }
       render();
     });
     ["intro", "closing"].forEach((k) => $("ros-" + k).addEventListener("input", (e) => { meta()[k] = e.target.value; autoSave(); }));
