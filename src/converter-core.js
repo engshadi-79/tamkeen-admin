@@ -8,7 +8,8 @@
     return String(value)
       .trim()
       .toLowerCase()
-      .replace(/[ً-ٰٟـ]/g, "")
+      // التشكيل والتطويل فقط؛ النطاق السابق (ً-ٰ) كان يشمل الأرقام العربية ٠-٩ فيمحوها
+      .replace(/[ً-ٰٟـ]/g, "")
       .replace(/[أإآ]/g, "ا")
       .replace(/ة/g, "ه")
       .replace(/ى/g, "ي")
@@ -186,6 +187,94 @@
     const { headers, rows } = extractSheetData(sheet);
     if (headers.length === 0) throw new Error("ملف البيانات لا يحتوي على صف عناوين");
     return { headers, rows, truncated: rows.length >= MAX_ROWS };
+  }
+
+  /* ===== دمج عدة ملفات بيانات لنفس الأشخاص =====
+     كل ملف فيه جزء من بياناتهم؛ تُربط الصفوف بعمود مشترك (رقم الهوية غالباً) فيصير لكل شخص صف واحد. */
+  const KEY_HINTS = [/هويه|سجل مدني|رقم وطني|national|^id$/, /جوال|هاتف|موبايل|mobile|phone/, /اسم/];
+
+  // قيمة الربط بصيغة موحّدة: أرقام عربية ← لاتينية، بلا مسافات ولا تشكيل، والأصفار البادئة
+  // في الأرقام الطويلة لا تُحسب (Excel يحذفها من رقم مخزّن كعدد ويبقيها في رقم مخزّن كنص)
+  function normalizeKeyValue(value) {
+    const s = normalizeHeader(value == null ? "" : value)
+      .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+      .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+      .replace(/\s+/g, "");
+    return /^\d{6,}$/.test(s) ? s.replace(/^0+/, "") : s;
+  }
+
+  /* الأعمدة الموجودة في كل الملفات وقيمها شبه فريدة، مرتّبة: الهوية ثم الجوال ثم الاسم */
+  function keyCandidates(files) {
+    const sets = files.map((f) => new Map(f.headers.map((h) => [normalizeHeader(h), h])));
+    const common = [...sets[0].keys()].filter((n) => sets.every((s) => s.has(n)));
+    const uniqueness = (n) => {
+      const h = sets[0].get(n);
+      const vals = files[0].rows.map((r) => normalizeKeyValue(r[h])).filter(Boolean);
+      return vals.length ? new Set(vals).size / vals.length : 0;
+    };
+    const rank = (n) => { const i = KEY_HINTS.findIndex((re) => re.test(n)); return i === -1 ? KEY_HINTS.length : i; };
+    return common
+      .map((n) => ({ n, u: uniqueness(n) }))
+      .filter((c) => c.u >= 0.9) // عمود يتكرر كثيراً (مثل المسار أو المجموعة) لا يصلح للربط
+      .sort((a, b) => rank(a.n) - rank(b.n) || b.u - a.u)
+      .map((c) => sets[0].get(c.n));
+  }
+
+  function mergeDataFiles(files, key) {
+    const keys = keyCandidates(files);
+    if (!keys.length) {
+      throw new Error("لا يوجد عمود مشترك بين كل الملفات يصلح لربط الأشخاص (مثل رقم الهوية)؛ تأكد أن العمود موجود بالاسم نفسه في كل ملف");
+    }
+    const keyHeader = key && keys.includes(key) ? key : keys[0];
+    const keyNorm = normalizeHeader(keyHeader);
+
+    // أعمدة الناتج: كل أعمدة الملفات، والعمود المتكرر بين ملفين يصير عموداً واحداً
+    const headers = [];
+    const canon = new Map();
+    files.forEach((f) => f.headers.forEach((h) => {
+      const n = normalizeHeader(h);
+      if (!canon.has(n)) { canon.set(n, h); headers.push(h); }
+    }));
+
+    const byKey = new Map();
+    const people = [];
+    let conflicts = 0;
+    let noKey = 0;
+    files.forEach((f, fi) => {
+      const fileKey = f.headers.find((h) => normalizeHeader(h) === keyNorm);
+      f.rows.forEach((row) => {
+        const kv = normalizeKeyValue(row[fileKey]);
+        let person = kv && byKey.get(kv);
+        if (!person) {
+          person = { values: {}, files: new Set() };
+          people.push(person);
+          if (kv) byKey.set(kv, person); else noKey++; // صف بلا قيمة ربط: يبقى كما هو دون دمج
+        }
+        person.files.add(fi);
+        f.headers.forEach((h) => {
+          const v = row[h];
+          if (v == null || v === "") return;
+          const out = canon.get(normalizeHeader(h));
+          const cur = person.values[out];
+          if (cur == null || cur === "") person.values[out] = v;
+          else if (normalizeKeyValue(cur) !== normalizeKeyValue(v)) conflicts++; // تبقى قيمة الملف الأول
+        });
+      });
+    });
+
+    const nameHeader = headers.find((h) => /اسم/.test(normalizeHeader(h)));
+    const label = (p) => String((nameHeader && p.values[nameHeader]) || p.values[keyHeader] || "بلا اسم");
+    const perFile = files.map((f, fi) => {
+      const missing = people.filter((p) => !p.files.has(fi));
+      return { name: f.name, rows: f.rows.length, missing: missing.length, missingNames: missing.slice(0, 8).map(label) };
+    });
+    return {
+      headers,
+      rows: people.map((p) => p.values),
+      key: keyHeader,
+      keys,
+      stats: { total: people.length, inAll: people.filter((p) => p.files.size === files.length).length, perFile, conflicts, noKey },
+    };
   }
 
   /* ===== التواريخ ===== */
@@ -907,7 +996,7 @@
 
   App.converterCore = {
     MAX_ROWS, normalizeHeader, suggestColumnMapping, resolveDefaultColumn, computeGroupKey,
-    isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, generate,
+    isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, generate,
     // للاختبار
     computeSessionDates, fillXlsxTemplate, fillDocxTemplate, extractHeadersFromDocxTable,
   };

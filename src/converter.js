@@ -129,11 +129,52 @@
 
   const readFile = (file) => file.arrayBuffer();
 
+  /* ملف بيانات واحد، أو عدة ملفات لنفس الأشخاص تُدمج في صف واحد لكل شخص */
+  async function readData(files) {
+    state.merge = null;
+    if (files.length === 1) return core().readDataFile(await readFile(files[0]));
+    const list = [];
+    for (const f of files) {
+      let d;
+      try { d = await core().readDataFile(await readFile(f)); } catch (e) { throw new Error(`«${f.name}»: ${e.message}`); }
+      list.push({ name: f.name.replace(/\.xlsx$/i, ""), headers: d.headers, rows: d.rows, truncated: d.truncated });
+    }
+    const m = core().mergeDataFiles(list);
+    state.merge = { files: list, key: m.key, keys: m.keys, stats: m.stats };
+    return { headers: m.headers, rows: m.rows, truncated: list.some((x) => x.truncated) };
+  }
+
+  /* تغيير عمود الربط: تتغيّر الصفوف وحدها، وتبقى الأعمدة والربط والقيم المكتوبة كما هي */
+  function remerge(key) {
+    const m = core().mergeDataFiles(state.merge.files, key);
+    state.merge = Object.assign(state.merge, { key: m.key, keys: m.keys, stats: m.stats });
+    state.parsed.dataRows = m.rows;
+    renderResult();
+  }
+
+  function mergeSummary() {
+    const m = state.merge;
+    if (!m) return "";
+    const st = m.stats;
+    const files = st.perFile.map((f) => `<li><b>${esc(f.name)}</b>: ${ui.fmt(f.rows)} صفاً${f.missing
+      ? ` — <span class="warn">ليس فيه ${ui.fmt(f.missing)} شخصاً</span>: ${f.missingNames.map(esc).join("، ")}${f.missing > f.missingNames.length ? "…" : ""}`
+      : " — فيه كل الأشخاص"}</li>`).join("");
+    return `<div class="conv-section conv-merge">
+      <h3>📎 دُمجت ${ui.fmt(m.files.length)} ملفات لنفس الأشخاص</h3>
+      <label class="conv-merge-key">الربط بين الملفات بعمود
+        <select data-merge-key>${m.keys.map((k) => opt(k, k, k === m.key)).join("")}</select></label>
+      <p><b>${ui.fmt(st.total)}</b> شخصاً، منهم <b>${ui.fmt(st.inAll)}</b> موجودون في كل الملفات.</p>
+      <ul>${files}</ul>
+      ${st.conflicts ? `<p class="warn">⚠ ${ui.fmt(st.conflicts)} قيمة مختلفة للشخص نفسه بين الملفات؛ أُخذت قيمة الملف الأول.</p>` : ""}
+      ${st.noKey ? `<p class="warn">⚠ ${ui.fmt(st.noKey)} صفاً بلا قيمة في عمود الربط؛ أُضيفت كما هي دون دمج.</p>` : ""}
+    </div>`;
+  }
+
   async function handleParse() {
     setError("");
     if (!librariesReady()) { setError("تعذّر تحميل مكتبات Excel/Word من مجلد vendor."); return; }
-    const dataFile = $("conv-data-file").files[0];
-    if (!dataFile) { setError("اختر ملف البيانات"); return; }
+    const dataFiles = [...$("conv-data-file").files];
+    if (!dataFiles.length) { setError("اختر ملف البيانات"); return; }
 
     let templateBuffer, templateIsDocx, templateName, savedId = null, templateHeaders = null;
     if (state.mode === "upload") {
@@ -156,7 +197,7 @@
     setBusy("conv-parse", true, "جارٍ التحليل...");
     try {
       if (!templateHeaders) templateHeaders = await core().readTemplateHeaders(templateBuffer, templateIsDocx);
-      const data = await core().readDataFile(await readFile(dataFile));
+      const data = await readData(dataFiles);
 
       state.parsed = { templateHeaders, dataHeaders: data.headers, dataRows: data.rows, truncated: data.truncated, templateBuffer, templateIsDocx, templateName, savedId };
       state.mapping = core().suggestColumnMapping(templateHeaders, data.headers);
@@ -300,7 +341,7 @@
     const missing = p.templateHeaders.filter((h) => !state.mapping[h]);
     const fromExtras = (state.extras || []).reduce((all, t) => all.concat(t.missing), []);
     const extra = [...new Set((state.extraFields || []).concat(fromExtras))].filter((f) => !missing.includes(f));
-    let html = "";
+    let html = mergeSummary();
     if (missing.length || extra.length) {
       const field = (name, hint) => `
         <div class="conv-map-row">
@@ -497,6 +538,7 @@
   function onResultChange(e) {
     const t = e.target;
     const p = state.parsed;
+    if (t.dataset.mergeKey != null) { remerge(t.value); return; }
     if (t.dataset.map != null) {
       state.mapping[p.templateHeaders[Number(t.dataset.map)]] = t.value;
       renderResult();
