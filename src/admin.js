@@ -205,6 +205,37 @@
     $("adm-adopt").disabled = false;
   }
 
+  /* استعادة من النسخ الاحتياطية اليومية على Drive — تُضيف الناقص ولا تحذف شيئاً */
+  async function openRestore() {
+    $("adm-restore").disabled = true;
+    try {
+      const days = await App.cloud.backupDays();
+      if (!days.length) throw new Error("لا توجد نسخ احتياطية على هذا الخادم");
+      $("adm-restore-day").innerHTML = days.map((d) =>
+        `<option value="${esc(d.day)}">${esc(d.day)} — ${ui.fmt(d.records)} سجلاً في ${ui.fmt(d.files)} ملفاً</option>`).join("");
+      $("adm-restore-modal").classList.add("open");
+    } catch (e) { ui.toast(e.message); }
+    $("adm-restore").disabled = false;
+  }
+
+  async function runRestore() {
+    const day = $("adm-restore-day").value;
+    if (!confirm(`استعادة نسخة ${day}؟\nتُضاف السجلات الناقصة فقط، ولا يُحذف أو يُستبدل شيء موجود.`)) return;
+    $("adm-restore-run").disabled = true;
+    try {
+      const r = await App.cloud.restoreDay(day);
+      const n = Object.keys(r.restored || {}).reduce((a, k) => a + r.restored[k], 0);
+      $("adm-restore-modal").classList.remove("open");
+      ui.toast(n ? `استُعيد ${ui.fmt(n)} سجلاً من نسخة ${day}` : `نسخة ${day} لا تحوي سجلات ناقصة`);
+      App.shared.resetSnap();
+      try { localStorage.removeItem("tamkeen-admin:reg-sync"); } catch (e) { /* تخزين غير متاح */ }
+      await App.shared.sync(true);
+      await App.registry.syncShared(true);
+      renderStats();
+    } catch (e) { ui.toast(e.message); }
+    $("adm-restore-run").disabled = false;
+  }
+
   function suggestPassword() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
     const a = new Uint32Array(10);
@@ -236,6 +267,9 @@
     $("adm-refresh").addEventListener("click", load);
     $("adm-export").addEventListener("click", exportUsers);
     $("adm-adopt").addEventListener("click", adoptDevice);
+    $("adm-restore").addEventListener("click", openRestore);
+    $("adm-restore-run").addEventListener("click", runRestore);
+    $("adm-restore-cancel").addEventListener("click", () => $("adm-restore-modal").classList.remove("open"));
     $("adm-import").addEventListener("click", () => $("adm-import-file").click());
     $("adm-import-file").addEventListener("change", (e) => { importUsers(e.target.files[0]); e.target.value = ""; });
     $("adm-digest-save").addEventListener("click", saveDigest);

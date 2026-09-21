@@ -119,6 +119,8 @@
   const exportUsers = async () => (await call("exportUsers")).users || [];
   const importUsers = (list) => call("importUsers", { users: list });
   const adopt = (cols) => call("adopt", { cols });
+  const backupDays = async () => (await call("backupDays")).days || [];
+  const restoreDay = (day) => call("restoreDay", { day });
 
   /* ===== الملفات والسجل ===== */
   const toBase64 = (blob) => new Promise((resolve, reject) => {
@@ -155,7 +157,7 @@
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
-    isTrial, useServer, defaultUrl: DEFAULT_URL, exportUsers, importUsers, adopt,
+    isTrial, useServer, defaultUrl: DEFAULT_URL, exportUsers, importUsers, adopt, backupDays, restoreDay,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});

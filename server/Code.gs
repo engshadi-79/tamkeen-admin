@@ -51,7 +51,7 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 11, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
+      case "status": return out_({ ok: true, version: 12, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
       case "login": {
         const res = login_(req.username, req.password);
@@ -65,7 +65,7 @@ function doPost(e) {
     if (!user) return out_({ error: "UNAUTHORIZED" });
     logRequest_(user, req);
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 11, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 12, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
@@ -86,6 +86,8 @@ function doPost(e) {
       case "digest": return out_(setupDigest_(req.enabled, req.hour));
       case "saveUser": return out_(saveUser_(req.user, user));
       case "adopt": return out_(adopt_(req.cols || {}, user));
+      case "backupDays": return out_({ days: backupDays_() });
+      case "restoreDay": return out_(restoreDay_(req.day, user));
       case "exportUsers": return out_(exportUsers_());
       case "importUsers": return out_(importUsers_(req.users, user));
       case "deleteUser": return out_(deleteUser_(req.username, user));
@@ -650,6 +652,74 @@ function backupDaily_(file) {
   while (it.hasNext()) files.push(it.next());
   files.sort((a, b) => b.getDateCreated() - a.getDateCreated());
   files.slice(BACKUP_KEEP).forEach((f) => f.setTrashed(true));
+}
+
+/* التواريخ التي توجد لها نسخ احتياطية، وعدد سجلات كل نسخة */
+function backupDays_() {
+  const folder = subFolder_(root_(), BACKUP_FOLDER);
+  const days = {};
+  const it = folder.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    const m = /(\d{4}-\d{2}-\d{2})\.json$/.exec(f.getName());
+    if (!m) continue;
+    const day = m[1];
+    days[day] = days[day] || { day: day, files: 0, records: 0 };
+    days[day].files++;
+    try {
+      const data = JSON.parse(f.getBlob().getDataAsString("UTF-8"));
+      days[day].records += (data.records || []).length;
+    } catch (err) { /* ملف تالف يُتجاهل */ }
+  }
+  return Object.keys(days).sort().reverse().map((d) => days[d]);
+}
+
+/* استعادة نسخة يوم معيّن: تُضاف السجلات الناقصة ولا يُحذف شيء موجود،
+   وتُزال شواهد الحذف عن المستعاد حتى لا تعود المزامنة فتحذفه. للمدير وحده. */
+function restoreDay_(day, user) {
+  day = String(day || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("اختر تاريخ النسخة");
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(45000)) throw new Error("الخادم مشغول، أعد المحاولة بعد لحظات");
+  try {
+    const folder = subFolder_(root_(), BACKUP_FOLDER);
+    const restored = {};
+    const it = folder.getFiles();
+    while (it.hasNext()) {
+      const f = it.next();
+      const name = f.getName();
+      if (name.indexOf(" - " + day + ".json") === -1) continue;
+      let data;
+      try { data = JSON.parse(f.getBlob().getDataAsString("UTF-8")); } catch (err) { continue; }
+      if (!data || !Array.isArray(data.records)) continue;
+      // اسم الملف يحدّد وجهته: السجل الرئيسي أو قسم من الأقسام
+      const colMatch = /^tamkeen-(.+) - \d{4}-\d{2}-\d{2}\.json$/.exec(name);
+      const label = colMatch ? colMatch[1] : "registry";
+      if (colMatch && !isCol_(label)) continue;
+      const file = colMatch ? colFile_(label) : dataFile_();
+      const current = readData_(file);
+      const map = {};
+      (current.records || []).forEach((r) => { map[r.id] = r; });
+      const del = Object.assign({}, current.deleted || {});
+      let added = 0;
+      data.records.forEach((r) => {
+        if (!r || !r.id) return;
+        delete del[r.id];
+        if (map[r.id]) return;   // الموجود لا يُستبدل
+        map[r.id] = r;
+        added++;
+      });
+      if (added || Object.keys(del).length !== Object.keys(current.deleted || {}).length) {
+        file.setContent(JSON.stringify({ records: Object.keys(map).map((k) => map[k]), deleted: del }));
+      }
+      restored[label] = added;
+    }
+    if (!Object.keys(restored).length) throw new Error("لا توجد نسخة بهذا التاريخ");
+    log_(user.name, "استعادة نسخة احتياطية", day + " — " + Object.keys(restored).map((k) => k + ": " + restored[k]).join(" · "));
+    return { day: day, restored: restored };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function listBackups_() {
