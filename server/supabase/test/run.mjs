@@ -334,5 +334,19 @@ const dd = await post({ action: "digestData", key: "SECRET123" });
 check("بيانات الملخص فيها المهام المستحقة", dd.enabled && dd.hour === 8 && dd.lateTasks.some((t) => t.text === "مستحقة"), dd);
 check("بيانات الملخص تحتاج الرمز", (await post({ action: "digestData", key: "x" })).error === "رمز النسخ غير صحيح");
 
+/* ===== 17. الإحالة في الوارد ===== */
+console.log("\n[17] الإحالة في الوارد");
+const A = (await post({ action: "login", username: "lina16", password: "lina1234" })).token;
+await post({ action: "sync", token: T, records: [{ id: "as1", type: "in", number: "و/1", subject: "محال", assignee: "لينا", dueDate: "2026-01-01", done: false, updatedAt: ts(50) }], deleted: {} });
+let as = (await post({ action: "sync", token: A, records: [{ id: "as1", type: "in", number: "و/1", subject: "غيّرته", assignee: "لينا", dueDate: "2026-01-01", done: true, updatedAt: ts(51) }], deleted: {} })).records.find((r) => r.id === "as1");
+check("المحال إليه يعلّم «تمت المعالجة»", as.done === true, as);
+check("ولا يغيّر باقي القيد", as.subject === "محال" && as.owner === "شادي", as);
+await post({ action: "sync", token: T, records: [{ id: "as2", type: "in", number: "و/2", subject: "غير محال", done: false, updatedAt: ts(52) }], deleted: {} });
+as = (await post({ action: "sync", token: A, records: [{ id: "as2", type: "in", number: "و/2", done: true, updatedAt: ts(53) }], deleted: {} })).records.find((r) => r.id === "as2");
+check("غير المحال إليه لا يستطيع", as.done === false, as);
+await post({ action: "sync", token: T, records: [{ id: "as3", type: "in", number: "و/3", subject: "للمتابعة", assignee: "لينا", dueDate: "2026-01-01", done: false, updatedAt: ts(54) }], deleted: {} });
+const dd17 = await post({ action: "digestData", key: "SECRET123" });
+check("الملخص ينسب الوارد المحال إلى المحال إليه", dd17.lateIn.some((r) => r.number === "و/3" && r.owner === "لينا"), dd17.lateIn);
+
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);

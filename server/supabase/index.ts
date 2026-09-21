@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 18;
+const VERSION = 19;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -411,6 +411,9 @@ async function mergeCol(col: string, incoming: any[], deleted: Record<string, st
           next = { ...row.data, done: true, replyId: rec.replyId, replyNumber: rec.replyNumber, history: rec.history, updatedAt: rec.updatedAt };
         } else if (rec.driveId && !row.data.driveId) {
           next = { ...row.data, driveId: rec.driveId, driveLink: rec.driveLink, driveFolderId: rec.driveFolderId, drivePath: rec.drivePath, drivePending: false, updatedAt: rec.updatedAt };
+        } else if (row.data.assignee && row.data.assignee === user.name && !!rec.done !== !!row.data.done) {
+          // المحال إليه يعلّم الوارد «تمت المعالجة» (أو يلغيها) دون أن يملك باقي القيد
+          next = { ...row.data, done: !!rec.done, history: Array.isArray(rec.history) ? rec.history.slice(-30) : row.data.history, updatedAt: rec.updatedAt };
         } else continue;
       }
       if (!row || body(row.data) !== body(next)) {
@@ -542,7 +545,7 @@ async function digestData() {
   const cfg = (await kvGet("digest")) || { enabled: false, hour: 7 };
   if (!cfg.enabled) return { enabled: false, hour: cfg.hour };
   const reg = (await readCol("registry")).records.filter((r: any) => r && !r.deletedAt && r.type === "in" && r.dueDate && !r.done)
-    .map((r: any) => ({ number: r.number || "", subject: r.subject || "", party: r.party || "", dueDate: r.dueDate, owner: r.owner || "" }));
+    .map((r: any) => ({ number: r.number || "", subject: r.subject || "", party: r.party || "", dueDate: r.dueDate, owner: r.assignee || r.owner || "" }));
   const tasks = (await readCol("tasks")).records.filter((t: any) => t && !t.done && t.dueDate)
     .map((t: any) => ({ text: t.text || "", dueDate: t.dueDate, owner: t.owner || "" }));
   const { data: users } = await db.from("app_users").select("name, email, admin, active");

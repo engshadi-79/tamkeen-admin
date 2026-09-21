@@ -564,7 +564,7 @@
         <td class="reg-num">${esc(r.number)}</td>
         <td class="nowrap">${esc(ui.formatDate(r.date))}</td>
         <td>${esc(r.party || "")}</td>
-        <td>${esc(r.subject || "")}<div class="reg-kind">${esc(categoryOf(r))}${r.kind && r.kind !== categoryOf(r) ? ` · ${esc(r.kind)}` : ""}${r.track ? ` · 🎓 ${esc(r.track)}` : ""}</div>${r.type === "in" ? dueBadge(r) : ""}${r.summary ? `<details class="reg-summary"><summary>✨ الملخص</summary>${esc(r.summary)}</details>` : ""}${filter.content && inContent(r) && !textMatch(r, filter.content.q) ? `<span class="due-badge">📄 في المحتوى</span>` : ""}</td>
+        <td>${esc(r.subject || "")}<div class="reg-kind">${esc(categoryOf(r))}${r.kind && r.kind !== categoryOf(r) ? ` · ${esc(r.kind)}` : ""}${r.track ? ` · 🎓 ${esc(r.track)}` : ""}${r.assignee ? ` · ↪ ${esc(r.assignee)}` : ""}</div>${r.type === "in" ? dueBadge(r) : ""}${r.summary ? `<details class="reg-summary"><summary>✨ الملخص</summary>${esc(r.summary)}</details>` : ""}${filter.content && inContent(r) && !textMatch(r, filter.content.q) ? `<span class="due-badge">📄 في المحتوى</span>` : ""}</td>
         <td class="reg-file">${fileCell(r)}</td>
         <td class="nowrap">${r.fileId && r.fileDate ? esc(ui.formatDate(r.fileDate)) : "—"}</td>
         <td>${folderCell(r)}</td>
@@ -583,6 +583,8 @@
     return (r.fileId ? `<button class="act-btn dl" data-download title="تحميل الملف إلى الجهاز">⬇ تحميل</button>` : "")
       + (r.type === "in" ? ` <button class="act-btn reply" data-reply title="إنشاء خطاب رد في المراسلات">↩ رد</button>` : "")
       + (r.type === "in" && App.ai && App.ai.hasKey() && (!App.profile.can || App.profile.can("ai")) ? ` <button class="act-btn ai" data-summarize title="تلخيص الخطاب بالذكاء الاصطناعي">✨ تلخيص</button>` : "")
+      + (!mod && r.type === "in" && r.assignee && r.assignee === me()
+        ? ` <button class="act-btn edit" data-done title="${r.done ? "إلغاء «تمت المعالجة»" : "تعليم الوارد المحال إليك منجزاً"}">${r.done ? "↺ لم تُعالج" : "✓ تمت المعالجة"}</button>` : "")
       + (mod ? ` <button class="act-btn edit" data-edit title="تعديل القيد">✎ تعديل</button>${mayDelete ? ` <button class="act-btn del" data-del title="نقل إلى المحذوفات">🗑 حذف</button>` : ""}`
         : ` <span class="reg-kind" title="التعديل لصاحب القيد أو المدير">🔒</span>`);
   }
@@ -804,6 +806,16 @@
     render();
     if (file) autoArchive(rec);
     ui.toast(`تم حفظ القيد ${number}${moved && !file ? " — الملف في Drive باقٍ في مجلده السابق" : ""}`);
+  }
+
+  /* المحال إليه يعلّم الوارد منجزاً أو يلغي ذلك (الخادم يقبل منه هذا الحقل وحده) */
+  function toggleDone(rec) {
+    if (!rec || rec.assignee !== me()) return;
+    rec.done = !rec.done;
+    logAction(rec, rec.done ? "تمت المعالجة (المحال إليه)" : "إلغاء «تمت المعالجة»");
+    store.save();
+    render();
+    ui.toast(rec.done ? `عُلّم الوارد ${rec.number} منجزاً` : `أُلغي «تمت المعالجة» عن ${rec.number}`);
   }
 
   function deleteRecord(id) {
@@ -1293,6 +1305,7 @@
       if (e.target.closest("[data-purge]")) { purgeRecord(rec); return; }
       if (e.target.closest("[data-reply]")) { replyTo(rec); return; }
       if (e.target.closest("[data-summarize]")) { summarize(rec); return; }
+      if (e.target.closest("[data-done]")) { toggleDone(rec); return; }
       if (e.target.closest("[data-open]")) openFile(rec, "view");
       else if (e.target.closest("[data-download]")) openFile(rec, "download");
       else if (e.target.closest("[data-archive]")) archiveNow([rec]);
