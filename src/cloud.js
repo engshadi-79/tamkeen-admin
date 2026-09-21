@@ -1,8 +1,10 @@
-/* الخادم المشترك (Google Apps Script بحساب المركز): كل الملفات في Drive حساب واحد،
-   وسجل الوارد والصادر مشترك بين كل الأجهزة. الدخول باسم مستخدم وكلمة مرور؛ الجلسة تُحفظ على الجهاز 30 يوماً. */
+/* الخادم المشترك: Supabase (Postgres + تخزين الملفات)، والسابق كان Google Apps Script على Drive.
+   الدخول باسم مستخدم وكلمة مرور؛ الجلسة تُحفظ على الجهاز 30 يوماً. */
 (function (App) {
   const STORAGE = "tamkeen-admin:cloud";
-  const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbyvEVh6eb827Ue-sgDtQNz1bHt-9wakgLZiVD1YNN0lIRofr5Q5CbxPBs_6jqVQsLwFbg/exec"; // خادم المركز (بحساب ostoraplus2017)
+  const DEFAULT_URL = "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen"; // خادم المركز (Supabase)
+  // الخادم السابق على Drive: يبقى كما هو ويمكن الرجوع إليه بـ ?server=رابطه
+  const OLD_URL = "https://script.google.com/macros/s/AKfycbyvEVh6eb827Ue-sgDtQNz1bHt-9wakgLZiVD1YNN0lIRofr5Q5CbxPBs_6jqVQsLwFbg/exec";
   const listeners = [];
 
   function settings() {
@@ -37,10 +39,26 @@
     return true;
   }
 
+  /* الانتقال إلى Supabase: كل جهاز محفوظ على الخادم السابق يُنقل مرة واحدة، ويُطلب منه الدخول بكلمة مروره نفسها.
+     إلا من اختار الخادم السابق صراحة (بـ ?server=) فيبقى عليه. */
+  function moveToDefault() {
+    const s = settings();
+    if (s.url !== OLD_URL || s.pinned) return;
+    useServer(DEFAULT_URL);
+    saveSettings({ moved: true });
+  }
+
+  const consumeMovedNotice = () => {
+    if (!settings().moved) return "";
+    saveSettings({ moved: false });
+    return "انتقل النظام إلى خادم جديد أسرع. سجّل الدخول مرة واحدة باسم المستخدم وكلمة المرور نفسيهما.";
+  };
+
   function applyOverride() {
     const q = new URLSearchParams(location.search);
     if (!q.has("server")) return;
     useServer(q.get("server"));
+    saveSettings({ pinned: settings().url !== DEFAULT_URL });
     q.delete("server");
     const rest = q.toString();
     history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
@@ -51,17 +69,18 @@
     if (!isTrial()) return;
     const bar = document.createElement("div");
     bar.className = "trial-bar no-print";
-    bar.innerHTML = `<span>⚗ أنت على الخادم التجريبي (Supabase) — بياناته منفصلة عن الخادم الأساسي.</span>`;
+    bar.innerHTML = `<span>⚗ أنت على ${settings().url === OLD_URL ? "الخادم السابق (Drive)" : "خادم غير الخادم الرئيسي"} — بياناته منفصلة عن الخادم الرئيسي.</span>`;
     const back = document.createElement("button");
     back.type = "button";
-    back.textContent = "العودة إلى الخادم الأساسي";
-    back.addEventListener("click", () => { useServer(""); location.reload(); });
+    back.textContent = "العودة إلى الخادم الرئيسي";
+    back.addEventListener("click", () => { useServer(""); saveSettings({ pinned: false }); location.reload(); });
     bar.append(back);
     document.body.prepend(bar);
     document.body.classList.add("has-trial-bar");
   }
 
   applyOverride();
+  moveToDefault();
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", banner);
   else banner();
 
@@ -157,7 +176,7 @@
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
-    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, exportUsers, importUsers, adopt, backupDays, restoreDay,
+    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});

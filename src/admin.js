@@ -50,6 +50,8 @@
       $("adm-backups").href = info.folder || "#";
       $("adm-log").hidden = !info.logFolder;
       $("adm-backups").hidden = !info.folder;
+      $("adm-restore").hidden = !info.folder; // الاستعادة من نسخ Drive اليومية فقط
+      $("adm-move").hidden = App.cloud.settings().url === MOVE_TARGET;
       $("adm-digest-on").checked = !!(info.digest || {}).enabled;
       $("adm-digest-hour").value = String((info.digest || {}).hour || 7);
     } catch (e) { /* يظهر الخطأ في قائمة المستخدمين */ }

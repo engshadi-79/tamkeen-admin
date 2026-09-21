@@ -367,7 +367,7 @@
 
     renderBadges();
     applyAccess();
-    if (!App.cloud.ready()) showLogin();
+    if (!App.cloud.ready()) showLogin(App.cloud.consumeMovedNotice ? App.cloud.consumeMovedNotice() : "");
     else App.cloud.refreshUser().then(notify).catch(() => { /* بلا إنترنت: تبقى الجلسة المحفوظة */ });
   }
 
