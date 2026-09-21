@@ -7,6 +7,18 @@ const PK = {
   kv: ["key"], files: ["id"], events: ["id"],
 };
 
+/* الأعمدة الإلزامية بلا قيمة افتراضية في schema.sql */
+const NOT_NULL = {
+  app_users: ["username", "name", "salt", "hash"],
+  sessions: ["token", "username", "expires_at"],
+  resets: ["username", "code", "expires_at"],
+  records: ["col", "id", "data"],
+  deletions: ["col", "id", "at"],
+  counters: ["head"],
+  kv: ["key", "value"],
+  files: ["id", "name"],
+};
+
 export function makeDb() {
   const tables = {};
   const buckets = {};
@@ -37,6 +49,12 @@ export function makeDb() {
       const match = (r) => this.filters.every((f) => f(r));
       if (this.op === "insert" || this.op === "upsert") {
         const cols = this.onConflict;
+        // كما يفعل Postgres: الأعمدة الإلزامية تُفحص في الصف المقترح قبل البحث عن تعارض،
+        // فصفّ ناقص يفشل حتى لو كان تحديثاً لصفّ موجود
+        for (const row of this.rows) {
+          const missing = (NOT_NULL[this.table] || []).find((c) => row[c] === undefined || row[c] === null);
+          if (missing) return { data: null, error: { message: `null value in column "${missing}" of relation "${this.table}" violates not-null constraint` } };
+        }
         for (const row of this.rows) {
           if (this.table === "events" && row.id === undefined) row.id = eventId++;
           if (this.table === "events" && !row.at) row.at = new Date().toISOString();

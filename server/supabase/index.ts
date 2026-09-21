@@ -31,7 +31,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 13;
+const VERSION = 14;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -208,7 +208,11 @@ async function saveUser(data: any, by: any) {
     row.hash = await pbkdf2(String(data.password), row.salt as string);
   }
   if (!existing) row.email = row.email ?? "";
-  const { error } = await db.from("app_users").upsert(row, { onConflict: "username" });
+  // تعديل مستخدم موجود تحديثٌ صريح: «إدراج أو تحديث» يفحص فيه Postgres الأعمدة الإلزامية
+  // (الملح وبصمة كلمة المرور) قبل أن يعرف أنه تحديث، فيفشل كل تعديل بلا كلمة مرور جديدة
+  const { error } = existing
+    ? await db.from("app_users").update(row).eq("username", username)
+    : await db.from("app_users").insert(row);
   if (error) throw new Error(error.message);
   // كلمة مرور جديدة أو إيقاف الحساب: خروج من كل الأجهزة
   if (data.password || data.active === false) await db.from("sessions").delete().eq("username", username);

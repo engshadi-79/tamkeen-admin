@@ -65,6 +65,14 @@ check("غير المدير لا يضيف مستخدمين", (await post({ action
 check("المدير لا يحذف نفسه", (await post({ action: "deleteUser", token: T, username: "admin" })).error?.includes("لا يمكنك حذف حسابك"));
 check("قائمة الأسماء تظهر الاثنين", (await post({ action: "people", token: T })).people.length === 2);
 
+// حالة يزن: المدير يعدّل صفحات مستخدم موجود دون تغيير كلمة مروره
+const grant = await post({ action: "saveUser", token: T, user: { username: "sara", name: "سارة", views: ["registry", "roster", "meetings"], perms: { upload: true, delete: false } } });
+check("تعديل صفحات مستخدم موجود بلا كلمة مرور يُحفظ", !grant.error && grant.user.views.join(",") === "registry,roster,meetings", grant);
+const saraAgain = await post({ action: "login", username: "sara", password: "sara1234" });
+check("ويظهر له عند الدخول دون أن تتغيّر كلمة مروره", !!saraAgain.token && saraAgain.user.views.includes("meetings") && saraAgain.user.perms.delete === false, saraAgain);
+const pingSara = await post({ action: "ping", token: saraAgain.token });
+check("والتحديث بعد الدخول يعيد الصفحات نفسها", pingSara.user.views.join(",") === "registry,roster,meetings", pingSara.user);
+
 /* ===== 4. مزامنة الأقسام: الأحدث يفوز ===== */
 console.log("\n[4] المزامنة العامة");
 const tr = (id, name, at) => ({ id, name, updatedAt: at });
