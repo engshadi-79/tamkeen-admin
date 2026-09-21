@@ -576,3 +576,36 @@ body.has-trial-bar #login-screen { top: 38px; }
 .conv-filter-list .conv-check { font-weight: 400; }
 .conv-filter-list small { color: var(--muted); }
 .conv-filter .warn { color: var(--warn); font-weight: 700; margin: 4px 0; }
+
+/* ===== كشف توزيع الضيافة ===== */
+.hos-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.hos-bar select, .hos-bar input { width: auto; min-width: 90px; }
+.hos-bar #hos-year { width: 90px; }
+.hos-summary { color: var(--muted, #667); font-size: .9rem; margin-inline-start: auto; }
+.card .hos-title, .hos-title { text-align: center; background: #1F3864; color: #fff; padding: 8px; margin: 0 0 6px; border-radius: 6px; font-size: 1.05rem; }
+.hos-wrap { overflow-x: auto; }
+.hos-table { border-collapse: collapse; font-size: .82rem; min-width: 100%; }
+.hos-table th, .hos-table td { border: 1px solid #BFBFBF; padding: 0; text-align: center; min-width: 46px; height: 30px; }
+.hos-table thead th { background: #1F3864; color: #fff; padding: 4px 2px; font-weight: 700; line-height: 1.2; }
+.hos-table thead th small { font-weight: 400; opacity: .85; }
+.hos-table .hos-name { position: sticky; right: 0; z-index: 1; min-width: 170px; padding: 0 8px; text-align: right; white-space: nowrap; }
+.hos-table thead .hos-name { z-index: 2; }
+.hos-track .hos-name { background: #2E75B6; color: #fff; }
+.hos-staff .hos-name { background: #548235; color: #fff; }
+.hos-track td, .hos-staff td { background: #DDEBF7; }
+.hos-table td input { width: 100%; height: 30px; border: 0; background: transparent; text-align: center; font: inherit; padding: 0; -moz-appearance: textfield; color: #111; }
+.hos-table td input::-webkit-inner-spin-button, .hos-table td input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.hos-table td input:focus { outline: 2px solid #2E75B6; background: #fff; }
+.hos-tick { width: 100%; height: 30px; border: 0; background: transparent; cursor: pointer; font: inherit; font-weight: 700; color: #1F3864; }
+.hos-tick:hover { background: #c5dcf0; }
+.hos-tick.on { background: #A9D08E; }
+.hos-table td.hos-total { font-weight: 700; background: #DDEBF7; }
+.hos-sum th, .hos-sum td { background: #FFE699 !important; color: #111; font-weight: 700; }
+.hos-grand th, .hos-grand td { background: #1F3864 !important; color: #fff; font-weight: 700; font-size: .9rem; }
+@media print {
+  .hos-wrap { overflow: visible; }
+  .hos-table { font-size: 7pt; }
+  .hos-table th, .hos-table td { min-width: 0; height: 18px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .hos-table .hos-name { min-width: 0; position: static; }
+  .hos-title { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

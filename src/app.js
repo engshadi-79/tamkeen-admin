@@ -1,7 +1,7 @@
 /* نقطة التشغيل: التنقل بين الأقسام، النسخ الاحتياطي، وربط الوحدات */
 (function (App) {
   const { store, ui } = App;
-  const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "tasks", "admin"];
+  const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "hospitality", "tasks", "admin"];
 
   function show(view) {
     if (!VIEWS.includes(view)) view = "dashboard";
@@ -20,6 +20,7 @@
     if (view === "roster") App.roster.render();
     if (view === "rtl") App.rtlPage.render();
     if (view === "converter") App.converter.render();
+    if (view === "hospitality") App.hospitality.render();
     if (view === "tasks") App.tasks.render();
     if (view === "admin") App.admin.render();
     if (location.hash.slice(1) !== view) history.replaceState(null, "", "#" + view);
@@ -72,6 +73,7 @@
     App.aiAssist.attach();
     App.report.init();
     App.converter.init();
+    App.hospitality.init();
     initBackup();
 
     // تحديث الأقسام التي لا تحتوي على حقول قيد التحرير
