@@ -85,6 +85,40 @@
       console.error(e);
     }
     renderSource();
+    await renderShareStatus();
+  }
+
+  /* هل وصلت القوالب إلى الخادم؟ الحالة ظاهرة بدل أن تجري في الخلفية بصمت */
+  async function renderShareStatus() {
+    const box = $("conv-share");
+    if (!box) return;
+    const st = await store().status();
+    const server = App.cloud && App.cloud.isTrial && App.cloud.isTrial() ? "الخادم التجريبي (Supabase)" : "الخادم الأساسي";
+    let text, cls = "";
+    if (!st.signedIn && st.waiting) { text = `⚠ على هذا الجهاز ${ui.fmt(st.waiting)} قالباً لم يُرفع، ولن يُرفع قبل تسجيل الدخول.`; cls = "warn"; }
+    else if (!st.signedIn) { text = "سجّل الدخول لترى القوالب المشتركة."; }
+    else if (st.waiting) { text = `⏳ ${ui.fmt(st.waiting)} قالباً على هذا الجهاز لم يصل ${server} بعد.`; cls = "warn"; }
+    else { text = `✓ كل القوالب (${ui.fmt(st.total)}) على ${server}.`; cls = "ok"; }
+    if (st.signedIn && st.remoteMissing) text += ` و${ui.fmt(st.remoteMissing)} قالباً بانتظار أن يرفعه جهاز من حفظه.`;
+    $("conv-share-text").textContent = text;
+    box.className = `conv-share ${cls}`;
+    $("conv-share-now").hidden = !st.waiting;
+  }
+
+  async function shareNow() {
+    const btn = $("conv-share-now");
+    btn.disabled = true;
+    btn.textContent = "…جارٍ الرفع";
+    try {
+      const r = await store().reconcile();
+      if (r.skipped) ui.toast(r.skipped);
+      else if (r.errors.length) ui.toast(`تعذّر رفع بعض القوالب: ${r.errors[0]}`);
+      else ui.toast(`رُفع ${ui.fmt(r.uploaded)} قالباً إلى الخادم`);
+      if (App.shared) await App.shared.sync(true);
+    } catch (e) { ui.toast(e.message); }
+    btn.disabled = false;
+    btn.textContent = "☁ رفع الآن";
+    await refreshSaved();
   }
 
   const readFile = (file) => file.arrayBuffer();
@@ -532,6 +566,7 @@
     $("conv-save-cancel").addEventListener("click", () => { $("conv-save-form").hidden = true; $("conv-save-toggle").hidden = false; $("conv-save-error").textContent = ""; });
     $("conv-save-btn").addEventListener("click", handleSaveTemplate);
     $("conv-parse").addEventListener("click", handleParse);
+    $("conv-share-now").addEventListener("click", shareNow);
     $("conv-result").addEventListener("change", onResultChange);
     $("conv-result").addEventListener("input", (e) => { if (e.target.dataset.const != null) onResultChange(e); });
     $("conv-result").addEventListener("click", onResultClick);

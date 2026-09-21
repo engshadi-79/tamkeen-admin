@@ -64,7 +64,7 @@
   const uploading = new Set();
   async function uploadFile(id, file) {
     const m = find(id);
-    if (!m || m.fileId || !cloudOn() || uploading.has(id)) return;
+    if (!m || m.fileId || !cloudOn() || uploading.has(id)) return false;
     uploading.add(id);
     try {
       const res = await App.cloud.upload(file, `${m.name}.${m.format === "docx" ? "docx" : "xlsx"}`, FOLDER);
@@ -73,6 +73,7 @@
       cur.fileId = res.id;
       cur.updatedAt = now();
       App.store.save();
+      return true;
     } finally {
       uploading.delete(id);
     }
@@ -104,34 +105,46 @@
   /* مطابقة نسخة المتصفح مع القائمة المشتركة:
      - قالب قديم محفوظ على هذا الجهاز وحده يُضاف إلى القائمة ويُرفع ملفه (مرة واحدة، بعلامة migrated)
      - قالب في القائمة بلا ملف على الخادم ونسخته هنا (انقطاع أثناء الحفظ) يُرفع الآن */
-  let reconciling = false;
-  async function reconcile() {
-    if (reconciling || !cloudOn()) return;
-    reconciling = true;
+  let reconciling = null;
+  function reconcile() {
+    if (!cloudOn()) return Promise.resolve({ skipped: "سجّل الدخول أولاً حتى تُرفع القوالب إلى الخادم" });
+    if (!reconciling) reconciling = run().finally(() => { reconciling = null; });
+    return reconciling;
+  }
+
+  async function run() {
+    const report = { added: 0, uploaded: 0, errors: [] };
     try {
       const all = (await tx("readonly", (s) => s.getAll())) || [];
-      let added = false;
       for (const r of all) {
         if (!r.migrated) {
           if (!find(r.id)) {
             // وقت المشاركة لا وقت الإنشاء الأصلي، حتى تحتفظ به أول مزامنة على الجهاز
             meta().push({ id: r.id, name: r.name, format: r.format, headers: r.headers || [], defaultGroupBy: r.defaultGroupBy || [], createdAt: now(), updatedAt: now(), fileId: null, owner: me() });
-            added = true;
+            report.added++;
           }
           await tx("readwrite", (s) => s.put(Object.assign({}, r, { migrated: true })));
         }
         const cur = find(r.id);
-        if (cur && !cur.fileId && r.file) await uploadFile(r.id, r.file).catch((e) => console.warn("رفع القالب:", e.message));
+        if (cur && !cur.fileId && r.file) {
+          try { if (await uploadFile(r.id, r.file)) report.uploaded++; } catch (e) { report.errors.push(`${cur.name}: ${e.message}`); }
+        }
       }
-      if (added) {
-        App.store.save();
-        if (App.converter && App.converter.refresh) App.converter.refresh();
-      }
+      if (report.added) App.store.save();
+      if ((report.added || report.uploaded) && App.converter && App.converter.refresh) App.converter.refresh();
     } catch (e) {
-      console.warn("مطابقة القوالب:", e.message);
-    } finally {
-      reconciling = false;
+      report.errors.push(e.message);
     }
+    return report;
+  }
+
+  /* حالة القوالب على هذا الجهاز: كم منها لم يصل الخادم بعد */
+  async function status() {
+    let local = [];
+    try { local = (await tx("readonly", (s) => s.getAll())) || []; } catch (e) { /* IndexedDB غير متاح */ }
+    const waiting = local.filter((r) => r.file && (!r.migrated || (find(r.id) && !find(r.id).fileId))).length;
+    const remoteMissing = meta().filter((t) => !t.fileId && !local.some((r) => r.id === t.id)).length;
+    return { signedIn: cloudOn(), waiting, remoteMissing, total: meta().length };
   }
 
   let timer = null;
@@ -140,5 +153,5 @@
   if (App.cloud) App.cloud.onAuth((kind) => { if (kind === "login") schedule(4000); });
   schedule(4000);
 
-  App.converterStore = { list, get, save, setDefaultGroupBy, remove, reconcile };
+  App.converterStore = { list, get, save, setDefaultGroupBy, remove, reconcile, status };
 })(window.App = window.App || {});

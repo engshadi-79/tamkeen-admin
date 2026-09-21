@@ -531,3 +531,8 @@ body.has-trial-bar #login-screen { top: 38px; }
 .mv-log .ok { color: #0f8b8d; }
 .mv-log .warn { color: #9a6700; }
 .mv-log .bad { color: #c0392b; }
+
+/* حالة مشاركة قوالب التحويل */
+.conv-share { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; padding: 8px 12px; border-radius: 9px; font-size: 13px; font-weight: 700; background: var(--navy-100); color: var(--navy-800); }
+.conv-share.ok { background: #e3f5ec; color: var(--ok); }
+.conv-share.warn { background: var(--warn-bg); color: var(--warn); }
