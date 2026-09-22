@@ -1153,47 +1153,6 @@
       });
     }
 
-    /* النص في سطر واحد داخل الخلية: إن قُدّر أن النص أعرض من الخلية يُصغَّر خطّها بقدر الحاجة
-       (حتى 8 نقاط) ويُمنع التفافه. النص الذي يتسع يبقى بحجمه. التقدير: متوسط عرض الحرف ≈ 0.5 من حجم الخط */
-    const MIN_FIT_HALF_POINTS = 16;
-    const CELL_MARGINS_TWIPS = 230;
-    function fitCells(rowXml) {
-      return rowXml.replace(/<w:tc>([\s\S]*?)<\/w:tc>/g, (full, inner) => {
-        const w = inner.match(/<w:tcW\b[^>]*w:w="(\d+)"[^>]*w:type="dxa"|<w:tcW\b[^>]*w:type="dxa"[^>]*w:w="(\d+)"/);
-        const width = w ? Number(w[1] || w[2]) : 0;
-        if (!width) return full;
-        const text = [...inner.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => decodeXmlEntities(m[1])).join("");
-        if (!text.trim()) return full;
-        const szMatch = inner.match(/<w:sz\b[^>]*w:val="(\d+)"/);
-        const sz = szMatch ? Number(szMatch[1]) : TEMPLATE_FONT_HALF_POINTS;
-        const needed = text.length * (sz / 2) * 20 * 0.5;
-        const available = width - CELL_MARGINS_TWIPS;
-        if (needed <= available) return full;
-        const newSz = Math.max(MIN_FIT_HALF_POINTS, Math.floor((sz * available) / needed));
-        const SZ = `<w:sz w:val="${newSz}"/><w:szCs w:val="${newSz}"/>`;
-        // ترتيب المخطط: sz/szCs قبل هذه العناصر في rPr، وnoWrap قبل هذه في tcPr
-        const AFTER_SZ = /<w:(highlight|u|effect|bdr|shd|fitText|vertAlign|rtl|cs|em|lang|eastAsianLayout|specVanish|oMath)\b/;
-        const AFTER_NOWRAP = /<w:(tcMar|textDirection|tcFitText|vAlign|hideMark|headers|cellIns|cellDel|cellMerge|tcPrChange)\b/;
-        const putSz = (body) => {
-          const clean = body.replace(/<w:sz\b[^>]*\/>/g, "").replace(/<w:szCs\b[^>]*\/>/g, "");
-          const at = clean.search(AFTER_SZ);
-          return at >= 0 ? clean.slice(0, at) + SZ + clean.slice(at) : clean + SZ;
-        };
-        let out = inner.replace(/<w:r(\s[^>]*)?>(\s*<w:rPr>([\s\S]*?)<\/w:rPr>)?/g, (m, attrs, _w, body) =>
-          (attrs && /\/\s*$/.test(attrs) ? m : `<w:r${attrs || ""}><w:rPr>${putSz(body || "")}</w:rPr>`));
-        // منع الالتفاف: noWrap في خصائص الخلية بموضعه الصحيح
-        if (!/<w:noWrap\b/.test(out)) {
-          out = /<w:tcPr>/.test(out)
-            ? out.replace(/<w:tcPr>([\s\S]*?)<\/w:tcPr>/, (m, body) => {
-              const at = body.search(AFTER_NOWRAP);
-              return `<w:tcPr>${at >= 0 ? body.slice(0, at) + "<w:noWrap/>" + body.slice(at) : body + "<w:noWrap/>"}</w:tcPr>`;
-            })
-            : `<w:tcPr><w:noWrap/></w:tcPr>` + out;
-        }
-        return `<w:tc>${out}</w:tc>`;
-      });
-    }
-
     /* «ابقَ مع التالي» لكل فقرة في المقطع: Word لا يفصلها عمّا بعدها،
        فلا تنتقل التوقيعات وحدها إلى صفحة فارغة بل تأخذ معها آخر صفوف الجدول */
     function keepWithNext(fragmentXml, skipLast) {
@@ -1233,7 +1192,7 @@
       let counter = 1;
       const rowXmls = groupRows
         .map((row) => buildRowValues(templateHeaders, mapping, row, options.autoNumberHeader, counter++))
-        .map((values) => fitCells(singleSpacing(buildRow(values, scale))));
+        .map((values) => singleSpacing(buildRow(values, scale)));
       const hasTrailing = /<w:t[ >]/.test(repeatableTrailingXml);
       const generatedRows = rowXmls.map((x, i) => (hasTrailing && i >= rowXmls.length - KEEP_ROWS ? keepWithNext(x, false) : x)).join("");
       const groupPlaceholderValues = rowsToPlaceholderValueLists(groupRows);
