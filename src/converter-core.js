@@ -1136,6 +1136,23 @@
     const PAGE_BREAK = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
     const KEEP_ROWS = 3; // صفوف الجدول الأخيرة التي ترافق التوقيعات إلى الصفحة التالية
 
+    /* صفوف البيانات بتباعد مفرد (1.0) بلا مسافة قبل الفقرة أو بعدها، فيأخذ الصف ارتفاع محتواه.
+       يُكتب صريحاً في كل فقرة فيتقدّم على تباعد نمط القالب (مثل 1.5) */
+    const SINGLE = '<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>';
+    // ما يأتي بعد spacing في ترتيب مخطط pPr
+    const AFTER_SPACING = /<w:(ind|contextualSpacing|mirrorIndents|suppressOverlap|jc|textDirection|textAlignment|textboxTightWrap|outlineLvl|divId|cnfStyle|rPr|sectPr|pPrChange)\b/;
+    function singleSpacing(fragmentXml) {
+      return fragmentXml.replace(/<w:p(\s[^>]*)?>(\s*<w:pPr>([\s\S]*?)<\/w:pPr>)?/g, (full, attrs, _whole, inner) => {
+        if (attrs && /\/\s*$/.test(attrs)) return full; // فقرة فارغة مغلقة ذاتياً
+        const open = `<w:p${attrs || ""}>`;
+        if (inner === undefined) return `${open}<w:pPr>${SINGLE}</w:pPr>`;
+        let body = inner.replace(/<w:spacing\b[^>]*\/>/g, "");
+        const at = body.search(AFTER_SPACING);
+        body = at >= 0 ? body.slice(0, at) + SINGLE + body.slice(at) : body + SINGLE;
+        return `${open}<w:pPr>${body}</w:pPr>`;
+      });
+    }
+
     /* «ابقَ مع التالي» لكل فقرة في المقطع: Word لا يفصلها عمّا بعدها،
        فلا تنتقل التوقيعات وحدها إلى صفحة فارغة بل تأخذ معها آخر صفوف الجدول */
     function keepWithNext(fragmentXml, skipLast) {
@@ -1175,7 +1192,7 @@
       let counter = 1;
       const rowXmls = groupRows
         .map((row) => buildRowValues(templateHeaders, mapping, row, options.autoNumberHeader, counter++))
-        .map((values) => buildRow(values, scale));
+        .map((values) => singleSpacing(buildRow(values, scale)));
       const hasTrailing = /<w:t[ >]/.test(repeatableTrailingXml);
       const generatedRows = rowXmls.map((x, i) => (hasTrailing && i >= rowXmls.length - KEEP_ROWS ? keepWithNext(x, false) : x)).join("");
       const groupPlaceholderValues = rowsToPlaceholderValueLists(groupRows);
