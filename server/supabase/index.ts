@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 20;
+const VERSION = 21;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -330,6 +330,48 @@ function resurrects(rec: any, delAt: string) {
   return !(t && d) || t - d < RESURRECT_MS;
 }
 
+/* ===== دمج الخانات (قائمة المستفيدين) =====
+   كل خانة في values لها وقت تعديلها في valuesAt؛ تُؤخذ الأحدث لكل خانة على حدة.
+   خانة بلا وقت (من جهاز بنسخة قديمة) أقدم من أي خانة لها وقت، وبين خانتين بلا وقت يُؤخذ القيد الأحدث.
+   الملاحظات تُجمع من النسختين بلا تكرار. */
+const FIELD_MERGE = new Set(["roster"]);
+
+function mergeFields(cur: any, inc: any) {
+  const curNewer = stampOf(cur) >= stampOf(inc);
+  const [newer, older] = curNewer ? [cur, inc] : [inc, cur];
+  const out: any = { ...older, ...newer };
+  const cv = cur.values || {}, iv = inc.values || {};
+  const ca = cur.valuesAt || {}, ia = inc.valuesAt || {};
+  const values: Record<string, unknown> = {}, at: Record<string, string> = {};
+  for (const k of new Set([...Object.keys(cv), ...Object.keys(iv)])) {
+    const a = ca[k] || "", b = ia[k] || "";
+    let fromInc: boolean;
+    if (!(k in cv)) fromInc = true;
+    else if (!(k in iv)) fromInc = false;
+    else if (a || b) fromInc = b > a;
+    else fromInc = !curNewer;
+    values[k] = fromInc ? iv[k] : cv[k];
+    let t = a > b ? a : b;
+    // تعديل قُبل من جهاز بلا أوقات خانات: يأخذ وقت قيده، فلا تمسحه لاحقاً نسخةٌ قديمة بلا أوقات
+    if (fromInc && !b && k in cv && JSON.stringify(iv[k]) !== JSON.stringify(cv[k])) t = stampOf(inc) || t;
+    if (t) at[k] = t;
+  }
+  out.values = values;
+  if (Object.keys(at).length) out.valuesAt = at;
+  const notes = [...(cur.notes || []), ...(inc.notes || [])];
+  if (notes.length) {
+    const seen = new Set<string>();
+    out.notes = notes.filter((n: any) => {
+      const key = n && (n.id || `${n.at}|${n.text}`);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).sort((x: any, y: any) => String(x.at || "").localeCompare(String(y.at || "")));
+  }
+  out.updatedAt = stampOf(newer);
+  return out;
+}
+
 /* نص مسطّح للبحث داخل قيم القيد */
 function searchText(data: any) {
   const parts: string[] = [];
@@ -403,6 +445,10 @@ async function mergeCol(col: string, incoming: any[], deleted: Record<string, st
       let next = rec;
       if (!row) {
         if (ownerRules && (!user.admin || !rec.owner)) next = { ...rec, owner: user.name };
+      } else if (FIELD_MERGE.has(col)) {
+        // دمج على مستوى الخانة: لا تمسح نسخةُ جهازٍ قديمة خانةً عدّلها غيره بعد آخر مزامنة له
+        next = mergeFields(row.data, rec);
+        if (body(next) === body(row.data)) continue;
       } else if (stampOf(rec) <= row.stamp) {
         continue;
       } else if (!mayEdit(row)) {

@@ -194,6 +194,7 @@
       if (updateExisting) {
         cmp.changed.forEach(({ old, rec, diffs }) => {
           diffs.forEach((c) => { old.values[c.key] = rec.values[c.key]; });
+          old.valuesAt = Object.assign({}, old.valuesAt, ...diffs.map((c) => ({ [c.key]: now })));
           old.updatedAt = now;
           updated++;
         });
@@ -529,6 +530,8 @@
       if (e.target.tagName === "SELECT") e.target.className = `ros-sel ${e.target.value === (col.doneValue || DONE) ? "done" : e.target.value ? "not" : ""}`;
     }
     rec.updatedAt = new Date().toISOString();
+    // وقت تعديل هذه الخانة وحدها: الخادم يدمج الخانات فلا تمسح نسخةُ جهاز آخر ما عُدّل هنا
+    rec.valuesAt = Object.assign({}, rec.valuesAt, { [key]: rec.updatedAt });
     rec.updatedBy = App.profile ? App.profile.name() : "";
     autoSave();
     if (e.target.tagName === "SELECT" || e.target.type === "checkbox") {

@@ -334,6 +334,36 @@ const dd = await post({ action: "digestData", key: "SECRET123" });
 check("بيانات الملخص فيها المهام المستحقة", dd.enabled && dd.hour === 8 && dd.lateTasks.some((t) => t.text === "مستحقة"), dd);
 check("بيانات الملخص تحتاج الرمز", (await post({ action: "digestData", key: "x" })).error === "رمز النسخ غير صحيح");
 
+/* ===== 19. دمج خانات المستفيدين ===== */
+console.log("\n[19] دمج خانات المستفيدين");
+{
+  const t = (sec) => new Date(Date.now() + 100000 + sec * 1000).toISOString();
+  const base = { id: "st1", values: { name: "سارة", pledge: "لم يوقع", attend: "لم يوقع" }, updatedAt: t(1) };
+  await post({ action: "syncAll", token: T, cols: { roster: { records: [base], deleted: {} } } });
+  // رشا تعلّم التعهد (جهاز محدَّث: وقت الخانة)
+  await post({ action: "syncAll", token: T, cols: { roster: { records: [{ ...base, values: { ...base.values, pledge: "تم التوقيع" }, valuesAt: { pledge: t(2) }, updatedAt: t(2) }], deleted: {} } } });
+  // جهاز آخر لم يستلم تعديلها بعد يعلّم الحضور على نسخته القديمة، ويزامن لاحقاً بوقت أحدث
+  let r = (await post({ action: "syncAll", token: T, cols: { roster: { records: [{ ...base, values: { ...base.values, attend: "تم التوقيع" }, valuesAt: { attend: t(3) }, updatedAt: t(3) }], deleted: {} } } })).roster.records.find((x) => x.id === "st1");
+  check("تعليم رشا لم يُمسح بنسخة الجهاز الآخر", r.values.pledge === "تم التوقيع", r.values);
+  check("وتعليم الجهاز الآخر محفوظ أيضاً", r.values.attend === "تم التوقيع", r.values);
+  // جهاز بنسخة قديمة من الموقع (بلا أوقات خانات) يرسل القيد كله بوقت أحدث
+  r = (await post({ action: "syncAll", token: T, cols: { roster: { records: [{ ...base, values: { ...base.values, name: "سارة أحمد" }, updatedAt: t(4) }], deleted: {} } } })).roster.records.find((x) => x.id === "st1");
+  check("نسخة بلا أوقات خانات لا تمسح الخانات المؤرّخة", r.values.pledge === "تم التوقيع" && r.values.attend === "تم التوقيع", r.values);
+  check("وتعديلها في خانة بلا تاريخ يُقبل", r.values.name === "سارة أحمد", r.values);
+  // إلغاء التعليم لاحقاً يعمل (الأحدث يفوز لكل خانة)
+  r = (await post({ action: "syncAll", token: T, cols: { roster: { records: [{ ...r, values: { ...r.values, pledge: "لم يوقع" }, valuesAt: { ...r.valuesAt, pledge: t(5) }, updatedAt: t(5) }], deleted: {} } } })).roster.records.find((x) => x.id === "st1");
+  check("إلغاء التعليم بوقت أحدث يُقبل", r.values.pledge === "لم يوقع", r.values);
+  // ملاحظات من جهازين تُجمع
+  r = (await post({ action: "syncAll", token: T, cols: { roster: { records: [{ ...r, notes: [{ id: "n1", text: "اتصلت", at: t(6) }], updatedAt: t(6) }], deleted: {} } } })).roster.records.find((x) => x.id === "st1");
+  r = (await post({ action: "syncAll", token: T, cols: { roster: { records: [{ ...base, notes: [{ id: "n2", text: "لم يرد", at: t(7) }], updatedAt: t(7) }], deleted: {} } } })).roster.records.find((x) => x.id === "st1");
+  check("ملاحظات الجهازين محفوظة معاً", (r.notes || []).map((n) => n.id).join() === "n1,n2", r.notes);
+  check("والقيم لم تتأثر بنسخة الجهاز القديمة", r.values.name === "سارة أحمد" && r.values.attend === "تم التوقيع", r.values);
+  // المسارات ما زالت على «الأحدث يفوز» للقيد كله
+  await post({ action: "syncAll", token: T, cols: { tracks: { records: [{ id: "tr19", name: "أ", trainer1: "س", updatedAt: t(1) }], deleted: {} } } });
+  const tr = (await post({ action: "syncAll", token: T, cols: { tracks: { records: [{ id: "tr19", name: "ب", updatedAt: t(2) }], deleted: {} } } })).tracks.records.find((x) => x.id === "tr19");
+  check("الأقسام الأخرى كما كانت (القيد الأحدث كاملاً)", tr.name === "ب" && tr.trainer1 === undefined, tr);
+}
+
 /* ===== 18. المرفقات القديمة على Drive ===== */
 console.log("\n[18] المرفقات القديمة على Drive");
 {
