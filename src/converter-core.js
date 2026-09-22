@@ -1028,6 +1028,16 @@
       return fragmentXml.replace(runRegex, (run) => forceRunFontSize(run, sz));
     }
 
+    /* اسم المدرب بحجم 14 أينما وقع في المقطع (قد يشارك «مدرب المسار :» المقطع نفسه) */
+    const TRAINER_FONT_HALF_POINTS = 28;
+    function forceTrainerFontSize(fragmentXml, names) {
+      const distinct = [...new Set(names)].filter(Boolean);
+      if (distinct.length === 0) return fragmentXml;
+      const escaped = distinct.map((v) => escapeXml(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      const runRegex = new RegExp(`<w:r\\b[^>]*>(?:(?!<\\/w:r>)[\\s\\S])*?<w:t\\b[^>]*>[^<]*(?:${escaped.join("|")})[^<]*<\\/w:t>(?:(?!<\\/w:r>)[\\s\\S])*?<\\/w:r>`, "g");
+      return fragmentXml.replace(runRegex, (run) => forceRunFontSize(run, TRAINER_FONT_HALF_POINTS));
+    }
+
     // الأعمدة الرقمية وعمود «الدورة» في الوسط
     function isNumericColumn(header) {
       let sawValue = false;
@@ -1199,7 +1209,9 @@
       const sectionLetterhead = substitutePlaceholders(letterheadXml, groupPlaceholderValues);
       const sectionTable = `${tableOpenPart}${scaleRowXml(normalizeRowFontSize(headerRowXml), scale)}${generatedRows}</w:tbl>`;
       const multiValueTexts = Object.values(groupPlaceholderValues).filter((list) => list.length > 1).flat();
-      const sectionTrailing = keepWithNext(forceFontSizeForValues(substitutePlaceholders(repeatableTrailingXml, groupPlaceholderValues), multiValueTexts, TEMPLATE_FONT_HALF_POINTS), true);
+      // أسماء مدرّبي هذا المسار من صفحة المسارات
+      const trainerNames = [TRAINER_COLS.t1, TRAINER_COLS.t2].flatMap((c) => groupPlaceholderValues[c] || []);
+      const sectionTrailing = keepWithNext(forceTrainerFontSize(forceFontSizeForValues(substitutePlaceholders(repeatableTrailingXml, groupPlaceholderValues), multiValueTexts, TEMPLATE_FONT_HALF_POINTS), trainerNames), true);
       return `${index > 0 ? PAGE_BREAK : ""}${sectionLetterhead}${sectionTable}${sectionTrailing}`;
     }).join("");
 
