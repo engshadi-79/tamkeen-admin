@@ -1136,9 +1136,9 @@
     const PAGE_BREAK = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
     const KEEP_ROWS = 3; // صفوف الجدول الأخيرة التي ترافق التوقيعات إلى الصفحة التالية
 
-    /* صفوف البيانات بتباعد مفرد (1.0) بلا مسافة قبل الفقرة أو بعدها، فيأخذ الصف ارتفاع محتواه.
+    /* صفوف البيانات بتباعد 1.3 بلا مسافة قبل الفقرة أو بعدها، فيأخذ الصف ارتفاع محتواه.
        يُكتب صريحاً في كل فقرة فيتقدّم على تباعد نمط القالب (مثل 1.5) */
-    const SINGLE = '<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>';
+    const SINGLE = '<w:spacing w:before="0" w:after="0" w:line="312" w:lineRule="auto"/>'; // 1.3 = 312 من 240
     // ما يأتي بعد spacing في ترتيب مخطط pPr
     const AFTER_SPACING = /<w:(ind|contextualSpacing|mirrorIndents|suppressOverlap|jc|textDirection|textAlignment|textboxTightWrap|outlineLvl|divId|cnfStyle|rPr|sectPr|pPrChange)\b/;
     function singleSpacing(fragmentXml) {
