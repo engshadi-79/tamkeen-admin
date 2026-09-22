@@ -560,8 +560,26 @@
     if (on) $("conv-merged-text").textContent = `ملف البيانات: الملف المدموج (${ui.fmt(state.mergedData.count)} شخصاً، ${ui.fmt(state.mergedData.headers.length)} عموداً)`;
   }
 
+  /* الزر يُظهر أنه يعمل من اللحظة الأولى، وأي خطأ في أي مرحلة (حتى تحميل القالب من الخادم) يظهر تحته */
+  let parsing = false;
   async function handleParse() {
+    if (parsing) return;
+    parsing = true;
     setError("");
+    setBusy("conv-parse", true, "جارٍ التحضير…");
+    try {
+      await parseFiles();
+    } catch (e) {
+      console.error(e);
+      setError(e && e.message ? e.message : "تعذّر التحليل؛ أعد المحاولة");
+    } finally {
+      setBusy("conv-parse", false, "تحليل الملفين");
+      parsing = false;
+      if (!$("conv-error").hidden) $("conv-error").scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
+  async function parseFiles() {
     if (!librariesReady()) { setError("تعذّر تحميل مكتبات Excel/Word من مجلد vendor."); return; }
     const dataFiles = [...$("conv-data-file").files];
     if (!dataFiles.length && !state.mergedData) { setError("اختر ملف البيانات، أو ادمج عدة ملفات في الخطوة ①"); return; }
@@ -575,6 +593,8 @@
       templateName = templateFile.name.replace(/\.[^.]+$/, "") || "converted";
     } else {
       let saved;
+      // القالب قد لا يكون على هذا الجهاز بعد، فيُحمَّل من الخادم أولاً
+      setBusy("conv-parse", true, "جارٍ تحميل القالب…");
       try { saved = state.selectedSavedId && (await store().get(state.selectedSavedId)); } catch (e) { setError(e.message); return; }
       if (!saved) { setError("اختر قالباً محفوظاً"); return; }
       templateBuffer = await saved.file.arrayBuffer();
