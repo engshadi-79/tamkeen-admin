@@ -1134,19 +1134,55 @@
 
     const groups = options.groupByColumns && options.groupByColumns.length ? groupRowsByColumns(dataRows, options.groupByColumns) : [dataRows];
     const PAGE_BREAK = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+    const KEEP_ROWS = 3; // صفوف الجدول الأخيرة التي ترافق التوقيعات إلى الصفحة التالية
+
+    /* «ابقَ مع التالي» لكل فقرة في المقطع: Word لا يفصلها عمّا بعدها،
+       فلا تنتقل التوقيعات وحدها إلى صفحة فارغة بل تأخذ معها آخر صفوف الجدول */
+    function keepWithNext(fragmentXml, skipLast) {
+      const paras = [...fragmentXml.matchAll(/<w:p(\s[^>]*)?(\/>|>)/g)];
+      const upto = skipLast ? paras.length - 1 : paras.length;
+      let out = "";
+      let pos = 0;
+      for (let i = 0; i < upto; i++) {
+        const m = paras[i];
+        out += fragmentXml.slice(pos, m.index);
+        const attrs = m[1] || "";
+        if (m[2] === "/>") {
+          out += `<w:p${attrs}><w:pPr><w:keepNext/></w:pPr></w:p>`;
+          pos = m.index + m[0].length;
+          continue;
+        }
+        out += m[0];
+        pos = m.index + m[0].length;
+        const rest = fragmentXml.slice(pos);
+        const pPr = rest.match(/^\s*<w:pPr>([\s\S]*?)<\/w:pPr>/);
+        if (pPr) {
+          if (/<w:keepNext\b/.test(pPr[1])) continue;
+          // الترتيب في المخطط: pStyle أولاً ثم keepNext
+          const style = pPr[1].match(/^\s*<w:pStyle\b[^>]*\/>/);
+          const inner = style ? style[0] + "<w:keepNext/>" + pPr[1].slice(style[0].length) : "<w:keepNext/>" + pPr[1];
+          out += rest.slice(0, pPr.index) + "<w:pPr>" + inner + "</w:pPr>";
+          pos += pPr.index + pPr[0].length;
+        } else {
+          out += "<w:pPr><w:keepNext/></w:pPr>";
+        }
+      }
+      return out + fragmentXml.slice(pos);
+    }
 
     const sections = groups.map((groupRows, index) => {
       const scale = computeGroupScale(groupRows.length);
       let counter = 1;
-      const generatedRows = groupRows
+      const rowXmls = groupRows
         .map((row) => buildRowValues(templateHeaders, mapping, row, options.autoNumberHeader, counter++))
-        .map((values) => buildRow(values, scale))
-        .join("");
+        .map((values) => buildRow(values, scale));
+      const hasTrailing = /<w:t[ >]/.test(repeatableTrailingXml);
+      const generatedRows = rowXmls.map((x, i) => (hasTrailing && i >= rowXmls.length - KEEP_ROWS ? keepWithNext(x, false) : x)).join("");
       const groupPlaceholderValues = rowsToPlaceholderValueLists(groupRows);
       const sectionLetterhead = substitutePlaceholders(letterheadXml, groupPlaceholderValues);
       const sectionTable = `${tableOpenPart}${scaleRowXml(normalizeRowFontSize(headerRowXml), scale)}${generatedRows}</w:tbl>`;
       const multiValueTexts = Object.values(groupPlaceholderValues).filter((list) => list.length > 1).flat();
-      const sectionTrailing = forceFontSizeForValues(substitutePlaceholders(repeatableTrailingXml, groupPlaceholderValues), multiValueTexts, TEMPLATE_FONT_HALF_POINTS);
+      const sectionTrailing = keepWithNext(forceFontSizeForValues(substitutePlaceholders(repeatableTrailingXml, groupPlaceholderValues), multiValueTexts, TEMPLATE_FONT_HALF_POINTS), true);
       return `${index > 0 ? PAGE_BREAK : ""}${sectionLetterhead}${sectionTable}${sectionTrailing}`;
     }).join("");
 
