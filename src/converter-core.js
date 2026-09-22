@@ -1038,6 +1038,22 @@
       return fragmentXml.replace(runRegex, (run) => forceRunFontSize(run, TRAINER_FONT_HALF_POINTS));
     }
 
+    /* نقاط بعد كل «التوقيع :» لا يتبعه شيء في فقرته، في مقطع مستقل بخط المقطع نفسه وبلا تسطير */
+    const SIGN_DOTS = " ........................................";
+    function addSignatureDots(fragmentXml) {
+      return fragmentXml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (para) => {
+        const text = [...para.matchAll(/<w:t\b[^>]*>([^<]*)<\/w:t>/g)].map((m) => m[1]).join("");
+        if (!/التوقيع\s*:?\s*$/.test(text)) return para;
+        const runs = [...para.matchAll(/<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>/g)];
+        const last = runs.filter((r) => /<w:t\b/.test(r[0])).pop();
+        if (!last) return para;
+        const rPr = ((last[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0]).replace(/<w:(u|b|bCs)\b[^>]*\/>/g, ""); // النقاط بلا تسطير ولا عريض
+        const dots = "<w:r>" + rPr + '<w:t xml:space="preserve">' + SIGN_DOTS + "</w:t></w:r>";
+        const at = last.index + last[0].length;
+        return para.slice(0, at) + dots + para.slice(at);
+      });
+    }
+
     // الأعمدة الرقمية وعمود «الدورة» في الوسط
     function isNumericColumn(header) {
       let sawValue = false;
@@ -1211,7 +1227,7 @@
       const multiValueTexts = Object.values(groupPlaceholderValues).filter((list) => list.length > 1).flat();
       // أسماء مدرّبي هذا المسار من صفحة المسارات
       const trainerNames = [TRAINER_COLS.t1, TRAINER_COLS.t2].flatMap((c) => groupPlaceholderValues[c] || []);
-      const sectionTrailing = keepWithNext(forceTrainerFontSize(forceFontSizeForValues(substitutePlaceholders(repeatableTrailingXml, groupPlaceholderValues), multiValueTexts, TEMPLATE_FONT_HALF_POINTS), trainerNames), true);
+      const sectionTrailing = keepWithNext(addSignatureDots(forceTrainerFontSize(forceFontSizeForValues(substitutePlaceholders(repeatableTrailingXml, groupPlaceholderValues), multiValueTexts, TEMPLATE_FONT_HALF_POINTS), trainerNames)), true);
       return `${index > 0 ? PAGE_BREAK : ""}${sectionLetterhead}${sectionTable}${sectionTrailing}`;
     }).join("");
 
