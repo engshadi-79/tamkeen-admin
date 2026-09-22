@@ -92,6 +92,7 @@
     App.hospitality.init();
     App.history.init();
     App.notify.init();
+    App.rosterAudit.init();
     App.search.init();
     initInstall();
     initBackup();

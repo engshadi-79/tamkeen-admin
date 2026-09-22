@@ -688,7 +688,8 @@
       btn.textContent = label;
       btn.disabled = false;
     });
-    $("ros-export").addEventListener("click", exportExcel);
+    // التصدير يمرّ على التدقيق أولاً: إن وُجدت ملاحظات تُعرض ويختار المستخدم المتابعة
+    $("ros-export").addEventListener("click", () => (App.rosterAudit ? App.rosterAudit.beforeExport(exportExcel) : exportExcel()));
     $("ros-report").addEventListener("click", () => App.docRender.print(reportBlocks(), `تقرير ${meta().name || "المستفيدين"} - ${ui.todayISO()}`, false));
     $("ros-report-word").addEventListener("click", () => App.docRender.exportWord(reportBlocks(), `تقرير ${meta().name || "المستفيدين"} - ${ui.todayISO()}`));
     $("ros-clear").addEventListener("click", () => {

@@ -722,3 +722,12 @@ body.has-trial-bar #login-screen { top: 38px; }
   .hd-list { grid-template-columns: 1fr; }
   .hos-bar select, .hos-bar input { min-width: 0; }
 }
+
+/* ===== تدقيق بيانات المستفيدين ===== */
+.au-box { width: min(720px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; }
+.au-summary { font-weight: 700; margin: 0 0 8px; }
+.au-sec { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 10px; }
+.au-sec h4 { margin: 0; font-size: .95rem; }
+.au-n { display: inline-block; min-width: 22px; padding: 0 6px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); font-size: .8rem; text-align: center; }
+.au-list { margin: 4px 0 0; padding-inline-start: 18px; font-size: .88rem; line-height: 1.9; }
+.au-v { color: var(--muted); direction: ltr; unicode-bidi: isolate; }
