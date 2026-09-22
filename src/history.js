@@ -27,9 +27,22 @@
     status: "الحالة", phone: "الهاتف", track: "المسار", group: "المجموعة", decisions: "القرارات",
     attendees: "الحضور", replyNumber: "رقم الرد", category: "التصنيف", fileName: "الملف",
   };
-  const SKIP = new Set(["updatedAt", "createdAt", "id", "history", "search", "addedAt", "pos"]);
+  const SKIP = new Set(["updatedAt", "createdAt", "id", "history", "search", "addedAt", "pos", "valuesAt", "updatedBy", "isNew", "source"]);
+
+  /* أسماء أعمدة قائمة المستفيدين من مفاتيحها */
+  const rosterLabel = (key) => {
+    const col = (((App.store.get() || {}).rosterMeta || {}).columns || []).find((c) => c.key === key);
+    return col ? col.label : key;
+  };
+  const rosterName = (d) => {
+    const cols = (((App.store.get() || {}).rosterMeta || {}).columns || []);
+    const v = d.values || {};
+    const nameCol = cols.find((c) => /اسم/.test(c.label || ""));
+    return (nameCol && v[nameCol.key]) || Object.values(v).find((x) => typeof x === "string" && x.trim()) || "";
+  };
 
   let rows = [];
+  let recFilter = null; // { col, id, title } عند عرض سجل قيد واحد
   let lastId = null;
   let busy = false;
 
@@ -38,6 +51,7 @@
     if (!d) return recId;
     if (col === "registry") return [d.number, d.subject].filter(Boolean).join(" — ") || recId;
     if (col === "settings") return SETTINGS[d.id] || d.id || recId;
+    if (col === "roster") return rosterName(d) || recId;
     if (col === "hospitality") {
       const [month, key] = String(recId).split("|");
       const def = App.hospitality && App.hospitality.rows ? App.hospitality.rows() : (App.store.get() || {}).hospitalityRows;
@@ -65,7 +79,19 @@
     const b = before || {};
     const a = after || {};
     const keys = [...new Set([...Object.keys(b), ...Object.keys(a)])].filter((k) => !SKIP.has(k));
-    return keys.filter((k) => JSON.stringify(b[k]) !== JSON.stringify(a[k])).map((k) => ({ key: k, label: FIELDS[k] || k, from: b[k], to: a[k] }));
+    const out = [];
+    keys.filter((k) => JSON.stringify(b[k]) !== JSON.stringify(a[k])).forEach((k) => {
+      if (k === "values" && (b[k] || a[k])) {
+        const bv = b.values || {}, av = a.values || {};
+        [...new Set([...Object.keys(bv), ...Object.keys(av)])]
+          .filter((c) => JSON.stringify(bv[c]) !== JSON.stringify(av[c]))
+          .forEach((c) => out.push({ key: c, label: rosterLabel(c), from: bv[c], to: av[c] }));
+      } else if (k === "notes") {
+        const had = new Set((b.notes || []).map((n) => n.id || n.at));
+        (a.notes || []).filter((n) => !had.has(n.id || n.at)).forEach((n) => out.push({ key: "notes", label: "ملاحظة جديدة", from: "", to: n.text }));
+      } else out.push({ key: k, label: FIELDS[k] || k, from: b[k], to: a[k] });
+    });
+    return out;
   }
 
   function when(at) {
@@ -88,7 +114,7 @@
       <td class="hist-when">${esc(when(r.at))}</td>
       <td>${esc(r.who)}</td>
       <td>${esc(COLS[r.col] || r.col)}</td>
-      <td class="hist-title">${esc(titleOf(r.col, data, r.rec_id))}</td>
+      <td class="hist-title"><button type="button" class="conv-link" data-rec="${esc(r.rec_id)}" data-col="${esc(r.col)}" title="كل تعديلات هذا القيد من كل المستخدمين">${esc(titleOf(r.col, data, r.rec_id))}</button></td>
       <td><span class="hist-tag ${cls}">${label}</span></td>
       <td class="hist-detail">${detail}</td>
       <td><button type="button" class="btn small secondary" data-revert="${r.id}" title="إرجاع القيد إلى ما كان عليه قبل هذا التعديل">↶ تراجع</button></td>
@@ -108,12 +134,16 @@
     busy = true;
     $("hist-status").textContent = "جارٍ التحميل…";
     try {
-      const opts = { limit: 100, col: $("hist-col").value || undefined, who: $("hist-who").value || undefined };
+      const opts = recFilter
+        ? { limit: 100, col: recFilter.col, recId: recFilter.id }
+        : { limit: 100, col: $("hist-col").value || undefined, who: $("hist-who").value || undefined };
       if (more && lastId) opts.beforeId = lastId;
       const list = await App.cloud.history(opts);
       rows = more ? rows.concat(list) : list;
       lastId = list.length === 100 ? list[list.length - 1].id : null;
-      $("hist-status").textContent = `${ui.fmt(rows.length)} تعديلاً${App.profile.isAdmin() ? "" : " (تعديلاتك أنت)"}`;
+      $("hist-status").innerHTML = recFilter
+        ? `سجل «${esc(recFilter.title)}» من كل المستخدمين — ${ui.fmt(rows.length)} تعديلاً · <button type="button" class="conv-link" data-rec-clear>↩ كل التعديلات</button>`
+        : esc(`${ui.fmt(rows.length)} تعديلاً${App.profile.isAdmin() ? "" : " (تعديلاتك أنت)"}`);
       paint();
     } catch (e) {
       $("hist-status").textContent = "";
@@ -164,7 +194,15 @@
     $("hist-more").addEventListener("click", () => load(true));
     $("hist-body").addEventListener("click", (e) => {
       const b = e.target.closest("[data-revert]");
-      if (b) revert(b.dataset.revert, b);
+      if (b) { revert(b.dataset.revert, b); return; }
+      const rec = e.target.closest("[data-rec]");
+      if (rec) {
+        recFilter = { col: rec.dataset.col, id: rec.dataset.rec, title: rec.textContent.trim() };
+        load(false);
+      }
+    });
+    $("hist-status").addEventListener("click", (e) => {
+      if (e.target.closest("[data-rec-clear]")) { recFilter = null; load(false); }
     });
   }
 
