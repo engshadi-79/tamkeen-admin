@@ -890,8 +890,34 @@
     const tokenRegex = /\{\{([^{}]+)\}\}/g;
     const edits = [];
     const occurrenceIndex = {};
+    // متغير مدرب عام («مدرب المسار»، «اسم المدرب»): يأخذ مدرّبَي المسار من صفحة المسارات لا عمود البيانات.
+    // يتكرر مرتين أو أكثر ← الأول ثم الثاني؛ مرة واحدة ← الاثنان معاً
+    const hasTrainers = !!(valueLists[TRAINER_COLS.t1] || valueLists[TRAINER_COLS.t2]);
+    const genericCount = {};
+    if (hasTrainers) {
+      for (const m of flat.matchAll(/\{\{([^{}]+)\}\}/g)) {
+        const k = m[1].trim();
+        if (trainerColumnFor(k) === TRAINER_COLS.both) genericCount[normalizeHeader(k)] = (genericCount[normalizeHeader(k)] || 0) + 1;
+      }
+    }
+    const trainerValue = (key) => {
+      const col = trainerColumnFor(key);
+      if (!col || !hasTrainers) return undefined;
+      const first = (c) => ((valueLists[c] || [])[0] || "");
+      if (col !== TRAINER_COLS.both) return first(col);
+      const nk = normalizeHeader(key);
+      if ((genericCount[nk] || 0) < 2) return first(TRAINER_COLS.both) || first(TRAINER_COLS.t1);
+      const occ = occurrenceIndex["__trainer:" + nk] || 0;
+      occurrenceIndex["__trainer:" + nk] = occ + 1;
+      return occ === 0 ? first(TRAINER_COLS.t1) : occ === 1 ? first(TRAINER_COLS.t2) : "";
+    };
     let match;
     while ((match = tokenRegex.exec(flat)) !== null) {
+      const tv = trainerValue(match[1].trim());
+      if (tv !== undefined) {
+        edits.push({ start: match.index, end: match.index + match[0].length, value: tv });
+        continue;
+      }
       const resolvedKey = resolvePlaceholderKey(match[1].trim(), valueLists);
       if (resolvedKey === undefined) continue;
       const list = valueLists[resolvedKey];
