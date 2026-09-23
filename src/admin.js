@@ -17,6 +17,7 @@
     { id: "rtl", label: "تصحيح اتجاه Word" },
     { id: "converter", label: "تحويل ملف حسب قالب" },
     { id: "hospitality", label: "كشف توزيع الضيافة" },
+    { id: "sheets", label: "جداول البيانات" },
     { id: "history", label: "سجل التعديلات" },
     { id: "tasks", label: "المهام والمتابعات" },
   ];
@@ -34,7 +35,7 @@
   let info = {};
 
   const viewLabel = (id) => (VIEWS.find((v) => v.id === id) || {}).label || id;
-  const LABEL = { registry: "الوارد والصادر", tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "المستفيدون", settings: "الإعدادات", convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة" };
+  const LABEL = { registry: "الوارد والصادر", tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "المستفيدون", settings: "الإعدادات", convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة", sheets: "جداول البيانات", sheetRows: "صفوف الجداول" };
 
   async function load() {
     if (!App.profile.isAdmin()) return;

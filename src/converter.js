@@ -557,7 +557,7 @@
     const on = !!state.mergedData;
     $("conv-merged-chip").hidden = !on;
     $("conv-data-field").hidden = on;
-    if (on) $("conv-merged-text").textContent = `ملف البيانات: الملف المدموج (${ui.fmt(state.mergedData.count)} شخصاً، ${ui.fmt(state.mergedData.headers.length)} عموداً)`;
+    if (on) $("conv-merged-text").textContent = `ملف البيانات: ${state.mergedData.label || "الملف المدموج"} (${ui.fmt(state.mergedData.count)} صفاً، ${ui.fmt(state.mergedData.headers.length)} عموداً)`;
   }
 
   /* الزر يُظهر أنه يعمل من اللحظة الأولى، وأي خطأ في أي مرحلة (حتى تحميل القالب من الخادم) يظهر تحته */
@@ -1126,5 +1126,14 @@
     });
   }
 
-  App.converter = { init, render: renderSource, refresh: refreshSaved };
+  /* بيانات جاهزة من صفحة «جداول البيانات» تُعتمد ملفَ بيانات هنا */
+  function useData(headers, rows, label) {
+    state.mergedData = { headers: headers.slice(), rows: rows.map((r) => Object.assign({}, r)), count: rows.length, label };
+    $("conv-data-file").value = "";
+    renderMergedChip();
+    ui.toast("اختر القالب ثم اضغط «تحليل الملفين»");
+    $("conv-parse").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  App.converter = { init, render: renderSource, refresh: refreshSaved, useData };
 })(window.App = window.App || {});

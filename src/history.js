@@ -9,7 +9,7 @@
   const COLS = {
     registry: "الوارد والصادر", tracks: "المسارات", tasks: "المهام", meetings: "المحاضر",
     customTemplates: "قوالب المراسلات", roster: "المستفيدون", settings: "الإعدادات",
-    convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة",
+    convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة", sheets: "جداول البيانات", sheetRows: "صفوف الجداول",
   };
   const ACTIONS = {
     add: ["إضافة", "add"], edit: ["تعديل", "edit"], delete: ["حذف", "del"], revert: ["تراجع", "rev"],

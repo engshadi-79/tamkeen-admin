@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 21;
+const VERSION = 22;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -334,7 +334,7 @@ function resurrects(rec: any, delAt: string) {
    كل خانة في values لها وقت تعديلها في valuesAt؛ تُؤخذ الأحدث لكل خانة على حدة.
    خانة بلا وقت (من جهاز بنسخة قديمة) أقدم من أي خانة لها وقت، وبين خانتين بلا وقت يُؤخذ القيد الأحدث.
    الملاحظات تُجمع من النسختين بلا تكرار. */
-const FIELD_MERGE = new Set(["roster"]);
+const FIELD_MERGE = new Set(["roster", "sheetRows"]);
 
 function mergeFields(cur: any, inc: any) {
   const curNewer = stampOf(cur) >= stampOf(inc);

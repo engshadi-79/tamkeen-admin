@@ -20,7 +20,7 @@
     return !list.length || list.includes(view);
   };
   const firstView = () => {
-    const order = ["dashboard", "registry", "roster", "letters", "report", "meetings", "tasks", "tracks", "rtl", "converter", "hospitality", "history"];
+    const order = ["dashboard", "registry", "roster", "letters", "report", "meetings", "tasks", "tracks", "rtl", "converter", "hospitality", "sheets", "history"];
     return order.find(canView) || "dashboard";
   };
   const can = (perm) => {

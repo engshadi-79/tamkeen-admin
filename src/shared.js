@@ -5,9 +5,9 @@
   const { store, ui } = App;
   const SNAP_KEY = "tamkeen-admin:sync2";
   const SETTINGS_KEYS = ["registrySettings", "reportSettings", "rosterMeta", "aiSettings", "signer", "signerTitle", "fixedFields", "convDefaults", "hospitalityRows"];
-  const COLS = ["tracks", "tasks", "meetings", "customTemplates", "roster", "settings", "convTemplates", "hospitality"];
+  const COLS = ["tracks", "tasks", "meetings", "customTemplates", "roster", "settings", "convTemplates", "hospitality", "sheets", "sheetRows"];
   let syncing = false, again = false, timer = null, people = [];
-  const LABELS = { tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات", convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة" };
+  const LABELS = { tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات", convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة", sheets: "جداول البيانات", sheetRows: "صفوف الجداول" };
   const confirmedWipe = {}; // أقسام وافق المستخدم على حذفها الجماعي من هذا الجهاز
   const blocked = {};
 
@@ -205,6 +205,7 @@
     if (active("roster")) renderWhenIdle("view-roster", () => App.roster.render());
     if (active("converter") && App.converter.refresh) App.converter.refresh();
     if (active("hospitality")) renderWhenIdle("view-hospitality", () => App.hospitality.render());
+    if (active("sheets")) renderWhenIdle("view-sheets", () => App.sheets.render());
   }
 
   /* أسماء المستخدمين لاختيار المسؤول عن المهام والقرارات */

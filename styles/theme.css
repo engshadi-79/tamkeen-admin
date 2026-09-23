@@ -731,3 +731,28 @@ body.has-trial-bar #login-screen { top: 38px; }
 .au-n { display: inline-block; min-width: 22px; padding: 0 6px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); font-size: .8rem; text-align: center; }
 .au-list { margin: 4px 0 0; padding-inline-start: 18px; font-size: .88rem; line-height: 1.9; }
 .au-v { color: var(--muted); direction: ltr; unicode-bidi: isolate; }
+
+/* ===== جداول البيانات ===== */
+.sh-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.sh-tab { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 7px 14px; font: inherit; font-size: .88rem; cursor: pointer; color: var(--text); }
+.sh-tab small { color: var(--muted); }
+.sh-tab.active { background: var(--navy-800); color: #fff; border-color: var(--navy-800); }
+.sh-tab.active small { color: #cfd9e8; }
+.sh-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.sh-bar input[type=search] { flex: 1; min-width: 200px; }
+.sh-bar select { width: auto; min-width: 150px; }
+.sh-wrap { max-height: 70vh; overflow: auto; }
+.sh-table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+.sh-table th, .sh-table td { border: 1px solid var(--border); padding: 0; text-align: center; }
+.sh-table thead th { position: sticky; top: 0; z-index: 2; background: var(--navy-800); color: #fff; padding: 6px 8px; white-space: nowrap; }
+.sh-table thead th small { display: block; font-weight: 400; font-size: .7rem; opacity: .75; }
+.sh-col { background: none; border: 0; color: inherit; font: inherit; font-weight: 700; cursor: pointer; }
+.sh-col:hover { text-decoration: underline; }
+.sh-table .sh-n { width: 44px; color: var(--muted); font-size: .8rem; }
+.sh-table td input, .sh-table td select { width: 100%; min-width: 110px; border: 0; background: transparent; font: inherit; padding: 7px 6px; text-align: center; color: var(--text); }
+.sh-table td input:focus, .sh-table td select:focus { outline: 2px solid var(--teal-500); background: var(--surface); }
+.sh-sel.done { color: var(--ok); font-weight: 700; }
+.sh-sel.not { color: var(--danger); }
+.sh-tick { width: 100%; min-height: 34px; border: 0; background: transparent; font: inherit; font-size: 1rem; cursor: pointer; color: var(--ok); font-weight: 700; }
+.sh-tick:hover { background: var(--teal-100); }
+.sh-tick.on { background: #e3f4e5; }
