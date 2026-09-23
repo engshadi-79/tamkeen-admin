@@ -6,10 +6,16 @@
   const $ = (id) => document.getElementById(id);
   const esc = ui.esc;
 
-  const TYPES = { text: "نص", number: "رقم", date: "تاريخ", select: "قائمة", check: "✔/✘" };
+  const TYPES = { text: "نص", number: "رقم", date: "تاريخ", select: "قائمة", track: "مسار", check: "✔/✘" };
   const DONE = "✔";
   const NOT_DONE = "✘";
   const MAX_ROWS = 5000;
+
+  /* أسماء المسارات كما في صفحة المسارات، فتتحدّث القائمة معها تلقائياً */
+  const trackNames = () => {
+    const list = App.tracks && App.tracks.ordered ? App.tracks.ordered() : (store.get().tracks || []);
+    return list.map((t) => clean(t.name)).filter(Boolean);
+  };
 
   const sheets = () => (store.get().sheets = store.get().sheets || []);
   const allRows = () => (store.get().sheetRows = store.get().sheetRows || []);
@@ -70,12 +76,15 @@
     return { name: file.name.replace(/\.[^.]+$/, ""), columns, rows: data, more: rows.length - 1 > MAX_ROWS };
   }
   const clean = (v) => String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+  const normName = (v) => clean(v).replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي");
   function guessType(values) {
     const vals = values.map(clean).filter(Boolean).slice(0, 40);
     if (!vals.length) return "text";
     if (vals.every((v) => /^\d{4}-\d{2}-\d{2}/.test(v))) return "date";
     if (vals.every((v) => /^-?[\d٠-٩]+([.,][\d٠-٩]+)?$/.test(v))) return "number";
     const uniq = [...new Set(vals)];
+    const names = trackNames().map(normName);
+    if (names.length && uniq.length && uniq.every((v) => names.includes(normName(v)))) return "track";
     if (uniq.length <= 6 && vals.length >= 6) return "select";
     return "text";
   }
@@ -144,8 +153,18 @@
     const s = current();
     const col = s && s.columns.find((c) => c.key === colKey);
     if (!col) return;
-    const label = prompt("اسم العمود:", col.label);
+    const label = prompt("اسم العمود (اتركه فارغاً لحذف العمود):", col.label);
     if (label === null) return;
+    if (label.trim()) {
+      const type = prompt(`نوع العمود؟ ${Object.values(TYPES).join(" / ")}`, TYPES[col.type] || TYPES.text);
+      if (type !== null) {
+        const key = Object.keys(TYPES).find((k) => TYPES[k] === clean(type));
+        if (key) {
+          col.type = key;
+          if (key === "select" && !(col.options || []).length) col.options = [DONE, NOT_DONE];
+        }
+      }
+    }
     if (!label.trim()) {
       if (!confirm(`حذف عمود «${col.label}» وقيمه من كل الصفوف؟`)) return;
       s.columns = s.columns.filter((c) => c.key !== colKey);
@@ -194,6 +213,12 @@
       const on = clean(v) === DONE;
       return `<td class="sh-check"><button type="button" class="sh-tick ${on ? "on" : ""}" ${a} aria-pressed="${on}">${on ? DONE : ""}</button></td>`;
     }
+    if (col.type === "track") {
+      const cur = clean(v);
+      const names = trackNames();
+      const opts = names.includes(cur) || !cur ? names : [cur].concat(names);
+      return `<td><select class="sh-sel" ${a}><option value=""></option>${opts.map((o) => `<option ${cur === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>${cur && !names.includes(cur) ? `<small class="sh-warn" title="ليس في صفحة المسارات">؟</small>` : ""}</td>`;
+    }
     if (col.type === "select") {
       const opts = col.options && col.options.length ? col.options : [DONE, NOT_DONE];
       return `<td><select class="sh-sel ${clean(v) === DONE ? "done" : clean(v) ? "not" : ""}" ${a}><option value=""></option>${opts.map((o) => `<option ${clean(v) === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></td>`;
@@ -204,6 +229,11 @@
 
   function stats(s, list) {
     const parts = [`${ui.fmt(list.length)} صفاً${list.length !== rowsOf(s.id).length ? ` من ${ui.fmt(rowsOf(s.id).length)}` : ""}`];
+    s.columns.filter((c) => c.type === "track").forEach((c) => {
+      const counts = new Map();
+      list.forEach((r) => { const v = clean((r.values || {})[c.key]) || "بلا مسار"; counts.set(v, (counts.get(v) || 0) + 1); });
+      parts.push([...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `${k}: ${ui.fmt(n)}`).join(" · "));
+    });
     s.columns.filter((c) => c.type === "check" || c.type === "select").forEach((c) => {
       const done = list.filter((r) => clean((r.values || {})[c.key]) === DONE).length;
       const empty = list.filter((r) => !clean((r.values || {})[c.key])).length;
@@ -230,7 +260,7 @@
 
     const rows = visible();
     $("sh-stats").textContent = stats(s, rows);
-    const filterCols = s.columns.filter((c) => c.type === "select" || c.type === "check");
+    const filterCols = s.columns.filter((c) => c.type === "select" || c.type === "check" || c.type === "track");
     $("sh-filter-col").innerHTML = `<option value="">كل الأعمدة</option>` + filterCols.map((c) => `<option value="${esc(c.key)}" ${filter.col === c.key ? "selected" : ""}>${esc(c.label)}</option>`).join("");
     const col = s.columns.find((c) => c.key === filter.col);
     const values = col ? [...new Set(rowsOf(s.id).map((r) => clean((r.values || {})[col.key])).filter(Boolean))] : [];
