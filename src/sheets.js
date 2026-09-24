@@ -10,6 +10,12 @@
   const DONE = "✔";
   const NOT_DONE = "✘";
   const MAX_ROWS = 5000;
+  /* قوائم جاهزة تُملأ بضغطة عند إعداد عمود من نوع «قائمة» */
+  const PRESETS = {
+    marital: ["أعزب / عزباء", "متزوج / متزوجة", "مطلق / مطلقة", "أرمل / أرملة", "مخطوب / مخطوبة", "منفصل / منفصلة"],
+    disability: ["بدون إعاقة", "إعاقة حركية", "إعاقة بصرية", "إعاقة سمعية", "إعاقة ذهنية / معرفية", "إعاقة نطق / تواصل", "أخرى"],
+    yesno: ["نعم", "لا"],
+  };
 
   /* أسماء المسارات كما في صفحة المسارات، فتتحدّث القائمة معها تلقائياً */
   const trackNames = () => {
@@ -135,43 +141,57 @@
     render();
   }
 
-  /* ===== الأعمدة ===== */
-  function addColumn() {
+  /* ===== الأعمدة: نافذة واحدة للإضافة والتعديل ===== */
+  let editingCol = null; // مفتاح العمود، أو null لعمود جديد
+
+  function openColumn(colKey) {
     const s = current();
     if (!s) return;
-    const label = prompt("اسم العمود الجديد:");
-    if (!label || !label.trim()) return;
-    const type = prompt(`نوع العمود؟ اكتب واحداً من: ${Object.values(TYPES).join(" / ")}`, TYPES.text) || TYPES.text;
-    const key = Object.keys(TYPES).find((k) => TYPES[k] === clean(type)) || "text";
-    s.columns.push(Object.assign({ key: store.uid(), label: label.trim(), type: key }, key === "select" ? { options: [DONE, NOT_DONE] } : {}));
+    editingCol = colKey || null;
+    const col = colKey ? s.columns.find((c) => c.key === colKey) : null;
+    $("shc-title").textContent = col ? `إعداد عمود «${col.label}»` : "عمود جديد";
+    $("shc-name").value = col ? col.label : "";
+    $("shc-type").innerHTML = Object.keys(TYPES).map((k) => `<option value="${k}" ${col && col.type === k ? "selected" : ""}>${TYPES[k]}</option>`).join("");
+    $("shc-options").value = (col && col.options ? col.options : []).join("\n");
+    $("shc-delete").hidden = !col;
+    syncOptionsBox();
+    $("shc-modal").classList.add("open");
+    $("shc-name").focus();
+  }
+
+  const syncOptionsBox = () => { $("shc-options-box").hidden = $("shc-type").value !== "select"; };
+
+  function saveColumn() {
+    const s = current();
+    if (!s) return;
+    const label = $("shc-name").value.trim();
+    if (!label) { ui.toast("اكتب اسم العمود"); $("shc-name").focus(); return; }
+    const type = $("shc-type").value;
+    const options = $("shc-options").value.split("\n").map((x) => clean(x)).filter(Boolean);
+    if (type === "select" && !options.length) { ui.toast("اكتب خيارات القائمة، خياراً في كل سطر"); $("shc-options").focus(); return; }
+    const col = editingCol ? s.columns.find((c) => c.key === editingCol) : null;
+    if (col) {
+      col.label = label;
+      col.type = type;
+      if (type === "select") col.options = options; else delete col.options;
+    } else {
+      s.columns.push(Object.assign({ key: store.uid(), label, type }, type === "select" ? { options } : {}));
+    }
     s.updatedAt = nowISO();
     store.save();
+    $("shc-modal").classList.remove("open");
     render();
   }
 
-  function editColumn(colKey) {
+  function deleteColumn() {
     const s = current();
-    const col = s && s.columns.find((c) => c.key === colKey);
-    if (!col) return;
-    const label = prompt("اسم العمود (اتركه فارغاً لحذف العمود):", col.label);
-    if (label === null) return;
-    if (label.trim()) {
-      const type = prompt(`نوع العمود؟ ${Object.values(TYPES).join(" / ")}`, TYPES[col.type] || TYPES.text);
-      if (type !== null) {
-        const key = Object.keys(TYPES).find((k) => TYPES[k] === clean(type));
-        if (key) {
-          col.type = key;
-          if (key === "select" && !(col.options || []).length) col.options = [DONE, NOT_DONE];
-        }
-      }
-    }
-    if (!label.trim()) {
-      if (!confirm(`حذف عمود «${col.label}» وقيمه من كل الصفوف؟`)) return;
-      s.columns = s.columns.filter((c) => c.key !== colKey);
-      rowsOf(s.id).forEach((r) => { if (r.values && colKey in r.values) { delete r.values[colKey]; touch(r, colKey); } });
-    } else col.label = label.trim();
+    const col = s && s.columns.find((c) => c.key === editingCol);
+    if (!col || !confirm(`حذف عمود «${col.label}» وقيمه من كل الصفوف؟`)) return;
+    s.columns = s.columns.filter((c) => c.key !== col.key);
+    rowsOf(s.id).forEach((r) => { if (r.values && col.key in r.values) { delete r.values[col.key]; touch(r, col.key); } });
     s.updatedAt = nowISO();
     store.save();
+    $("shc-modal").classList.remove("open");
     render();
   }
 
@@ -221,7 +241,9 @@
     }
     if (col.type === "select") {
       const opts = col.options && col.options.length ? col.options : [DONE, NOT_DONE];
-      return `<td><select class="sh-sel ${clean(v) === DONE ? "done" : clean(v) ? "not" : ""}" ${a}><option value=""></option>${opts.map((o) => `<option ${clean(v) === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></td>`;
+      const cur = clean(v);
+      const all = !cur || opts.includes(cur) ? opts : [cur].concat(opts);
+      return `<td><select class="sh-sel ${cur === DONE ? "done" : cur ? "not" : ""}" ${a}><option value=""></option>${all.map((o) => `<option ${cur === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>${cur && !opts.includes(cur) ? `<small class="sh-warn" title="ليس من خيارات هذا العمود">؟</small>` : ""}</td>`;
     }
     const type = col.type === "number" ? "number" : col.type === "date" ? "date" : "text";
     return `<td><input type="${type}" ${a} value="${esc(v == null ? "" : v)}"></td>`;
@@ -338,7 +360,20 @@
     });
     $("sh-upload").addEventListener("click", () => $("sh-file").click());
     $("sh-upload2").addEventListener("click", () => $("sh-file").click());
-    $("sh-add-col").addEventListener("click", addColumn);
+    $("sh-add-col").addEventListener("click", () => openColumn(null));
+    $("shc-type").addEventListener("change", syncOptionsBox);
+    $("shc-save").addEventListener("click", saveColumn);
+    $("shc-delete").addEventListener("click", deleteColumn);
+    $("shc-cancel").addEventListener("click", () => $("shc-modal").classList.remove("open"));
+    $("shc-modal").addEventListener("click", (e) => {
+      if (e.target.id === "shc-modal") { $("shc-modal").classList.remove("open"); return; }
+      const p = e.target.closest("[data-preset]");
+      if (p) {
+        $("shc-type").value = "select";
+        syncOptionsBox();
+        $("shc-options").value = PRESETS[p.dataset.preset].join("\n");
+      }
+    });
     $("sh-add-row").addEventListener("click", addRow);
     $("sh-del").addEventListener("click", deleteSheet);
     $("sh-rename").addEventListener("click", () => {
@@ -359,7 +394,7 @@
     });
     $("sh-head").addEventListener("click", (e) => {
       const b = e.target.closest("[data-edit-col]");
-      if (b) editColumn(b.dataset.editCol);
+      if (b) openColumn(b.dataset.editCol);
     });
     $("sh-body").addEventListener("input", (e) => {
       const el = e.target;
