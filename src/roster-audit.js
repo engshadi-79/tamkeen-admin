@@ -1,4 +1,4 @@
-/* تدقيق بيانات المستفيدين: المكرّر برقم الهوية، والهوية غير الصحيحة (خانة التحقق)،
+/* تدقيق بيانات المستفيدين: المكرّر برقم الهوية، والهوية التي ليست 9 أرقام،
    والجوال بصيغة غير صحيحة، والحقول الأساسية الناقصة. يُفتح من زر في صفحة المستفيدين،
    ويُعرض تلقائياً قبل التصدير إن وُجدت مشكلات. لا يعدّل شيئاً: يعرض فقط، والضغط على الاسم يبحث عنه. */
 (function (App) {
@@ -8,17 +8,9 @@
 
   const digits = (s) => String(s == null ? "" : s).replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, (d) => d.charCodeAt(0) - 0x6f0).replace(/\D/g, "");
 
-  /* رقم الهوية الفلسطيني: 9 أرقام، وآخرها خانة تحقق (خوارزمية Luhn) */
+  /* رقم الهوية: 9 أرقام. خانة التحقق (Luhn) لا تُشترط: أرقام سليمة كثيرة لا تحققها */
   function validId(raw) {
-    const d = digits(raw);
-    if (d.length !== 9) return false;
-    let sum = 0;
-    for (let i = 0; i < 9; i++) {
-      let n = Number(d[i]) * (i % 2 ? 2 : 1);
-      if (n > 9) n -= 9;
-      sum += n;
-    }
-    return sum % 10 === 0;
+    return digits(raw).length === 9;
   }
 
   /* الجوال: 059 أو 056 وبعدها 7 أرقام، ويُقبل بمفتاح 970 أو 972 */
@@ -79,7 +71,7 @@
       <p class="au-summary">${a.count ? `⚠ ${ui.fmt(a.count)} ملاحظة في ${ui.fmt(a.total)} سجلاً` : `✓ لا توجد ملاحظات في ${ui.fmt(a.total)} سجلاً`}</p>
       ${noCols.length ? `<p class="conv-hint">لم أجد عموداً باسم: ${noCols.join("، ")} — فلا يُدقَّق.</p>` : ""}
       ${section("مكرّر برقم الهوية", "السجل نفسه أكثر من مرة: احذف المكرّر أو ادمج ملاحظاته.", a.dups.map((d) => `<li><b dir="ltr">${esc(d.id)}</b> × ${d.list.length}: ${d.list.map((r) => `<button type="button" class="conv-link" data-find="${esc(d.id)}">${esc(a.label(r))}</button>`).join("، ")}</li>`))}
-      ${section("رقم هوية غير صحيح", "ليس 9 أرقام، أو خانة التحقق الأخيرة لا تطابق.", a.badId.map((x) => item(x.r, x.v)))}
+      ${section("رقم هوية غير صحيح", "العدد ليس 9 أرقام (أقل أو أكثر، أو فيه حروف).", a.badId.map((x) => item(x.r, x.v)))}
       ${section("جوال بصيغة غير صحيحة", "المتوقع 059 أو 056 وبعدها 7 أرقام (يُقبل +970 و+972).", a.badPhone.map((x) => item(x.r, x.v)))}
       ${section("حقول أساسية ناقصة", "الاسم أو الهوية أو الجوال فارغ.", a.missing.map((x) => item(x.r, x.v)))}`;
     $("au-export").hidden = !forExport;
