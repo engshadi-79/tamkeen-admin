@@ -167,6 +167,20 @@
       <tr class="hos-bal"><th class="hos-name">المتبقي (قطعة)${st.opening ? ` <small>(أول الشهر ${ui.fmt(st.opening)})</small>` : ""}</th>${st.days.map((x, i) => `<td data-stock="b${i}" class="${x.balance < 0 ? "hos-neg" : ""}" title="${esc(asBoxes(x.balance))}">${ui.fmt(x.balance)}</td>`).join("")}<td class="hos-total ${st.closing < 0 ? "hos-neg" : ""}" data-stock="closing">${ui.fmt(st.closing)}</td></tr>`;
   }
 
+  /* سطر اليوم الذي يُكتب فيه الآن: مستلَمه ومصروفه والمتبقي بعده */
+  function showDay(dayKey) {
+    const box = $("hos-dayline");
+    if (!box) return;
+    const st = stockOf(current.year, current.month);
+    const x = st.days.find((d) => d.day.key === dayKey);
+    if (!x) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = `<b>${esc(x.day.day)} ${esc(x.day.date)}</b>` +
+      ` · استُلم <b>${ui.fmt(x.cartons, 1)}</b> كرتونة = <b>${ui.fmt(x.inPieces)}</b> قطعة` +
+      ` · صُرف <b>${ui.fmt(x.spent)}</b> قطعة` +
+      ` · المتبقي بعد هذا اليوم <b class="${x.balance < 0 ? "hos-neg" : ""}">${ui.fmt(x.balance)}</b> قطعة (${esc(asBoxes(x.balance))})`;
+  }
+
   /* أرقام المخزون بعد كل إدخال، دون إعادة بناء الجدول */
   function refreshStock() {
     if (!$("hos-table")) return;
@@ -189,7 +203,7 @@
     const box = $("hos-stock");
     if (box) {
       box.innerHTML = st.inCartons || st.spent || st.opening
-        ? `📦 استُلم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة (${ui.fmt(st.inPieces)} قطعة) · صُرف <b>${ui.fmt(st.spent)}</b> · المتبقي <b class="${st.closing < 0 ? "hos-neg" : ""}">${ui.fmt(st.closing)} قطعة</b> = ${esc(asBoxes(st.closing))}${st.opening ? ` · رصيد أول الشهر ${ui.fmt(st.opening)}` : ""}`
+        ? `📦 استُلم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة (${ui.fmt(st.inPieces)} قطعة) · صُرف <b>${ui.fmt(st.spent)}</b> · المتبقي <b class="${st.closing < 0 ? "hos-neg" : ""}">${ui.fmt(st.closing)} قطعة</b> (أي ${esc(asBoxes(st.closing))})${st.opening ? ` · رصيد أول الشهر ${ui.fmt(st.opening)}` : ""}`
         : "📦 اكتب الكراتين المستلمة في صف «المستلَم» أسفل الكشف، فيُحسب المتبقي يوماً بيوم.";
     }
   }
@@ -234,6 +248,7 @@
     $("hos-mode-day").classList.toggle("active", m === "day");
     $("hos-mode-month").classList.toggle("active", m !== "day");
     if (m === "day") renderDay();
+    if ($("hos-dayline")) $("hos-dayline").hidden = true;
     $("hos-per").value = String(perCarton());
     const openRec = findRec(month, OPEN_KEY);
     $("hos-open").value = openRec && openRec.days && typeof openRec.days.v === "number" ? String(openRec.days.v) : "";
@@ -604,6 +619,7 @@
       const n = el.dataset.row === IN_KEY ? Math.max(0, Math.round(raw * 2) / 2) : Math.max(0, Math.floor(raw));
       setCell(ym(), el.dataset.row, el.dataset.day, n);
       refreshTotals();
+      showDay(el.dataset.day);
     };
     // خانة موظف: قيمته أو فارغة
     const onClick = (e) => {
@@ -624,6 +640,7 @@
       b.setAttribute("aria-pressed", on ? "true" : "false");
       setCell(ym(), b.dataset.toggle, b.dataset.day, on ? val : 0);
       refreshTotals();
+      showDay(b.dataset.day);
     };
     $("hos-table").addEventListener("input", onInput);
     $("hos-table").addEventListener("click", onClick);

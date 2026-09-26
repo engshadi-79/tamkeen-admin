@@ -768,3 +768,6 @@ body.has-trial-bar #login-screen { top: 38px; }
 .hos-per { display: flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted); white-space: nowrap; }
 .hos-per input { width: 90px; }
 .hd-in { border-inline-start: 5px solid #9dc3e6; margin-top: 8px; }
+
+.hos-dayline { margin: -4px 0 10px; padding: 8px 12px; border-radius: 10px; background: var(--teal-100); color: var(--navy-800); font-size: .9rem; }
+.hos-dayline b { font-weight: 700; }
