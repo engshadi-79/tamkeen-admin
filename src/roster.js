@@ -648,7 +648,16 @@
       render();
     });
     $("ros-filters").addEventListener("input", (e) => {
-      if (e.target.id === "ros-search") { filter.q = e.target.value; render(); $("ros-search").focus(); }
+      // إعادة البناء تُنشئ المربع من جديد، فيعود المؤشر إلى أوله ويُدرج الحرف التالي قبل ما كُتب:
+      // يُعاد المؤشر إلى موضعه بعد الرسم
+      if (e.target.id === "ros-search") {
+        const at = e.target.selectionStart;
+        filter.q = e.target.value;
+        render();
+        const box = $("ros-search");
+        box.focus();
+        try { box.setSelectionRange(at, at); } catch (err) { /* بعض المتصفحات تمنعه على أنواع أخرى */ }
+      }
     });
     $("ros-filters").addEventListener("change", (e) => {
       if (e.target.dataset.facet) filter.col[e.target.dataset.facet] = e.target.value;
