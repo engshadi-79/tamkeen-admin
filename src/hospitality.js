@@ -34,7 +34,8 @@
 
   const today = new Date();
   let current = { year: today.getFullYear(), month: today.getMonth() }; // month: 0..11
-  const ym = () => `${current.year}-${String(current.month + 1).padStart(2, "0")}`;
+  const monthKey = (y, m) => `${y}-${String(m + 1).padStart(2, "0")}`;
+  const ym = () => monthKey(current.year, current.month);
 
   /* أيام الدوام في الشهر: [{ key: "2026-01-04", label: "الأحد\n04/01" }] */
   function workdays(year, month) {
@@ -50,6 +51,17 @@
     }
     return days;
   }
+
+  /* ===== المخزون: المستلَم كراتين، والمصروف من الكشف، والمتبقي =====
+     المستلَم يُحفظ في صفّ خاص (__in) بعدد الكراتين لكل يوم، ورصيد أول الشهر في (__open).
+     عدد القطع في الكرتونة إعداد مشترك، والافتراضي 24. */
+  const IN_KEY = "__in";
+  const OPEN_KEY = "__open";
+  const DEFAULT_PER_CARTON = 24;
+  const perCarton = () => {
+    const n = Number((store.get().hospitalitySettings || {}).perCarton);
+    return n > 0 ? n : DEFAULT_PER_CARTON;
+  };
 
   const recId = (month, rowKey) => `${month}|${rowKey}`;
   const findRec = (month, rowKey) => records().find((r) => r.id === recId(month, rowKey));
@@ -91,6 +103,79 @@
     };
   }
 
+  /* المصروف في يوم = مجموع المتدربين والموظفين */
+  function spentOn(month, dayKey) {
+    const def = rowsDef();
+    return [].concat(def.tracks, def.staff).reduce((a, r) => a + cellValue(month, r.key, dayKey), 0);
+  }
+  const cartonsOn = (month, dayKey) => cellValue(month, IN_KEY, dayKey);
+
+  /* رصيد أول الشهر: المكتوب يدوياً، وإلا متبقي الشهر السابق إن كانت فيه بيانات */
+  function openingOf(year, month, depth) {
+    const key = monthKey(year, month);
+    const rec = findRec(key, OPEN_KEY);
+    const manual = rec && rec.days ? rec.days.v : undefined;
+    if (typeof manual === "number") return manual;
+    if ((depth || 0) > 12) return 0;
+    const pm = month === 0 ? { y: year - 1, m: 11 } : { y: year, m: month - 1 };
+    const used = records().some((r) => r.month === monthKey(pm.y, pm.m) && Object.keys(r.days || {}).length);
+    return used ? stockOf(pm.y, pm.m, (depth || 0) + 1).closing : 0;
+  }
+
+  /* حركة المخزون يوماً بيوم */
+  function stockOf(year, month, depth) {
+    const key = monthKey(year, month);
+    const days = workdays(year, month);
+    const per = perCarton();
+    const opening = openingOf(year, month, depth);
+    let balance = opening;
+    const list = days.map((d) => {
+      const cartons = cartonsOn(key, d.key);
+      const inPieces = Math.round(cartons * per);
+      const spent = spentOn(key, d.key);
+      balance += inPieces - spent;
+      return { day: d, cartons, inPieces, spent, balance };
+    });
+    return {
+      opening, per, days: list,
+      inCartons: list.reduce((a, x) => a + x.cartons, 0),
+      inPieces: list.reduce((a, x) => a + x.inPieces, 0),
+      spent: list.reduce((a, x) => a + x.spent, 0),
+      closing: balance,
+    };
+  }
+
+  /* صفوف المخزون تحت الكشف: المستلَم بالكراتين، وما يعادله قطعاً، والمتبقي بعد الصرف */
+  function stockRows(month, days) {
+    const st = stockOf(current.year, current.month);
+    const cell = (d) => `<td><input type="number" min="0" step="0.5" inputmode="decimal" data-row="${IN_KEY}" data-day="${d.key}" value="${cartonsOn(month, d.key) || ""}" placeholder="—" aria-label="كراتين ${d.date}"></td>`;
+    return `<tr class="hos-in"><th class="hos-name">المستلَم (كرتونة × ${ui.fmt(st.per)})</th>${days.map(cell).join("")}<td class="hos-total" data-stock="in">${st.inCartons ? ui.fmt(st.inCartons, 1) : ""}</td></tr>
+      <tr class="hos-in"><th class="hos-name">المستلَم (قطعة)</th>${st.days.map((x, i) => `<td data-stock="p${i}">${x.inPieces || ""}</td>`).join("")}<td class="hos-total" data-stock="pieces">${st.inPieces ? ui.fmt(st.inPieces) : ""}</td></tr>
+      <tr class="hos-bal"><th class="hos-name">المتبقي${st.opening ? ` <small>(أول الشهر ${ui.fmt(st.opening)})</small>` : ""}</th>${st.days.map((x, i) => `<td data-stock="b${i}" class="${x.balance < 0 ? "hos-neg" : ""}">${ui.fmt(x.balance)}</td>`).join("")}<td class="hos-total ${st.closing < 0 ? "hos-neg" : ""}" data-stock="closing">${ui.fmt(st.closing)}</td></tr>`;
+  }
+
+  /* أرقام المخزون بعد كل إدخال، دون إعادة بناء الجدول */
+  function refreshStock() {
+    if (!$("hos-table")) return;
+    const st = stockOf(current.year, current.month);
+    const set = (k, v, neg) => {
+      const el = $("hos-table").querySelector(`[data-stock="${k}"]`);
+      if (!el) return;
+      el.textContent = v === "" ? "" : ui.fmt(v, 1);
+      if (neg !== undefined) el.classList.toggle("hos-neg", neg);
+    };
+    set("in", st.inCartons || "");
+    set("pieces", st.inPieces || "");
+    set("closing", st.closing, st.closing < 0);
+    st.days.forEach((x, i) => { set("p" + i, x.inPieces || ""); set("b" + i, x.balance, x.balance < 0); });
+    const box = $("hos-stock");
+    if (box) {
+      box.innerHTML = st.inCartons || st.spent || st.opening
+        ? `📦 استُلم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة (${ui.fmt(st.inPieces)} قطعة) · صُرف <b>${ui.fmt(st.spent)}</b> · المتبقي <b class="${st.closing < 0 ? "hos-neg" : ""}">${ui.fmt(st.closing)}</b>${st.opening ? ` · رصيد أول الشهر ${ui.fmt(st.opening)}` : ""}`
+        : "📦 اكتب الكراتين المستلمة في صف «المستلَم» أسفل الكشف، فيُحسب المتبقي يوماً بيوم.";
+    }
+  }
+
   /* ===== العرض ===== */
   function render() {
     const view = $("view-hospitality");
@@ -122,6 +207,7 @@
       ${def.staff.map(staffRow).join("")}
       ${sumRow("إجمالي الموظفين", t.staff, "st", "hos-sum")}
       ${sumRow("الإجمالي الكلي (متدربين + موظفين)", t.all, "gt", "hos-grand")}
+      ${stockRows(month, days)}
     </tbody>`;
     $("hos-summary").textContent = `${ui.fmt(days.length)} يوم دوام · ${ui.fmt(t.sum(t.trainees))} وجبة للمتدربين · ${ui.fmt(t.sum(t.staff))} للموظفين · المجموع ${ui.fmt(t.sum(t.all))}`;
     const m = mode();
@@ -130,6 +216,11 @@
     $("hos-mode-day").classList.toggle("active", m === "day");
     $("hos-mode-month").classList.toggle("active", m !== "day");
     if (m === "day") renderDay();
+    $("hos-per").value = String(perCarton());
+    const openRec = findRec(month, OPEN_KEY);
+    $("hos-open").value = openRec && openRec.days && typeof openRec.days.v === "number" ? String(openRec.days.v) : "";
+    $("hos-open").placeholder = `تلقائي (${ui.fmt(stockOf(current.year, current.month).opening)})`;
+    refreshStock();
   }
 
   /* ===== إدخال يوم واحد: بطاقات كبيرة تناسب الجوال ===== */
@@ -181,6 +272,8 @@
       <div class="hd-list">${def.tracks.map(trackCard).join("")}</div>
       <h4 class="hd-head">الموظفون — اضغط عند الاستلام</h4>
       <div class="hd-list">${def.staff.map(staffCard).join("")}</div>
+      <div class="hd-row hd-in"><span>المستلَم اليوم (كرتونة × ${ui.fmt(perCarton())})</span>
+        <input type="number" min="0" step="0.5" inputmode="decimal" data-row="${IN_KEY}" data-day="${d.key}" value="${cartonsOn(month, d.key) || ""}" placeholder="0"></div>
       <div class="hd-total" id="hos-day-total"></div>`;
     dayTotal();
   }
@@ -193,7 +286,10 @@
     const sum = (list) => list.reduce((a, r) => a + cellValue(month, r.key, pickedDay), 0);
     const tr = sum(def.tracks);
     const st = sum(def.staff);
-    el.innerHTML = `<span>المتدربون <b>${ui.fmt(tr)}</b></span><span>الموظفون <b>${ui.fmt(st)}</b></span><span>مجموع اليوم <b>${ui.fmt(tr + st)}</b></span>`;
+    const stock = stockOf(current.year, current.month);
+    const today = stock.days.find((x) => x.day.key === pickedDay);
+    el.innerHTML = `<span>المتدربون <b>${ui.fmt(tr)}</b></span><span>الموظفون <b>${ui.fmt(st)}</b></span><span>مجموع اليوم <b>${ui.fmt(tr + st)}</b></span>`
+      + (today ? `<span>المستلَم <b>${ui.fmt(today.inPieces)}</b> قطعة</span><span>المتبقي بعد اليوم <b class="${today.balance < 0 ? "hos-neg" : ""}">${ui.fmt(today.balance)}</b></span>` : "");
   }
 
   /* تحديث المجاميع وحدها بعد كل إدخال، دون إعادة بناء الجدول (فلا يضيع موضع الكتابة) */
@@ -204,6 +300,7 @@
     const t = totals(month, days);
     const set = (sel, v) => { const el = $("hos-table").querySelector(sel); if (el) el.textContent = v || ""; };
     def.tracks.concat(def.staff).forEach((r) => set(`[data-rowtotal="${CSS.escape(r.key)}"]`, t.rowTotal(r.key)));
+    refreshStock();
     dayTotal();
     [["tt", t.trainees], ["st", t.staff], ["gt", t.all]].forEach(([id, arr]) => {
       arr.forEach((v, i) => set(`[data-${id}="${i}"]`, v));
@@ -336,6 +433,32 @@
     def.staff.forEach((row) => dataRow(row, GREEN, { color: { argb: "FFFFFFFF" } }));
     const staffRow = sumRow("إجمالي الموظفين", sStart, r - 1, YELLOW, {}, t.staff);
     sumRow("الإجمالي الكلي (متدربين + موظفين)", (L0) => `${L0}${traineeRow}+${L0}${staffRow}`, null, NAVY, { size: 12, color: { argb: "FFFFFFFF" } }, t.all);
+
+    // المخزون: المستلَم بالكراتين وبالقطع، ثم المتبقي المتراكم
+    const st = stockOf(year, month);
+    const stockRow = (label, values, fill, font) => {
+      const x = ws.getRow(r);
+      x.height = 19.5;
+      x.getCell(1).value = label;
+      style(x.getCell(1), Object.assign({ bold: true }, font), fill);
+      values.forEach((v, i) => { const c = x.getCell(i + 2); c.value = v || null; style(c, Object.assign({ bold: true }, font), fill); });
+      const tot = x.getCell(lastCol);
+      tot.value = values.reduce((a, b) => a + (Number(b) || 0), 0) || null;
+      style(tot, Object.assign({ bold: true }, font), fill);
+      r++;
+    };
+    stockRow(`المستلَم (كرتونة × ${st.per})`, st.days.map((x) => x.cartons), "FFDDEBF7", {});
+    stockRow("المستلَم (قطعة)", st.days.map((x) => x.inPieces), "FFDDEBF7", {});
+    // المتبقي تراكمي: إجماليه لا معنى له، فيُكتب الرصيد الأخير
+    const bal = ws.getRow(r);
+    bal.height = 19.5;
+    bal.getCell(1).value = st.opening ? `المتبقي (أول الشهر ${st.opening})` : "المتبقي";
+    style(bal.getCell(1), { bold: true }, YELLOW);
+    st.days.forEach((x, i) => { const c = bal.getCell(i + 2); c.value = x.balance; style(c, { bold: true }, YELLOW); });
+    const last = bal.getCell(lastCol);
+    last.value = st.closing;
+    style(last, { bold: true }, YELLOW);
+    r++;
     return ws;
   }
 
@@ -393,6 +516,58 @@
     setTimeout(() => { frame.contentWindow.focus(); frame.contentWindow.print(); }, 150);
   }
 
+  /* تقرير الشهر: المستلَم والمصروف والمتبقي يوماً بيوم، للطباعة */
+  function stockReport() {
+    const st = stockOf(current.year, current.month);
+    const t = totals(ym(), workdays(current.year, current.month));
+    const title = `تقرير استلام وصرف الضيافة - ${MONTHS[current.month]} ${current.year} - ${CENTER}`;
+    const rows = st.days.map((x) => `<tr>
+        <td>${esc(x.day.day)}</td><td>${esc(x.day.date)}</td>
+        <td>${x.cartons ? ui.fmt(x.cartons, 1) : ""}</td><td>${x.inPieces || ""}</td>
+        <td>${x.spent || ""}</td><td class="${x.balance < 0 ? "neg" : ""}">${ui.fmt(x.balance)}</td></tr>`).join("");
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title>
+      <style>@page{size:A4;margin:12mm}
+        body{font-family:Arial,Tahoma,sans-serif;margin:0;color:#111}
+        h1{font-size:15pt;text-align:center;background:#1F3864;color:#fff;padding:8px;margin:0 0 10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        table{width:100%;border-collapse:collapse;font-size:10pt}
+        th,td{border:1px solid #999;padding:4px 6px;text-align:center}
+        thead th{background:#1F3864;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        tbody tr:nth-child(even) td{background:#f2f5fa;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        tfoot td{background:#FFE699;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        .neg{color:#c0392b;font-weight:700}
+        .sum{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin:10px 0;font-size:10.5pt}
+        .sum b{font-size:12pt}
+        .sign{margin-top:26px;display:flex;justify-content:space-between;font-size:10.5pt}
+      </style></head><body>
+      <h1>${esc(title)}</h1>
+      <div class="sum">
+        <span>رصيد أول الشهر <b>${ui.fmt(st.opening)}</b></span>
+        <span>المستلَم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة = <b>${ui.fmt(st.inPieces)}</b> قطعة</span>
+        <span>المصروف <b>${ui.fmt(st.spent)}</b> (متدربون ${ui.fmt(t.sum(t.trainees))} · موظفون ${ui.fmt(t.sum(t.staff))})</span>
+        <span>المتبقي آخر الشهر <b class="${st.closing < 0 ? "neg" : ""}">${ui.fmt(st.closing)}</b></span>
+        <span>القطع في الكرتونة: ${ui.fmt(st.per)}</span>
+      </div>
+      <table>
+        <thead><tr><th>اليوم</th><th>التاريخ</th><th>المستلَم (كرتونة)</th><th>المستلَم (قطعة)</th><th>المصروف</th><th>المتبقي</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="2">الإجمالي</td><td>${ui.fmt(st.inCartons, 1)}</td><td>${ui.fmt(st.inPieces)}</td><td>${ui.fmt(st.spent)}</td><td>${ui.fmt(st.closing)}</td></tr></tfoot>
+      </table>
+      <div class="sign"><span>أمين المستودع: ..............................</span><span>مدير المركز: ..............................</span></div>
+      </body></html>`;
+    const old = $("hos-report-frame");
+    if (old) old.remove();
+    const frame = document.createElement("iframe");
+    frame.id = "hos-report-frame";
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;width:0;height:0;border:0;left:0;bottom:0;visibility:hidden";
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument;
+    doc.open();
+    doc.write(html);
+    doc.close();
+    setTimeout(() => { frame.contentWindow.focus(); frame.contentWindow.print(); }, 150);
+  }
+
   function init() {
     $("hos-month").innerHTML = MONTHS.map((m, i) => `<option value="${i}">${m}</option>`).join("");
     $("hos-month").addEventListener("change", (e) => { current.month = Number(e.target.value); render(); });
@@ -407,7 +582,8 @@
     const onInput = (e) => {
       const el = e.target;
       if (!el.dataset.row) return;
-      const n = Math.max(0, Math.floor(Number(el.value) || 0));
+      const raw = Number(el.value) || 0;
+      const n = el.dataset.row === IN_KEY ? Math.max(0, Math.round(raw * 2) / 2) : Math.max(0, Math.floor(raw));
       setCell(ym(), el.dataset.row, el.dataset.day, n);
       refreshTotals();
     };
@@ -442,6 +618,22 @@
     $("hos-export").addEventListener("click", () => exportXlsx(false).catch((e) => ui.toast(e.message)));
     $("hos-export-year").addEventListener("click", () => exportXlsx(true).catch((e) => ui.toast(e.message)));
     $("hos-print").addEventListener("click", printSheet);
+    $("hos-report").addEventListener("click", stockReport);
+    $("hos-per").addEventListener("change", (e) => {
+      const n = Math.max(1, Math.floor(Number(e.target.value) || DEFAULT_PER_CARTON));
+      store.get().hospitalitySettings = Object.assign({}, store.get().hospitalitySettings, { perCarton: n });
+      store.save();
+      render();
+      ui.toast(`القطع في الكرتونة: ${ui.fmt(n)} — تسري على كل الأشهر`);
+    });
+    $("hos-open").addEventListener("change", (e) => {
+      const raw = e.target.value.trim();
+      const rec = findRec(ym(), OPEN_KEY);
+      if (!raw) {
+        if (rec) { rec.days = {}; rec.updatedAt = new Date().toISOString(); store.save(); }
+      } else setCell(ym(), OPEN_KEY, "v", Math.max(0, Math.floor(Number(raw) || 0)));
+      render();
+    });
     $("hos-rows").addEventListener("click", openRows);
     $("hos-rows-apply").addEventListener("click", applyRows);
     $("hos-rows-cancel").addEventListener("click", () => $("hos-rows-modal").classList.remove("open"));
@@ -456,5 +648,5 @@
     return days.map((d, i) => ({ date: d.date, day: d.day, trainees: t.trainees[i], staff: t.staff[i] }));
   }
 
-  App.hospitality = { init, render, workdays, printSheet, rows: rowsDef, monthTotals, MONTHS };
+  App.hospitality = { init, render, workdays, printSheet, rows: rowsDef, monthTotals, MONTHS, stockOf, perCarton };
 })(window.App = window.App || {});

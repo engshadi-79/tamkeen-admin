@@ -758,3 +758,13 @@ body.has-trial-bar #login-screen { top: 38px; }
 .sh-tick.on { background: #e3f4e5; }
 
 .sh-warn { color: var(--warn); font-weight: 700; cursor: help; }
+
+/* ===== مخزون الضيافة ===== */
+.hos-in td, .hos-in th { background: #eef4fb; }
+.hos-in .hos-name { background: #9dc3e6; color: #10243d; }
+.hos-bal td, .hos-bal th { background: #FFF2CC; font-weight: 700; }
+.hos-bal .hos-name { background: #FFD966; color: #4a3b00; }
+.hos-neg { color: var(--danger); font-weight: 700; }
+.hos-per { display: flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted); white-space: nowrap; }
+.hos-per input { width: 90px; }
+.hd-in { border-inline-start: 5px solid #9dc3e6; margin-top: 8px; }
