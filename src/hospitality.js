@@ -110,6 +110,19 @@
   }
   const cartonsOn = (month, dayKey) => cellValue(month, IN_KEY, dayKey);
 
+  /* 62 قطعة ← «2 كرتونة و14 قطعة» */
+  function asBoxes(pieces) {
+    const per = perCarton();
+    const neg = pieces < 0;
+    const n = Math.abs(pieces);
+    const boxes = Math.floor(n / per);
+    const rest = n % per;
+    const txt = boxes && rest ? `${ui.fmt(boxes)} كرتونة و${ui.fmt(rest)} قطعة`
+      : boxes ? `${ui.fmt(boxes)} كرتونة`
+      : `${ui.fmt(rest)} قطعة`;
+    return (neg ? "ناقص " : "") + txt;
+  }
+
   /* رصيد أول الشهر: المكتوب يدوياً، وإلا متبقي الشهر السابق إن كانت فيه بيانات */
   function openingOf(year, month, depth) {
     const key = monthKey(year, month);
@@ -151,7 +164,7 @@
     const cell = (d) => `<td><input type="number" min="0" step="0.5" inputmode="decimal" data-row="${IN_KEY}" data-day="${d.key}" value="${cartonsOn(month, d.key) || ""}" placeholder="—" aria-label="كراتين ${d.date}"></td>`;
     return `<tr class="hos-in"><th class="hos-name">المستلَم (كرتونة × ${ui.fmt(st.per)})</th>${days.map(cell).join("")}<td class="hos-total" data-stock="in">${st.inCartons ? ui.fmt(st.inCartons, 1) : ""}</td></tr>
       <tr class="hos-in"><th class="hos-name">المستلَم (قطعة)</th>${st.days.map((x, i) => `<td data-stock="p${i}">${x.inPieces || ""}</td>`).join("")}<td class="hos-total" data-stock="pieces">${st.inPieces ? ui.fmt(st.inPieces) : ""}</td></tr>
-      <tr class="hos-bal"><th class="hos-name">المتبقي${st.opening ? ` <small>(أول الشهر ${ui.fmt(st.opening)})</small>` : ""}</th>${st.days.map((x, i) => `<td data-stock="b${i}" class="${x.balance < 0 ? "hos-neg" : ""}">${ui.fmt(x.balance)}</td>`).join("")}<td class="hos-total ${st.closing < 0 ? "hos-neg" : ""}" data-stock="closing">${ui.fmt(st.closing)}</td></tr>`;
+      <tr class="hos-bal"><th class="hos-name">المتبقي (قطعة)${st.opening ? ` <small>(أول الشهر ${ui.fmt(st.opening)})</small>` : ""}</th>${st.days.map((x, i) => `<td data-stock="b${i}" class="${x.balance < 0 ? "hos-neg" : ""}" title="${esc(asBoxes(x.balance))}">${ui.fmt(x.balance)}</td>`).join("")}<td class="hos-total ${st.closing < 0 ? "hos-neg" : ""}" data-stock="closing">${ui.fmt(st.closing)}</td></tr>`;
   }
 
   /* أرقام المخزون بعد كل إدخال، دون إعادة بناء الجدول */
@@ -167,11 +180,16 @@
     set("in", st.inCartons || "");
     set("pieces", st.inPieces || "");
     set("closing", st.closing, st.closing < 0);
-    st.days.forEach((x, i) => { set("p" + i, x.inPieces || ""); set("b" + i, x.balance, x.balance < 0); });
+    st.days.forEach((x, i) => {
+      set("p" + i, x.inPieces || "");
+      set("b" + i, x.balance, x.balance < 0);
+      const cell = $("hos-table").querySelector('[data-stock="b' + i + '"]');
+      if (cell) cell.title = asBoxes(x.balance); // «2 كرتونة و14 قطعة» عند مرور المؤشر
+    });
     const box = $("hos-stock");
     if (box) {
       box.innerHTML = st.inCartons || st.spent || st.opening
-        ? `📦 استُلم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة (${ui.fmt(st.inPieces)} قطعة) · صُرف <b>${ui.fmt(st.spent)}</b> · المتبقي <b class="${st.closing < 0 ? "hos-neg" : ""}">${ui.fmt(st.closing)}</b>${st.opening ? ` · رصيد أول الشهر ${ui.fmt(st.opening)}` : ""}`
+        ? `📦 استُلم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة (${ui.fmt(st.inPieces)} قطعة) · صُرف <b>${ui.fmt(st.spent)}</b> · المتبقي <b class="${st.closing < 0 ? "hos-neg" : ""}">${ui.fmt(st.closing)} قطعة</b> = ${esc(asBoxes(st.closing))}${st.opening ? ` · رصيد أول الشهر ${ui.fmt(st.opening)}` : ""}`
         : "📦 اكتب الكراتين المستلمة في صف «المستلَم» أسفل الكشف، فيُحسب المتبقي يوماً بيوم.";
     }
   }
@@ -289,7 +307,7 @@
     const stock = stockOf(current.year, current.month);
     const today = stock.days.find((x) => x.day.key === pickedDay);
     el.innerHTML = `<span>المتدربون <b>${ui.fmt(tr)}</b></span><span>الموظفون <b>${ui.fmt(st)}</b></span><span>مجموع اليوم <b>${ui.fmt(tr + st)}</b></span>`
-      + (today ? `<span>المستلَم <b>${ui.fmt(today.inPieces)}</b> قطعة</span><span>المتبقي بعد اليوم <b class="${today.balance < 0 ? "hos-neg" : ""}">${ui.fmt(today.balance)}</b></span>` : "");
+      + (today ? `<span>المستلَم اليوم <b>${ui.fmt(today.cartons, 1)}</b> كرتونة = <b>${ui.fmt(today.inPieces)}</b> قطعة</span><span>المتبقي بعد اليوم <b class="${today.balance < 0 ? "hos-neg" : ""}">${ui.fmt(today.balance)} قطعة</b> (${esc(asBoxes(today.balance))})</span>` : "");
   }
 
   /* تحديث المجاميع وحدها بعد كل إدخال، دون إعادة بناء الجدول (فلا يضيع موضع الكتابة) */
@@ -524,7 +542,7 @@
     const rows = st.days.map((x) => `<tr>
         <td>${esc(x.day.day)}</td><td>${esc(x.day.date)}</td>
         <td>${x.cartons ? ui.fmt(x.cartons, 1) : ""}</td><td>${x.inPieces || ""}</td>
-        <td>${x.spent || ""}</td><td class="${x.balance < 0 ? "neg" : ""}">${ui.fmt(x.balance)}</td></tr>`).join("");
+        <td>${x.spent || ""}</td><td class="${x.balance < 0 ? "neg" : ""}">${ui.fmt(x.balance)}</td><td class="${x.balance < 0 ? "neg" : ""}">${esc(asBoxes(x.balance))}</td></tr>`).join("");
     const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title>
       <style>@page{size:A4;margin:12mm}
         body{font-family:Arial,Tahoma,sans-serif;margin:0;color:#111}
@@ -544,13 +562,13 @@
         <span>رصيد أول الشهر <b>${ui.fmt(st.opening)}</b></span>
         <span>المستلَم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة = <b>${ui.fmt(st.inPieces)}</b> قطعة</span>
         <span>المصروف <b>${ui.fmt(st.spent)}</b> (متدربون ${ui.fmt(t.sum(t.trainees))} · موظفون ${ui.fmt(t.sum(t.staff))})</span>
-        <span>المتبقي آخر الشهر <b class="${st.closing < 0 ? "neg" : ""}">${ui.fmt(st.closing)}</b></span>
+        <span>المتبقي آخر الشهر <b class="${st.closing < 0 ? "neg" : ""}">${ui.fmt(st.closing)}</b> قطعة = <b>${esc(asBoxes(st.closing))}</b></span>
         <span>القطع في الكرتونة: ${ui.fmt(st.per)}</span>
       </div>
       <table>
-        <thead><tr><th>اليوم</th><th>التاريخ</th><th>المستلَم (كرتونة)</th><th>المستلَم (قطعة)</th><th>المصروف</th><th>المتبقي</th></tr></thead>
+        <thead><tr><th>اليوم</th><th>التاريخ</th><th>المستلَم (كرتونة)</th><th>المستلَم (قطعة)</th><th>المصروف</th><th>المتبقي (قطعة)</th><th>المتبقي (كراتين وقطع)</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="2">الإجمالي</td><td>${ui.fmt(st.inCartons, 1)}</td><td>${ui.fmt(st.inPieces)}</td><td>${ui.fmt(st.spent)}</td><td>${ui.fmt(st.closing)}</td></tr></tfoot>
+        <tfoot><tr><td colspan="2">الإجمالي</td><td>${ui.fmt(st.inCartons, 1)}</td><td>${ui.fmt(st.inPieces)}</td><td>${ui.fmt(st.spent)}</td><td>${ui.fmt(st.closing)}</td><td>${esc(asBoxes(st.closing))}</td></tr></tfoot>
       </table>
       <div class="sign"><span>أمين المستودع: ..............................</span><span>مدير المركز: ..............................</span></div>
       </body></html>`;
