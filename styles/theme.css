@@ -771,3 +771,7 @@ body.has-trial-bar #login-screen { top: 38px; }
 
 .hos-dayline { margin: -4px 0 10px; padding: 8px 12px; border-radius: 10px; background: var(--teal-100); color: var(--navy-800); font-size: .9rem; }
 .hos-dayline b { font-weight: 700; }
+
+.hos-in-cell { position: relative; }
+.hos-in-cell input { height: 24px; padding-bottom: 0; }
+.hos-in-cell small, .hos-in .hos-total small { display: block; font-size: .68rem; color: #10243d; opacity: .85; line-height: 1.1; padding-bottom: 2px; }

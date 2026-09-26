@@ -161,26 +161,10 @@
   /* صفوف المخزون تحت الكشف: المستلَم بالكراتين، وما يعادله قطعاً، والمتبقي بعد الصرف */
   function stockRows(month, days) {
     const st = stockOf(current.year, current.month);
-    const cell = (d) => `<td><input type="number" min="0" step="0.5" inputmode="decimal" data-row="${IN_KEY}" data-day="${d.key}" value="${cartonsOn(month, d.key) || ""}" placeholder="—" aria-label="كراتين ${d.date}"></td>`;
-    return `<tr class="hos-in"><th class="hos-name">المستلَم (كرتونة × ${ui.fmt(st.per)})</th>${days.map(cell).join("")}<td class="hos-total" data-stock="in">${st.inCartons ? ui.fmt(st.inCartons, 1) : ""}</td></tr>
-      <tr class="hos-in"><th class="hos-name">المستلَم (قطعة)</th>${st.days.map((x, i) => `<td data-stock="p${i}">${x.inPieces || ""}</td>`).join("")}<td class="hos-total" data-stock="pieces">${st.inPieces ? ui.fmt(st.inPieces) : ""}</td></tr>
-      <tr class="hos-bal"><th class="hos-name">المتبقي (قطعة)${st.opening ? ` <small>(أول الشهر ${ui.fmt(st.opening)})</small>` : ""}</th>${st.days.map((x, i) => `<td data-stock="b${i}" class="${x.balance < 0 ? "hos-neg" : ""}" title="${esc(asBoxes(x.balance))}">${ui.fmt(x.balance)}</td>`).join("")}<td class="hos-total ${st.closing < 0 ? "hos-neg" : ""}" data-stock="closing">${ui.fmt(st.closing)}</td></tr>`;
+    const inCell = (d, i) => `<td class="hos-in-cell"><input type="number" min="0" step="0.5" inputmode="decimal" data-row="${IN_KEY}" data-day="${d.key}" value="${cartonsOn(month, d.key) || ""}" placeholder="—" aria-label="كراتين ${d.date}"><small data-stock="p${i}">${st.days[i].inPieces ? "= " + ui.fmt(st.days[i].inPieces) : ""}</small></td>`;
+    return `<tr class="hos-in"><th class="hos-name">المستلَم: كرتونة (× ${ui.fmt(st.per)}) = قطعة</th>${days.map(inCell).join("")}<td class="hos-total"><span data-stock="in">${st.inCartons ? ui.fmt(st.inCartons, 1) : ""}</span><small data-stock="pieces">${st.inPieces ? "= " + ui.fmt(st.inPieces) : ""}</small></td></tr>
+      <tr class="hos-bal"><th class="hos-name">المتبقي بعد اليوم (قطعة)${st.opening ? ` <small>(أول الشهر ${ui.fmt(st.opening)})</small>` : ""}</th>${st.days.map((x, i) => `<td data-stock="b${i}" class="${x.balance < 0 ? "hos-neg" : ""}" title="${esc(asBoxes(x.balance))}">${ui.fmt(x.balance)}</td>`).join("")}<td class="hos-total ${st.closing < 0 ? "hos-neg" : ""}" data-stock="closing" title="${esc(asBoxes(st.closing))}">${ui.fmt(st.closing)}</td></tr>`;
   }
-
-  /* سطر اليوم الذي يُكتب فيه الآن: مستلَمه ومصروفه والمتبقي بعده */
-  function showDay(dayKey) {
-    const box = $("hos-dayline");
-    if (!box) return;
-    const st = stockOf(current.year, current.month);
-    const x = st.days.find((d) => d.day.key === dayKey);
-    if (!x) { box.hidden = true; return; }
-    box.hidden = false;
-    box.innerHTML = `<b>${esc(x.day.day)} ${esc(x.day.date)}</b>` +
-      ` · استُلم <b>${ui.fmt(x.cartons, 1)}</b> كرتونة = <b>${ui.fmt(x.inPieces)}</b> قطعة` +
-      ` · صُرف <b>${ui.fmt(x.spent)}</b> قطعة` +
-      ` · المتبقي بعد هذا اليوم <b class="${x.balance < 0 ? "hos-neg" : ""}">${ui.fmt(x.balance)}</b> قطعة (${esc(asBoxes(x.balance))})`;
-  }
-
   /* أرقام المخزون بعد كل إدخال، دون إعادة بناء الجدول */
   function refreshStock() {
     if (!$("hos-table")) return;
@@ -188,14 +172,16 @@
     const set = (k, v, neg) => {
       const el = $("hos-table").querySelector(`[data-stock="${k}"]`);
       if (!el) return;
-      el.textContent = v === "" ? "" : ui.fmt(v, 1);
+      el.textContent = v === "" ? "" : typeof v === "string" ? v : ui.fmt(v, 1);
       if (neg !== undefined) el.classList.toggle("hos-neg", neg);
     };
     set("in", st.inCartons || "");
-    set("pieces", st.inPieces || "");
+    set("pieces", st.inPieces ? "= " + ui.fmt(st.inPieces) : "");
     set("closing", st.closing, st.closing < 0);
+    const closeCell = $("hos-table").querySelector('[data-stock="closing"]');
+    if (closeCell) closeCell.title = asBoxes(st.closing);
     st.days.forEach((x, i) => {
-      set("p" + i, x.inPieces || "");
+      set("p" + i, x.inPieces ? "= " + ui.fmt(x.inPieces) : "");
       set("b" + i, x.balance, x.balance < 0);
       const cell = $("hos-table").querySelector('[data-stock="b' + i + '"]');
       if (cell) cell.title = asBoxes(x.balance); // «2 كرتونة و14 قطعة» عند مرور المؤشر
@@ -234,12 +220,12 @@
     const sumRow = (label, arr, id, cls) => `<tr class="${cls}"><th class="hos-name">${label}</th>${arr.map((v, i) => `<td data-${id}="${i}">${v || ""}</td>`).join("")}<td data-${id}="all">${t.sum(arr) || ""}</td></tr>`;
 
     $("hos-table").innerHTML = `<thead>${head}</thead><tbody>
+      ${stockRows(month, days)}
       ${def.tracks.map(trackRow).join("")}
       ${sumRow("إجمالي المتدربين", t.trainees, "tt", "hos-sum")}
       ${def.staff.map(staffRow).join("")}
       ${sumRow("إجمالي الموظفين", t.staff, "st", "hos-sum")}
       ${sumRow("الإجمالي الكلي (متدربين + موظفين)", t.all, "gt", "hos-grand")}
-      ${stockRows(month, days)}
     </tbody>`;
     $("hos-summary").textContent = `${ui.fmt(days.length)} يوم دوام · ${ui.fmt(t.sum(t.trainees))} وجبة للمتدربين · ${ui.fmt(t.sum(t.staff))} للموظفين · المجموع ${ui.fmt(t.sum(t.all))}`;
     const m = mode();
