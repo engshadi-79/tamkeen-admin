@@ -56,7 +56,6 @@
      المستلَم يُحفظ في صفّ خاص (__in) بعدد الكراتين لكل يوم، ورصيد أول الشهر في (__open).
      عدد القطع في الكرتونة إعداد مشترك، والافتراضي 24. */
   const IN_KEY = "__in";
-  const OPEN_KEY = "__open";
   const DEFAULT_PER_CARTON = 24;
   const perCarton = () => {
     const n = Number((store.get().hospitalitySettings || {}).perCarton);
@@ -123,39 +122,36 @@
     return (neg ? "ناقص " : "") + txt;
   }
 
-  /* رصيد أول الشهر: المكتوب يدوياً، وإلا متبقي الشهر السابق إن كانت فيه بيانات */
-  function openingOf(year, month, depth) {
+  /* حركة المخزون: متبقي كل يوم من مستلَم ذلك اليوم وحده، بلا رصيد متراكم */
+  function stockOf(year, month) {
     const key = monthKey(year, month);
-    const rec = findRec(key, OPEN_KEY);
-    const manual = rec && rec.days ? rec.days.v : undefined;
-    if (typeof manual === "number") return manual;
-    if ((depth || 0) > 12) return 0;
-    const pm = month === 0 ? { y: year - 1, m: 11 } : { y: year, m: month - 1 };
-    const used = records().some((r) => r.month === monthKey(pm.y, pm.m) && Object.keys(r.days || {}).length);
-    return used ? stockOf(pm.y, pm.m, (depth || 0) + 1).closing : 0;
-  }
-
-  /* حركة المخزون يوماً بيوم */
-  function stockOf(year, month, depth) {
-    const key = monthKey(year, month);
-    const days = workdays(year, month);
     const per = perCarton();
-    const opening = openingOf(year, month, depth);
-    let balance = opening;
-    const list = days.map((d) => {
+    const list = workdays(year, month).map((d) => {
       const cartons = cartonsOn(key, d.key);
       const inPieces = Math.round(cartons * per);
       const spent = spentOn(key, d.key);
-      balance += inPieces - spent;
-      return { day: d, cartons, inPieces, spent, balance };
+      return { day: d, cartons, inPieces, spent, balance: inPieces - spent };
     });
+    const inPieces = list.reduce((a, x) => a + x.inPieces, 0);
+    const spent = list.reduce((a, x) => a + x.spent, 0);
     return {
-      opening, per, days: list,
+      opening: 0, per, days: list,
       inCartons: list.reduce((a, x) => a + x.cartons, 0),
-      inPieces: list.reduce((a, x) => a + x.inPieces, 0),
-      spent: list.reduce((a, x) => a + x.spent, 0),
-      closing: balance,
+      inPieces, spent, closing: inPieces - spent,
     };
+  }
+
+  /* سطر اليوم الذي يُكتب فيه الآن */
+  function showDay(dayKey) {
+    const box = $("hos-dayline");
+    if (!box) return;
+    const x = stockOf(current.year, current.month).days.find((d) => d.day.key === dayKey);
+    if (!x) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = `<b>${esc(x.day.day)} ${esc(x.day.date)}</b>` +
+      ` · استُلم <b>${ui.fmt(x.cartons, 1)}</b> كرتونة = <b>${ui.fmt(x.inPieces)}</b> قطعة` +
+      ` · صُرف <b>${ui.fmt(x.spent)}</b> قطعة` +
+      ` · المتبقي من مستلَم اليوم <b class="${x.balance < 0 ? "hos-neg" : ""}">${ui.fmt(x.balance)}</b> قطعة${x.balance > 0 ? ` (${esc(asBoxes(x.balance))})` : ""}`;
   }
 
   /* صفوف المخزون تحت الكشف: المستلَم بالكراتين، وما يعادله قطعاً، والمتبقي بعد الصرف */
@@ -163,7 +159,7 @@
     const st = stockOf(current.year, current.month);
     const inCell = (d, i) => `<td class="hos-in-cell"><input type="number" min="0" step="0.5" inputmode="decimal" data-row="${IN_KEY}" data-day="${d.key}" value="${cartonsOn(month, d.key) || ""}" placeholder="—" aria-label="كراتين ${d.date}"><small data-stock="p${i}">${st.days[i].inPieces ? "= " + ui.fmt(st.days[i].inPieces) : ""}</small></td>`;
     return `<tr class="hos-in"><th class="hos-name">المستلَم: كرتونة (× ${ui.fmt(st.per)}) = قطعة</th>${days.map(inCell).join("")}<td class="hos-total"><span data-stock="in">${st.inCartons ? ui.fmt(st.inCartons, 1) : ""}</span><small data-stock="pieces">${st.inPieces ? "= " + ui.fmt(st.inPieces) : ""}</small></td></tr>
-      <tr class="hos-bal"><th class="hos-name">المتبقي بعد اليوم (قطعة)${st.opening ? ` <small>(أول الشهر ${ui.fmt(st.opening)})</small>` : ""}</th>${st.days.map((x, i) => `<td data-stock="b${i}" class="${x.balance < 0 ? "hos-neg" : ""}" title="${esc(asBoxes(x.balance))}">${ui.fmt(x.balance)}</td>`).join("")}<td class="hos-total ${st.closing < 0 ? "hos-neg" : ""}" data-stock="closing" title="${esc(asBoxes(st.closing))}">${ui.fmt(st.closing)}</td></tr>`;
+      <tr class="hos-bal"><th class="hos-name">المتبقي من مستلَم اليوم (قطعة)</th>${st.days.map((x, i) => `<td data-stock="b${i}" class="${x.balance < 0 ? "hos-neg" : ""}" title="${esc(asBoxes(x.balance))}">${ui.fmt(x.balance)}</td>`).join("")}<td class="hos-total ${st.closing < 0 ? "hos-neg" : ""}" data-stock="closing" title="${esc(asBoxes(st.closing))}">${ui.fmt(st.closing)}</td></tr>`;
   }
   /* أرقام المخزون بعد كل إدخال، دون إعادة بناء الجدول */
   function refreshStock() {
@@ -189,8 +185,8 @@
     const box = $("hos-stock");
     if (box) {
       box.innerHTML = st.inCartons || st.spent || st.opening
-        ? `📦 استُلم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة (${ui.fmt(st.inPieces)} قطعة) · صُرف <b>${ui.fmt(st.spent)}</b> · المتبقي <b class="${st.closing < 0 ? "hos-neg" : ""}">${ui.fmt(st.closing)} قطعة</b> (أي ${esc(asBoxes(st.closing))})${st.opening ? ` · رصيد أول الشهر ${ui.fmt(st.opening)}` : ""}`
-        : "📦 اكتب الكراتين المستلمة في صف «المستلَم» أسفل الكشف، فيُحسب المتبقي يوماً بيوم.";
+        ? `📦 هذا الشهر: استُلم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة (${ui.fmt(st.inPieces)} قطعة) · صُرف <b>${ui.fmt(st.spent)}</b> قطعة · الفرق <b class="${st.closing < 0 ? "hos-neg" : ""}">${ui.fmt(st.closing)}</b>`
+        : "📦 اكتب الكراتين المستلمة في صف «المستلَم» أعلى الكشف، فيُحسب المتبقي لكل يوم.";
     }
   }
 
@@ -236,9 +232,6 @@
     if (m === "day") renderDay();
     if ($("hos-dayline")) $("hos-dayline").hidden = true;
     $("hos-per").value = String(perCarton());
-    const openRec = findRec(month, OPEN_KEY);
-    $("hos-open").value = openRec && openRec.days && typeof openRec.days.v === "number" ? String(openRec.days.v) : "";
-    $("hos-open").placeholder = `تلقائي (${ui.fmt(stockOf(current.year, current.month).opening)})`;
     refreshStock();
   }
 
@@ -308,7 +301,7 @@
     const stock = stockOf(current.year, current.month);
     const today = stock.days.find((x) => x.day.key === pickedDay);
     el.innerHTML = `<span>المتدربون <b>${ui.fmt(tr)}</b></span><span>الموظفون <b>${ui.fmt(st)}</b></span><span>مجموع اليوم <b>${ui.fmt(tr + st)}</b></span>`
-      + (today ? `<span>المستلَم اليوم <b>${ui.fmt(today.cartons, 1)}</b> كرتونة = <b>${ui.fmt(today.inPieces)}</b> قطعة</span><span>المتبقي بعد اليوم <b class="${today.balance < 0 ? "hos-neg" : ""}">${ui.fmt(today.balance)} قطعة</b> (${esc(asBoxes(today.balance))})</span>` : "");
+      + (today ? `<span>المستلَم اليوم <b>${ui.fmt(today.cartons, 1)}</b> كرتونة = <b>${ui.fmt(today.inPieces)}</b> قطعة</span><span>المتبقي من مستلَم اليوم <b class="${today.balance < 0 ? "hos-neg" : ""}">${ui.fmt(today.balance)} قطعة</b></span>` : "");
   }
 
   /* تحديث المجاميع وحدها بعد كل إدخال، دون إعادة بناء الجدول (فلا يضيع موضع الكتابة) */
@@ -468,10 +461,10 @@
     };
     stockRow(`المستلَم (كرتونة × ${st.per})`, st.days.map((x) => x.cartons), "FFDDEBF7", {});
     stockRow("المستلَم (قطعة)", st.days.map((x) => x.inPieces), "FFDDEBF7", {});
-    // المتبقي تراكمي: إجماليه لا معنى له، فيُكتب الرصيد الأخير
+    // المتبقي لكل يوم من مستلَمه
     const bal = ws.getRow(r);
     bal.height = 19.5;
-    bal.getCell(1).value = st.opening ? `المتبقي (أول الشهر ${st.opening})` : "المتبقي";
+    bal.getCell(1).value = "المتبقي من مستلَم اليوم";
     style(bal.getCell(1), { bold: true }, YELLOW);
     st.days.forEach((x, i) => { const c = bal.getCell(i + 2); c.value = x.balance; style(c, { bold: true }, YELLOW); });
     const last = bal.getCell(lastCol);
@@ -543,7 +536,7 @@
     const rows = st.days.map((x) => `<tr>
         <td>${esc(x.day.day)}</td><td>${esc(x.day.date)}</td>
         <td>${x.cartons ? ui.fmt(x.cartons, 1) : ""}</td><td>${x.inPieces || ""}</td>
-        <td>${x.spent || ""}</td><td class="${x.balance < 0 ? "neg" : ""}">${ui.fmt(x.balance)}</td><td class="${x.balance < 0 ? "neg" : ""}">${esc(asBoxes(x.balance))}</td></tr>`).join("");
+        <td>${x.spent || ""}</td><td class="${x.balance < 0 ? "neg" : ""}">${ui.fmt(x.balance)}</td></tr>`).join("");
     const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title>
       <style>@page{size:A4;margin:12mm}
         body{font-family:Arial,Tahoma,sans-serif;margin:0;color:#111}
@@ -560,16 +553,15 @@
       </style></head><body>
       <h1>${esc(title)}</h1>
       <div class="sum">
-        <span>رصيد أول الشهر <b>${ui.fmt(st.opening)}</b></span>
         <span>المستلَم <b>${ui.fmt(st.inCartons, 1)}</b> كرتونة = <b>${ui.fmt(st.inPieces)}</b> قطعة</span>
         <span>المصروف <b>${ui.fmt(st.spent)}</b> (متدربون ${ui.fmt(t.sum(t.trainees))} · موظفون ${ui.fmt(t.sum(t.staff))})</span>
-        <span>المتبقي آخر الشهر <b class="${st.closing < 0 ? "neg" : ""}">${ui.fmt(st.closing)}</b> قطعة = <b>${esc(asBoxes(st.closing))}</b></span>
+        <span>الفرق (مستلَم − مصروف) <b class="${st.closing < 0 ? "neg" : ""}">${ui.fmt(st.closing)}</b> قطعة</span>
         <span>القطع في الكرتونة: ${ui.fmt(st.per)}</span>
       </div>
       <table>
-        <thead><tr><th>اليوم</th><th>التاريخ</th><th>المستلَم (كرتونة)</th><th>المستلَم (قطعة)</th><th>المصروف</th><th>المتبقي (قطعة)</th><th>المتبقي (كراتين وقطع)</th></tr></thead>
+        <thead><tr><th>اليوم</th><th>التاريخ</th><th>المستلَم (كرتونة)</th><th>المستلَم (قطعة)</th><th>المصروف</th><th>المتبقي من اليوم (قطعة)</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="2">الإجمالي</td><td>${ui.fmt(st.inCartons, 1)}</td><td>${ui.fmt(st.inPieces)}</td><td>${ui.fmt(st.spent)}</td><td>${ui.fmt(st.closing)}</td><td>${esc(asBoxes(st.closing))}</td></tr></tfoot>
+        <tfoot><tr><td colspan="2">الإجمالي</td><td>${ui.fmt(st.inCartons, 1)}</td><td>${ui.fmt(st.inPieces)}</td><td>${ui.fmt(st.spent)}</td><td>${ui.fmt(st.closing)}</td></tr></tfoot>
       </table>
       <div class="sign"><span>أمين المستودع: ..............................</span><span>مدير المركز: ..............................</span></div>
       </body></html>`;
@@ -646,14 +638,6 @@
       store.save();
       render();
       ui.toast(`القطع في الكرتونة: ${ui.fmt(n)} — تسري على كل الأشهر`);
-    });
-    $("hos-open").addEventListener("change", (e) => {
-      const raw = e.target.value.trim();
-      const rec = findRec(ym(), OPEN_KEY);
-      if (!raw) {
-        if (rec) { rec.days = {}; rec.updatedAt = new Date().toISOString(); store.save(); }
-      } else setCell(ym(), OPEN_KEY, "v", Math.max(0, Math.floor(Number(raw) || 0)));
-      render();
     });
     $("hos-rows").addEventListener("click", openRows);
     $("hos-rows-apply").addEventListener("click", applyRows);
