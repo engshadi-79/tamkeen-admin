@@ -790,3 +790,8 @@ body.has-trial-bar #login-screen { top: 38px; }
 .conv-order-btns { display: flex; gap: 2px; }
 .conv-order-btns button { padding: 0 6px; font-size: .8rem; }
 .conv-order-btns button[disabled] { opacity: .3; cursor: default; }
+
+/* نموذج التقرير */
+.rep-model { border: 1px solid var(--border); border-inline-start: 4px solid var(--teal-500); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; background: var(--surface); }
+.rep-model-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; }
+.rep-model .btn-row { margin: 6px 0 0; }

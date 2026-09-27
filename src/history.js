@@ -17,7 +17,7 @@
   const SETTINGS = {
     registrySettings: "إعدادات الوارد والصادر", reportSettings: "إعدادات التقارير", rosterMeta: "أعمدة المستفيدين",
     aiSettings: "إعدادات الذكاء الاصطناعي", signer: "اسم الموقّع", signerTitle: "صفة الموقّع",
-    fixedFields: "البيانات الثابتة", convDefaults: "افتراضيات التحويل", hospitalityRows: "صفوف كشف الضيافة",
+    fixedFields: "البيانات الثابتة", reportModel: "نموذج التقرير", convDefaults: "افتراضيات التحويل", hospitalityRows: "صفوف كشف الضيافة",
   };
   const FIELDS = {
     name: "الاسم", text: "النص", title: "العنوان", subject: "الموضوع", party: "الجهة", number: "الرقم",

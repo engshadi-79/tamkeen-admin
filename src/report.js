@@ -202,6 +202,63 @@
     throw new Error("نوع غير مدعوم");
   }
 
+  /* ===== نموذج التقرير: يُرفع مرة ويُحفظ للجميع (إعداد مشترك reportModel) ===== */
+  const MODEL_CHARS = 20000;
+  const model = () => App.store.get().reportModel || null;
+
+  function renderModel() {
+    const m = model();
+    const has = !!(m && m.text);
+    $("r-model-info").textContent = has
+      ? `${m.name} · ${ui.fmt(m.chars || m.text.length)} حرف${m.by ? ` · رفعه ${m.by}` : ""}`
+      : "لم يُرفع نموذج بعد";
+    $("r-model-view").hidden = !has;
+    $("r-model-del").hidden = !has;
+    $("r-model-use-wrap").hidden = !has;
+    $("r-model-pick").textContent = has ? "⬆ استبدال النموذج" : "⬆ رفع نموذج";
+  }
+
+  async function addModel(file) {
+    if (!file) return;
+    $("r-ai-status").textContent = `جارٍ قراءة ${file.name}…`;
+    try {
+      const text = (await extractText(file)).trim();
+      if (!text) throw new Error("لم أستخرج نصاً من الملف");
+      App.store.get().reportModel = {
+        name: file.name,
+        text: text.slice(0, MODEL_CHARS),
+        chars: text.length,
+        at: new Date().toISOString(),
+        by: (App.profile && App.profile.name()) || "",
+      };
+      App.store.save();
+      renderModel();
+      $("r-ai-status").textContent = `حُفظ النموذج «${file.name}» — يظهر لكل المستخدمين`;
+    } catch (e) {
+      $("r-ai-status").textContent = e.message;
+    }
+  }
+
+  function viewModel() {
+    const m = model();
+    if (!m) return;
+    const w = window.open("", "_blank", "noopener,width=900,height=700");
+    if (!w) { ui.toast("اسمح بالنوافذ المنبثقة لعرض النموذج"); return; }
+    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${ui.esc(m.name)}</title>
+      <style>body{font-family:Tahoma,Arial;margin:24px;line-height:1.9;white-space:pre-wrap;background:#f4f6fa;color:#1b2433}
+      h1{font-size:16pt;background:#0b1f3a;color:#fff;padding:8px;border-radius:8px}</style></head>
+      <body><h1>${ui.esc(m.name)}</h1>${ui.esc(m.text)}</body></html>`);
+    w.document.close();
+  }
+
+  function deleteModel() {
+    if (!model() || !confirm("حذف نموذج التقرير المحفوظ؟ يُحذف عند كل المستخدمين.")) return;
+    delete App.store.get().reportModel;
+    App.store.save();
+    renderModel();
+    $("r-ai-status").textContent = "حُذف النموذج";
+  }
+
   function renderAiFiles() {
     const total = aiFiles.reduce((n, f) => n + f.chars, 0);
     $("r-ai-list").innerHTML = aiFiles.length
@@ -235,7 +292,12 @@
     }
     if (!aiFiles.length) return;
     const ask = $("r-ai-ask").value.trim() || "حلّل الملفات واكتب أهم النتائج والأرقام والملاحظات في صيغة تقرير رسمي.";
+    const m = model();
+    const useModel = !!(m && m.text && $("r-model-use") && $("r-model-use").checked);
     let context = "";
+    if (useModel) {
+      context += `===== نموذج التقرير المطلوب اتباعه (${m.name}) =====\n${m.text}\n\n===== انتهى النموذج =====\n`;
+    }
     for (const f of aiFiles) {
       if (context.length >= MAX_CHARS) break;
       context += `\n\n===== ملف: ${f.name} =====\n${f.text.slice(0, MAX_CHARS - context.length)}`;
@@ -246,7 +308,9 @@
     target.value = "";
     try {
       await App.ai.generate({
-        request: `${ask}\n\nاكتب النتيجة بالعربية الفصحى، بنداً في كل سطر، بلا عناوين ولا مقدمات ولا خاتمة، ولا تكتب تحية أو توقيعاً. اعتمد على أرقام الملفات كما هي.`,
+        request: useModel
+          ? `${ask}\n\nاتبع «نموذج التقرير» الموجود في بداية السياق حرفياً: الأقسام نفسها وبترتيبها، والعناوين نفسها، والأسلوب نفسه، وطريقة عرض الأرقام والنسب والجداول نفسها. املأه بأرقام الجداول المرفقة بعده لا بأرقام النموذج، واحذف أي قسم لا تتوفر له بيانات. اكتب بالعربية الفصحى واعتمد على الأرقام كما هي، بلا تحية ولا توقيع.`
+          : `${ask}\n\nاكتب النتيجة بالعربية الفصحى، بنداً في كل سطر، بلا عناوين ولا مقدمات ولا خاتمة، ولا تكتب تحية أو توقيعاً. اعتمد على أرقام الملفات كما هي.`,
         context,
         provider,
         onText: (t) => { target.value += t; renderPreview(); },
@@ -311,6 +375,11 @@
 
   function initAiFiles() {
     $("r-ai-files").addEventListener("change", (e) => { addAiFiles(e.target.files); e.target.value = ""; });
+    $("r-model-pick").addEventListener("click", () => $("r-model-file").click());
+    $("r-model-file").addEventListener("change", (e) => { addModel(e.target.files[0]); e.target.value = ""; });
+    $("r-model-view").addEventListener("click", viewModel);
+    $("r-model-del").addEventListener("click", deleteModel);
+    renderModel();
     $("r-ai-pick").addEventListener("click", () => $("r-ai-files").click());
     $("r-ai-run").addEventListener("click", runAnalysis);
     $("r-ai-clear").addEventListener("click", () => { aiFiles = []; renderAiFiles(); });

@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=163">
+  <link rel="stylesheet" href="styles/theme.css?v=164">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -223,6 +223,20 @@
             <label class="conv-check strong"><input type="checkbox" id="r-tasks" checked> إدراج جدول المهام المنجزة خلال الفترة</label>
             <fieldset class="drv-users-box" style="margin-top:12px">
               <legend>✨ تحليل ملفات بالذكاء الاصطناعي</legend>
+              <div class="rep-model" id="r-model-box">
+                <div class="rep-model-head">
+                  <b>📄 نموذج التقرير</b>
+                  <span class="conv-hint" id="r-model-info">لم يُرفع نموذج بعد</span>
+                </div>
+                <p class="conv-hint">ارفع تقريراً سابقاً مكتملاً مرة واحدة، فيُحفظ للجميع، ويكتب الذكاء الاصطناعي تحليل أي جدول على نمطه: ترتيب الأقسام والعناوين والأسلوب وطريقة عرض الأرقام.</p>
+                <div class="btn-row">
+                  <button type="button" class="btn small" id="r-model-pick">⬆ رفع نموذج</button>
+                  <button type="button" class="btn small secondary" id="r-model-view" hidden>👁 عرض النموذج</button>
+                  <button type="button" class="btn small danger" id="r-model-del" hidden data-perm="delete">🗑 حذف</button>
+                  <input type="file" id="r-model-file" hidden accept=".docx,.pdf,.txt,.md,.csv,image/*">
+                </div>
+                <label class="conv-check strong" id="r-model-use-wrap" hidden><input type="checkbox" id="r-model-use" checked> اتبع النموذج عند التحليل</label>
+              </div>
               <label class="rtl-drop" id="r-ai-drop">
                 <span class="rtl-drop-ico">📂</span>
                 <b>اسحب ملفات التقارير إلى هنا</b>
@@ -1167,46 +1181,46 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=163"></script>
-  <script src="src/ui.js?v=163"></script>
-  <script src="src/templates.js?v=163"></script>
-  <script src="src/tracks.js?v=163"></script>
-  <script src="src/tasks.js?v=163"></script>
-  <script src="src/dashboard.js?v=163"></script>
-  <script src="src/letterhead-docx.js?v=163"></script>
-  <script src="src/docx.js?v=163"></script>
-  <script src="src/ai.js?v=163"></script>
-  <script src="src/doc-render.js?v=163"></script>
-  <script src="src/files-store.js?v=163"></script>
-  <script src="src/shared.js?v=163"></script>
-  <script src="src/cloud.js?v=163"></script>
-  <script src="src/drive.js?v=163"></script>
-  <script src="src/drive-ui.js?v=163"></script>
-  <script src="src/rtl-fixer.js?v=163"></script>
-  <script src="src/rtl-page.js?v=163"></script>
-  <script src="src/profile.js?v=163"></script>
-  <script src="src/admin.js?v=163"></script>
-  <script src="src/roster.js?v=163"></script>
-  <script src="src/registry.js?v=163"></script>
-  <script src="src/charts.js?v=163"></script>
-  <script src="src/ai-assist.js?v=163"></script>
-  <script src="src/meetings.js?v=163"></script>
-  <script src="src/report.js?v=163"></script>
-  <script src="src/letters.js?v=163"></script>
+  <script src="src/storage.js?v=164"></script>
+  <script src="src/ui.js?v=164"></script>
+  <script src="src/templates.js?v=164"></script>
+  <script src="src/tracks.js?v=164"></script>
+  <script src="src/tasks.js?v=164"></script>
+  <script src="src/dashboard.js?v=164"></script>
+  <script src="src/letterhead-docx.js?v=164"></script>
+  <script src="src/docx.js?v=164"></script>
+  <script src="src/ai.js?v=164"></script>
+  <script src="src/doc-render.js?v=164"></script>
+  <script src="src/files-store.js?v=164"></script>
+  <script src="src/shared.js?v=164"></script>
+  <script src="src/cloud.js?v=164"></script>
+  <script src="src/drive.js?v=164"></script>
+  <script src="src/drive-ui.js?v=164"></script>
+  <script src="src/rtl-fixer.js?v=164"></script>
+  <script src="src/rtl-page.js?v=164"></script>
+  <script src="src/profile.js?v=164"></script>
+  <script src="src/admin.js?v=164"></script>
+  <script src="src/roster.js?v=164"></script>
+  <script src="src/registry.js?v=164"></script>
+  <script src="src/charts.js?v=164"></script>
+  <script src="src/ai-assist.js?v=164"></script>
+  <script src="src/meetings.js?v=164"></script>
+  <script src="src/report.js?v=164"></script>
+  <script src="src/letters.js?v=164"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=163"></script>
-  <script src="src/converter-store.js?v=163"></script>
-  <script src="src/converter.js?v=163"></script>
+  <script src="src/converter-core.js?v=164"></script>
+  <script src="src/converter-store.js?v=164"></script>
+  <script src="src/converter.js?v=164"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=163"></script>
-  <script src="src/sheets.js?v=163"></script>
-  <script src="src/history.js?v=163"></script>
-  <script src="src/roster-audit.js?v=163"></script>
-  <script src="src/notify.js?v=163"></script>
-  <script src="src/search.js?v=163"></script>
-  <script src="src/realtime.js?v=163"></script>
-  <script src="src/app.js?v=163"></script>
+  <script src="src/hospitality.js?v=164"></script>
+  <script src="src/sheets.js?v=164"></script>
+  <script src="src/history.js?v=164"></script>
+  <script src="src/roster-audit.js?v=164"></script>
+  <script src="src/notify.js?v=164"></script>
+  <script src="src/search.js?v=164"></script>
+  <script src="src/realtime.js?v=164"></script>
+  <script src="src/app.js?v=164"></script>
 </body>
 </html>
