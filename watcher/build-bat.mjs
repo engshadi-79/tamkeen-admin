@@ -17,16 +17,7 @@ title Tamkeen folder watcher
 
 rem ===== one self-contained file: extracts the watcher, then runs the Arabic setup =====
 
-where node >nul 2>nul
-if errorlevel 1 (
-  echo.
-  echo   Node.js is required and was not found on this machine.
-  echo   Opening the download page: install the LTS version, then run this file again.
-  echo.
-  start https://nodejs.org/ar/download
-  pause
-  exit /b 1
-)
+rem فحص Node.js يجري داخل setup.ps1 ويُعرض في نافذة رسومية
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$src=[IO.File]::ReadAllLines('%~f0',[Text.Encoding]::UTF8); $a=[Array]::IndexOf($src,':::JS:::'); $b=[Array]::IndexOf($src,':::PS1:::'); if($a -lt 0 -or $b -lt 0){exit 1}; [IO.File]::WriteAllLines((Join-Path '%~dp0' 'watch-folder.mjs'), $src[($a+1)..($b-1)], (New-Object Text.UTF8Encoding($false))); [IO.File]::WriteAllLines((Join-Path '%~dp0' 'setup.ps1'), $src[($b+1)..($src.Length-1)], (New-Object Text.UTF8Encoding($true)))"
 if errorlevel 1 (
@@ -40,8 +31,7 @@ if /i "%~1"=="/extract" (
   exit /b 0
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
-if errorlevel 1 pause
+start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0setup.ps1"
 exit /b
 
 rem ================== do not edit below this line ==================

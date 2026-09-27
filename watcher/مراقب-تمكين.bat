@@ -6,16 +6,7 @@ title Tamkeen folder watcher
 
 rem ===== one self-contained file: extracts the watcher, then runs the Arabic setup =====
 
-where node >nul 2>nul
-if errorlevel 1 (
-  echo.
-  echo   Node.js is required and was not found on this machine.
-  echo   Opening the download page: install the LTS version, then run this file again.
-  echo.
-  start https://nodejs.org/ar/download
-  pause
-  exit /b 1
-)
+rem فحص Node.js يجري داخل setup.ps1 ويُعرض في نافذة رسومية
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$src=[IO.File]::ReadAllLines('%~f0',[Text.Encoding]::UTF8); $a=[Array]::IndexOf($src,':::JS:::'); $b=[Array]::IndexOf($src,':::PS1:::'); if($a -lt 0 -or $b -lt 0){exit 1}; [IO.File]::WriteAllLines((Join-Path '%~dp0' 'watch-folder.mjs'), $src[($a+1)..($b-1)], (New-Object Text.UTF8Encoding($false))); [IO.File]::WriteAllLines((Join-Path '%~dp0' 'setup.ps1'), $src[($b+1)..($src.Length-1)], (New-Object Text.UTF8Encoding($true)))"
 if errorlevel 1 (
@@ -29,8 +20,7 @@ if /i "%~1"=="/extract" (
   exit /b 0
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
-if errorlevel 1 pause
+start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0setup.ps1"
 exit /b
 
 rem ================== do not edit below this line ==================
@@ -126,6 +116,21 @@ async function login() {
   state.user = (r.user && r.user.name) || username;
   saveState();
   log(`تم الدخول باسم ${state.user}. رمز الجلسة محفوظ في state.json (صالح ٣٠ يوماً).`);
+}
+
+/* الدخول من برنامج التجهيز الرسومي: سطر JSON واحد على المدخل القياسي
+   {"username":"…","password":"…"} — لا تظهر كلمة المرور على الشاشة ولا تُحفظ. */
+async function loginFromStdin() {
+  const chunks = [];
+  for await (const c of process.stdin) chunks.push(c);
+  let cred = {};
+  try { cred = JSON.parse(Buffer.concat(chunks).toString("utf8").trim() || "{}"); } catch (e) { throw new Error("بيانات دخول غير صالحة"); }
+  if (!cred.username || !cred.password) throw new Error("اسم المستخدم وكلمة المرور مطلوبان");
+  const r = await call("login", { username: cred.username, password: cred.password });
+  state.token = r.token;
+  state.user = (r.user && r.user.name) || cred.username;
+  saveState();
+  log(`تم الدخول باسم ${state.user}.`);
 }
 
 async function ensureSession() {
@@ -305,6 +310,7 @@ async function main() {
     return;
   }
 
+  if (args.has("--login-stdin")) { await loginFromStdin(); return; }
   if (args.has("--login")) { await login(); return; }
   await ensureSession();
 
@@ -320,92 +326,203 @@ async function main() {
 
 main().catch((e) => { log("توقّف البرنامج: " + e.message); process.exitCode = 1; });
 
+
 :::PS1:::
 #requires -version 5
 <#
   تجهيز مراقب المجلدات — مساعد تمكين الإداري
-  يسألك أسئلة قليلة ثم يجهّز كل شيء ويشغّل المراقبة.
-  لا تحتاج قبله إلا تثبيت Node.js من https://nodejs.org
+  كل الأسئلة تظهر في نوافذ رسومية، لأن نافذة الأوامر في ويندوز
+  لا تعرض العربية باتجاهها الصحيح.
 #>
 $ErrorActionPreference = "Stop"
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here
 
-function Say($text, $color = "White") { Write-Host $text -ForegroundColor $color }
-function Line { Say ("-" * 60) "DarkGray" }
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
 
-Say ""
-Say "   مراقب المجلدات — مساعد تمكين الإداري" "Cyan"
-Line
-Say "هذا البرنامج يراقب مجلداً على جهازك، وكل ملف جديد فيه يُرفع إلى أرشيف"
-Say "المركز ويُسجَّل في الوارد والصادر برقم من الخادم — والموقع مغلق."
-Line
-Say ""
+$TITLE = "مراقب مجلدات تمكين"
+$FONT = New-Object System.Drawing.Font("Segoe UI", 11)
 
-# ===== 1) التحقق من Node.js =====
-$node = Get-Command node -ErrorAction SilentlyContinue
-if (-not $node) {
-  Say "لم أجد Node.js على الجهاز، وهو مطلوب لتشغيل المراقب." "Yellow"
-  Say "سأفتح لك صفحة التحميل: نزّل نسخة LTS، ثبّتها (التالي… التالي… تم)،"
-  Say "ثم شغّل هذا الملف من جديد." "Yellow"
+# ===== نوافذ عربية =====
+function Show-Msg($text, $icon = "Information", $buttons = "OK") {
+  return [System.Windows.Forms.MessageBox]::Show(
+    $text, $TITLE,
+    [System.Windows.Forms.MessageBoxButtons]::$buttons,
+    [System.Windows.Forms.MessageBoxIcon]::$icon,
+    [System.Windows.Forms.MessageBoxDefaultButton]::Button1,
+    ([System.Windows.Forms.MessageBoxOptions]::RtlReading -bor [System.Windows.Forms.MessageBoxOptions]::RightAlign))
+}
+
+function New-Dialog($height) {
+  $f = New-Object System.Windows.Forms.Form
+  $f.Text = $TITLE
+  $f.RightToLeft = "Yes"
+  $f.RightToLeftLayout = $true
+  $f.Font = $FONT
+  $f.ClientSize = New-Object System.Drawing.Size(460, $height)
+  $f.FormBorderStyle = "FixedDialog"
+  $f.StartPosition = "CenterScreen"
+  $f.MaximizeBox = $false
+  $f.MinimizeBox = $false
+  $f.TopMost = $true
+  return $f
+}
+
+function New-Label($text, $y, $height = 46) {
+  $l = New-Object System.Windows.Forms.Label
+  $l.Text = $text
+  $l.SetBounds(16, $y, 428, $height)
+  return $l
+}
+
+function New-Btn($text, $x, $y, $result) {
+  $b = New-Object System.Windows.Forms.Button
+  $b.Text = $text
+  $b.SetBounds($x, $y, 130, 34)
+  $b.DialogResult = $result
+  return $b
+}
+
+# سؤال بنص يُكتب
+function Ask-Text($prompt, $default = "", $password = $false) {
+  $f = New-Dialog 170
+  $f.Controls.Add((New-Label $prompt 16))
+  $t = New-Object System.Windows.Forms.TextBox
+  $t.SetBounds(16, 68, 428, 30)
+  $t.Text = $default
+  if ($password) { $t.UseSystemPasswordChar = $true }
+  $f.Controls.Add($t)
+  $ok = New-Btn "متابعة" 16 115 ([System.Windows.Forms.DialogResult]::OK)
+  $cancel = New-Btn "إلغاء" 160 115 ([System.Windows.Forms.DialogResult]::Cancel)
+  $f.Controls.AddRange(@($ok, $cancel))
+  $f.AcceptButton = $ok; $f.CancelButton = $cancel
+  $f.Add_Shown({ $t.Focus() })
+  $r = $f.ShowDialog()
+  $v = $t.Text
+  $f.Dispose()
+  if ($r -ne [System.Windows.Forms.DialogResult]::OK) { return $null }
+  return $v
+}
+
+# سؤال باختيار من خيارين
+function Ask-Choice($prompt, $first, $second) {
+  $f = New-Dialog 190
+  $f.Controls.Add((New-Label $prompt 16 60))
+  $r1 = New-Object System.Windows.Forms.RadioButton
+  $r1.Text = $first; $r1.SetBounds(20, 80, 424, 28); $r1.Checked = $true
+  $r2 = New-Object System.Windows.Forms.RadioButton
+  $r2.Text = $second; $r2.SetBounds(20, 110, 424, 28)
+  $ok = New-Btn "متابعة" 16 145 ([System.Windows.Forms.DialogResult]::OK)
+  $cancel = New-Btn "إلغاء" 160 145 ([System.Windows.Forms.DialogResult]::Cancel)
+  $f.Controls.AddRange(@($r1, $r2, $ok, $cancel))
+  $f.AcceptButton = $ok; $f.CancelButton = $cancel
+  $r = $f.ShowDialog()
+  $one = $r1.Checked
+  $f.Dispose()
+  if ($r -ne [System.Windows.Forms.DialogResult]::OK) { return 0 }
+  if ($one) { return 1 } else { return 2 }
+}
+
+# نافذة الدخول: اسم المستخدم وكلمة المرور معاً
+function Ask-Login() {
+  $f = New-Dialog 250
+  $f.Controls.Add((New-Label "سجّل الدخول باسم المستخدم وكلمة المرور نفسيهما في الموقع.`nكلمة المرور لا تُحفظ في أي ملف؛ يُحفظ رمز جلسة صالح ٣٠ يوماً." 12 60))
+  $lu = New-Object System.Windows.Forms.Label; $lu.Text = "اسم المستخدم"; $lu.SetBounds(16, 80, 428, 22)
+  $tu = New-Object System.Windows.Forms.TextBox; $tu.SetBounds(16, 104, 428, 30)
+  $lp = New-Object System.Windows.Forms.Label; $lp.Text = "كلمة المرور"; $lp.SetBounds(16, 142, 428, 22)
+  $tp = New-Object System.Windows.Forms.TextBox; $tp.SetBounds(16, 166, 428, 30); $tp.UseSystemPasswordChar = $true
+  $ok = New-Btn "دخول" 16 205 ([System.Windows.Forms.DialogResult]::OK)
+  $cancel = New-Btn "إلغاء" 160 205 ([System.Windows.Forms.DialogResult]::Cancel)
+  $f.Controls.AddRange(@($lu, $tu, $lp, $tp, $ok, $cancel))
+  $f.AcceptButton = $ok; $f.CancelButton = $cancel
+  $f.Add_Shown({ $tu.Focus() })
+  $r = $f.ShowDialog()
+  $out = @{ user = $tu.Text; pass = $tp.Text }
+  $f.Dispose()
+  if ($r -ne [System.Windows.Forms.DialogResult]::OK) { return $null }
+  return $out
+}
+
+# تشغيل أمر node بلا نافذة، وإعادة مخرجاته
+function Run-Node($nodeArgs, $stdinText = $null) {
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = "node"
+  $psi.Arguments = $nodeArgs
+  $psi.WorkingDirectory = $here
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+  $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+  if ($null -ne $stdinText) { $psi.RedirectStandardInput = $true }
+  $p = [System.Diagnostics.Process]::Start($psi)
+  if ($null -ne $stdinText) {
+    $p.StandardInput.WriteLine($stdinText)
+    $p.StandardInput.Close()
+  }
+  $out = $p.StandardOutput.ReadToEnd() + $p.StandardError.ReadToEnd()
+  $p.WaitForExit()
+  return @{ code = $p.ExitCode; text = $out.Trim() }
+}
+
+# ===== ١) Node.js =====
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  Show-Msg "لم أجد Node.js على الجهاز، وهو مطلوب لتشغيل المراقب.`n`nسأفتح لك صفحة التحميل: نزّل نسخة LTS، ثبّتها (التالي… التالي… تم)، ثم شغّل هذا الملف من جديد." "Warning" | Out-Null
   Start-Process "https://nodejs.org/ar/download"
-  Read-Host "اضغط Enter للخروج"
   exit 1
 }
-Say ("✔ Node.js موجود: " + (node -v)) "Green"
 
-# ===== 2) اختيار المجلد المراقَب =====
+# ===== ٢) المجلد المراقَب =====
 $cfgPath = Join-Path $here "config.json"
 $old = $null
 if (Test-Path $cfgPath) {
   try { $old = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $old = $null }
 }
+$folder = $null
 if ($old -and $old.folders -and $old.folders.Count -gt 0) {
-  Say ""
-  Say ("يوجد إعداد سابق للمجلد: " + ($old.folders -join " | ")) "Yellow"
-  $keep = Read-Host "هل تبقيه كما هو؟ (Enter = نعم / n = اختيار مجلد جديد)"
-  if ($keep -notmatch '^[nNلغ]') { $folder = $old.folders[0] }
+  $keep = Ask-Choice ("يوجد إعداد سابق للمجلد:`n" + ($old.folders -join "  |  ")) "أبقِ هذا المجلد" "اختيار مجلد آخر"
+  if ($keep -eq 0) { exit 1 }
+  if ($keep -eq 1) { $folder = $old.folders[0] }
 }
 
 if (-not $folder) {
-  Say ""
-  Say "اختر المجلد الذي تريد مراقبته (مجلد المسح الضوئي مثلاً)…" "Cyan"
-  Add-Type -AssemblyName System.Windows.Forms
+  Show-Msg "اختر المجلد الذي تريد مراقبته — مجلد الماسح الضوئي مثلاً.`n`nكل ملف جديد يظهر فيه سيُرفع تلقائياً إلى أرشيف المركز." | Out-Null
   $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
   $dlg.Description = "اختر المجلد الذي تريد رفع ملفاته تلقائياً"
   $dlg.ShowNewFolderButton = $true
   if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
-    Say "لم تختر مجلداً. أُلغي التجهيز." "Yellow"
-    Read-Host "اضغط Enter للخروج"
+    Show-Msg "لم تختر مجلداً، فأُلغي التجهيز." "Warning" | Out-Null
     exit 1
   }
   $folder = $dlg.SelectedPath
 }
-Say ("المجلد: " + $folder) "Green"
 
-# ===== 3) وارد أم صادر =====
-Say ""
-Say "ملفات هذا المجلد تُسجَّل في:"
-Say "   1 = الوارد   (الافتراضي)"
-Say "   2 = الصادر"
-$t = Read-Host "اكتب 1 أو 2"
-$type = if ($t -eq "2") { "out" } else { "in" }
-Say ("النوع: " + $(if ($type -eq "out") { "صادر" } else { "وارد" })) "Green"
+# ===== ٣) وارد أم صادر =====
+$c = Ask-Choice ("ملفات هذا المجلد:`n" + $folder + "`n`nتُسجَّل في:") "الوارد" "الصادر"
+if ($c -eq 0) { exit 1 }
+$type = if ($c -eq 2) { "out" } else { "in" }
 
-# ===== 4) الجهة الافتراضية ومدة الفحص =====
-$party = Read-Host "الجهة الافتراضية في القيد (اتركها فارغة إن اختلفت من ملف لآخر)"
-$everyText = Read-Host "كل كم ثانية يفحص المجلد؟ (Enter = 60)"
+# ===== ٤) الجهة والمدة والبادئة =====
+$party = Ask-Text "الجهة الافتراضية التي تُكتب في القيد:`n(اتركها فارغة إن اختلفت من ملف لآخر)" $(if ($old) { $old.party } else { "" })
+if ($null -eq $party) { exit 1 }
+
+$everyText = Ask-Text "كل كم ثانية يفحص المجلد؟" $(if ($old -and $old.intervalSeconds) { [string]$old.intervalSeconds } else { "60" })
+if ($null -eq $everyText) { exit 1 }
 $every = 60
-if ($everyText -match '^\d+$' -and [int]$everyText -ge 10) { $every = [int]$everyText }
+if ($everyText -match '^\s*\d+\s*$' -and [int]$everyText.Trim() -ge 10) { $every = [int]$everyText.Trim() }
 
 $prefix = "م ت"
+if ($old -and $old.outPrefix) { $prefix = $old.outPrefix }
 if ($type -eq "out") {
-  $p = Read-Host "بادئة رقم الصادر كما في إعدادات الموقع (Enter = م ت)"
+  $p = Ask-Text "بادئة رقم الصادر كما في إعدادات الموقع:" $prefix
+  if ($null -eq $p) { exit 1 }
   if ($p.Trim()) { $prefix = $p.Trim() }
 }
 
-# ===== 5) كتابة الإعدادات =====
+# ===== ٥) حفظ الإعدادات =====
 $config = [ordered]@{
   url             = "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen"
   folders         = @($folder)
@@ -418,61 +535,72 @@ $config = [ordered]@{
   subfolders      = $true
 }
 if ($old -and $old.url) { $config.url = $old.url }
-$json = $config | ConvertTo-Json -Depth 5
-[System.IO.File]::WriteAllText($cfgPath, $json, (New-Object System.Text.UTF8Encoding($false)))
-Say ""
-Say "✔ حُفظت الإعدادات في config.json" "Green"
+[System.IO.File]::WriteAllText($cfgPath, ($config | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
 
-# ===== 6) الملفات الموجودة الآن: تُرفع أم تُعتبر قديمة؟ =====
+# ===== ٦) الملفات الموجودة الآن =====
 $existing = @(Get-ChildItem -LiteralPath $folder -File -Recurse -ErrorAction SilentlyContinue).Count
-Say ""
-Say ("المجلد فيه الآن " + $existing + " ملفاً.") "Yellow"
-Say "   1 = اعتبرها قديمة، وارفع الجديد فقط  (الافتراضي والأسلم)"
-Say "   2 = ارفعها كلها إلى السجل الآن"
-$seedAns = Read-Host "اكتب 1 أو 2"
-if ($seedAns -ne "2") {
-  node watch-folder.mjs --seed
-  Say "✔ الملفات الحالية لن تُرفع؛ المراقبة تبدأ مما بعدها." "Green"
-} else {
-  Say "ستُرفع كل ملفات المجلد بعد تسجيل الدخول." "Yellow"
+$seedAns = Ask-Choice ("المجلد فيه الآن " + $existing + " ملفاً.`n`nماذا أفعل بها؟") "اعتبرها قديمة، وارفع الجديد فقط (الأسلم)" "ارفعها كلها إلى السجل الآن"
+if ($seedAns -eq 0) { exit 1 }
+if ($seedAns -eq 1) { Run-Node "watch-folder.mjs --seed" | Out-Null }
+
+# ===== ٧) الدخول =====
+$signed = $false
+for ($i = 0; $i -lt 3 -and -not $signed; $i++) {
+  $cred = Ask-Login
+  if ($null -eq $cred) { exit 1 }
+  $payload = (@{ username = $cred.user; password = $cred.pass } | ConvertTo-Json -Compress)
+  $r = Run-Node "watch-folder.mjs --login-stdin" $payload
+  if ($r.code -eq 0) { $signed = $true }
+  else { Show-Msg ("تعذّر الدخول:`n`n" + $r.text) "Error" | Out-Null }
+}
+if (-not $signed) { exit 1 }
+
+# ===== ملف التشغيل السريع: يُنشأ إن لم يكن موجوداً (مثلاً عند نسخ ملف الباتش وحده) =====
+$runCmd = Join-Path $here "تشغيل-المراقب.cmd"
+if (-not (Test-Path $runCmd)) {
+  $runText = @(
+    '@echo off',
+    'chcp 65001 >nul',
+    'cd /d "%~dp0"',
+    'title Tamkeen folder watcher',
+    'node watch-folder.mjs',
+    'pause'
+  ) -join "`r`n"
+  [System.IO.File]::WriteAllText($runCmd, $runText, (New-Object System.Text.ASCIIEncoding))
 }
 
-# ===== 7) تسجيل الدخول =====
-Say ""
-Line
-Say "سجّل الدخول باسم المستخدم وكلمة المرور نفسيهما في الموقع." "Cyan"
-Say "كلمة المرور لا تُحفظ في أي ملف؛ يُحفظ رمز جلسة صالح ٣٠ يوماً." "DarkGray"
-Line
-node watch-folder.mjs --login
-if ($LASTEXITCODE -ne 0) {
-  Say "لم يتم الدخول. شغّل الملف من جديد وحاول مرة أخرى." "Red"
-  Read-Host "اضغط Enter للخروج"
-  exit 1
-}
-
-# ===== 8) التشغيل مع إقلاع ويندوز =====
-Say ""
-$auto = Read-Host "أشغّل المراقب تلقائياً مع تشغيل الجهاز؟ (y = نعم / n = لا)"
-if ($auto -match '^[yY]') {
-  $startup = [Environment]::GetFolderPath("Startup")
-  $lnk = Join-Path $startup "مراقب مجلدات تمكين.lnk"
+# ===== ٨) التشغيل مع إقلاع ويندوز =====
+$startup = [Environment]::GetFolderPath("Startup")
+$lnk = Join-Path $startup "مراقب مجلدات تمكين.lnk"
+$auto = Show-Msg "أشغّل المراقب تلقائياً مع تشغيل الجهاز؟" "Question" "YesNo"
+if ($auto -eq [System.Windows.Forms.DialogResult]::Yes) {
   $ws = New-Object -ComObject WScript.Shell
   $sc = $ws.CreateShortcut($lnk)
-  $sc.TargetPath = Join-Path $here "تشغيل-المراقب.cmd"
+  $sc.TargetPath = $runCmd
   $sc.WorkingDirectory = $here
+  $sc.WindowStyle = 7
   $sc.Description = "مراقب مجلدات مساعد تمكين الإداري"
   $sc.Save()
-  Say ("✔ أُضيف إلى بدء التشغيل: " + $lnk) "Green"
-  Say "   لإيقافه لاحقاً: احذف هذا الاختصار (Win+R ثم shell:startup)." "DarkGray"
+} elseif (Test-Path $lnk) {
+  Remove-Item $lnk -Force -ErrorAction SilentlyContinue
 }
 
-# ===== 9) التشغيل =====
-Say ""
-Line
-Say "كل شيء جاهز. ستبدأ المراقبة الآن، واترك هذه النافذة مفتوحة." "Cyan"
-Say "لإيقاف المراقبة: أغلق النافذة. ولتشغيلها لاحقاً: تشغيل-المراقب.cmd" "DarkGray"
-Say "كل ما يجري يُكتب أيضاً في watcher.log بجانب البرنامج." "DarkGray"
-Line
-Say ""
-node watch-folder.mjs
-Read-Host "توقّف المراقب. اضغط Enter للإغلاق"
+# ===== ٩) التشغيل الآن =====
+Start-Process -FilePath $runCmd -WorkingDirectory $here -WindowStyle Minimized
+
+$summary = @(
+  "المراقبة تعمل الآن ✔",
+  "",
+  ("المجلد: " + $folder),
+  ("النوع: " + $(if ($type -eq "out") { "صادر" } else { "وارد" })),
+  ("الفحص: كل " + $every + " ثانية"),
+  ("مع إقلاع ويندوز: " + $(if ($auto -eq [System.Windows.Forms.DialogResult]::Yes) { "نعم" } else { "لا" })),
+  "",
+  "نافذة المراقب مصغّرة في شريط المهام — إغلاقها يوقف المراقبة.",
+  "وكل ما يجري مكتوب في الملف watcher.log بجانب البرنامج.",
+  "",
+  "هل تريد فتح مجلد البرنامج الآن؟"
+) -join "`n"
+if ((Show-Msg $summary "Information" "YesNo") -eq [System.Windows.Forms.DialogResult]::Yes) {
+  Start-Process explorer.exe $here
+}

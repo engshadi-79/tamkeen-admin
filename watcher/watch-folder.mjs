@@ -90,6 +90,21 @@ async function login() {
   log(`تم الدخول باسم ${state.user}. رمز الجلسة محفوظ في state.json (صالح ٣٠ يوماً).`);
 }
 
+/* الدخول من برنامج التجهيز الرسومي: سطر JSON واحد على المدخل القياسي
+   {"username":"…","password":"…"} — لا تظهر كلمة المرور على الشاشة ولا تُحفظ. */
+async function loginFromStdin() {
+  const chunks = [];
+  for await (const c of process.stdin) chunks.push(c);
+  let cred = {};
+  try { cred = JSON.parse(Buffer.concat(chunks).toString("utf8").trim() || "{}"); } catch (e) { throw new Error("بيانات دخول غير صالحة"); }
+  if (!cred.username || !cred.password) throw new Error("اسم المستخدم وكلمة المرور مطلوبان");
+  const r = await call("login", { username: cred.username, password: cred.password });
+  state.token = r.token;
+  state.user = (r.user && r.user.name) || cred.username;
+  saveState();
+  log(`تم الدخول باسم ${state.user}.`);
+}
+
 async function ensureSession() {
   if (!state.token) { await login(); return; }
   try {
@@ -267,6 +282,7 @@ async function main() {
     return;
   }
 
+  if (args.has("--login-stdin")) { await loginFromStdin(); return; }
   if (args.has("--login")) { await login(); return; }
   await ensureSession();
 
@@ -281,3 +297,4 @@ async function main() {
 }
 
 main().catch((e) => { log("توقّف البرنامج: " + e.message); process.exitCode = 1; });
+
