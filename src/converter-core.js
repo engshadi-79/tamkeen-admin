@@ -284,6 +284,85 @@
     return mapping;
   }
 
+  /* ===== العمر: يُحسب من عمود تاريخ الميلاد =====
+     يقبل 1998-05-20 و20/05/1998 و«20-5-1998» والأرقام العربية وتواريخ Excel الرقمية. */
+  const AGE_COLUMN = "العمر (محسوب من تاريخ الميلاد)";
+
+  const guessBirthColumn = (headers) => headers.find((h) => /ميلاد|مواليد|birth|dob/i.test(normalizeHeader(h))) || "";
+
+  function parseBirthDate(value) {
+    if (value == null || value === "") return null;
+    if (value instanceof Date) return isNaN(value) ? null : value;
+    const raw = String(value)
+      .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+      .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+      .replace(/[م\s]/g, "")
+      .trim();
+    if (!raw) return null;
+    // رقم تسلسلي من Excel (أيام منذ 1899-12-30)
+    if (/^\d{4,5}$/.test(raw)) {
+      const d = new Date(Date.UTC(1899, 11, 30) + Number(raw) * 86400000);
+      return isNaN(d) ? null : d;
+    }
+    let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(raw);
+    if (m) return valid(Number(m[1]), Number(m[2]), Number(m[3]));
+    m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/.exec(raw);
+    if (m) {
+      let year = Number(m[3]);
+      if (year < 100) year += year > 30 ? 1900 : 2000;
+      // اليوم أولاً كما هو شائع عندنا؛ وإن كان الثاني أكبر من 12 فهو اليوم والأول شهر
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      return b > 12 && a <= 12 ? valid(year, a, b) : valid(year, b, a);
+    }
+    const d = new Date(raw);
+    return isNaN(d) ? null : d;
+  }
+
+  function valid(year, month, day) {
+    if (!(year > 1900 && year < 2100) || !(month >= 1 && month <= 12) || !(day >= 1 && day <= 31)) return null;
+    const d = new Date(year, month - 1, day);
+    return isNaN(d) || d.getMonth() !== month - 1 ? null : d;
+  }
+
+  /* العمر بالسنوات الكاملة حتى تاريخ اليوم (أو تاريخ مرجعي) */
+  function ageFrom(value, at) {
+    const b = parseBirthDate(value);
+    if (!b) return "";
+    const ref = at ? new Date(at) : new Date();
+    let age = ref.getFullYear() - b.getFullYear();
+    const before = ref.getMonth() < b.getMonth() || (ref.getMonth() === b.getMonth() && ref.getDate() < b.getDate());
+    if (before) age--;
+    return age >= 0 && age < 120 ? age : "";
+  }
+
+  /* يضيف عمود العمر إلى البيانات، ويعيد كم صفاً حُسب وكم تعذّر */
+  function addAgeColumn(data, birthHeader, at) {
+    const birth = birthHeader === undefined ? guessBirthColumn(data.headers) : birthHeader;
+    if (!birth || !data.headers.includes(birth)) {
+      data.headers = data.headers.filter((h) => h !== AGE_COLUMN);
+      data.rows.forEach((r) => { delete r[AGE_COLUMN]; });
+      return { from: "", ok: 0, bad: 0 };
+    }
+    if (!data.headers.includes(AGE_COLUMN)) data.headers.push(AGE_COLUMN);
+    let ok = 0;
+    let bad = 0;
+    data.rows.forEach((row) => {
+      const age = ageFrom(row[birth], at);
+      row[AGE_COLUMN] = age === "" ? "" : String(age);
+      if (age !== "") ok++;
+      else if (row[birth] != null && String(row[birth]).trim() !== "") bad++;
+    });
+    return { from: birth, ok, bad };
+  }
+
+  /* حقل «العمر» في القالب يُربط بالعمود المحسوب */
+  function preferAge(mapping, templateHeaders, dataHeaders) {
+    if (!dataHeaders.includes(AGE_COLUMN)) return mapping;
+    templateHeaders.forEach((h) => { if (/^العمر|\bالعمر\b|السن$/.test(normalizeHeader(h))) mapping[h] = AGE_COLUMN; });
+    return mapping;
+  }
+
   const guessAverageColumn = (headers) => headers.find((h) => h !== GRADE_COLUMN && /معدل/.test(normalizeHeader(h))) || "";
 
   /* يُضاف عمود التقدير المحسوب إلى البيانات من عمود المعدل (المختار، أو أول عمود اسمه فيه «معدل»).
@@ -1330,6 +1409,7 @@
     isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, guessKey, generate,
     gradeOf, addComputedGrade, preferComputedGrade, guessAverageColumn, GRADE_COLUMN,
     addTrainerColumns, preferTrainers, trainerColumnFor, guessTrackColumn, TRAINER_COLS, sortRowsByColumn,
+    addAgeColumn, preferAge, guessBirthColumn, ageFrom, AGE_COLUMN,
     readTemplateTextFields,
     // للاختبار
     computeSessionDates, fillXlsxTemplate, fillDocxTemplate, extractHeadersFromDocxTable,

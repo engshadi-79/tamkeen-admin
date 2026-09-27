@@ -134,6 +134,25 @@
 
   /* ===== التقدير من المعدل: ظاهر وقابل للتغيير بدل أن يجري بصمت =====
      يظهر إن كان في القالب عمود تقدير: من أي عمود يُحسب، وكم صفاً حُسب وكم تعذّر ولماذا. */
+  /* عمود العمر: يظهر متى وُجد في القالب حقل «العمر»، أو وُجد عمود ميلاد في البيانات */
+  function ageControl() {
+    const p = state.parsed;
+    const norm = core().normalizeHeader;
+    const col = p.templateHeaders.find((h) => /العمر|السن/.test(norm(h)));
+    const a = state.age || { from: "", ok: 0, bad: 0 };
+    if (!col && !a.from) return "";
+    const choices = p.dataHeaders.filter((h) => h !== core().AGE_COLUMN);
+    const status = !a.from
+      ? `<span class="warn">لم نجد عمود تاريخ ميلاد في بياناتك؛ اختره من القائمة ليُحسب العمر.</span>`
+      : `حُسب العمر لـ <b>${ui.fmt(a.ok)}</b> صفاً${a.bad ? `، <span class="warn">وتعذّر في ${ui.fmt(a.bad)} صفاً لأن التاريخ فيها غير مفهوم</span>` : ""}.`;
+    return `<div class="conv-grade-note">
+      <label>ⓘ «${esc(col || core().AGE_COLUMN)}» يُحسب من عمود
+        <select data-age-from>${opt("", "— لا تحسبه —", !a.from)}${choices.map((h) => opt(h, h, h === a.from)).join("")}</select></label>
+      <div>${status}</div>
+      <small>العمر بالسنوات الكاملة حتى تاريخ اليوم. يقبل 1998-05-20 و20/05/1998 وتواريخ Excel.</small>
+    </div>`;
+  }
+
   function gradeControl() {
     const p = state.parsed;
     const norm = core().normalizeHeader;
@@ -612,7 +631,8 @@
       state.parsed = { templateHeaders, dataHeaders: data.headers, dataRows: data.rows, truncated: data.truncated, templateBuffer, templateIsDocx, templateName, savedId };
       state.grade = core().addComputedGrade(data);
       state.trainers = core().addTrainerColumns(data, tracksList());
-      state.mapping = core().preferTrainers(core().preferComputedGrade(core().suggestColumnMapping(templateHeaders, data.headers), templateHeaders, data.headers), templateHeaders, data.headers);
+      state.age = core().addAgeColumn(data);
+      state.mapping = core().preferAge(core().preferTrainers(core().preferComputedGrade(core().suggestColumnMapping(templateHeaders, data.headers), templateHeaders, data.headers), templateHeaders, data.headers), templateHeaders, data.headers);
       state.constants = {};
       const placeholders = await core().readTemplatePlaceholders(templateBuffer, templateIsDocx);
       state.placeholders = placeholders;
@@ -919,6 +939,7 @@
     }
     html += textFieldsControl();
     html += gradeControl();
+    html += ageControl();
     html += trainerControl();
     html += filterControl();
     if (missing.length || extra.length) {
@@ -1159,6 +1180,21 @@
         f.raw = t.value;
         f.value = t.value ? timeArabic(t.value) : "";
       } else f.value = t.value.trim();
+      renderResult();
+      return;
+    }
+    if (t.dataset.ageFrom !== undefined) {
+      const p = state.parsed;
+      const data = { headers: p.dataHeaders, rows: p.dataRows };
+      state.age = core().addAgeColumn(data, t.value);
+      p.dataHeaders = data.headers;
+      // حقل العمر في القالب يتبع الاختيار
+      const norm = core().normalizeHeader;
+      p.templateHeaders.forEach((h) => {
+        if (!/العمر|السن/.test(norm(h))) return;
+        if (state.age.from) state.mapping[h] = core().AGE_COLUMN;
+        else if (state.mapping[h] === core().AGE_COLUMN) delete state.mapping[h];
+      });
       renderResult();
       return;
     }
