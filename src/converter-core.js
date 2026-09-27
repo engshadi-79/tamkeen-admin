@@ -1329,7 +1329,7 @@
     MAX_ROWS, normalizeHeader, suggestColumnMapping, resolveDefaultColumn, computeGroupKey,
     isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, guessKey, generate,
     gradeOf, addComputedGrade, preferComputedGrade, guessAverageColumn, GRADE_COLUMN,
-    addTrainerColumns, preferTrainers, trainerColumnFor, guessTrackColumn, TRAINER_COLS,
+    addTrainerColumns, preferTrainers, trainerColumnFor, guessTrackColumn, TRAINER_COLS, sortRowsByColumn,
     readTemplateTextFields,
     // للاختبار
     computeSessionDates, fillXlsxTemplate, fillDocxTemplate, extractHeadersFromDocxTable,

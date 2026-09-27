@@ -814,6 +814,69 @@
     </details>`;
   }
 
+  /* ===== تصدير Excel بالأعمدة التي يختارها المستخدم =====
+     يأخذ الصفوف نفسها التي في الكشف: بعد تصفية المسارات، وبالقيم الثابتة، وبالترتيب المختار. */
+  const allExportCols = () => {
+    const p = state.parsed;
+    if (!p) return [];
+    return p.dataHeaders.concat(Object.keys(state.constants).filter((k) => String(state.constants[k]).length && !p.dataHeaders.includes(k)));
+  };
+
+  function exportControl() {
+    const all = allExportCols();
+    if (!all.length) return "";
+    const hidden = state.pickHidden || new Set();
+    const n = all.filter((h) => !hidden.has(h)).length;
+    return `<details class="conv-section conv-export" ${state.exportOpen ? "open" : ""}>
+      <summary>⬇ تصدير Excel بالأعمدة التي تختارها (${ui.fmt(n)} من ${ui.fmt(all.length)})</summary>
+      <p class="conv-hint">ملف Excel فيه الصفوف نفسها التي في الكشف (بعد تصفية المسارات والترتيب)، وبالأعمدة المحدَّدة فقط.</p>
+      <div class="conv-filter-list">${all.map((h) => `<label class="conv-check" title="${esc(h)}">
+        <input type="checkbox" data-pick="${esc(h)}" ${hidden.has(h) ? "" : "checked"}> ${esc(h)}
+      </label>`).join("")}</div>
+      <div class="btn-row">
+        <button type="button" class="conv-link" data-pick-all>تحديد الكل</button>
+        <button type="button" class="conv-link" data-pick-none>إلغاء الكل</button>
+        <button type="button" class="btn small" id="conv-export-xlsx">⬇ تنزيل Excel</button>
+      </div>
+    </details>`;
+  }
+
+  async function exportPickedXlsx() {
+    const p = state.parsed;
+    if (!p) return;
+    const hidden = state.pickHidden || new Set();
+    const cols = allExportCols().filter((h) => !hidden.has(h));
+    if (!cols.length) { ui.toast("اختر عموداً واحداً على الأقل"); return; }
+    const keys = Object.keys(state.constants).filter((k) => String(state.constants[k]).length);
+    const rows = p.dataRows.filter(keepRow).map((r) => {
+      const copy = Object.assign({}, r);
+      keys.forEach((k) => { copy[k] = state.constants[k]; });
+      return copy;
+    });
+    if (!rows.length) { ui.toast("لا صفوف للتصدير"); return; }
+    if (state.sortRowsBy) core().sortRowsByColumn(rows, state.sortRowsBy);
+    setBusy("conv-export-xlsx", true, "جارٍ التصدير…");
+    try {
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("البيانات", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+      ws.columns = cols.map((h) => ({ header: h, key: h, width: Math.min(34, Math.max(12, h.length + 6)) }));
+      rows.forEach((r) => ws.addRow(cols.reduce((o, h) => Object.assign(o, { [h]: r[h] == null ? "" : r[h] }), {})));
+      const head = ws.getRow(1);
+      head.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      head.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      head.height = 24;
+      head.eachCell((c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3864" } }; });
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
+      const buf = await wb.xlsx.writeBuffer();
+      ui.download(`${p.templateName || "بيانات"}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      ui.toast(`نُزّل ${ui.fmt(rows.length)} صفاً و${ui.fmt(cols.length)} عموداً`);
+    } catch (e) {
+      ui.toast(e.message);
+    } finally {
+      setBusy("conv-export-xlsx", false, "⬇ تنزيل Excel");
+    }
+  }
+
   function renderResult() {
     const box = $("conv-result");
     const p = state.parsed;
@@ -859,6 +922,7 @@
         </div>
       </details>`;
     }
+    html += exportControl();
     html += `<h3>اربط كل عمود في القالب بالعمود المقابل له في ملف البيانات</h3>
       <div class="conv-mapping">
         ${p.templateHeaders.map((h, i) => `
@@ -1076,6 +1140,13 @@
       renderResult();
       return;
     }
+    if (t.dataset.pick != null) {
+      state.exportOpen = true;
+      state.pickHidden = state.pickHidden || new Set();
+      if (t.checked) state.pickHidden.delete(t.dataset.pick); else state.pickHidden.add(t.dataset.pick);
+      renderResult();
+      return;
+    }
     if (t.dataset.constTime != null) {
       state.missingOpen = true;
       state.constTimes = state.constTimes || {};
@@ -1119,11 +1190,19 @@
   }
 
   async function onResultClick(e) {
+    if (e.target.closest("[data-pick-all]")) { state.exportOpen = true; state.pickHidden = new Set(); renderResult(); return; }
+    if (e.target.closest("[data-pick-none]")) {
+      state.exportOpen = true;
+      state.pickHidden = new Set(allExportCols());
+      renderResult();
+      return;
+    }
     if (e.target.closest("[data-filter-all]")) { state.filterOut = new Set(); renderResult(); return; }
     if (e.target.closest("[data-filter-none]")) { state.filterOut = new Set(filterValues().map(([v]) => v)); renderResult(); return; }
     const t = e.target.closest("button");
     if (!t) return;
     if (t.dataset.out) { state.outputFormat = t.dataset.out; renderResult(); return; }
+    if (t.id === "conv-export-xlsx") { exportPickedXlsx(); return; }
     if (t.id === "conv-generate") { handleGenerate(); return; }
     if (t.id === "conv-profile-save") { saveProfile(); return; }
     if (t.id === "conv-profile-delete") { deleteProfile(); return; }
