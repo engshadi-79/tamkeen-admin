@@ -693,13 +693,7 @@
     const groupDataRanges = []; // [أول صف، آخر صف] لبيانات كل مجموعة
 
     const groups = options.groupByColumns && options.groupByColumns.length ? groupRowsByColumns(dataRows, options.groupByColumns) : [dataRows];
-    if (options.sortRowsBy) {
-      const sortColumn = options.sortRowsBy;
-      for (const groupRows of groups) {
-        groupRows.sort((a, b) => String(a[sortColumn] == null ? "" : a[sortColumn]).trim()
-          .localeCompare(String(b[sortColumn] == null ? "" : b[sortColumn]).trim(), "ar"));
-      }
-    }
+    if (options.sortRowsBy) groups.forEach((groupRows) => sortRowsByColumn(groupRows, options.sortRowsBy));
 
     if (letterheadEndRow >= 1) {
       let letterheadExtra = {};
@@ -955,6 +949,17 @@
       result = result.slice(0, run.xmlStart) + run.openTag + escapeXml(newRunText.get(idx)) + "</w:t>" + result.slice(run.xmlEnd);
     }
     return result;
+  }
+
+  /* ترتيب أبجدي عربي: يتجاهل أل التعريف والهمزات، والأرقام تُرتَّب كأرقام */
+  function sortRowsByColumn(rows, column) {
+    const key = (r) => String(r[column] == null ? "" : r[column]).trim();
+    const clean = (v) => v.replace(/^ال/, "").replace(/[أإآٱ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ًٌٍَُِّْ]/g, "");
+    const numeric = rows.every((r) => { const v = key(r); return !v || /^[\d.,]+$/.test(v); });
+    rows.sort((a, b) => (numeric
+      ? (Number(String(key(a)).replace(/,/g, "")) || 0) - (Number(String(key(b)).replace(/,/g, "")) || 0)
+      : clean(key(a)).localeCompare(clean(key(b)), "ar")));
+    return rows;
   }
 
   function rowsToPlaceholderValueLists(rows) {
@@ -1278,6 +1283,7 @@
     }
 
     const sections = groups.map((groupRows, index) => {
+      if (options.sortRowsBy) sortRowsByColumn(groupRows, options.sortRowsBy);
       const scale = computeGroupScale(groupRows.length);
       let counter = 1;
       const rowXmls = groupRows
@@ -1309,7 +1315,7 @@
     let blob;
     if (outputFormat === "docx") {
       blob = sameFormat
-        ? await fillDocxTemplate(templateBuffer, templateHeaders, mapping, dataRows, { groupByColumns: groups, autoNumberHeader, fitGroupToOnePage, textFields })
+        ? await fillDocxTemplate(templateBuffer, templateHeaders, mapping, dataRows, { groupByColumns: groups, autoNumberHeader, fitGroupToOnePage, textFields, sortRowsBy })
         : await buildBareDocx(templateHeaders, mapping, dataRows);
     } else {
       blob = sameFormat

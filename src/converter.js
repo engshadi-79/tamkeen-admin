@@ -932,7 +932,7 @@
         <p class="conv-hint">يملأ هذا العمود بأرقام تسلسلية (1، 2، 3...) بدل قيمة من ملف البيانات${state.groupBy1 ? "، ويبدأ الترقيم من 1 من جديد مع كل مجموعة." : "."}</p>
       </div>`;
 
-      if (state.outputFormat === "xlsx") {
+      {
         html += `
       <div class="conv-section">
         <span class="conv-label">ترتيب الصفوف أبجدياً حسب عمود (اختياري)</span>
@@ -995,7 +995,7 @@
         outputFormat: state.outputFormat,
         groupByColumns: sameFormat && groups.length ? groups : undefined,
         autoNumberHeader: sameFormat ? state.autoNumberHeader || undefined : undefined,
-        sortRowsBy: sameFormat && state.outputFormat === "xlsx" ? state.sortRowsBy || undefined : undefined,
+        sortRowsBy: sameFormat ? state.sortRowsBy || undefined : undefined,
         fitGroupToOnePage: sameFormat && (state.outputFormat === "xlsx" || groups.length > 0) && state.fitGroupToOnePage,
         sessionDates,
         textFields: state.textFields,
