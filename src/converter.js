@@ -624,6 +624,10 @@
         return !dataNorm.some((d) => d === n || d.includes(n) || n.includes(d)) && !templateHeaders.some((h) => norm(h) === n) && !/^تاريخ\d+$/.test(ph);
       });
       state.outputFormat = templateIsDocx ? "docx" : "xlsx";
+      // نصوص القالب خارج الجدول (اليوم، التاريخ، اسم المسار…): يملؤها المستخدم هنا
+      state.textFields = templateIsDocx
+        ? (await core().readTemplateTextFields(templateBuffer, tracksList().map((t) => t.name))).map((f) => Object.assign({}, f, { value: "" }))
+        : [];
       await prepareExtras(data);
       state.fixedOrigin = {};
       state.filterCol = core().guessTrackColumn(data.headers.filter((h) => !Object.values(core().TRAINER_COLS).includes(h)));
@@ -746,6 +750,29 @@
     `<label class="conv-check"><input type="checkbox" ${attrs(day)} ${checked.includes(day) ? "checked" : ""}> ${WEEKDAY_NAMES[day]}</label>`
   ).join("");
 
+  /* نصوص القالب القابلة للتعبئة: اليوم والتاريخ واسم المسار وما شابهها */
+  function textFieldsControl() {
+    const list = state.textFields || [];
+    if (!list.length) return "";
+    const today = new Date();
+    const WEEK = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+    const hint = (f) => {
+      if (/^اليوم$/.test(f.label)) return WEEK[today.getDay()];
+      if (/تاريخ/.test(f.label)) return `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}م`;
+      return "";
+    };
+    const filled = list.filter((f) => f.value).length;
+    return `<details class="conv-section conv-fields" ${filled ? "open" : ""}>
+      <summary>✎ حقول القالب خارج الجدول (${ui.fmt(list.length)})${filled ? ` — عُبِّئ ${ui.fmt(filled)}` : ""} — اضغط للعرض</summary>
+      <p class="conv-hint">هذه نصوص مكتوبة في القالب نفسه. اكتب البديل ليظهر في الكشف، واتركه فارغاً ليبقى كما في القالب.</p>
+      <div class="conv-mapping">${list.map((f, i) => `
+        <div class="conv-map-row">
+          <span>${esc(f.label)}<small class="conv-hint"> في القالب: ${esc(f.current)}</small></span>
+          <input type="text" data-tf="${i}" value="${esc(f.value || "")}" placeholder="${esc(hint(f) || f.current)}">
+        </div>`).join("")}</div>
+    </details>`;
+  }
+
   function renderResult() {
     const box = $("conv-result");
     const p = state.parsed;
@@ -764,6 +791,7 @@
     if (state.fixedUsed && state.fixedUsed.length) {
       html += `<p class="conv-grade-note">📌 عُبّئ من البيانات الثابتة: ${state.fixedUsed.map(esc).join("، ")} — تظهر قيمها في «حقول لم نجد لها بيانات» ويمكن تغييرها هناك لهذا الكشف فقط.</p>`;
     }
+    html += textFieldsControl();
     html += gradeControl();
     html += trainerControl();
     html += filterControl();
@@ -922,6 +950,7 @@
         sortRowsBy: sameFormat && state.outputFormat === "xlsx" ? state.sortRowsBy || undefined : undefined,
         fitGroupToOnePage: sameFormat && (state.outputFormat === "xlsx" || groups.length > 0) && state.fitGroupToOnePage,
         sessionDates,
+        textFields: state.textFields,
       });
       const extras = state.extras || [];
       if (!extras.length) {
@@ -980,6 +1009,11 @@
     if (t.dataset.map != null) {
       state.mapping[p.templateHeaders[Number(t.dataset.map)]] = t.value;
       renderResult();
+      return;
+    }
+    if (t.dataset.tf != null) {
+      const f = (state.textFields || [])[Number(t.dataset.tf)];
+      if (f) f.value = t.value.trim();
       return;
     }
     if (t.dataset.const != null) {
@@ -1118,7 +1152,7 @@
       await refreshSaved();
     });
     $("conv-result").addEventListener("change", onResultChange);
-    $("conv-result").addEventListener("input", (e) => { if (e.target.dataset.const != null) onResultChange(e); });
+    $("conv-result").addEventListener("input", (e) => { if (e.target.dataset.const != null || e.target.dataset.tf != null) onResultChange(e); });
     $("conv-result").addEventListener("click", onResultClick);
 
     refreshSaved().then(() => {

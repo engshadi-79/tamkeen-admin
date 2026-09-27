@@ -971,12 +971,74 @@
     return lists;
   }
 
+  /* ===== نصوص القالب خارج الجدول =====
+     القوالب التي تكتب «اليوم: الثلاثاء» و«التاريخ: 18/08/2026م» واسم المسار نصاً مباشراً (بلا {{}})
+     تُقرأ هنا: كل نص بعد عنوان ينتهي بنقطتين، وكل نص يشبه تاريخاً أو اسم مسار مسجّل. */
+  const LABEL_RE = /([^\s:][^:]{0,24}?)\s*:\s*$/;
+  const DATE_RE = /^\s*\d{1,2}\s*[/\-.]\s*\d{1,2}\s*[/\-.]\s*\d{2,4}\s*م?\s*$/;
+
+  async function readTemplateTextFields(buffer, trackNames) {
+    const zip = await JSZip.loadAsync(buffer);
+    const file = zip.file("word/document.xml");
+    if (!file) return [];
+    const xml = await file.async("string");
+    const tableStart = xml.search(/<w:tbl>/);
+    const runs = extractTextRuns(xml);
+    const tracks = (trackNames || []).map((t) => normalizeHeader(t)).filter(Boolean);
+    const out = [];
+    const seen = new Set();
+    const add = (f) => {
+      const key = f.label + "|" + f.index;
+      if (seen.has(key) || !f.label) return;
+      seen.add(key);
+      out.push(f);
+    };
+    runs.forEach((run, i) => {
+      // النصوص داخل الجدول تُملأ من ملف البيانات لا من هنا
+      if (tableStart >= 0 && run.xmlStart > tableStart) return;
+      const text = run.text;
+      if (!text || !text.trim()) return;
+      const m = LABEL_RE.exec(text.trim());
+      if (m) {
+        // القيمة: بقية المقطع نفسه بعد النقطتين، وإلا أول مقطع فيه نص بعده
+        const after = text.slice(text.indexOf(":") + 1);
+        if (after.trim()) { add({ label: m[1].trim(), index: i, current: after.trim(), keepPrefix: text.slice(0, text.indexOf(":") + 1) }); return; }
+        for (let j = i + 1; j < Math.min(i + 4, runs.length); j++) {
+          if (runs[j].text && runs[j].text.trim()) { add({ label: m[1].trim(), index: j, current: runs[j].text.trim(), keepPrefix: "" }); break; }
+        }
+        return;
+      }
+      const t = text.trim();
+      if (DATE_RE.test(t)) { add({ label: "التاريخ", index: i, current: t, keepPrefix: "" }); return; }
+      if (tracks.length && tracks.includes(normalizeHeader(t))) add({ label: "اسم المسار", index: i, current: t, keepPrefix: "" });
+      else if (/^مسار\s/.test(t)) add({ label: "اسم المسار", index: i, current: t, keepPrefix: "" });
+    });
+    return out;
+  }
+
+  /* تعبئة تلك النصوص: القيم بمفتاح index كما جاءت من القراءة */
+  function applyTemplateTextFields(xml, fields) {
+    const list = (fields || []).filter((f) => f && f.value !== undefined && f.value !== null && String(f.value) !== "");
+    if (!list.length) return xml;
+    const runs = extractTextRuns(xml);
+    let out = xml;
+    // من الآخر إلى الأول حتى لا تتغيّر المواضع
+    list.slice().sort((a, b) => b.index - a.index).forEach((f) => {
+      const run = runs[f.index];
+      if (!run) return;
+      const text = (f.keepPrefix || "") + (f.keepPrefix ? " " : "") + String(f.value);
+      out = out.slice(0, run.xmlStart) + run.openTag + escapeXml(text) + "</w:t>" + out.slice(run.xmlEnd);
+    });
+    return out;
+  }
+
   async function fillDocxTemplate(templateBuffer, templateHeaders, mapping, dataRows, options = {}) {
     const zip = await JSZip.loadAsync(templateBuffer);
     const documentPath = "word/document.xml";
     const docFile = zip.file(documentPath);
-    const xml = docFile ? await docFile.async("string") : null;
+    let xml = docFile ? await docFile.async("string") : null;
     if (!xml) throw new Error("ملف الوورد غير صالح");
+    xml = applyTemplateTextFields(xml, options.textFields);
 
     const tableXml = (xml.match(/<w:tbl>[\s\S]*?<\/w:tbl>/) || [])[0];
     if (!tableXml) throw new Error("لم يتم العثور على جدول في ملف القالب");
@@ -1236,7 +1298,7 @@
   }
 
   /* ===== نقطة التوليد: نفس منطق مسار convert-template ===== */
-  async function generate({ templateBuffer, templateIsDocx, templateName, templateHeaders, mapping, dataRows, outputFormat, groupByColumns, autoNumberHeader, sortRowsBy, fitGroupToOnePage, sessionDates }) {
+  async function generate({ templateBuffer, templateIsDocx, templateName, templateHeaders, mapping, dataRows, outputFormat, groupByColumns, autoNumberHeader, sortRowsBy, fitGroupToOnePage, sessionDates, textFields }) {
     let outputName = templateName || "converted";
     if (sessionDates) outputName = `${outputName} - ${formatMonthYearArabic(sessionDates.startDate)}`;
     const sameFormat = templateBuffer != null && (outputFormat === "docx") === templateIsDocx;
@@ -1245,7 +1307,7 @@
     let blob;
     if (outputFormat === "docx") {
       blob = sameFormat
-        ? await fillDocxTemplate(templateBuffer, templateHeaders, mapping, dataRows, { groupByColumns: groups, autoNumberHeader, fitGroupToOnePage })
+        ? await fillDocxTemplate(templateBuffer, templateHeaders, mapping, dataRows, { groupByColumns: groups, autoNumberHeader, fitGroupToOnePage, textFields })
         : await buildBareDocx(templateHeaders, mapping, dataRows);
     } else {
       blob = sameFormat
@@ -1260,6 +1322,7 @@
     isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, guessKey, generate,
     gradeOf, addComputedGrade, preferComputedGrade, guessAverageColumn, GRADE_COLUMN,
     addTrainerColumns, preferTrainers, trainerColumnFor, guessTrackColumn, TRAINER_COLS,
+    readTemplateTextFields,
     // للاختبار
     computeSessionDates, fillXlsxTemplate, fillDocxTemplate, extractHeadersFromDocxTable,
   };
