@@ -321,6 +321,14 @@
       const c = virtual.includes(src) ? (p.dataHeaders.includes(src) ? src : "") : col(src);
       if (c) state.mapping[h] = c; // عمود غير موجود في هذا الملف: يبقى الربط التلقائي
     });
+    if (prof.ageFrom !== undefined) {
+      const from = col(prof.ageFrom);
+      state.age = core().addAgeColumn(data, from || "");
+    }
+    // ترتيب أعمدة التصدير والمخفي منها: تُستعاد بأسماء الأعمدة الموجودة في هذا الملف
+    const known = (list) => (list || []).map((h) => (p.dataHeaders.includes(h) ? h : col(h))).filter(Boolean);
+    if (prof.pickOrder) state.pickOrder = known(prof.pickOrder);
+    if (prof.pickHidden) state.pickHidden = new Set(known(prof.pickHidden));
     state.groupBy1 = col(prof.groupBy1);
     state.groupBy2 = col(prof.groupBy2);
     if (prof.autoNumberHeader && p.templateHeaders.includes(prof.autoNumberHeader)) state.autoNumberHeader = prof.autoNumberHeader;
@@ -345,6 +353,9 @@
       autoNumberHeader: state.autoNumberHeader || "",
       sortRowsBy: state.sortRowsBy || "",
       filterCol: state.filterCol || "",
+      ageFrom: (state.age || {}).from || "",
+      pickOrder: (state.pickOrder || []).slice(),
+      pickHidden: [...(state.pickHidden || [])],
       template: p.templateName,
       savedAt: new Date().toISOString(),
       by: ((App.cloud && App.cloud.user()) || {}).name || "",
@@ -652,6 +663,8 @@
       state.fixedOrigin = {};
       state.filterCol = core().guessTrackColumn(data.headers.filter((h) => !Object.values(core().TRAINER_COLS).includes(h)));
       state.filterOut = new Set();
+      state.pickOrder = [];
+      state.pickHidden = new Set();
       state.fixedUsed = applyFixed(templateHeaders, state.mapping, placeholders);
       (state.extras || []).forEach((t) => applyFixed(t.headers, t.mapping, []));
 
