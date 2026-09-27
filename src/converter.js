@@ -751,24 +751,61 @@
   ).join("");
 
   /* نصوص القالب القابلة للتعبئة: اليوم والتاريخ واسم المسار وما شابهها */
+  const WEEKDAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const isDayField = (label) => /^اليوم$/.test(String(label).trim());
+  const isDateField = (label) => /تاريخ/.test(label);
+  const isTimeField = (label) => /ساعة|وقت/.test(label);
+  const isTrackField = (label) => /مسار/.test(label);
+
+  /* 2026-10-05 ← 05/10/2026م، ومعها اسم يومها */
+  const dateArabic = (iso) => {
+    const d = new Date(iso + "T00:00:00");
+    return isNaN(d) ? "" : `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}م`;
+  };
+  const dayOfIso = (iso) => {
+    const d = new Date(iso + "T00:00:00");
+    return isNaN(d) ? "" : WEEKDAYS[d.getDay()];
+  };
+  /* 09:00 ← 09:00 ص */
+  const timeArabic = (hhmm) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm).trim());
+    if (!m) return String(hhmm || "");
+    const h = Number(m[1]);
+    const suffix = h < 12 ? "ص" : "م";
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${String(h12).padStart(2, "0")}:${m[2]} ${suffix}`;
+  };
+
   function textFieldsControl() {
     const list = state.textFields || [];
     if (!list.length) return "";
     const today = new Date();
-    const WEEK = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
-    const hint = (f) => {
-      if (/^اليوم$/.test(f.label)) return WEEK[today.getDay()];
-      if (/تاريخ/.test(f.label)) return `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}م`;
-      return "";
+    const todayIso = ui.todayISO();
+    const input = (f, i) => {
+      if (isDayField(f.label)) {
+        return `<select data-tf="${i}"><option value="">— كما في القالب (${esc(f.current)}) —</option>${WEEKDAYS.map((d) => `<option ${f.value === d ? "selected" : ""}>${esc(d)}</option>`).join("")}</select>`;
+      }
+      if (isDateField(f.label)) {
+        return `<input type="date" data-tf="${i}" data-kind="date" value="${esc(f.iso || "")}" title="يُكتب في الكشف ${esc(f.value || dateArabic(todayIso))}، ويملأ اسم اليوم تلقائياً">`;
+      }
+      if (isTimeField(f.label)) {
+        return `<input type="time" data-tf="${i}" data-kind="time" value="${esc(f.raw || "")}">`;
+      }
+      if (isTrackField(f.label)) {
+        const names = tracksList().map((t) => t.name).filter(Boolean);
+        if (names.length) return `<select data-tf="${i}"><option value="">— كما في القالب (${esc(f.current)}) —</option>${names.map((n) => `<option ${f.value === n ? "selected" : ""}>${esc(n)}</option>`).join("")}${f.value && !names.includes(f.value) ? `<option selected>${esc(f.value)}</option>` : ""}</select>`;
+      }
+      return `<input type="text" data-tf="${i}" value="${esc(f.value || "")}" placeholder="${esc(f.current)}">`;
     };
+    const shown = (f) => (f.value ? ` <b>← ${esc(f.value)}</b>` : "");
     const filled = list.filter((f) => f.value).length;
     return `<details class="conv-section conv-fields" ${filled ? "open" : ""}>
       <summary>✎ حقول القالب خارج الجدول (${ui.fmt(list.length)})${filled ? ` — عُبِّئ ${ui.fmt(filled)}` : ""} — اضغط للعرض</summary>
-      <p class="conv-hint">هذه نصوص مكتوبة في القالب نفسه. اكتب البديل ليظهر في الكشف، واتركه فارغاً ليبقى كما في القالب.</p>
+      <p class="conv-hint">هذه نصوص مكتوبة في القالب نفسه. حدّد البديل ليظهر في الكشف، واتركه فارغاً ليبقى كما هو. واختيار التاريخ يملأ اسم اليوم تلقائياً.</p>
       <div class="conv-mapping">${list.map((f, i) => `
         <div class="conv-map-row">
-          <span>${esc(f.label)}<small class="conv-hint"> في القالب: ${esc(f.current)}</small></span>
-          <input type="text" data-tf="${i}" value="${esc(f.value || "")}" placeholder="${esc(hint(f) || f.current)}">
+          <span>${esc(f.label)}<small class="conv-hint"> في القالب: ${esc(f.current)}${shown(f)}</small></span>
+          ${input(f, i)}
         </div>`).join("")}</div>
     </details>`;
   }
@@ -796,11 +833,18 @@
     html += trainerControl();
     html += filterControl();
     if (missing.length || extra.length) {
-      const field = (name, hint) => `
+      const field = (name, hint) => {
+        const val = state.constants[name] || "";
+        // «ساعة الحضور» و«ساعة الانصراف» وأمثالها: منتقي وقت يُكتب 09:00 ص
+        const box = isTimeField(name)
+          ? `<input type="time" data-const-time="${esc(name)}" value="${esc(state.constTimes && state.constTimes[name] ? state.constTimes[name] : "")}" title="${esc(val || "يوضع في كل الصفوف")}">`
+          : `<input type="text" data-const="${esc(name)}" value="${esc(val)}" placeholder="اكتب القيمة لتُوضع في كل الصفوف">`;
+        return `
         <div class="conv-map-row">
-          <span>${esc(name)}${hint ? `<small class="conv-hint"> ${esc(hint)}</small>` : ""}</span>
-          <input type="text" data-const="${esc(name)}" value="${esc(state.constants[name] || "")}" placeholder="اكتب القيمة لتُوضع في كل الصفوف">
+          <span>${esc(name)}${hint ? `<small class="conv-hint"> ${esc(hint)}</small>` : ""}${isTimeField(name) && val ? ` <b>← ${esc(val)}</b>` : ""}</span>
+          ${box}
         </div>`;
+      };
       const filledCount = missing.concat(extra).filter((f) => state.constants[f]).length;
       html += `<details class="conv-section conv-missing" id="conv-missing" ${state.missingOpen ? "open" : ""}>
         <summary>⚠ حقول لم نجد لها بيانات في ملفك (${ui.fmt(missing.length + extra.length)})${filledCount ? ` — عُبِّئ ${ui.fmt(filledCount)}` : ""} — اضغط للعرض</summary>
@@ -1012,8 +1056,29 @@
       return;
     }
     if (t.dataset.tf != null) {
-      const f = (state.textFields || [])[Number(t.dataset.tf)];
-      if (f) f.value = t.value.trim();
+      const list = state.textFields || [];
+      const f = list[Number(t.dataset.tf)];
+      if (!f) return;
+      if (t.dataset.kind === "date") {
+        f.iso = t.value;
+        f.value = t.value ? dateArabic(t.value) : "";
+        // اسم اليوم يُملأ من التاريخ نفسه ما لم يختره المستخدم يدوياً
+        const dayField = list.find((x) => isDayField(x.label));
+        if (dayField && t.value) dayField.value = dayOfIso(t.value);
+      } else if (t.dataset.kind === "time") {
+        f.raw = t.value;
+        f.value = t.value ? timeArabic(t.value) : "";
+      } else f.value = t.value.trim();
+      renderResult();
+      return;
+    }
+    if (t.dataset.constTime != null) {
+      state.missingOpen = true;
+      state.constTimes = state.constTimes || {};
+      const key = t.dataset.constTime;
+      if (t.value) { state.constTimes[key] = t.value; state.constants[key] = timeArabic(t.value); }
+      else { delete state.constTimes[key]; delete state.constants[key]; }
+      renderResult();
       return;
     }
     if (t.dataset.const != null) {
@@ -1152,7 +1217,7 @@
       await refreshSaved();
     });
     $("conv-result").addEventListener("change", onResultChange);
-    $("conv-result").addEventListener("input", (e) => { if (e.target.dataset.const != null || e.target.dataset.tf != null) onResultChange(e); });
+    $("conv-result").addEventListener("input", (e) => { if (e.target.dataset.const != null) onResultChange(e); });
     $("conv-result").addEventListener("click", onResultClick);
 
     refreshSaved().then(() => {
