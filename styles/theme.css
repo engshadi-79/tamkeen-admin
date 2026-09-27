@@ -775,3 +775,7 @@ body.has-trial-bar #login-screen { top: 38px; }
 .hos-in-cell { position: relative; }
 .hos-in-cell input { height: 24px; padding-bottom: 0; }
 .hos-in-cell small, .hos-in .hos-total small { display: block; font-size: .68rem; color: #10243d; opacity: .85; line-height: 1.1; padding-bottom: 2px; }
+
+.conv-fields { border-inline-start: 4px solid var(--teal-500); background: var(--teal-100); }
+.conv-fields summary { font-weight: 700; color: var(--navy-800); }
+.conv-missing { border-inline-start: 4px solid var(--warn); }

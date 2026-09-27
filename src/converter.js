@@ -18,7 +18,7 @@
     parsed: null, // { templateHeaders, dataHeaders, dataRows, truncated, templateBuffer, templateIsDocx, templateName, savedId }
     mapping: {},
     constants: {}, // قيمة ثابتة لكل حقل لا يوجد له عمود في ملف البيانات
-    missingOpen: false, // مربع الحقول الناقصة مطوي حتى يفتحه المستخدم
+    missingOpen: true,  // الحقول التي تُكتب يدوياً تظهر مفتوحة عند التحليل
     outputFormat: "xlsx",
     groupBy1: "",
     groupBy2: "",
@@ -778,7 +778,11 @@
 
   function textFieldsControl() {
     const list = state.textFields || [];
-    if (!list.length) return "";
+    if (!list.length) {
+      return state.parsed && state.parsed.templateIsDocx
+        ? `<p class="conv-hint">لم أجد في ترويسة القالب نصوصاً قابلة للتعبئة (مثل «اليوم:» و«التاريخ:»). القيم التي في ترويسة قالبك تبقى كما هي.</p>`
+        : "";
+    }
     const today = new Date();
     const todayIso = ui.todayISO();
     const input = (f, i) => {
@@ -799,8 +803,8 @@
     };
     const shown = (f) => (f.value ? ` <b>← ${esc(f.value)}</b>` : "");
     const filled = list.filter((f) => f.value).length;
-    return `<details class="conv-section conv-fields" ${filled ? "open" : ""}>
-      <summary>✎ حقول القالب خارج الجدول (${ui.fmt(list.length)})${filled ? ` — عُبِّئ ${ui.fmt(filled)}` : ""} — اضغط للعرض</summary>
+    return `<details class="conv-section conv-fields" open>
+      <summary>✎ اليوم والتاريخ وبيانات الترويسة (${ui.fmt(list.length)})${filled ? ` — عُبِّئ ${ui.fmt(filled)}` : ""}</summary>
       <p class="conv-hint">هذه نصوص مكتوبة في القالب نفسه. حدّد البديل ليظهر في الكشف، واتركه فارغاً ليبقى كما هو. واختيار التاريخ يملأ اسم اليوم تلقائياً.</p>
       <div class="conv-mapping">${list.map((f, i) => `
         <div class="conv-map-row">
@@ -847,7 +851,7 @@
       };
       const filledCount = missing.concat(extra).filter((f) => state.constants[f]).length;
       html += `<details class="conv-section conv-missing" id="conv-missing" ${state.missingOpen ? "open" : ""}>
-        <summary>⚠ حقول لم نجد لها بيانات في ملفك (${ui.fmt(missing.length + extra.length)})${filledCount ? ` — عُبِّئ ${ui.fmt(filledCount)}` : ""} — اضغط للعرض</summary>
+        <summary>⚠ حقول تُكتب يدوياً: ساعة الحضور والانصراف وغيرها (${ui.fmt(missing.length + extra.length)})${filledCount ? ` — عُبِّئ ${ui.fmt(filledCount)}` : ""}</summary>
         <p class="conv-hint">اكتب قيمة كل حقل هنا، فتُوضع كما هي في كل صفوف القالب. أو اتركه فارغاً ليبقى فارغاً، أو اربطه بعمود من ملف البيانات في القائمة أدناه. وأعمدة التسلسل مثل «م» تُملأ من خيار «ترقيم تلقائي لعمود» أسفل الصفحة.</p>
         <div class="conv-mapping">
           ${missing.map((h) => field(h, "عمود في جدول القالب")).join("")}
