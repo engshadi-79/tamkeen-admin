@@ -1127,7 +1127,9 @@
       }
       return sawValue;
     }
-    const centerColumns = templateHeaders.map((header) => !!header && (normalizeHeader(header) === normalizeHeader("الدورة") || isNumericColumn(header)));
+    /* تُوسَّط: أعمدة الأرقام، وأعمدة الهوية والجوال والتواريخ والساعات والتسلسل ولو كُتبت نصاً */
+    const CENTER_HEADERS = /هوية|هويه|رقم|جوال|هاتف|تاريخ|ساعة|ساعه|وقت|الدورة|الدوره|المجموعة|المجموعه|التوقيع|^م$/;
+    const centerColumns = templateHeaders.map((header) => !!header && (CENTER_HEADERS.test(normalizeHeader(header)) || isNumericColumn(header)));
 
     function forceCenterAlign(cellXml) {
       if (/<w:jc\b/.test(cellXml)) return cellXml.replace(/<w:jc\b[^>]*\/>/g, '<w:jc w:val="center"/>');
