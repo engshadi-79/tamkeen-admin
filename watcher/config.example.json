@@ -1,0 +1,13 @@
+{
+  "url": "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen",
+  "folders": [
+    "D:\\المسح الضوئي\\الوارد"
+  ],
+  "type": "in",
+  "party": "",
+  "outPrefix": "م ت",
+  "intervalSeconds": 60,
+  "stableSeconds": 10,
+  "maxMB": 45,
+  "subfolders": true
+}
