@@ -923,13 +923,46 @@
       head.eachCell((c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3864" } }; });
       ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
       const buf = await wb.xlsx.writeBuffer();
-      ui.download(`${p.templateName || "بيانات"}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      ui.download(`${outputName()}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       ui.toast(`نُزّل ${ui.fmt(rows.length)} صفاً و${ui.fmt(cols.length)} عموداً`);
     } catch (e) {
       ui.toast(e.message);
     } finally {
       setBusy("conv-export-xlsx", false, "⬇ تنزيل Excel");
     }
+  }
+
+  /* ===== اسم الملف المخرج: اسم القالب + المسار =====
+     المسار يُؤخذ مما حدّده المستخدم في حقول القالب، وإلا من تصفية المسارات،
+     وإلا من عمود المسار في البيانات إن كانت كل صفوفه لمسار واحد. */
+  function currentTrackName() {
+    const p = state.parsed;
+    if (!p) return "";
+    const norm = core().normalizeHeader;
+    const field = (state.textFields || []).find((f) => /مسار/.test(norm(f.label)) && f.value);
+    if (field) return field.value;
+    const col = state.filterCol;
+    if (col) {
+      const kept = [...new Set(p.dataRows.filter(keepRow).map((r) => String(r[col] == null ? "" : r[col]).trim()).filter(Boolean))];
+      if (kept.length === 1) return kept[0];
+      if (kept.length > 1) return "";
+    }
+    const guess = core().guessTrackColumn(p.dataHeaders);
+    if (guess) {
+      const vals = [...new Set(p.dataRows.map((r) => String(r[guess] == null ? "" : r[guess]).trim()).filter(Boolean))];
+      if (vals.length === 1) return vals[0];
+    }
+    return "";
+  }
+
+  /* اسم ملف صالح على ويندوز: بلا \ / : * ? " < > | */
+  const safeName = (s) => String(s).replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 90);
+
+  function outputName() {
+    const p = state.parsed;
+    const base = safeName((p && p.templateName) || "converted");
+    const track = safeName(currentTrackName());
+    return track && !base.includes(track) ? `${base} - ${track}` : base;
   }
 
   function renderResult() {
@@ -1107,7 +1140,7 @@
       const { blob, filename } = await core().generate({
         templateBuffer: p.templateBuffer,
         templateIsDocx: p.templateIsDocx,
-        templateName: p.templateName,
+        templateName: outputName(),
         templateHeaders: p.templateHeaders,
         mapping: filled.mapping,
         // نسخة من الصفوف: التوليد يرتّبها داخل المجموعات
