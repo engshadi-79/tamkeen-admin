@@ -83,6 +83,7 @@
     App.shared.init();
     App.ai.migrateToShared();
     App.registry.init();
+    if (App.watch) App.watch.init();
     App.roster.init();
     App.admin.init();
     App.rtlPage.init();

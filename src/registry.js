@@ -1002,7 +1002,7 @@
     return localISO(new Date(file.lastModified));
   }
 
-  function addBulkFiles(files) {
+  function addBulkFiles(files, opts) {
     const key = (f) => `${folderOf(f)}/${f.name}|${f.size}|${f.lastModified}`;
     const have = new Set(bulk.map((it) => key(it.file)));
     const all = [...files];
@@ -1022,6 +1022,7 @@
       subject: file.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim(),
     }));
     renderBulk();
+    if (opts && opts.auto) { saveBulk(false); return; } // مجلد مراقَب مع الرفع التلقائي
     $("bulk-modal").classList.add("open");
     const folders = new Set(list.map(folderOf).filter(Boolean)).size;
     if (folders) ui.toast(`أُضيف ${ui.fmt(list.length)} ملفاً من ${ui.fmt(folders)} مجلد`);
@@ -1322,5 +1323,5 @@
     initBulk();
   }
 
-  App.registry = { fileOf: getFile, assignNumber, assignNumbers, followUps, statsCharts, live, logAction, syncShared, init, render, nextOutgoingNumber, upsertOutgoing, countInPeriod, guessCategory, guessDate };
+  App.registry = { addWatchedFiles: addBulkFiles, fileOf: getFile, assignNumber, assignNumbers, followUps, statsCharts, live, logAction, syncShared, init, render, nextOutgoingNumber, upsertOutgoing, countInPeriod, guessCategory, guessDate };
 })(window.App = window.App || {});

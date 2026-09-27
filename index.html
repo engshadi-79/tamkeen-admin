@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=164">
+  <link rel="stylesheet" href="styles/theme.css?v=165">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -350,6 +350,17 @@
             <button class="btn secondary" id="reg-activity">📜 سجل النشاط</button>
             <button class="btn secondary" id="reg-trash">🗑 المحذوفات</button>
           </div>
+        </div>
+        <div class="reg-watch card" id="reg-watch" hidden>
+          <div class="reg-watch-line">
+            <b>📂 مجلد مراقَب</b>
+            <span class="conv-hint" id="reg-watch-info"></span>
+            <span class="spacer"></span>
+            <button type="button" class="btn small" id="reg-watch-start" data-perm="upload">اختيار مجلد للمراقبة</button>
+            <button type="button" class="btn small secondary" id="reg-watch-now" hidden>🔄 فحص الآن</button>
+            <button type="button" class="btn small danger" id="reg-watch-stop" hidden>إيقاف</button>
+          </div>
+          <label class="conv-check" id="reg-watch-auto-wrap" hidden><input type="checkbox" id="reg-watch-auto"> ارفع الملفات الجديدة مباشرة بلا مراجعة (الترقيم والتصنيف تلقائي)</label>
         </div>
         <details class="card reg-stats" id="reg-stats">
           <summary>📊 إحصاءات الأرشيف</summary>
@@ -1181,46 +1192,47 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=164"></script>
-  <script src="src/ui.js?v=164"></script>
-  <script src="src/templates.js?v=164"></script>
-  <script src="src/tracks.js?v=164"></script>
-  <script src="src/tasks.js?v=164"></script>
-  <script src="src/dashboard.js?v=164"></script>
-  <script src="src/letterhead-docx.js?v=164"></script>
-  <script src="src/docx.js?v=164"></script>
-  <script src="src/ai.js?v=164"></script>
-  <script src="src/doc-render.js?v=164"></script>
-  <script src="src/files-store.js?v=164"></script>
-  <script src="src/shared.js?v=164"></script>
-  <script src="src/cloud.js?v=164"></script>
-  <script src="src/drive.js?v=164"></script>
-  <script src="src/drive-ui.js?v=164"></script>
-  <script src="src/rtl-fixer.js?v=164"></script>
-  <script src="src/rtl-page.js?v=164"></script>
-  <script src="src/profile.js?v=164"></script>
-  <script src="src/admin.js?v=164"></script>
-  <script src="src/roster.js?v=164"></script>
-  <script src="src/registry.js?v=164"></script>
-  <script src="src/charts.js?v=164"></script>
-  <script src="src/ai-assist.js?v=164"></script>
-  <script src="src/meetings.js?v=164"></script>
-  <script src="src/report.js?v=164"></script>
-  <script src="src/letters.js?v=164"></script>
+  <script src="src/storage.js?v=165"></script>
+  <script src="src/ui.js?v=165"></script>
+  <script src="src/templates.js?v=165"></script>
+  <script src="src/tracks.js?v=165"></script>
+  <script src="src/tasks.js?v=165"></script>
+  <script src="src/dashboard.js?v=165"></script>
+  <script src="src/letterhead-docx.js?v=165"></script>
+  <script src="src/docx.js?v=165"></script>
+  <script src="src/ai.js?v=165"></script>
+  <script src="src/doc-render.js?v=165"></script>
+  <script src="src/files-store.js?v=165"></script>
+  <script src="src/shared.js?v=165"></script>
+  <script src="src/cloud.js?v=165"></script>
+  <script src="src/drive.js?v=165"></script>
+  <script src="src/drive-ui.js?v=165"></script>
+  <script src="src/rtl-fixer.js?v=165"></script>
+  <script src="src/rtl-page.js?v=165"></script>
+  <script src="src/profile.js?v=165"></script>
+  <script src="src/admin.js?v=165"></script>
+  <script src="src/roster.js?v=165"></script>
+  <script src="src/registry.js?v=165"></script>
+  <script src="src/watch.js?v=165"></script>
+  <script src="src/charts.js?v=165"></script>
+  <script src="src/ai-assist.js?v=165"></script>
+  <script src="src/meetings.js?v=165"></script>
+  <script src="src/report.js?v=165"></script>
+  <script src="src/letters.js?v=165"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=164"></script>
-  <script src="src/converter-store.js?v=164"></script>
-  <script src="src/converter.js?v=164"></script>
+  <script src="src/converter-core.js?v=165"></script>
+  <script src="src/converter-store.js?v=165"></script>
+  <script src="src/converter.js?v=165"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=164"></script>
-  <script src="src/sheets.js?v=164"></script>
-  <script src="src/history.js?v=164"></script>
-  <script src="src/roster-audit.js?v=164"></script>
-  <script src="src/notify.js?v=164"></script>
-  <script src="src/search.js?v=164"></script>
-  <script src="src/realtime.js?v=164"></script>
-  <script src="src/app.js?v=164"></script>
+  <script src="src/hospitality.js?v=165"></script>
+  <script src="src/sheets.js?v=165"></script>
+  <script src="src/history.js?v=165"></script>
+  <script src="src/roster-audit.js?v=165"></script>
+  <script src="src/notify.js?v=165"></script>
+  <script src="src/search.js?v=165"></script>
+  <script src="src/realtime.js?v=165"></script>
+  <script src="src/app.js?v=165"></script>
 </body>
 </html>

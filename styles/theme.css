@@ -795,3 +795,9 @@ body.has-trial-bar #login-screen { top: 38px; }
 .rep-model { border: 1px solid var(--border); border-inline-start: 4px solid var(--teal-500); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; background: var(--surface); }
 .rep-model-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; }
 .rep-model .btn-row { margin: 6px 0 0; }
+
+/* مراقبة مجلد على الجهاز */
+.reg-watch { border-inline-start: 4px solid var(--teal-500); padding: 10px 12px; }
+.reg-watch-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.reg-watch-line .spacer { flex: 1 1 auto; }
+.reg-watch .conv-check { margin: 8px 0 0; }
