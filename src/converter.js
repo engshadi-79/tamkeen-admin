@@ -816,11 +816,27 @@
 
   /* ===== تصدير Excel بالأعمدة التي يختارها المستخدم =====
      يأخذ الصفوف نفسها التي في الكشف: بعد تصفية المسارات، وبالقيم الثابتة، وبالترتيب المختار. */
+  /* ترتيب الأعمدة: ما رتّبه المستخدم أولاً، ثم الباقي كما جاء من الملف */
   const allExportCols = () => {
     const p = state.parsed;
     if (!p) return [];
-    return p.dataHeaders.concat(Object.keys(state.constants).filter((k) => String(state.constants[k]).length && !p.dataHeaders.includes(k)));
+    const all = p.dataHeaders.concat(Object.keys(state.constants).filter((k) => String(state.constants[k]).length && !p.dataHeaders.includes(k)));
+    const order = (state.pickOrder || []).filter((h) => all.includes(h));
+    return order.concat(all.filter((h) => !order.includes(h)));
   };
+
+  /* نقل عمود خطوةً، أو إلى موضع آخر بالسحب */
+  function moveExportCol(name, target) {
+    const cols = allExportCols();
+    const from = cols.indexOf(name);
+    if (from < 0) return;
+    let to = typeof target === "number" ? from + target : cols.indexOf(target);
+    if (to < 0 || to >= cols.length || to === from) return;
+    cols.splice(to, 0, cols.splice(from, 1)[0]);
+    state.pickOrder = cols;
+    state.exportOpen = true;
+    renderResult();
+  }
 
   function exportControl() {
     const all = allExportCols();
@@ -830,9 +846,15 @@
     return `<details class="conv-section conv-export" ${state.exportOpen ? "open" : ""}>
       <summary>⬇ تصدير Excel بالأعمدة التي تختارها (${ui.fmt(n)} من ${ui.fmt(all.length)})</summary>
       <p class="conv-hint">ملف Excel فيه الصفوف نفسها التي في الكشف (بعد تصفية المسارات والترتيب)، وبالأعمدة المحدَّدة فقط.</p>
-      <div class="conv-filter-list">${all.map((h) => `<label class="conv-check" title="${esc(h)}">
-        <input type="checkbox" data-pick="${esc(h)}" ${hidden.has(h) ? "" : "checked"}> ${esc(h)}
-      </label>`).join("")}</div>
+      <p class="conv-hint">الترتيب هنا هو ترتيب الأعمدة في الملف. اسحب الحقل إلى موضعه، أو استعمل السهمين.</p>
+      <ol class="conv-order">${all.map((h, i) => `<li class="conv-order-row${hidden.has(h) ? " off" : ""}" draggable="true" data-col="${esc(h)}">
+        <span class="conv-grip" title="اسحب لتغيير الترتيب">⠿</span>
+        <label class="conv-check"><input type="checkbox" data-pick="${esc(h)}" ${hidden.has(h) ? "" : "checked"}> ${esc(h)}</label>
+        <span class="conv-order-btns">
+          <button type="button" class="conv-link" data-col-up="${esc(h)}" ${i === 0 ? "disabled" : ""} title="أعلى">▲</button>
+          <button type="button" class="conv-link" data-col-down="${esc(h)}" ${i === all.length - 1 ? "disabled" : ""} title="أسفل">▼</button>
+        </span>
+      </li>`).join("")}</ol>
       <div class="btn-row">
         <button type="button" class="conv-link" data-pick-all>تحديد الكل</button>
         <button type="button" class="conv-link" data-pick-none>إلغاء الكل</button>
@@ -1190,6 +1212,10 @@
   }
 
   async function onResultClick(e) {
+    const up = e.target.closest("[data-col-up]");
+    if (up) { moveExportCol(up.dataset.colUp, -1); return; }
+    const down = e.target.closest("[data-col-down]");
+    if (down) { moveExportCol(down.dataset.colDown, 1); return; }
     if (e.target.closest("[data-pick-all]")) { state.exportOpen = true; state.pickHidden = new Set(); renderResult(); return; }
     if (e.target.closest("[data-pick-none]")) {
       state.exportOpen = true;
@@ -1302,6 +1328,30 @@
     $("conv-result").addEventListener("change", onResultChange);
     $("conv-result").addEventListener("input", (e) => { if (e.target.dataset.const != null) onResultChange(e); });
     $("conv-result").addEventListener("click", onResultClick);
+    // سحب حقول التصدير لتغيير ترتيب الأعمدة
+    let dragCol = "";
+    $("conv-result").addEventListener("dragstart", (e) => {
+      const li = e.target.closest("[data-col]");
+      if (!li) return;
+      dragCol = li.dataset.col;
+      li.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    $("conv-result").addEventListener("dragover", (e) => { if (dragCol && e.target.closest("[data-col]")) e.preventDefault(); });
+    $("conv-result").addEventListener("drop", (e) => {
+      const li = e.target.closest("[data-col]");
+      if (!dragCol || !li) return;
+      e.preventDefault();
+      const target = li.dataset.col;
+      const from = dragCol;
+      dragCol = "";
+      if (from !== target) moveExportCol(from, target);
+    });
+    $("conv-result").addEventListener("dragend", () => {
+      dragCol = "";
+      const el = $("conv-result").querySelector(".dragging");
+      if (el) el.classList.remove("dragging");
+    });
 
     refreshSaved().then(() => {
       if (state.savedTemplates.length > 0) { state.mode = "saved"; renderSource(); }
