@@ -19,7 +19,7 @@ rem ===== one self-contained file: extracts the watcher, then runs the Arabic se
 
 rem فحص Node.js يجري داخل setup.ps1 ويُعرض في نافذة رسومية
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$src=[IO.File]::ReadAllLines('%~f0',[Text.Encoding]::UTF8); $a=[Array]::IndexOf($src,':::JS:::'); $b=[Array]::IndexOf($src,':::PS1:::'); if($a -lt 0 -or $b -lt 0){exit 1}; [IO.File]::WriteAllLines((Join-Path '%~dp0' 'watch-folder.mjs'), $src[($a+1)..($b-1)], (New-Object Text.UTF8Encoding($false))); [IO.File]::WriteAllLines((Join-Path '%~dp0' 'setup.ps1'), $src[($b+1)..($src.Length-1)], (New-Object Text.UTF8Encoding($true)))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$src=[IO.File]::ReadAllLines('%~f0',[Text.Encoding]::UTF8); $a=[Array]::IndexOf($src,':::JS:::'); $b=[Array]::IndexOf($src,':::PS1:::'); $c=[Array]::IndexOf($src,':::UI:::'); if($a -lt 0 -or $b -lt 0 -or $c -lt 0){exit 1}; [IO.File]::WriteAllLines((Join-Path '%~dp0' 'watch-folder.mjs'), $src[($a+1)..($b-1)], (New-Object Text.UTF8Encoding($false))); [IO.File]::WriteAllLines((Join-Path '%~dp0' 'setup.ps1'), $src[($b+1)..($c-1)], (New-Object Text.UTF8Encoding($true))); [IO.File]::WriteAllLines((Join-Path '%~dp0' 'watcher-ui.ps1'), $src[($c+1)..($src.Length-1)], (New-Object Text.UTF8Encoding($true)))"
 if errorlevel 1 (
   echo   Could not extract the watcher files.
   pause
@@ -27,7 +27,7 @@ if errorlevel 1 (
 )
 
 if /i "%~1"=="/extract" (
-  echo   Extracted watch-folder.mjs and setup.ps1 next to this file.
+  echo   Extracted watch-folder.mjs, setup.ps1 and watcher-ui.ps1 next to this file.
   exit /b 0
 )
 
@@ -39,7 +39,8 @@ rem ================== do not edit below this line ==================
 
 const js = fs.readFileSync(path.join(HERE, "watch-folder.mjs"), "utf8").replace(/\r\n/g, "\n").split("\n");
 const ps1 = fs.readFileSync(path.join(HERE, "setup.ps1"), "utf8").replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
+const ui = fs.readFileSync(path.join(HERE, "watcher-ui.ps1"), "utf8").replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
 
-const lines = [...header.split("\n"), ":::JS:::", ...js, ":::PS1:::", ...ps1];
+const lines = [...header.split("\n"), ":::JS:::", ...js, ":::PS1:::", ...ps1, ":::UI:::", ...ui];
 fs.writeFileSync(OUT, lines.join("\r\n"), "utf8");
 console.log(`تم بناء ${path.basename(OUT)} — ${lines.length} سطراً، ${Math.round(fs.statSync(OUT).size / 1024)} ك.ب`);

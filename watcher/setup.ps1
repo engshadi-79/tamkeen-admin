@@ -348,11 +348,9 @@ $runCmd = Join-Path $here "تشغيل-المراقب.cmd"
 if (-not (Test-Path $runCmd)) {
   $runText = @(
     '@echo off',
-    'chcp 65001 >nul',
     'cd /d "%~dp0"',
-    'title Tamkeen folder watcher',
-    'node watch-folder.mjs',
-    'pause'
+    'start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0watcher-ui.ps1"',
+    'exit /b'
   ) -join "`r`n"
   [System.IO.File]::WriteAllText($runCmd, $runText, (New-Object System.Text.ASCIIEncoding))
 }
@@ -374,7 +372,7 @@ if ($auto -eq [System.Windows.Forms.DialogResult]::Yes) {
 }
 
 # ===== ٩) التشغيل الآن =====
-Start-Process -FilePath $runCmd -WorkingDirectory $here -WindowStyle Minimized
+Start-Process -FilePath $runCmd -WorkingDirectory $here
 
 $summary = @(
   "المراقبة تعمل الآن ✔",
@@ -385,7 +383,7 @@ $summary = @(
   ("الفحص: كل " + $every + " ثانية"),
   ("مع إقلاع ويندوز: " + $(if ($auto -eq [System.Windows.Forms.DialogResult]::Yes) { "نعم" } else { "لا" })),
   "",
-  "نافذة المراقب مصغّرة في شريط المهام — إغلاقها يوقف المراقبة.",
+  "تفتح نافذة «مراقب مجلدات تمكين» وتعرض ما يجري أولاً بأول — إغلاقها يوقف المراقبة.",
   "وكل ما يجري مكتوب في الملف watcher.log بجانب البرنامج.",
   "",
   $(if ($toDrive -and $driveFolder) { "هل تريد فتح مجلد المراقبة في Google Drive الآن؟" } else { "هل تريد فتح مجلد البرنامج الآن؟" })
