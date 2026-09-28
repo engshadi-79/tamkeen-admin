@@ -19,7 +19,8 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(HERE, "config.json");
+// ملف إعدادات بديل (يستعمله فحص الإعداد) حتى لا يُكتب فوق الإعدادات الحقيقية
+const CONFIG_PATH = process.env.TAMKEEN_WATCH_CONFIG || path.join(HERE, "config.json");
 const STATE_PATH = path.join(HERE, "state.json");
 const LOG_PATH = path.join(HERE, "watcher.log");
 
@@ -60,6 +61,7 @@ function log(line) {
 
 /* ===== الاتصال بخادم المركز (نفس بروتوكول الموقع) ===== */
 async function call(action, payload) {
+  if (!/^https?:\/\//.test(String(config.url || ""))) throw new Error("رابط خادم المركز غير صحيح في config.json");
   const res = await fetch(config.url, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -77,6 +79,7 @@ const driveOn = () => config.target !== "registry" && !!(config.drive && config.
 const registryOn = () => config.target !== "drive";
 
 async function driveCall(action, payload) {
+  if (!/^https?:\/\//.test(String((config.drive || {}).url || ""))) throw new Error("رابط مساعد Google غير صحيح في الإعدادات");
   const res = await fetch(config.drive.url, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -346,6 +349,7 @@ async function main() {
 }
 
 main().catch((e) => { log("توقّف البرنامج: " + e.message); process.exitCode = 1; });
+
 
 
 

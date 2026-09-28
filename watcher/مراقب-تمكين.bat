@@ -47,7 +47,8 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(HERE, "config.json");
+// ملف إعدادات بديل (يستعمله فحص الإعداد) حتى لا يُكتب فوق الإعدادات الحقيقية
+const CONFIG_PATH = process.env.TAMKEEN_WATCH_CONFIG || path.join(HERE, "config.json");
 const STATE_PATH = path.join(HERE, "state.json");
 const LOG_PATH = path.join(HERE, "watcher.log");
 
@@ -88,6 +89,7 @@ function log(line) {
 
 /* ===== الاتصال بخادم المركز (نفس بروتوكول الموقع) ===== */
 async function call(action, payload) {
+  if (!/^https?:\/\//.test(String(config.url || ""))) throw new Error("رابط خادم المركز غير صحيح في config.json");
   const res = await fetch(config.url, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -105,6 +107,7 @@ const driveOn = () => config.target !== "registry" && !!(config.drive && config.
 const registryOn = () => config.target !== "drive";
 
 async function driveCall(action, payload) {
+  if (!/^https?:\/\//.test(String((config.drive || {}).url || ""))) throw new Error("رابط مساعد Google غير صحيح في الإعدادات");
   const res = await fetch(config.drive.url, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -379,6 +382,7 @@ main().catch((e) => { log("توقّف البرنامج: " + e.message); process.
 
 
 
+
 :::PS1:::
 #requires -version 5
 <#
@@ -395,6 +399,7 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $TITLE = "مراقب مجلدات تمكين"
+$SERVER_URL = "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen"
 $FONT = New-Object System.Drawing.Font("Segoe UI", 11)
 
 # ===== نوافذ عربية =====
@@ -538,11 +543,13 @@ function Ask-Login() {
 }
 
 # تشغيل أمر node بلا نافذة، وإعادة مخرجاته
-function Run-Node($nodeArgs, $stdinText = $null) {
+function Run-Node($nodeArgs, $stdinText = $null, $configPath = $null) {
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = "node"
   $psi.Arguments = $nodeArgs
   $psi.WorkingDirectory = $here
+  # الفحص يجري على ملف إعدادات مؤقت، فلا يمسّ إعدادات المستخدم
+  if ($configPath) { $psi.EnvironmentVariables["TAMKEEN_WATCH_CONFIG"] = $configPath }
   $psi.UseShellExecute = $false
   $psi.CreateNoWindow = $true
   $psi.RedirectStandardOutput = $true
@@ -611,9 +618,11 @@ if ($toDrive) {
     $k = Ask-Text "رمز المراقب:`n(شغّل الدالة setupWatchKey في محرر Apps Script وانسخ الرمز من السجل)" $driveKey $true
     if ($null -eq $k) { exit 1 }
     $driveUrl = $u.Trim(); $driveKey = $k.Trim()
-    $probe = [ordered]@{ url = "x"; folders = @($folder); type = "in"; party = ""; outPrefix = "م ت"; intervalSeconds = 60; stableSeconds = 10; maxMB = 45; subfolders = $true; target = "drive"; drive = [ordered]@{ url = $driveUrl; key = $driveKey } }
-    [System.IO.File]::WriteAllText($cfgPath, ($probe | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
-    $r = Run-Node "watch-folder.mjs --drive-check"
+    $probePath = Join-Path $env:TEMP ("tamkeen-watch-probe-" + [guid]::NewGuid().ToString("N") + ".json")
+    $probe = [ordered]@{ url = $SERVER_URL; folders = @($folder); type = "in"; party = ""; outPrefix = "م ت"; intervalSeconds = 60; stableSeconds = 10; maxMB = 45; subfolders = $true; target = "drive"; drive = [ordered]@{ url = $driveUrl; key = $driveKey } }
+    [System.IO.File]::WriteAllText($probePath, ($probe | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+    $r = Run-Node "watch-folder.mjs --drive-check" $null $probePath
+    Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
     if ($r.code -eq 0) {
       $okDrive = $true
       try { $driveFolder = ($r.text | ConvertFrom-Json).folder } catch { $driveFolder = "" }
@@ -654,7 +663,7 @@ if ($toRegistry -and $type -eq "out") {
 
 # ===== ٥) حفظ الإعدادات =====
 $config = [ordered]@{
-  url             = "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen"
+  url             = $SERVER_URL
   folders         = @($folder)
   type            = $type
   party           = $party.Trim()
@@ -666,7 +675,8 @@ $config = [ordered]@{
   target          = $target
   drive           = [ordered]@{ url = $driveUrl; key = $driveKey }
 }
-if ($old -and $old.url) { $config.url = $old.url }
+# خادم مختلف محفوظ سابقاً يُحترم، أما قيمة معطوبة فتُتجاهل ويعود الرابط الأصلي
+if ($old -and $old.url -and $old.url -match '^https?://') { $config.url = $old.url }
 [System.IO.File]::WriteAllText($cfgPath, ($config | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
 
 # ===== ٦) الملفات الموجودة الآن =====
