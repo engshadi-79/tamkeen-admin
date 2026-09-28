@@ -39,6 +39,7 @@ rem ================== do not edit below this line ==================
      node watch-folder.mjs --status  عرض الحالة والإعدادات
      node watch-folder.mjs --drive-check  فحص الرفع المباشر إلى Google Drive
      node watch-folder.mjs --seed    اعتبار ما في المجلد الآن قديماً بلا رفع
+     node watch-folder.mjs --unseed  نسيان ما رُفع سابقاً: كل ما في المجلد يُرفع من جديد
 */
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -341,6 +342,15 @@ async function main() {
     return;
   }
 
+  // نسيان السجل: يُستعمل عند تغيير الوجهة (إلى Drive مثلاً) ليُرفع ما في المجلد من جديد
+  if (args.has("--unseed")) {
+    const had = Object.keys(state.seen || {}).length;
+    state.seen = {};
+    saveState();
+    log(`نُسي ${had} ملفاً كان مسجّلاً؛ سيُرفع كل ما في المجلد في الجولة القادمة.`);
+    return;
+  }
+
   // ختم الملفات الحالية لا يحتاج اتصالاً بالخادم
   if (args.has("--seed")) {
     await round(true);
@@ -377,6 +387,7 @@ async function main() {
 }
 
 main().catch((e) => { log("توقّف البرنامج: " + e.message); process.exitCode = 1; });
+
 
 
 
@@ -684,6 +695,8 @@ $existing = @(Get-ChildItem -LiteralPath $folder -File -Recurse -ErrorAction Sil
 $seedAns = Ask-Choice ("المجلد فيه الآن " + $existing + " ملفاً.`n`nماذا أفعل بها؟") "اعتبرها قديمة، وارفع الجديد فقط (الأسلم)" "ارفعها كلها إلى السجل الآن"
 if ($seedAns -eq 0) { exit 1 }
 if ($seedAns -eq 1) { Run-Node "watch-folder.mjs --seed" | Out-Null }
+# «ارفعها كلها»: يُنسى ما سُجّل في تشغيل سابق وإلا لن يُعاد رفع شيء
+else { Run-Node "watch-folder.mjs --unseed" | Out-Null }
 
 # ===== ٧) الدخول (لسجل المركز فقط) =====
 $signed = -not $toRegistry

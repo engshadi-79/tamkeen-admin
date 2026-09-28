@@ -108,6 +108,7 @@ My Drive / أرشيف مساعد تمكين / مجلد المراقبة / <شج�
 node watch-folder.mjs            تشغيل المراقبة
 node watch-folder.mjs --once     جولة فحص واحدة ثم خروج
 node watch-folder.mjs --seed     اعتبار الملفات الحالية قديمة بلا رفع
+node watch-folder.mjs --unseed   نسيان ما رُفع سابقاً ورفع كل ما في المجلد من جديد
 node watch-folder.mjs --login    تسجيل الدخول من جديد (بعد انتهاء الجلسة)
 node watch-folder.mjs --status   عرض الإعدادات والحالة
 node watch-folder.mjs --drive-check  فحص الرفع المباشر إلى Drive

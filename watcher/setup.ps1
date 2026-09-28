@@ -298,6 +298,8 @@ $existing = @(Get-ChildItem -LiteralPath $folder -File -Recurse -ErrorAction Sil
 $seedAns = Ask-Choice ("المجلد فيه الآن " + $existing + " ملفاً.`n`nماذا أفعل بها؟") "اعتبرها قديمة، وارفع الجديد فقط (الأسلم)" "ارفعها كلها إلى السجل الآن"
 if ($seedAns -eq 0) { exit 1 }
 if ($seedAns -eq 1) { Run-Node "watch-folder.mjs --seed" | Out-Null }
+# «ارفعها كلها»: يُنسى ما سُجّل في تشغيل سابق وإلا لن يُعاد رفع شيء
+else { Run-Node "watch-folder.mjs --unseed" | Out-Null }
 
 # ===== ٧) الدخول (لسجل المركز فقط) =====
 $signed = -not $toRegistry
