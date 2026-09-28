@@ -9,6 +9,7 @@
      node watch-folder.mjs --once    جولة فحص واحدة ثم خروج
      node watch-folder.mjs --login   تسجيل الدخول من جديد
      node watch-folder.mjs --status  عرض الحالة والإعدادات
+     node watch-folder.mjs --drive-check  فحص الرفع المباشر إلى Google Drive
      node watch-folder.mjs --seed    اعتبار ما في المجلد الآن قديماً بلا رفع
 */
 import fs from "node:fs";
@@ -32,6 +33,8 @@ const DEFAULTS = {
   stableSeconds: 10,          // لا يُرفع الملف حتى يثبت حجمه هذه المدة (المسح الضوئي والتنزيل)
   maxMB: 45,
   subfolders: true,
+  target: "registry",         // registry = سجل الوارد والصادر، drive = Google Drive، both = كلاهما
+  drive: { url: "", key: "" },// رابط مساعد Google ورمز المراقب (setupWatchKey)
 };
 
 const SKIP = /^(\.|~\$)|^(thumbs\.db|desktop\.ini)$|\.(tmp|crdownload|part|partial|lnk)$/i;
@@ -67,6 +70,30 @@ async function call(action, payload) {
   if (data.error === "UNAUTHORIZED") { state.token = ""; saveState(); throw new Error("انتهت الجلسة — شغّل الأمر ‎--login‎"); }
   if (data.error) throw new Error(data.error);
   return data;
+}
+
+/* ===== الرفع المباشر إلى Google Drive عبر مساعد Google (Apps Script) ===== */
+const driveOn = () => config.target !== "registry" && !!(config.drive && config.drive.url && config.drive.key);
+const registryOn = () => config.target !== "drive";
+
+async function driveCall(action, payload) {
+  const res = await fetch(config.drive.url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(Object.assign({ key: config.drive.key, action }, payload || {})),
+    redirect: "follow",
+  });
+  let data;
+  try { data = await res.json(); } catch (e) { throw new Error(`رد غير متوقع من مساعد Google (${res.status})`); }
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+/* رفع ملف إلى Drive بنفس شجرة المجلدات داخل المجلد المراقَب */
+async function driveUpload(f, data) {
+  const rel = path.dirname(f.rel);
+  const parts = rel === "." ? [] : rel.split("/").filter(Boolean);
+  return driveCall("watchUpload", { name: f.name, mime: mimeOf(f.name), path: parts, data });
 }
 
 const ask = (q, hidden) => new Promise((resolve) => {
@@ -180,6 +207,14 @@ async function handleFile(f) {
   const maxBytes = config.maxMB * 1024 * 1024;
   if (f.size > maxBytes) { log(`تُخطّي «${f.name}»: أكبر من ${config.maxMB} ميغابايت`); return false; }
 
+  // الرفع المباشر إلى Drive: نسخة طبق الأصل من المجلد، والملف المعدَّل يستبدل نسخته
+  if (driveOn()) {
+    const data = (await fsp.readFile(f.full)).toString("base64");
+    const up = await driveUpload(f, data);
+    log(`☁ Drive — ${f.rel}`);
+    if (!registryOn()) return true;
+  }
+
   const type = config.type === "out" ? "out" : "in";
   const folderText = path.dirname(f.rel) === "." ? "" : path.dirname(f.rel);
   const date = dateFromText(f.name) || dateFromText(folderText) || localISO(new Date(f.mtime));
@@ -270,6 +305,7 @@ async function main() {
     console.log(`المستخدم: ${state.user || "— لم يسجّل الدخول بعد —"}`);
     console.log(`المجلدات: ${(config.folders || []).join(" | ") || "—"}`);
     console.log(`النوع: ${config.type === "out" ? "صادر" : "وارد"} · كل ${config.intervalSeconds} ثانية`);
+    console.log(`الوجهة: ${config.target === "drive" ? "Google Drive" : config.target === "both" ? "سجل المركز و Google Drive" : "سجل المركز"}`);
     console.log(`ملفات معروفة: ${Object.keys(state.seen).length}`);
     return;
   }
@@ -282,13 +318,26 @@ async function main() {
     return;
   }
 
+  // فحص إعداد Drive: يتحقق من الرابط والرمز ويطبع رابط المجلد
+  if (args.has("--drive-check")) {
+    if (!(config.drive && config.drive.url && config.drive.key)) { console.log(JSON.stringify({ ok: false, error: "رابط المساعد أو الرمز ناقص" })); process.exitCode = 1; return; }
+    try {
+      const r = await driveCall("watchPing");
+      console.log(JSON.stringify({ ok: true, folder: r.folder }));
+    } catch (e) {
+      console.log(JSON.stringify({ ok: false, error: e.message }));
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   if (args.has("--login-stdin")) { await loginFromStdin(); return; }
   if (args.has("--login")) { await login(); return; }
-  await ensureSession();
+  if (registryOn()) await ensureSession();
 
   if (args.has("--once")) { await round(false); return; }
 
-  log(`بدأت المراقبة: ${(config.folders || []).join(" | ")} — كل ${config.intervalSeconds} ثانية — النوع ${config.type === "out" ? "صادر" : "وارد"}`);
+  log(`بدأت المراقبة: ${(config.folders || []).join(" | ")} — كل ${config.intervalSeconds} ثانية — الوجهة ${config.target === "drive" ? "Google Drive" : config.target === "both" ? "السجل و Drive" : "سجل المركز"}`);
   const tick = async () => {
     try { await round(false); } catch (e) { log("خطأ في الجولة: " + e.message); }
   };

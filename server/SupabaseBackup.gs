@@ -7,6 +7,8 @@
      - الملفات المرفوعة (الأرشيف والقوالب) تُنسخ مرة واحدة إلى «ملفات Supabase» بمجلداتها،
        ولا يُعاد نسخ ما نُسخ. إن طالت القائمة يكمل في دفعة بعد دقائق.
    المجلد: «أرشيف مساعد تمكين» في جذر Drive (يُستعمل الموجود أو يُنشأ).
+   مراقب المجلدات على جهاز الموظف يرفع مباشرةً إلى «مجلد المراقبة» داخله:
+     شغّل setupWatchKey مرة واحدة، وانسخ الرمز الظاهر في السجل إلى برنامج المراقبة.
    القراءة الضوئية تحتاج نشر المشروع «تطبيق ويب» (نشر ← إدارة عمليات النشر ← تعديل ← إصدار جديد)،
    ثم تشغيل setupSupabaseBackup مرة ليعرف الخادم رابطه. الملخص يُرسل من Gmail صاحب المشروع. */
 
@@ -16,6 +18,7 @@ const SB_URL = "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen";
 const SB_KNOWN_EXEC = "https://script.google.com/macros/s/AKfycbyvEVh6eb827Ue-sgDtQNz1bHt-9wakgLZiVD1YNN0lIRofr5Q5CbxPBs_6jqVQsLwFbg/exec";
 const SB_JSON_FOLDER = "نسخ Supabase اليومية";
 const SB_FILES_FOLDER = "ملفات Supabase";
+const SB_WATCH_FOLDER = "مجلد المراقبة";   // ما يرفعه مراقب المجلدات من جهاز الموظف
 const SB_INDEX = "فهرس-الملفات.json";
 const SB_KEEP = 30;
 const SB_HOUR = 2;              // الثانية فجراً بتوقيت السكربت
@@ -56,6 +59,11 @@ function doPost(e) {
   let req = {};
   try { req = JSON.parse((e && e.postData && e.postData.contents) || "{}"); } catch (err) { return sbOut_({ error: "طلب غير صالح" }); }
   try {
+    // مراقب المجلدات يرفع برمز منفصل (WATCH_KEY) لا يملك إلا الكتابة في مجلد المراقبة
+    if (req.action === "watchUpload" || req.action === "watchPing") {
+      if (String(req.key || "") !== sbWatchKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز غير صحيح" }); }
+      return sbOut_(req.action === "watchPing" ? sbWatchPing_() : sbWatchUpload_(req));
+    }
     if (String(req.key || "") !== sbKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز غير صحيح" }); }
     if (req.action === "ocr") return sbOut_(sbOcr_(req));
     if (req.action === "driveFile") return sbOut_(sbDriveFile_(req.id));
@@ -74,6 +82,53 @@ function sbDriveFile_(id) {
   if (file.getSize() > 40 * 1024 * 1024) throw new Error("الملف أكبر من 40 ميغابايت");
   const blob = file.getBlob();
   return { name: file.getName(), mime: blob.getContentType() || file.getMimeType(), data: Utilities.base64Encode(blob.getBytes()) };
+}
+
+/* ===== مجلد المراقبة: يرفع إليه البرنامج الصغير على جهاز الموظف كل ملف جديد أو معدَّل =====
+   الشجرة نفسها داخل Drive: «أرشيف مساعد تمكين / مجلد المراقبة / …».
+   الملف المعدَّل يستبدل نسخته السابقة بالاسم نفسه في المجلد نفسه. */
+function sbWatchUpload_(req) {
+  if (!req.data) throw new Error("لا يوجد محتوى");
+  const name = String(req.name || "ملف").replace(/[\/\\]/g, "-").trim() || "ملف";
+  const bytes = Utilities.base64Decode(String(req.data));
+  if (bytes.length > 40 * 1024 * 1024) throw new Error("الملف أكبر من 40 ميغابايت");
+  let folder = sbSub_(sbRoot_(), SB_WATCH_FOLDER);
+  (req.path || []).forEach(function (p) {
+    const part = String(p).replace(/[\/\\]/g, "-").trim();
+    if (part && part !== "." && part !== "..") folder = sbSub_(folder, part);
+  });
+  const old = folder.getFilesByName(name);
+  while (old.hasNext()) old.next().setTrashed(true);   // النسخة المحدَّثة تحلّ محل القديمة
+  const blob = Utilities.newBlob(bytes, req.mime || "application/octet-stream", name);
+  const file = folder.createFile(blob);
+  return { id: file.getId(), link: file.getUrl(), folder: folder.getUrl(), name: name };
+}
+
+function sbWatchPing_() {
+  const folder = sbSub_(sbRoot_(), SB_WATCH_FOLDER);
+  return { ok: true, folder: folder.getUrl(), name: folder.getName() };
+}
+
+/* رمز المراقب: منفصل عن رمز المدير، وتوليده مرة واحدة بتشغيل setupWatchKey */
+function sbWatchKey_() {
+  const key = PropertiesService.getScriptProperties().getProperty("WATCH_KEY");
+  if (!key || key.length < 12) throw new Error("لا يوجد رمز للمراقب: شغّل الدالة setupWatchKey مرة واحدة ثم انسخ الرمز من السجل");
+  return key;
+}
+
+/* شغّلها مرة من محرر السكربت: تولّد رمز المراقب وتطبعه ليُنسخ إلى برنامج المراقبة */
+function setupWatchKey() {
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty("WATCH_KEY");
+  if (!key || key.length < 12) {
+    key = Utilities.getUuid().replace(/-/g, "");
+    props.setProperty("WATCH_KEY", key);
+  }
+  const folder = sbSub_(sbRoot_(), SB_WATCH_FOLDER);
+  Logger.log("رمز المراقب: " + key);
+  Logger.log("مجلد المراقبة: " + folder.getUrl());
+  Logger.log("رابط المساعد: " + (sbHelperUrl_() || "انشر المشروع تطبيق ويب ثم أعد التشغيل"));
+  return { key: key, folder: folder.getUrl() };
 }
 
 function doGet() {

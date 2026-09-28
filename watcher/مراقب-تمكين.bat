@@ -37,6 +37,7 @@ rem ================== do not edit below this line ==================
      node watch-folder.mjs --once    جولة فحص واحدة ثم خروج
      node watch-folder.mjs --login   تسجيل الدخول من جديد
      node watch-folder.mjs --status  عرض الحالة والإعدادات
+     node watch-folder.mjs --drive-check  فحص الرفع المباشر إلى Google Drive
      node watch-folder.mjs --seed    اعتبار ما في المجلد الآن قديماً بلا رفع
 */
 import fs from "node:fs";
@@ -60,6 +61,8 @@ const DEFAULTS = {
   stableSeconds: 10,          // لا يُرفع الملف حتى يثبت حجمه هذه المدة (المسح الضوئي والتنزيل)
   maxMB: 45,
   subfolders: true,
+  target: "registry",         // registry = سجل الوارد والصادر، drive = Google Drive، both = كلاهما
+  drive: { url: "", key: "" },// رابط مساعد Google ورمز المراقب (setupWatchKey)
 };
 
 const SKIP = /^(\.|~\$)|^(thumbs\.db|desktop\.ini)$|\.(tmp|crdownload|part|partial|lnk)$/i;
@@ -95,6 +98,30 @@ async function call(action, payload) {
   if (data.error === "UNAUTHORIZED") { state.token = ""; saveState(); throw new Error("انتهت الجلسة — شغّل الأمر ‎--login‎"); }
   if (data.error) throw new Error(data.error);
   return data;
+}
+
+/* ===== الرفع المباشر إلى Google Drive عبر مساعد Google (Apps Script) ===== */
+const driveOn = () => config.target !== "registry" && !!(config.drive && config.drive.url && config.drive.key);
+const registryOn = () => config.target !== "drive";
+
+async function driveCall(action, payload) {
+  const res = await fetch(config.drive.url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(Object.assign({ key: config.drive.key, action }, payload || {})),
+    redirect: "follow",
+  });
+  let data;
+  try { data = await res.json(); } catch (e) { throw new Error(`رد غير متوقع من مساعد Google (${res.status})`); }
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+/* رفع ملف إلى Drive بنفس شجرة المجلدات داخل المجلد المراقَب */
+async function driveUpload(f, data) {
+  const rel = path.dirname(f.rel);
+  const parts = rel === "." ? [] : rel.split("/").filter(Boolean);
+  return driveCall("watchUpload", { name: f.name, mime: mimeOf(f.name), path: parts, data });
 }
 
 const ask = (q, hidden) => new Promise((resolve) => {
@@ -208,6 +235,14 @@ async function handleFile(f) {
   const maxBytes = config.maxMB * 1024 * 1024;
   if (f.size > maxBytes) { log(`تُخطّي «${f.name}»: أكبر من ${config.maxMB} ميغابايت`); return false; }
 
+  // الرفع المباشر إلى Drive: نسخة طبق الأصل من المجلد، والملف المعدَّل يستبدل نسخته
+  if (driveOn()) {
+    const data = (await fsp.readFile(f.full)).toString("base64");
+    const up = await driveUpload(f, data);
+    log(`☁ Drive — ${f.rel}`);
+    if (!registryOn()) return true;
+  }
+
   const type = config.type === "out" ? "out" : "in";
   const folderText = path.dirname(f.rel) === "." ? "" : path.dirname(f.rel);
   const date = dateFromText(f.name) || dateFromText(folderText) || localISO(new Date(f.mtime));
@@ -298,6 +333,7 @@ async function main() {
     console.log(`المستخدم: ${state.user || "— لم يسجّل الدخول بعد —"}`);
     console.log(`المجلدات: ${(config.folders || []).join(" | ") || "—"}`);
     console.log(`النوع: ${config.type === "out" ? "صادر" : "وارد"} · كل ${config.intervalSeconds} ثانية`);
+    console.log(`الوجهة: ${config.target === "drive" ? "Google Drive" : config.target === "both" ? "سجل المركز و Google Drive" : "سجل المركز"}`);
     console.log(`ملفات معروفة: ${Object.keys(state.seen).length}`);
     return;
   }
@@ -310,13 +346,26 @@ async function main() {
     return;
   }
 
+  // فحص إعداد Drive: يتحقق من الرابط والرمز ويطبع رابط المجلد
+  if (args.has("--drive-check")) {
+    if (!(config.drive && config.drive.url && config.drive.key)) { console.log(JSON.stringify({ ok: false, error: "رابط المساعد أو الرمز ناقص" })); process.exitCode = 1; return; }
+    try {
+      const r = await driveCall("watchPing");
+      console.log(JSON.stringify({ ok: true, folder: r.folder }));
+    } catch (e) {
+      console.log(JSON.stringify({ ok: false, error: e.message }));
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   if (args.has("--login-stdin")) { await loginFromStdin(); return; }
   if (args.has("--login")) { await login(); return; }
-  await ensureSession();
+  if (registryOn()) await ensureSession();
 
   if (args.has("--once")) { await round(false); return; }
 
-  log(`بدأت المراقبة: ${(config.folders || []).join(" | ")} — كل ${config.intervalSeconds} ثانية — النوع ${config.type === "out" ? "صادر" : "وارد"}`);
+  log(`بدأت المراقبة: ${(config.folders || []).join(" | ")} — كل ${config.intervalSeconds} ثانية — الوجهة ${config.target === "drive" ? "Google Drive" : config.target === "both" ? "السجل و Drive" : "سجل المركز"}`);
   const tick = async () => {
     try { await round(false); } catch (e) { log("خطأ في الجولة: " + e.message); }
   };
@@ -325,6 +374,7 @@ async function main() {
 }
 
 main().catch((e) => { log("توقّف البرنامج: " + e.message); process.exitCode = 1; });
+
 
 
 :::PS1:::
@@ -425,6 +475,27 @@ function Ask-Choice($prompt, $first, $second) {
   if ($one) { return 1 } else { return 2 }
 }
 
+# سؤال باختيار من ثلاثة خيارات
+function Ask-Choice3($prompt, $first, $second, $third) {
+  $f = New-Dialog 230
+  $f.Controls.Add((New-Label $prompt 16 60))
+  $r1 = New-Object System.Windows.Forms.RadioButton
+  $r1.Text = $first; $r1.SetBounds(20, 80, 424, 28); $r1.Checked = $true
+  $r2 = New-Object System.Windows.Forms.RadioButton
+  $r2.Text = $second; $r2.SetBounds(20, 110, 424, 28)
+  $r3 = New-Object System.Windows.Forms.RadioButton
+  $r3.Text = $third; $r3.SetBounds(20, 140, 424, 28)
+  $ok = New-Btn "متابعة" 16 180 ([System.Windows.Forms.DialogResult]::OK)
+  $cancel = New-Btn "إلغاء" 160 180 ([System.Windows.Forms.DialogResult]::Cancel)
+  $f.Controls.AddRange(@($r1, $r2, $r3, $ok, $cancel))
+  $f.AcceptButton = $ok; $f.CancelButton = $cancel
+  $r = $f.ShowDialog()
+  $pick = if ($r1.Checked) { 1 } elseif ($r2.Checked) { 2 } else { 3 }
+  $f.Dispose()
+  if ($r -ne [System.Windows.Forms.DialogResult]::OK) { return 0 }
+  return $pick
+}
+
 # نافذة الدخول: اسم المستخدم وكلمة المرور معاً
 function Ask-Login() {
   $f = New-Dialog 250
@@ -500,14 +571,52 @@ if (-not $folder) {
   $folder = $dlg.SelectedPath
 }
 
-# ===== ٣) وارد أم صادر =====
-$c = Ask-Choice ("ملفات هذا المجلد:`n" + $folder + "`n`nتُسجَّل في:") "الوارد" "الصادر"
-if ($c -eq 0) { exit 1 }
-$type = if ($c -eq 2) { "out" } else { "in" }
+# ===== ٣) إلى أين تُرفع الملفات؟ =====
+$dest = Ask-Choice3 ("ملفات هذا المجلد:`n" + $folder + "`n`nتُرفع إلى:") `
+  "سجل الوارد والصادر في الموقع" "Google Drive مباشرة" "الاثنين معاً"
+if ($dest -eq 0) { exit 1 }
+$target = @{ 1 = "registry"; 2 = "drive"; 3 = "both" }[$dest]
+$toRegistry = $target -ne "drive"
+$toDrive = $target -ne "registry"
 
-# ===== ٤) الجهة والمدة والبادئة =====
-$party = Ask-Text "الجهة الافتراضية التي تُكتب في القيد:`n(اتركها فارغة إن اختلفت من ملف لآخر)" $(if ($old) { $old.party } else { "" })
-if ($null -eq $party) { exit 1 }
+# ===== ٤) إعداد الرفع المباشر إلى Drive =====
+$driveUrl = $(if ($old -and $old.drive) { $old.drive.url } else { "" })
+$driveKey = $(if ($old -and $old.drive) { $old.drive.key } else { "" })
+if ($toDrive) {
+  $okDrive = $false
+  for ($i = 0; $i -lt 3 -and -not $okDrive; $i++) {
+    $u = Ask-Text "رابط «مساعد Google» (رابط النشر تطبيق ويب المنتهي بـ ‎/exec‎):" $driveUrl
+    if ($null -eq $u) { exit 1 }
+    $k = Ask-Text "رمز المراقب:`n(شغّل الدالة setupWatchKey في محرر Apps Script وانسخ الرمز من السجل)" $driveKey $true
+    if ($null -eq $k) { exit 1 }
+    $driveUrl = $u.Trim(); $driveKey = $k.Trim()
+    $probe = [ordered]@{ url = "x"; folders = @($folder); type = "in"; party = ""; outPrefix = "م ت"; intervalSeconds = 60; stableSeconds = 10; maxMB = 45; subfolders = $true; target = "drive"; drive = [ordered]@{ url = $driveUrl; key = $driveKey } }
+    [System.IO.File]::WriteAllText($cfgPath, ($probe | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+    $r = Run-Node "watch-folder.mjs --drive-check"
+    if ($r.code -eq 0) {
+      $okDrive = $true
+      try { $driveFolder = ($r.text | ConvertFrom-Json).folder } catch { $driveFolder = "" }
+    } else {
+      Show-Msg ("تعذّر الوصول إلى مساعد Google:`n`n" + $r.text + "`n`nتأكد من الرابط والرمز، ومن أن نشر السكربت محدَّث.") "Error" | Out-Null
+    }
+  }
+  if (-not $okDrive) { exit 1 }
+}
+
+# ===== ٥) وارد أم صادر =====
+$type = "in"
+if ($toRegistry) {
+  $c = Ask-Choice "تُسجَّل ملفات هذا المجلد في:" "الوارد" "الصادر"
+  if ($c -eq 0) { exit 1 }
+  $type = if ($c -eq 2) { "out" } else { "in" }
+}
+
+# ===== ٦) الجهة والمدة والبادئة =====
+$party = ""
+if ($toRegistry) {
+  $party = Ask-Text "الجهة الافتراضية التي تُكتب في القيد:`n(اتركها فارغة إن اختلفت من ملف لآخر)" $(if ($old) { $old.party } else { "" })
+  if ($null -eq $party) { exit 1 }
+}
 
 $everyText = Ask-Text "كل كم ثانية يفحص المجلد؟" $(if ($old -and $old.intervalSeconds) { [string]$old.intervalSeconds } else { "60" })
 if ($null -eq $everyText) { exit 1 }
@@ -516,7 +625,7 @@ if ($everyText -match '^\s*\d+\s*$' -and [int]$everyText.Trim() -ge 10) { $every
 
 $prefix = "م ت"
 if ($old -and $old.outPrefix) { $prefix = $old.outPrefix }
-if ($type -eq "out") {
+if ($toRegistry -and $type -eq "out") {
   $p = Ask-Text "بادئة رقم الصادر كما في إعدادات الموقع:" $prefix
   if ($null -eq $p) { exit 1 }
   if ($p.Trim()) { $prefix = $p.Trim() }
@@ -533,6 +642,8 @@ $config = [ordered]@{
   stableSeconds   = 10
   maxMB           = 45
   subfolders      = $true
+  target          = $target
+  drive           = [ordered]@{ url = $driveUrl; key = $driveKey }
 }
 if ($old -and $old.url) { $config.url = $old.url }
 [System.IO.File]::WriteAllText($cfgPath, ($config | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
@@ -543,8 +654,8 @@ $seedAns = Ask-Choice ("المجلد فيه الآن " + $existing + " ملفا�
 if ($seedAns -eq 0) { exit 1 }
 if ($seedAns -eq 1) { Run-Node "watch-folder.mjs --seed" | Out-Null }
 
-# ===== ٧) الدخول =====
-$signed = $false
+# ===== ٧) الدخول (لسجل المركز فقط) =====
+$signed = -not $toRegistry
 for ($i = 0; $i -lt 3 -and -not $signed; $i++) {
   $cred = Ask-Login
   if ($null -eq $cred) { exit 1 }
@@ -592,15 +703,16 @@ $summary = @(
   "المراقبة تعمل الآن ✔",
   "",
   ("المجلد: " + $folder),
-  ("النوع: " + $(if ($type -eq "out") { "صادر" } else { "وارد" })),
+  ("الوجهة: " + $(if ($target -eq "drive") { "Google Drive" } elseif ($target -eq "both") { "سجل المركز و Google Drive" } else { "سجل المركز" })),
+  ("النوع: " + $(if ($toRegistry) { if ($type -eq "out") { "صادر" } else { "وارد" } } else { "—" })),
   ("الفحص: كل " + $every + " ثانية"),
   ("مع إقلاع ويندوز: " + $(if ($auto -eq [System.Windows.Forms.DialogResult]::Yes) { "نعم" } else { "لا" })),
   "",
   "نافذة المراقب مصغّرة في شريط المهام — إغلاقها يوقف المراقبة.",
   "وكل ما يجري مكتوب في الملف watcher.log بجانب البرنامج.",
   "",
-  "هل تريد فتح مجلد البرنامج الآن؟"
+  $(if ($toDrive -and $driveFolder) { "هل تريد فتح مجلد المراقبة في Google Drive الآن؟" } else { "هل تريد فتح مجلد البرنامج الآن؟" })
 ) -join "`n"
 if ((Show-Msg $summary "Information" "YesNo") -eq [System.Windows.Forms.DialogResult]::Yes) {
-  Start-Process explorer.exe $here
+  if ($toDrive -and $driveFolder) { Start-Process $driveFolder } else { Start-Process explorer.exe $here }
 }

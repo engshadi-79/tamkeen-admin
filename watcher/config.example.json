@@ -3,6 +3,11 @@
   "folders": [
     "D:\\المسح الضوئي\\الوارد"
   ],
+  "target": "registry",
+  "drive": {
+    "url": "",
+    "key": ""
+  },
   "type": "in",
   "party": "",
   "outPrefix": "م ت",

@@ -95,6 +95,27 @@ function Ask-Choice($prompt, $first, $second) {
   if ($one) { return 1 } else { return 2 }
 }
 
+# سؤال باختيار من ثلاثة خيارات
+function Ask-Choice3($prompt, $first, $second, $third) {
+  $f = New-Dialog 230
+  $f.Controls.Add((New-Label $prompt 16 60))
+  $r1 = New-Object System.Windows.Forms.RadioButton
+  $r1.Text = $first; $r1.SetBounds(20, 80, 424, 28); $r1.Checked = $true
+  $r2 = New-Object System.Windows.Forms.RadioButton
+  $r2.Text = $second; $r2.SetBounds(20, 110, 424, 28)
+  $r3 = New-Object System.Windows.Forms.RadioButton
+  $r3.Text = $third; $r3.SetBounds(20, 140, 424, 28)
+  $ok = New-Btn "متابعة" 16 180 ([System.Windows.Forms.DialogResult]::OK)
+  $cancel = New-Btn "إلغاء" 160 180 ([System.Windows.Forms.DialogResult]::Cancel)
+  $f.Controls.AddRange(@($r1, $r2, $r3, $ok, $cancel))
+  $f.AcceptButton = $ok; $f.CancelButton = $cancel
+  $r = $f.ShowDialog()
+  $pick = if ($r1.Checked) { 1 } elseif ($r2.Checked) { 2 } else { 3 }
+  $f.Dispose()
+  if ($r -ne [System.Windows.Forms.DialogResult]::OK) { return 0 }
+  return $pick
+}
+
 # نافذة الدخول: اسم المستخدم وكلمة المرور معاً
 function Ask-Login() {
   $f = New-Dialog 250
@@ -170,14 +191,52 @@ if (-not $folder) {
   $folder = $dlg.SelectedPath
 }
 
-# ===== ٣) وارد أم صادر =====
-$c = Ask-Choice ("ملفات هذا المجلد:`n" + $folder + "`n`nتُسجَّل في:") "الوارد" "الصادر"
-if ($c -eq 0) { exit 1 }
-$type = if ($c -eq 2) { "out" } else { "in" }
+# ===== ٣) إلى أين تُرفع الملفات؟ =====
+$dest = Ask-Choice3 ("ملفات هذا المجلد:`n" + $folder + "`n`nتُرفع إلى:") `
+  "سجل الوارد والصادر في الموقع" "Google Drive مباشرة" "الاثنين معاً"
+if ($dest -eq 0) { exit 1 }
+$target = @{ 1 = "registry"; 2 = "drive"; 3 = "both" }[$dest]
+$toRegistry = $target -ne "drive"
+$toDrive = $target -ne "registry"
 
-# ===== ٤) الجهة والمدة والبادئة =====
-$party = Ask-Text "الجهة الافتراضية التي تُكتب في القيد:`n(اتركها فارغة إن اختلفت من ملف لآخر)" $(if ($old) { $old.party } else { "" })
-if ($null -eq $party) { exit 1 }
+# ===== ٤) إعداد الرفع المباشر إلى Drive =====
+$driveUrl = $(if ($old -and $old.drive) { $old.drive.url } else { "" })
+$driveKey = $(if ($old -and $old.drive) { $old.drive.key } else { "" })
+if ($toDrive) {
+  $okDrive = $false
+  for ($i = 0; $i -lt 3 -and -not $okDrive; $i++) {
+    $u = Ask-Text "رابط «مساعد Google» (رابط النشر تطبيق ويب المنتهي بـ ‎/exec‎):" $driveUrl
+    if ($null -eq $u) { exit 1 }
+    $k = Ask-Text "رمز المراقب:`n(شغّل الدالة setupWatchKey في محرر Apps Script وانسخ الرمز من السجل)" $driveKey $true
+    if ($null -eq $k) { exit 1 }
+    $driveUrl = $u.Trim(); $driveKey = $k.Trim()
+    $probe = [ordered]@{ url = "x"; folders = @($folder); type = "in"; party = ""; outPrefix = "م ت"; intervalSeconds = 60; stableSeconds = 10; maxMB = 45; subfolders = $true; target = "drive"; drive = [ordered]@{ url = $driveUrl; key = $driveKey } }
+    [System.IO.File]::WriteAllText($cfgPath, ($probe | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+    $r = Run-Node "watch-folder.mjs --drive-check"
+    if ($r.code -eq 0) {
+      $okDrive = $true
+      try { $driveFolder = ($r.text | ConvertFrom-Json).folder } catch { $driveFolder = "" }
+    } else {
+      Show-Msg ("تعذّر الوصول إلى مساعد Google:`n`n" + $r.text + "`n`nتأكد من الرابط والرمز، ومن أن نشر السكربت محدَّث.") "Error" | Out-Null
+    }
+  }
+  if (-not $okDrive) { exit 1 }
+}
+
+# ===== ٥) وارد أم صادر =====
+$type = "in"
+if ($toRegistry) {
+  $c = Ask-Choice "تُسجَّل ملفات هذا المجلد في:" "الوارد" "الصادر"
+  if ($c -eq 0) { exit 1 }
+  $type = if ($c -eq 2) { "out" } else { "in" }
+}
+
+# ===== ٦) الجهة والمدة والبادئة =====
+$party = ""
+if ($toRegistry) {
+  $party = Ask-Text "الجهة الافتراضية التي تُكتب في القيد:`n(اتركها فارغة إن اختلفت من ملف لآخر)" $(if ($old) { $old.party } else { "" })
+  if ($null -eq $party) { exit 1 }
+}
 
 $everyText = Ask-Text "كل كم ثانية يفحص المجلد؟" $(if ($old -and $old.intervalSeconds) { [string]$old.intervalSeconds } else { "60" })
 if ($null -eq $everyText) { exit 1 }
@@ -186,7 +245,7 @@ if ($everyText -match '^\s*\d+\s*$' -and [int]$everyText.Trim() -ge 10) { $every
 
 $prefix = "م ت"
 if ($old -and $old.outPrefix) { $prefix = $old.outPrefix }
-if ($type -eq "out") {
+if ($toRegistry -and $type -eq "out") {
   $p = Ask-Text "بادئة رقم الصادر كما في إعدادات الموقع:" $prefix
   if ($null -eq $p) { exit 1 }
   if ($p.Trim()) { $prefix = $p.Trim() }
@@ -203,6 +262,8 @@ $config = [ordered]@{
   stableSeconds   = 10
   maxMB           = 45
   subfolders      = $true
+  target          = $target
+  drive           = [ordered]@{ url = $driveUrl; key = $driveKey }
 }
 if ($old -and $old.url) { $config.url = $old.url }
 [System.IO.File]::WriteAllText($cfgPath, ($config | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
@@ -213,8 +274,8 @@ $seedAns = Ask-Choice ("المجلد فيه الآن " + $existing + " ملفا�
 if ($seedAns -eq 0) { exit 1 }
 if ($seedAns -eq 1) { Run-Node "watch-folder.mjs --seed" | Out-Null }
 
-# ===== ٧) الدخول =====
-$signed = $false
+# ===== ٧) الدخول (لسجل المركز فقط) =====
+$signed = -not $toRegistry
 for ($i = 0; $i -lt 3 -and -not $signed; $i++) {
   $cred = Ask-Login
   if ($null -eq $cred) { exit 1 }
@@ -262,15 +323,16 @@ $summary = @(
   "المراقبة تعمل الآن ✔",
   "",
   ("المجلد: " + $folder),
-  ("النوع: " + $(if ($type -eq "out") { "صادر" } else { "وارد" })),
+  ("الوجهة: " + $(if ($target -eq "drive") { "Google Drive" } elseif ($target -eq "both") { "سجل المركز و Google Drive" } else { "سجل المركز" })),
+  ("النوع: " + $(if ($toRegistry) { if ($type -eq "out") { "صادر" } else { "وارد" } } else { "—" })),
   ("الفحص: كل " + $every + " ثانية"),
   ("مع إقلاع ويندوز: " + $(if ($auto -eq [System.Windows.Forms.DialogResult]::Yes) { "نعم" } else { "لا" })),
   "",
   "نافذة المراقب مصغّرة في شريط المهام — إغلاقها يوقف المراقبة.",
   "وكل ما يجري مكتوب في الملف watcher.log بجانب البرنامج.",
   "",
-  "هل تريد فتح مجلد البرنامج الآن؟"
+  $(if ($toDrive -and $driveFolder) { "هل تريد فتح مجلد المراقبة في Google Drive الآن؟" } else { "هل تريد فتح مجلد البرنامج الآن؟" })
 ) -join "`n"
 if ((Show-Msg $summary "Information" "YesNo") -eq [System.Windows.Forms.DialogResult]::Yes) {
-  Start-Process explorer.exe $here
+  if ($toDrive -and $driveFolder) { Start-Process $driveFolder } else { Start-Process explorer.exe $here }
 }
