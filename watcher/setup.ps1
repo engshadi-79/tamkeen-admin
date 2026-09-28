@@ -40,9 +40,18 @@ function New-Dialog($height) {
   return $f
 }
 
-function New-Label($text, $y, $height = 46) {
+# ارتفاع النص كما يُرسم فعلاً داخل عرض النافذة
+function Text-Height($text) {
+  $size = [System.Windows.Forms.TextRenderer]::MeasureText(
+    $text, $FONT, (New-Object System.Drawing.Size(428, 0)),
+    ([System.Windows.Forms.TextFormatFlags]::WordBreak -bor [System.Windows.Forms.TextFormatFlags]::TextBoxControl))
+  return [Math]::Max(24, $size.Height + 6)
+}
+
+function New-Label($text, $y, $height = 0) {
   $l = New-Object System.Windows.Forms.Label
   $l.Text = $text
+  if ($height -le 0) { $height = Text-Height $text }
   $l.SetBounds(16, $y, 428, $height)
   return $l
 }
@@ -57,15 +66,17 @@ function New-Btn($text, $x, $y, $result) {
 
 # سؤال بنص يُكتب
 function Ask-Text($prompt, $default = "", $password = $false) {
-  $f = New-Dialog 170
-  $f.Controls.Add((New-Label $prompt 16))
+  $lh = Text-Height $prompt
+  $f = New-Dialog (16 + $lh + 12 + 30 + 18 + 34 + 16)
+  $f.Controls.Add((New-Label $prompt 16 $lh))
   $t = New-Object System.Windows.Forms.TextBox
-  $t.SetBounds(16, 68, 428, 30)
+  $t.SetBounds(16, (16 + $lh + 12), 428, 30)
   $t.Text = $default
   if ($password) { $t.UseSystemPasswordChar = $true }
   $f.Controls.Add($t)
-  $ok = New-Btn "متابعة" 16 115 ([System.Windows.Forms.DialogResult]::OK)
-  $cancel = New-Btn "إلغاء" 160 115 ([System.Windows.Forms.DialogResult]::Cancel)
+  $btnY = 16 + $lh + 12 + 30 + 18
+  $ok = New-Btn "متابعة" 16 $btnY ([System.Windows.Forms.DialogResult]::OK)
+  $cancel = New-Btn "إلغاء" 160 $btnY ([System.Windows.Forms.DialogResult]::Cancel)
   $f.Controls.AddRange(@($ok, $cancel))
   $f.AcceptButton = $ok; $f.CancelButton = $cancel
   $f.Add_Shown({ $t.Focus() })
@@ -78,14 +89,17 @@ function Ask-Text($prompt, $default = "", $password = $false) {
 
 # سؤال باختيار من خيارين
 function Ask-Choice($prompt, $first, $second) {
-  $f = New-Dialog 190
-  $f.Controls.Add((New-Label $prompt 16 60))
+  $lh = Text-Height $prompt
+  $top = 16 + $lh + 10
+  $f = New-Dialog ($top + 60 + 18 + 34 + 16)
+  $f.Controls.Add((New-Label $prompt 16 $lh))
   $r1 = New-Object System.Windows.Forms.RadioButton
-  $r1.Text = $first; $r1.SetBounds(20, 80, 424, 28); $r1.Checked = $true
+  $r1.Text = $first; $r1.SetBounds(20, $top, 424, 28); $r1.Checked = $true
   $r2 = New-Object System.Windows.Forms.RadioButton
-  $r2.Text = $second; $r2.SetBounds(20, 110, 424, 28)
-  $ok = New-Btn "متابعة" 16 145 ([System.Windows.Forms.DialogResult]::OK)
-  $cancel = New-Btn "إلغاء" 160 145 ([System.Windows.Forms.DialogResult]::Cancel)
+  $r2.Text = $second; $r2.SetBounds(20, ($top + 30), 424, 28)
+  $btnY = $top + 60 + 18
+  $ok = New-Btn "متابعة" 16 $btnY ([System.Windows.Forms.DialogResult]::OK)
+  $cancel = New-Btn "إلغاء" 160 $btnY ([System.Windows.Forms.DialogResult]::Cancel)
   $f.Controls.AddRange(@($r1, $r2, $ok, $cancel))
   $f.AcceptButton = $ok; $f.CancelButton = $cancel
   $r = $f.ShowDialog()
@@ -97,16 +111,19 @@ function Ask-Choice($prompt, $first, $second) {
 
 # سؤال باختيار من ثلاثة خيارات
 function Ask-Choice3($prompt, $first, $second, $third) {
-  $f = New-Dialog 230
-  $f.Controls.Add((New-Label $prompt 16 60))
+  $lh = Text-Height $prompt
+  $top = 16 + $lh + 10
+  $f = New-Dialog ($top + 90 + 18 + 34 + 16)
+  $f.Controls.Add((New-Label $prompt 16 $lh))
   $r1 = New-Object System.Windows.Forms.RadioButton
-  $r1.Text = $first; $r1.SetBounds(20, 80, 424, 28); $r1.Checked = $true
+  $r1.Text = $first; $r1.SetBounds(20, $top, 424, 28); $r1.Checked = $true
   $r2 = New-Object System.Windows.Forms.RadioButton
-  $r2.Text = $second; $r2.SetBounds(20, 110, 424, 28)
+  $r2.Text = $second; $r2.SetBounds(20, ($top + 30), 424, 28)
   $r3 = New-Object System.Windows.Forms.RadioButton
-  $r3.Text = $third; $r3.SetBounds(20, 140, 424, 28)
-  $ok = New-Btn "متابعة" 16 180 ([System.Windows.Forms.DialogResult]::OK)
-  $cancel = New-Btn "إلغاء" 160 180 ([System.Windows.Forms.DialogResult]::Cancel)
+  $r3.Text = $third; $r3.SetBounds(20, ($top + 60), 424, 28)
+  $btnY = $top + 90 + 18
+  $ok = New-Btn "متابعة" 16 $btnY ([System.Windows.Forms.DialogResult]::OK)
+  $cancel = New-Btn "إلغاء" 160 $btnY ([System.Windows.Forms.DialogResult]::Cancel)
   $f.Controls.AddRange(@($r1, $r2, $r3, $ok, $cancel))
   $f.AcceptButton = $ok; $f.CancelButton = $cancel
   $r = $f.ShowDialog()
@@ -118,8 +135,10 @@ function Ask-Choice3($prompt, $first, $second, $third) {
 
 # نافذة الدخول: اسم المستخدم وكلمة المرور معاً
 function Ask-Login() {
-  $f = New-Dialog 250
-  $f.Controls.Add((New-Label "سجّل الدخول باسم المستخدم وكلمة المرور نفسيهما في الموقع.`nكلمة المرور لا تُحفظ في أي ملف؛ يُحفظ رمز جلسة صالح ٣٠ يوماً." 12 60))
+  $intro = "سجّل الدخول باسم المستخدم وكلمة المرور نفسيهما في الموقع.`nكلمة المرور لا تُحفظ في أي ملف؛ يُحفظ رمز جلسة صالح ٣٠ يوماً."
+  $ih = Text-Height $intro
+  $f = New-Dialog (250 + [Math]::Max(0, $ih - 60))
+  $f.Controls.Add((New-Label $intro 12 $ih))
   $lu = New-Object System.Windows.Forms.Label; $lu.Text = "اسم المستخدم"; $lu.SetBounds(16, 80, 428, 22)
   $tu = New-Object System.Windows.Forms.TextBox; $tu.SetBounds(16, 104, 428, 30)
   $lp = New-Object System.Windows.Forms.Label; $lp.Text = "كلمة المرور"; $lp.SetBounds(16, 142, 428, 22)
