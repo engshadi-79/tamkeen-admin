@@ -97,6 +97,8 @@ async function driveCall(action, payload) {
 async function driveUpload(f, data) {
   const rel = path.dirname(f.rel);
   const parts = rel === "." ? [] : rel.split("/").filter(Boolean);
+  // أكثر من مجلد مراقَب: يُسبق المسار باسم مجلده حتى لا تختلط الملفات في Drive
+  if ((config.folders || []).length > 1 && f.rootName) parts.unshift(f.rootName);
   return driveCall("watchUpload", { name: f.name, mime: mimeOf(f.name), path: parts, data });
 }
 
@@ -197,7 +199,7 @@ async function listFiles(root) {
       if (!e.isFile()) continue;
       const st = await fsp.stat(full).catch(() => null);
       if (!st || !st.size) continue;
-      out.push({ full, name: e.name, size: st.size, mtime: Math.round(st.mtimeMs), rel: path.relative(root, full).replace(/\\/g, "/") });
+      out.push({ full, name: e.name, size: st.size, mtime: Math.round(st.mtimeMs), rel: path.relative(root, full).replace(/\\/g, "/"), rootName: path.basename(root) });
     }
   }
   await walk(root, 0);
@@ -359,6 +361,7 @@ async function main() {
 }
 
 main().catch((e) => { log("توقّف البرنامج: " + e.message); process.exitCode = 1; });
+
 
 
 

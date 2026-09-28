@@ -125,6 +125,8 @@ async function driveCall(action, payload) {
 async function driveUpload(f, data) {
   const rel = path.dirname(f.rel);
   const parts = rel === "." ? [] : rel.split("/").filter(Boolean);
+  // أكثر من مجلد مراقَب: يُسبق المسار باسم مجلده حتى لا تختلط الملفات في Drive
+  if ((config.folders || []).length > 1 && f.rootName) parts.unshift(f.rootName);
   return driveCall("watchUpload", { name: f.name, mime: mimeOf(f.name), path: parts, data });
 }
 
@@ -225,7 +227,7 @@ async function listFiles(root) {
       if (!e.isFile()) continue;
       const st = await fsp.stat(full).catch(() => null);
       if (!st || !st.size) continue;
-      out.push({ full, name: e.name, size: st.size, mtime: Math.round(st.mtimeMs), rel: path.relative(root, full).replace(/\\/g, "/") });
+      out.push({ full, name: e.name, size: st.size, mtime: Math.round(st.mtimeMs), rel: path.relative(root, full).replace(/\\/g, "/"), rootName: path.basename(root) });
     }
   }
   await walk(root, 0);
@@ -394,6 +396,7 @@ main().catch((e) => { log("توقّف البرنامج: " + e.message); process.
 
 
 
+
 :::PS1:::
 #requires -version 5
 <#
@@ -531,6 +534,41 @@ function Ask-Choice3($prompt, $first, $second, $third) {
   return $pick
 }
 
+# نافذة المجلدات المراقَبة: إضافة وحذف بلا حد
+function Ask-Folders($start) {
+  $f = New-Dialog 330
+  $f.Controls.Add((New-Label "المجلدات التي تُراقَب — أضف ما شئت منها:" 12 28))
+  $list = New-Object System.Windows.Forms.ListBox
+  $list.SetBounds(16, 46, 428, 170)
+  $list.HorizontalScrollbar = $true
+  foreach ($d in $start) { if ($d) { [void]$list.Items.Add($d) } }
+  $add = New-Btn "➕ إضافة مجلد" 16 224 ([System.Windows.Forms.DialogResult]::None)
+  $add.Width = 160
+  $del = New-Btn "➖ حذف المحدَّد" 186 224 ([System.Windows.Forms.DialogResult]::None)
+  $del.Width = 150
+  $ok = New-Btn "متابعة" 16 272 ([System.Windows.Forms.DialogResult]::OK)
+  $cancel = New-Btn "إلغاء" 160 272 ([System.Windows.Forms.DialogResult]::Cancel)
+  $add.Add_Click({
+    $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dlg.Description = "اختر مجلداً تريد رفع ملفاته تلقائياً"
+    $dlg.ShowNewFolderButton = $true
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+      $picked = $dlg.SelectedPath
+      if (-not $list.Items.Contains($picked)) { [void]$list.Items.Add($picked) }
+    }
+  })
+  $del.Add_Click({ if ($list.SelectedIndex -ge 0) { $list.Items.RemoveAt($list.SelectedIndex) } })
+  $f.Controls.AddRange(@($list, $add, $del, $ok, $cancel))
+  $f.AcceptButton = $ok; $f.CancelButton = $cancel
+  # قائمة فارغة: تُفتح نافذة الاختيار مباشرة
+  if ($list.Items.Count -eq 0) { $f.Add_Shown({ $add.PerformClick() }) }
+  $r = $f.ShowDialog()
+  $out = @($list.Items)
+  $f.Dispose()
+  if ($r -ne [System.Windows.Forms.DialogResult]::OK) { return $null }
+  return $out
+}
+
 # نافذة الدخول: اسم المستخدم وكلمة المرور معاً
 function Ask-Login() {
   $intro = "سجّل الدخول باسم المستخدم وكلمة المرور نفسيهما في الموقع.`nكلمة المرور لا تُحفظ في أي ملف؛ يُحفظ رمز جلسة صالح ٣٠ يوماً."
@@ -591,27 +629,21 @@ $old = $null
 if (Test-Path $cfgPath) {
   try { $old = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $old = $null }
 }
-$folder = $null
-if ($old -and $old.folders -and $old.folders.Count -gt 0) {
-  $keep = Ask-Choice ("يوجد إعداد سابق للمجلد:`n" + ($old.folders -join "  |  ")) "أبقِ هذا المجلد" "اختيار مجلد آخر"
-  if ($keep -eq 0) { exit 1 }
-  if ($keep -eq 1) { $folder = $old.folders[0] }
+$previous = @()
+if ($old -and $old.folders) { $previous = @($old.folders | Where-Object { $_ }) }
+if ($previous.Count -eq 0) {
+  Show-Msg "اختر المجلدات التي تريد مراقبتها — مجلد الماسح الضوئي مثلاً.`n`nيمكنك إضافة أكثر من مجلد، وكل ملف جديد في أيٍّ منها يُرفع تلقائياً." | Out-Null
 }
-
-if (-not $folder) {
-  Show-Msg "اختر المجلد الذي تريد مراقبته — مجلد الماسح الضوئي مثلاً.`n`nكل ملف جديد يظهر فيه سيُرفع تلقائياً إلى أرشيف المركز." | Out-Null
-  $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-  $dlg.Description = "اختر المجلد الذي تريد رفع ملفاته تلقائياً"
-  $dlg.ShowNewFolderButton = $true
-  if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
-    Show-Msg "لم تختر مجلداً، فأُلغي التجهيز." "Warning" | Out-Null
-    exit 1
-  }
-  $folder = $dlg.SelectedPath
+$folders = Ask-Folders $previous
+if ($null -eq $folders -or $folders.Count -eq 0) {
+  Show-Msg "لم تختر أي مجلد، فأُلغي التجهيز." "Warning" | Out-Null
+  exit 1
 }
+$folder = $folders[0]
+$folderText = if ($folders.Count -eq 1) { $folders[0] } else { ($folders | ForEach-Object { "• " + $_ }) -join "`n" }
 
 # ===== ٣) إلى أين تُرفع الملفات؟ =====
-$dest = Ask-Choice3 ("ملفات هذا المجلد:`n" + $folder + "`n`nتُرفع إلى:") `
+$dest = Ask-Choice3 ("ملفات " + $(if ($folders.Count -gt 1) { "هذه المجلدات" } else { "هذا المجلد" }) + ":`n" + $folderText + "`n`nتُرفع إلى:") `
   "سجل الوارد والصادر في الموقع" "Google Drive مباشرة" "الاثنين معاً"
 if ($dest -eq 0) { exit 1 }
 $target = @{ 1 = "registry"; 2 = "drive"; 3 = "both" }[$dest]
@@ -630,7 +662,7 @@ if ($toDrive) {
     if ($null -eq $k) { exit 1 }
     $driveUrl = $u.Trim(); $driveKey = $k.Trim()
     $probePath = Join-Path $env:TEMP ("tamkeen-watch-probe-" + [guid]::NewGuid().ToString("N") + ".json")
-    $probe = [ordered]@{ url = $SERVER_URL; folders = @($folder); type = "in"; party = ""; outPrefix = "م ت"; intervalSeconds = 60; stableSeconds = 10; maxMB = 45; subfolders = $true; target = "drive"; drive = [ordered]@{ url = $driveUrl; key = $driveKey } }
+    $probe = [ordered]@{ url = $SERVER_URL; folders = @($folders); type = "in"; party = ""; outPrefix = "م ت"; intervalSeconds = 60; stableSeconds = 10; maxMB = 45; subfolders = $true; target = "drive"; drive = [ordered]@{ url = $driveUrl; key = $driveKey } }
     [System.IO.File]::WriteAllText($probePath, ($probe | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
     $r = Run-Node "watch-folder.mjs --drive-check" $null $probePath
     Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
@@ -675,7 +707,7 @@ if ($toRegistry -and $type -eq "out") {
 # ===== ٥) حفظ الإعدادات =====
 $config = [ordered]@{
   url             = $SERVER_URL
-  folders         = @($folder)
+  folders         = @($folders)
   type            = $type
   party           = $party.Trim()
   outPrefix       = $prefix
@@ -691,7 +723,8 @@ if ($old -and $old.url -and $old.url -match '^https?://') { $config.url = $old.u
 [System.IO.File]::WriteAllText($cfgPath, ($config | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
 
 # ===== ٦) الملفات الموجودة الآن =====
-$existing = @(Get-ChildItem -LiteralPath $folder -File -Recurse -ErrorAction SilentlyContinue).Count
+$existing = 0
+foreach ($d in $folders) { $existing += @(Get-ChildItem -LiteralPath $d -File -Recurse -ErrorAction SilentlyContinue).Count }
 $seedAns = Ask-Choice ("المجلد فيه الآن " + $existing + " ملفاً.`n`nماذا أفعل بها؟") "اعتبرها قديمة، وارفع الجديد فقط (الأسلم)" "ارفعها كلها إلى السجل الآن"
 if ($seedAns -eq 0) { exit 1 }
 if ($seedAns -eq 1) { Run-Node "watch-folder.mjs --seed" | Out-Null }
@@ -746,7 +779,7 @@ Start-Process -FilePath $runCmd -WorkingDirectory $here -WindowStyle Minimized
 $summary = @(
   "المراقبة تعمل الآن ✔",
   "",
-  ("المجلد: " + $folder),
+  ($(if ($folders.Count -gt 1) { "المجلدات:`n" + $folderText } else { "المجلد: " + $folders[0] })),
   ("الوجهة: " + $(if ($target -eq "drive") { "Google Drive" } elseif ($target -eq "both") { "سجل المركز و Google Drive" } else { "سجل المركز" })),
   ("النوع: " + $(if ($toRegistry) { if ($type -eq "out") { "صادر" } else { "وارد" } } else { "—" })),
   ("الفحص: كل " + $every + " ثانية"),
