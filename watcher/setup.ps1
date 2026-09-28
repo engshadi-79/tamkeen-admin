@@ -236,7 +236,7 @@ if ($toDrive) {
       $okDrive = $true
       try { $driveFolder = ($r.text | ConvertFrom-Json).folder } catch { $driveFolder = "" }
     } else {
-      Show-Msg ("تعذّر الوصول إلى مساعد Google:`n`n" + $r.text + "`n`nتأكد من الرابط والرمز، ومن أن نشر السكربت محدَّث.") "Error" | Out-Null
+      Show-Msg ("تعذّر الوصول إلى مساعد Google:`n`n" + $r.text + "`n`nالأسباب الشائعة:`n١) لصقت السكربت ولم تنشره: نشر ← إدارة عمليات النشر ← ✏ تعديل ← الإصدار: إصدار جديد ← نشر.`n٢) لم تُشغّل الدالة setupWatchKey بعد، فلا يوجد رمز.`n٣) الرمز نُسخ ناقصاً أو معه كلمات السطر أو مسافة.`n٤) شغّلت setupWatchKey في مشروع سكربت غير صاحب هذا الرابط.") "Error" | Out-Null
     }
   }
   if (-not $okDrive) { exit 1 }
