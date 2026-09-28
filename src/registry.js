@@ -622,14 +622,22 @@
     return m ? `<bdi>${esc(m[1])}</bdi><bdi dir="ltr">${esc(m[2])}</bdi>` : `<bdi>${esc(name || "ملف")}</bdi>`;
   }
 
+  /* النسخة المحفوظة في Google Drive: النسخة الليلية تنسخ كل مرفق باسمه مسبوقاً برقم القيد،
+     فالبحث برقم القيد في Drive يصل إليه مباشرة (في حساب Google صاحب النسخ الاحتياطية). */
+  const driveSearchUrl = (r) => `https://drive.google.com/drive/search?q=${encodeURIComponent(String(r.number || r.fileName || "").replace(/[\\/:*?"<>|]+/g, "-"))}`;
+
   function fileCell(r) {
     if (!r.fileId) return "—";
     const drive = r.driveLink
       ? (/^https?:/.test(r.driveLink) ? `<a class="conv-link" href="${esc(r.driveLink)}" target="_blank" rel="noopener" title="فتح في Google Drive">☁ Drive</a>` : "")
       : App.cloud && App.cloud.ready() ? `<span class="reg-pending" title="الملف على جهاز من رفعه ولم يصل إلى أرشيف المركز بعد">⏳ بانتظار الرفع</span>`
       : App.drive && App.drive.isConfigured() ? `<button class="conv-link" data-archive title="${r.drivePending ? "بانتظار الأرشفة" : "أرشفة في Google Drive"}">${r.drivePending ? "⏳" : "☁"} أرشفة</button>` : "";
+    // النسخة الاحتياطية على Drive: تظهر بعد نسخة الليلة التالية للرفع
+    const backup = r.driveId && !/^https?:/.test(r.driveLink || "")
+      ? ` <a class="conv-link" href="${esc(driveSearchUrl(r))}" target="_blank" rel="noopener" title="فتح نسخة Drive الاحتياطية (بحث برقم القيد في حساب النسخ)">🔍 في Drive</a>`
+      : "";
     return `<div class="reg-fname" title="${esc(r.fileName || "")}">${nameHtml(r.fileName)}</div>${r.owner ? `<div class="reg-owner">👤 ${esc(r.owner)}</div>` : ""}
-      <div class="reg-file-btns"><button class="conv-link" data-open title="عرض الملف">📎 عرض</button> ${drive}</div>`;
+      <div class="reg-file-btns"><button class="conv-link" data-open title="عرض الملف">📎 عرض</button> ${drive}${backup}</div>`;
   }
 
   function render() {
