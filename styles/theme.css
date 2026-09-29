@@ -862,3 +862,11 @@ body.has-trial-bar #login-screen { top: 38px; }
 #sc-filters .sc-f select { width: auto; min-width: 150px; }
 #sc-filters .sc-f.sc-main select { min-width: 175px; font-size: 14px; border-color: var(--border); }
 #sc-filters .sc-f input[type="search"] { width: 190px; }
+
+/* أسماء المتأخرين في لوحة المتابعات */
+.sc-names-group { border-top: 1px solid var(--border); padding: 8px 0; }
+.sc-names-group summary { cursor: pointer; font-size: 14px; }
+.sc-names-group summary b { color: var(--navy-900); }
+.sc-names-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.sc-name { background: var(--navy-100); border-radius: 99px; padding: 3px 10px; font-size: 13px; }
+#view-screen.sc-show .sc-names { display: none; }

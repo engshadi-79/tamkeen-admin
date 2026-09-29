@@ -303,7 +303,27 @@
           label: [r.form, r.group].filter(Boolean).join(" — ") || r.track || "—",
           value: num(r.missing),
           note: [r.track, r.course].filter(Boolean).join(" · "),
-        })), {}), true);
+        })), {}), true)
+      + namesCard("أسماء من لم يوقّع التعهد", pl)
+      + namesCard("أسماء من لم يعبّئ الاستبيان", sv, true);
+  }
+
+  /* أسماء المتأخرين: للمدير وحده، ومطويّة، وتختفي في وضع ملء الشاشة (شاشة القاعة).
+     اللقطة لا تحمل أرقام هوية ولا جوالات — أسماء فقط. */
+  function namesCard(title, list, withForm) {
+    if (!App.profile || !App.profile.isAdmin()) return "";
+    const withNames = (list || []).filter((r) => (r.names || []).length);
+    if (!withNames.length) return "";
+    const blocks = withNames.map((r) => {
+      const head = [withForm ? r.form : "", r.group, r.track].filter(Boolean).join(" · ") || "—";
+      const chips = (r.names || []).map((n) => `<span class="sc-name">${esc(n)}</span>`).join("");
+      const more = num(r.missing) > (r.names || []).length
+        ? `<span class="conv-hint"> ومعهم ${ui.fmt(num(r.missing) - r.names.length)} غيرهم</span>` : "";
+      return `<details class="sc-names-group"><summary>${esc(head)} <b>${ui.fmt((r.names || []).length)}</b></summary>
+        <div class="sc-names-list">${chips}</div>${more}</details>`;
+    }).join("");
+    return `<section class="card sc-card sc-names wide"><h3>${esc(title)}</h3>
+      <p class="conv-hint">تظهر للمدير فقط، وتختفي في وضع ملء الشاشة.</p>${blocks}</section>`;
   }
 
   const PANELS = [
