@@ -803,3 +803,33 @@ body.has-trial-bar #login-screen { top: 38px; }
 .reg-watch-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .reg-watch-line .spacer { flex: 1 1 auto; }
 .reg-watch .conv-check { margin: 8px 0 0; }
+
+/* ===== شاشة إحصاءات المركز ===== */
+.sc-tabs { margin: 0 0 12px; flex-wrap: wrap; }
+.sc-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.sc-kpi { background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--teal-500); border-radius: 12px; padding: 14px 12px; text-align: center; }
+.sc-kpi.good { border-top-color: #157a3f; }
+.sc-kpi.warn { border-top-color: #c0392b; }
+.sc-kpi-v { font-size: 30px; font-weight: 800; color: var(--navy-900); line-height: 1.2; }
+.sc-kpi-l { font-size: 14px; color: var(--muted); margin-top: 2px; }
+.sc-kpi-s { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.sc-card h3 { margin: 0 0 10px; font-size: 16px; }
+.sc-empty p { max-width: 70ch; }
+.sc-stale { color: #c0392b; }
+.sc-bars { display: flex; flex-direction: column; gap: 8px; }
+.sc-bar-row { display: grid; grid-template-columns: minmax(120px, 230px) 1fr minmax(90px, auto); gap: 10px; align-items: center; }
+.sc-bar-label { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-bar-track { background: #e7ecf3; border-radius: 7px; height: 16px; overflow: hidden; }
+.sc-bar-fill { display: block; height: 100%; background: var(--teal-500); border-radius: 7px; }
+.sc-bar-fill.low { background: #c0392b; }
+.sc-bar-val { font-weight: 700; font-size: 14px; white-space: nowrap; }
+.sc-bar-val small { font-weight: 400; color: var(--muted); }
+
+/* وضع العرض على شاشة القاعة */
+#view-screen.sc-show { background: var(--bg); padding: 26px 32px; overflow: auto; }
+#view-screen.sc-show .no-print, #view-screen.sc-show .sc-tabs { display: none; }
+#view-screen.sc-show .sc-kpi-v { font-size: 52px; }
+#view-screen.sc-show .sc-kpi-l { font-size: 19px; }
+#view-screen.sc-show .sc-bar-label, #view-screen.sc-show .sc-bar-val { font-size: 20px; }
+#view-screen.sc-show .sc-bar-track { height: 26px; }
+#view-screen.sc-show h2, #view-screen.sc-show .sc-card h3 { font-size: 26px; }

@@ -18,6 +18,7 @@
     { id: "converter", label: "تحويل ملف حسب قالب" },
     { id: "hospitality", label: "كشف توزيع الضيافة" },
     { id: "sheets", label: "جداول البيانات" },
+    { id: "screen", label: "شاشة إحصاءات المركز" },
     { id: "history", label: "سجل التعديلات" },
     { id: "tasks", label: "المهام والمتابعات" },
   ];

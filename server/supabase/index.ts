@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 22;
+const VERSION = 23;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -556,6 +556,35 @@ async function revert(revId: unknown, user: any) {
   return { col, id, restored: true };
 }
 
+/* ===== شاشة إحصاءات نظام المركز =====
+   سكربت القراءة (يشغّله الموظف داخل نظام المركز) يدفع لقطة الأرقام برمز خاص بالشاشة،
+   والشاشة في الموقع تقرأها بجلسة المستخدم العادية. اللقطة أرقام مجمّعة، لا بيانات أفراد. */
+const STATS_MAX = 1_500_000;   // حجم اللقطة الواحدة
+
+async function statsKeyOf(create: boolean) {
+  const cur = await kvGet("stats_key");
+  if (cur) return String(cur);
+  if (!create) return null;
+  const key = crypto.randomUUID().replace(/-/g, "");
+  await db.from("kv").upsert({ key: "stats_key", value: key });
+  return key;
+}
+
+async function statsPush(req: any) {
+  const key = await statsKeyOf(false);
+  if (!key || String(req.key || "") !== key) {
+    await new Promise((r) => setTimeout(r, 1500));
+    return { error: "رمز الشاشة غير صحيح" };
+  }
+  const data = req.data && typeof req.data === "object" ? req.data : null;
+  if (!data) throw new Error("لا توجد بيانات في الطلب");
+  const body = JSON.stringify(data);
+  if (body.length > STATS_MAX) throw new Error("اللقطة أكبر مما تقبله الشاشة");
+  const value = { data, at: new Date().toISOString(), by: String(req.by || "").slice(0, 80) };
+  await db.from("kv").upsert({ key: "ksach_stats", value });
+  return { ok: true, at: value.at };
+}
+
 /* ===== مساعد Google (سكربت Apps Script): القراءة الضوئية وإرسال الملخص اليومي ===== */
 const kvGet = async (key: string) => (await db.from("kv").select("value").eq("key", key).maybeSingle()).data?.value ?? null;
 const HELPER_URL = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
@@ -961,6 +990,8 @@ Deno.serve(async (httpReq) => {
         return json(res);
       }
       case "forgot": return json(await forgot(req.username));
+      // لقطة إحصاءات نظام المركز: برمز الشاشة لا بجلسة مستخدم
+      case "statsPush": return json(await statsPush(req));
       case "reset": return json(await resetPassword(req.username, req.code, req.password));
       // النسخة الخارجية على Drive: برمز النسخ لا بجلسة مستخدم
       case "driveSnapshot":
@@ -1026,6 +1057,11 @@ Deno.serve(async (httpReq) => {
       }
       case "reserve": return json(await reserve(req.head, req.count));
       case "search": return json(await search(req.q));
+      case "stats": return json({ stats: await kvGet("ksach_stats") });
+      case "statsKey": {
+        if (!user.admin) throw new Error("رمز الشاشة للمدير وحده");
+        return json({ key: await statsKeyOf(true) });
+      }
       case "backups": return json(await listBackups());
       case "events": return json({ events: await readLog(Number(req.days) || 3, Number(req.limit) || 300) });
       case "ocr": return json(await ocrViaHelper(req));
