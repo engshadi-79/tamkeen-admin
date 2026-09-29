@@ -36,8 +36,27 @@
     const text = norm(Object.values(row || {}).filter((v) => typeof v === "string").join(" "));
     return text.includes(norm(filters.q));
   };
-  /* صف يمر إن طابق كل فلتر يعنيه (الحقل الغائب عن الصف لا يمنعه) */
-  const keep = (row) => hits(row) && FIELDS.every((f) => !filters[f] || row[f] === undefined || like(row[f], filters[f]));
+  /* مسارات المرحلة المختارة: جداول النظام لا تذكر المرحلة في كل صف،
+     فنستنتجها من الصفوف التي تحملها (المجموعات والحضور والدرجات والمتابعات). */
+  let scope = [];
+  function tracksOfPhase(d) {
+    if (!filters.course) return [];
+    const src = [(d.groups || []), (d.attendance || []), ((d.grades || {}).tracks || []),
+      ((d.followUps || {}).pledges || []), ((d.followUps || {}).surveys || [])].flat();
+    const out = new Set();
+    src.forEach((r) => { if (r && r.course && like(r.course, filters.course) && r.track) out.add(String(r.track)); });
+    return [...out];
+  }
+
+  /* صف يمر إن طابق كل فلتر يعنيه؛ والصف الذي لا يحمل المرحلة يُقاس بمسارات المرحلة */
+  function keep(row) {
+    if (!hits(row)) return false;
+    if (!FIELDS.every((f) => !filters[f] || row[f] === undefined || like(row[f], filters[f]))) return false;
+    if (filters.course && row.course === undefined && row.track && scope.length) {
+      return scope.some((t) => like(row.track, t));
+    }
+    return true;
+  }
   const rows = (list) => (list || []).filter(keep);
   const anyFilter = () => !!(filters.q || FIELDS.some((f) => filters[f]));
 
@@ -45,8 +64,15 @@
      فاختيار المرحلة يُبقي مجموعاتها وحدها، واختيار المسار يُبقي مدرّبيه. */
   function choices(d) {
     const out = { track: new Set(), course: new Set(), group: new Set(), trainer: new Set() };
-    // صف يمر بكل الفلاتر عدا الحقل الذي نبني قائمته
-    const fits = (row, skip) => hits(row) && FIELDS.every((f) => f === skip || !filters[f] || row[f] === undefined || like(row[f], filters[f]));
+    // صف يمر بكل الفلاتر عدا الحقل الذي نبني قائمته؛ ومسارات المرحلة تُحترم هنا أيضاً
+    const fits = (row, skip) => {
+      if (!hits(row)) return false;
+      if (!FIELDS.every((f) => f === skip || !filters[f] || row[f] === undefined || like(row[f], filters[f]))) return false;
+      if (skip !== "course" && filters.course && row.course === undefined && row.track && scope.length) {
+        return scope.some((t) => like(row.track, t));
+      }
+      return true;
+    };
     const feed = (list) => (list || []).forEach((r) => FIELDS.forEach((f) => { if (r[f] && fits(r, f)) out[f].add(String(r[f])); }));
     feed(d.tracks); feed(d.attendance); feed(d.groups); feed(d.demographics); feed((d.grades || {}).tracks);
     feed((d.followUps || {}).pledges); feed((d.followUps || {}).surveys);
@@ -285,6 +311,7 @@
       </section>`;
       return;
     }
+    scope = tracksOfPhase(snap.data || {});
     renderFilters(snap.data || {});
     const html = PANELS[panel].build(snap.data || {});
     box.innerHTML = html;
