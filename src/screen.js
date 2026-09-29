@@ -546,7 +546,7 @@
   /* ===== تشغيل سكربت القراءة في نظام المركز =====
      المتصفح لا يسمح لموقع بتشغيل شيء داخل تبويب موقع آخر، فالزر ينسخ السكربت
      ويفتح النظام، والعلامة المرجعية تشغّله بنقرة واحدة بعد سحبها مرة إلى شريط المفضلة. */
-  const KSACH = "https://tamkeen.ksach.org/admin/";
+  const KSACH = "https://tamkeen.ksach.org/admin/dashboard";
   const scriptUrl = () => `${location.origin}${location.pathname.replace(/[^/]*$/, "")}tools/ksach-stats.js`;
   const bookmarklet = () =>
     `javascript:(function(){var s=document.createElement('script');s.src='${scriptUrl()}?'+Date.now();document.body.appendChild(s);})()`;
