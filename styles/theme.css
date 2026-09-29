@@ -879,3 +879,12 @@ body.has-trial-bar #login-screen { top: 38px; }
 .sc-period .sc-f { width: 165px; }
 .sc-period input[type=date] { height: 38px; }
 #view-screen.sc-show .sc-period { display: none; }
+
+/* تبويب الأرقام */
+.sc-nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.sc-num { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
+.sc-num-kind { font-size: 11px; color: var(--teal-600); font-weight: 700; }
+.sc-num-label { font-size: 14px; color: var(--muted); }
+.sc-num-value { font-size: 26px; font-weight: 800; color: var(--navy-900); line-height: 1.2; }
+#view-screen.sc-show .sc-num-value { font-size: 40px; }
+#view-screen.sc-show .sc-nums { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }

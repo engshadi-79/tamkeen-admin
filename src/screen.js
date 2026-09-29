@@ -360,7 +360,77 @@
     ui.toast(`صُدّر ${ui.fmt(ws.rowCount - 1)} اسماً`);
   }
 
+  /* ===== تبويب الأرقام: كل الإحصاءات مربعات، لكل مربع اسمه ونوعه ورقمه ===== */
+  function panelNumbers(d) {
+    const t = rows(d.tracks);
+    const att = rows(d.attendance);
+    const grp = rows(d.groups);
+    const gr = d.grades || {};
+    const gl = rows(gr.tracks);
+    const on = anyFilter() && (gr.tracks || []).length;
+    const pick = (k) => (on ? sum(gl, k) : num(gr[k]));
+    const p = rows(d.demographics);
+    const f = d.followUps || {};
+    const pl = rows(f.pledges);
+    const sv = rows(f.surveys);
+    const tr = (d.trainers || []).filter((x) => hits(x) && (!filters.trainer || like(x.name, filters.trainer)));
+
+    const seats = sum(t, "seats"), students = sum(t, "students");
+    const records = sum(att, "total"), present = sum(att, "present");
+    const gradedCount = on ? sum(gl, "graded") : num(gr.graded);
+    const avg = on ? (sum(gl, "graded") ? Math.round(gl.reduce((a, r) => a + num(r.average) * num(r.graded), 0) / sum(gl, "graded")) : 0) : num(gr.average);
+    const people = sum(p, "male") + sum(p, "female") || sum(p, "count");
+    const signed = sum(pl, "pledged"), noPledge = sum(pl, "missing");
+
+    const items = [
+      ["الطلبات والسعة", "المقاعد", seats],
+      ["الطلبات والسعة", "الطلاب المسجّلون", students],
+      ["الطلبات والسعة", "نسبة إشغال المقاعد", pct(students, seats), "%"],
+      ["الطلبات والسعة", "الطلبات", sum(t, "applications")],
+      ["الطلبات والسعة", "المقبولون", sum(t, "accepted")],
+      ["الطلبات والسعة", "قائمة الانتظار", sum(t, "waiting")],
+      ["الطلبات والسعة", "عدد المسارات", t.length],
+      ["الحضور والمجموعات", "عدد المجموعات", grp.length || att.length],
+      ["الحضور والمجموعات", "معدل الحضور", pct(present, records), "%"],
+      ["الحضور والمجموعات", "سجلات الحضور", records],
+      ["الحضور والمجموعات", "الحاضرون", present],
+      ["الحضور والمجموعات", "الغياب", sum(att, "absent")],
+      ["الحضور والمجموعات", "عدد المدربين", tr.length],
+      ["الحضور والمجموعات", "الجلسات المجدولة", sum(tr, "sessions")],
+      ["الحضور والمجموعات", "الجلسات المكتملة", sum(tr, "done")],
+      ["الحضور والمجموعات", "الساعات التدريبية", sum(tr, "hours")],
+      ["الدرجات والنتائج", "متوسط الدرجات", avg],
+      ["الدرجات والنتائج", "الدرجات المرصودة", gradedCount],
+      ["الدرجات والنتائج", "ناجح", pick("passed")],
+      ["الدرجات والنتائج", "راسب", pick("failed")],
+      ["الدرجات والنتائج", "درجات معتمدة", pick("approved")],
+      ["الدرجات والنتائج", "بانتظار الاعتماد", pick("pending")],
+      ["الدرجات والنتائج", "بانتظار التصحيح", on ? null : num(gr.awaitingGrading)],
+      ["خصائص المتدربين", "إجمالي المتدربين", people],
+      ["خصائص المتدربين", "ذكور", sum(p, "male")],
+      ["خصائص المتدربين", "إناث", sum(p, "female")],
+      ["خصائص المتدربين", "ذوو إعاقة", sum(p, "disabled")],
+      ["خصائص المتدربين", "بلا إعاقة", sum(p, "healthy")],
+      ["خصائص المتدربين", "أعزب", sum(p, "single")],
+      ["خصائص المتدربين", "متزوج", sum(p, "married")],
+      ["المتابعات", "وقّعوا التعهد", signed],
+      ["المتابعات", "لم يوقّعوا التعهد", noPledge],
+      ["المتابعات", "نسبة توقيع التعهد", pct(signed, signed + noPledge), "%"],
+      ["المتابعات", "لم يعبّئوا الاستبيان", sum(sv, "missing")],
+      ["المتابعات", "مجموعات فيها متأخرون", pl.filter((r) => num(r.missing) > 0).length + sv.filter((r) => num(r.missing) > 0).length],
+    ];
+
+    const cards = items.map(([kind, label, value, unit]) => {
+      const shown = value == null ? "—" : ui.fmt(num(value)) + (unit || "");
+      return `<div class="sc-num"><span class="sc-num-kind">${esc(kind)}</span>
+        <span class="sc-num-label">${esc(label)}</span>
+        <span class="sc-num-value">${esc(shown)}</span></div>`;
+    }).join("");
+    return `<div class="sc-nums">${cards}</div>`;
+  }
+
   const PANELS = [
+    { name: "الأرقام", build: panelNumbers },
     { name: "الطلبات والسعة", build: panelTracks },
     { name: "الحضور والمجموعات", build: panelAttendance },
     { name: "الدرجات والنتائج", build: panelGrades },
