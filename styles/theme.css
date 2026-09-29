@@ -870,3 +870,6 @@ body.has-trial-bar #login-screen { top: 38px; }
 .sc-names-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 .sc-name { background: var(--navy-100); border-radius: 99px; padding: 3px 10px; font-size: 13px; }
 #view-screen.sc-show .sc-names { display: none; }
+
+.sc-names-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sc-names-head h3 { margin: 0; }

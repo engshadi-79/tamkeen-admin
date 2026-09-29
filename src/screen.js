@@ -322,8 +322,38 @@
       return `<details class="sc-names-group"><summary>${esc(head)} <b>${ui.fmt((r.names || []).length)}</b></summary>
         <div class="sc-names-list">${chips}</div>${more}</details>`;
     }).join("");
-    return `<section class="card sc-card sc-names wide"><h3>${esc(title)}</h3>
-      <p class="conv-hint">تظهر للمدير فقط، وتختفي في وضع ملء الشاشة.</p>${blocks}</section>`;
+    const kind = withForm ? "survey" : "pledge";
+    const total = withNames.reduce((a, r) => a + (r.names || []).length, 0);
+    return `<section class="card sc-card sc-names wide">
+      <div class="sc-names-head"><h3>${esc(title)} <span class="conv-hint">(${ui.fmt(total)})</span></h3>
+        <button type="button" class="btn small" data-export="${kind}">⬇ تصدير Excel</button></div>
+      <p class="conv-hint">تظهر للمدير فقط، وتختفي في وضع ملء الشاشة. التصدير يتبع الفلاتر المختارة.</p>${blocks}</section>`;
+  }
+
+  /* تصدير الأسماء الظاهرة (بعد الفلترة) إلى ملف Excel */
+  async function exportNames(kind) {
+    const d = (snap && snap.data) || {};
+    const f = d.followUps || {};
+    const list = rows(kind === "survey" ? f.surveys : f.pledges).filter((r) => (r.names || []).length);
+    if (!list.length) { ui.toast("لا توجد أسماء لتصديرها"); return; }
+    if (typeof ExcelJS === "undefined") { ui.toast("تعذّر تحميل مكتبة Excel"); return; }
+    const title = kind === "survey" ? "لم يعبّئوا الاستبيان" : "لم يوقّعوا التعهد";
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(title.slice(0, 28), { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+    ws.columns = [
+      { header: "الاسم", key: "name", width: 28 },
+      { header: "المجموعة", key: "group", width: 18 },
+      { header: "المسار", key: "track", width: 30 },
+      { header: "المرحلة", key: "course", width: 16 },
+      { header: "الاستبيان", key: "form", width: 22 },
+    ];
+    list.forEach((r) => (r.names || []).forEach((n) => ws.addRow({ name: n, group: r.group || "", track: r.track || "", course: r.course || "", form: r.form || "" })));
+    ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3864" } };
+    const buf = await wb.xlsx.writeBuffer();
+    const tag = [filters.course, filters.track, filters.group].filter(Boolean).join(" - ");
+    ui.download(`${title}${tag ? " - " + tag : ""}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    ui.toast(`صُدّر ${ui.fmt(ws.rowCount - 1)} اسماً`);
   }
 
   const PANELS = [
@@ -487,6 +517,11 @@
       filters = { track: "", course: "", group: "", trainer: "", form: "", q: "" };
       saveFilters();
       render();
+    });
+    $("sc-body").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-export]");
+      if (!b) return;
+      exportNames(b.dataset.export);
     });
     $("sc-tabs").addEventListener("click", (e) => {
       const b = e.target.closest("[data-panel]");
