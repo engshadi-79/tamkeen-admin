@@ -17,7 +17,7 @@
 
   /* ===== الفلاتر: تسري على كل اللوحات ===== */
   const FILTER_KEY = "tamkeen-admin:screen-filters";
-  const FIELDS = ["track", "course", "group", "trainer"];
+  const FIELDS = ["course", "track", "group", "trainer"];
   let filters = { track: "", course: "", group: "", trainer: "", q: "" };
   try { filters = Object.assign(filters, JSON.parse(localStorage.getItem(FILTER_KEY) || "{}")); } catch (e) { /* تخزين غير متاح */ }
   const saveFilters = () => { try { localStorage.setItem(FILTER_KEY, JSON.stringify(filters)); } catch (e) { /* تخزين ممتلئ */ } };
@@ -41,12 +41,19 @@
   const rows = (list) => (list || []).filter(keep);
   const anyFilter = () => !!(filters.q || FIELDS.some((f) => filters[f]));
 
-  /* قيم القوائم المنسدلة من اللقطة نفسها */
+  /* قيم القوائم المنسدلة: كل قائمة تعرض ما يتوافق مع بقية الفلاتر المختارة،
+     فاختيار المرحلة يُبقي مجموعاتها وحدها، واختيار المسار يُبقي مدرّبيه. */
   function choices(d) {
     const out = { track: new Set(), course: new Set(), group: new Set(), trainer: new Set() };
-    const feed = (list) => (list || []).forEach((r) => FIELDS.forEach((f) => { if (r[f]) out[f].add(String(r[f])); }));
+    // صف يمر بكل الفلاتر عدا الحقل الذي نبني قائمته
+    const fits = (row, skip) => hits(row) && FIELDS.every((f) => f === skip || !filters[f] || row[f] === undefined || like(row[f], filters[f]));
+    const feed = (list) => (list || []).forEach((r) => FIELDS.forEach((f) => { if (r[f] && fits(r, f)) out[f].add(String(r[f])); }));
     feed(d.tracks); feed(d.attendance); feed(d.groups); feed(d.demographics); feed((d.grades || {}).tracks);
-    (d.trainers || []).forEach((t) => { if (t.name) out.trainer.add(t.name); });
+    // المدرب يُستمد من المجموعات الباقية، فقائمة المدربين تتبع المرحلة والمسار
+    const kept = new Set((d.groups || []).filter((g) => fits(g, "trainer")).map((g) => norm(g.trainer)).filter(Boolean));
+    (d.trainers || []).forEach((t) => { if (t.name && (!kept.size || kept.has(norm(t.name)))) out.trainer.add(t.name); });
+    // ما اخترته يبقى ظاهراً في قائمته حتى لو ضيّقته فلاتر أخرى
+    FIELDS.forEach((f) => { if (filters[f]) out[f].add(filters[f]); });
     const sort = (set) => [...set].sort((a, b) => a.localeCompare(b, "ar"));
     /* «الخياطة» و«الخياطة والتفصيل» اسمان لمسار واحد في جدولين: يُبقى الأطول */
     const merge = (set) => {
@@ -60,7 +67,7 @@
     const bar = $("sc-filters");
     if (!bar) return;
     const c = choices(d || {});
-    const LABEL = { track: "كل المسارات", course: "كل الدورات", group: "كل المجموعات", trainer: "كل المدربين" };
+    const LABEL = { course: "كل المراحل", track: "كل المسارات", group: "كل المجموعات", trainer: "كل المدربين" };
     bar.innerHTML = FIELDS.map((f) => (c[f].length ? `<select data-f="${f}" aria-label="${esc(LABEL[f])}">
         <option value="">${esc(LABEL[f])}</option>
         ${c[f].map((v) => `<option ${v === filters[f] ? "selected" : ""}>${esc(v)}</option>`).join("")}
