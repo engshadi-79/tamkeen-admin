@@ -73,14 +73,17 @@
     const bar = $("sc-filters");
     if (!bar) return;
     const c = choices(d || {});
-    // المرحلة والمجموعة أولاً وبحجم أبرز، ثم بقية الفلاتر
-    const box = (f) => (c[f].length ? `<label class="sc-f ${f === "course" || f === "group" ? "main" : ""}">
-        <span>${esc(TITLE[f])}</span>
-        <select data-f="${f}" aria-label="${esc(TITLE[f])}">
-          <option value="">${esc(ALL[f])}</option>
-          ${c[f].map((v) => `<option value="${esc(v)}" ${v === filters[f] ? "selected" : ""}>${esc(shown(f, v))}</option>`).join("")}
-        </select>
-      </label>` : "");
+    // المرحلة والمجموعة أولاً وبحجم أبرز، ثم بقية الفلاتر.
+    // فلتر بلا قيم في اللقطة يظهر معطّلاً بسبب ظاهر، لا يختفي بلا تفسير.
+    const main = (f) => f === "course" || f === "group";
+    const box = (f) => {
+      if (!c[f].length && !main(f)) return "";
+      const off = !c[f].length;
+      // سطر واحد بلا فراغات بين الوسوم: الفراغ داخل عنصر flex يصير صفاً فارغاً
+      const opts = `<option value="">${off ? "لا توجد في اللقطة" : esc(ALL[f])}</option>`
+        + c[f].map((v) => `<option value="${esc(v)}" ${v === filters[f] ? "selected" : ""}>${esc(shown(f, v))}</option>`).join("");
+      return `<label class="sc-f ${main(f) ? "sc-main" : ""} ${off ? "off" : ""}"><span>${esc(TITLE[f])}</span><select data-f="${f}" aria-label="${esc(TITLE[f])}" ${off ? "disabled" : ""}>${opts}</select></label>`;
+    };
     bar.innerHTML = FIELDS.map(box).join("")
       + `<label class="sc-f"><span>بحث</span><input type="search" id="sc-q" placeholder="اسم مجموعة أو مدرب…" value="${esc(filters.q)}"></label>`
       + (anyFilter() ? `<button type="button" class="btn small secondary" id="sc-clear">✕ مسح الفلاتر</button>` : "");
@@ -262,8 +265,13 @@
     if (!snap) snap = cached();
     const info = $("sc-updated");
     if (info) {
+      // ما الذي وصل فعلاً في اللقطة: يكشف بسرعة أي جدول لم يُقرأ
+      const d = (snap && snap.data) || {};
+      const counts = snap ? ` · ${ui.fmt((d.tracks || []).length)} مسار · ${ui.fmt((d.groups || []).length)} مجموعة`
+        + ` · ${ui.fmt([...new Set((d.groups || []).map((g) => g.course).filter(Boolean))].length)} مرحلة`
+        + ` · ${ui.fmt(((d.followUps || {}).pledges || []).length)} صف متابعة` : "";
       info.textContent = snap
-        ? `آخر تحديث: ${new Date(snap.at).toLocaleString("ar-EG")}${snap.by ? ` · ${snap.by}` : ""}`
+        ? `آخر تحديث: ${new Date(snap.at).toLocaleString("ar-EG")}${snap.by ? ` · ${snap.by}` : ""}${counts}`
         : "لم تصل لقطة بعد";
       info.className = "conv-hint" + (snap && Date.now() - new Date(snap.at).getTime() > 6 * 3600000 ? " sc-stale" : "");
     }
