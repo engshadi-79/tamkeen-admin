@@ -85,7 +85,7 @@
     App.shared.init();
     App.ai.migrateToShared();
     App.registry.init();
-    App.screen.init();
+    if (App.screen) App.screen.init();
     if (App.watch) App.watch.init();
     App.roster.init();
     App.admin.init();

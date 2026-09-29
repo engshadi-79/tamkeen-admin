@@ -251,6 +251,8 @@
   }
 
   function init() {
+    // نسخة قديمة من الصفحة في مخزن المتصفح: لا نكسر بقية النظام
+    if (!$("sc-body") || !$("sc-refresh")) return;
     $("sc-refresh").addEventListener("click", () => load(false));
     $("sc-full").addEventListener("click", fullscreen);
     $("sc-key").addEventListener("click", copyKey);
