@@ -1030,3 +1030,76 @@ tbody tr:hover { background: #f9fafb; }
 /* التبويبات الداخلية على شكل أقراص */
 .conv-tabs button { border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: #626d7d; font-weight: 500; }
 .conv-tabs button.active { background: var(--teal-500); border-color: var(--teal-500); color: #fff; }
+
+/* ===== بطاقة المستخدم في الشريط الجانبي ===== */
+.side-user { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,.06); white-space: nowrap; }
+.side-avatar {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(26,187,156,.16); color: #1ABB9C;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
+}
+.side-user-text { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.side-user-text b { color: #e6ebf2; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.side-user-text small { color: #7b8fa3; font-size: 11px; }
+.sidebar:not(:hover):not(:focus-within) .side-user { justify-content: center; padding: 12px 0; }
+.sidebar:not(:hover):not(:focus-within) .side-user-text { display: none; }
+
+/* ===== تذييل الصفحة ===== */
+.app-foot {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-top: 26px; padding: 14px 4px 0; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 12px;
+}
+
+/* زر الوضع الليلي */
+.tt-theme { font-size: 15px; line-height: 1; }
+
+/* ===== الوضع الليلي (رموز قالب Gentelella v4) ===== */
+:root[data-theme="dark"] {
+  --bg: #0f1623;
+  --surface: #1a2332;
+  --navy-100: #223048;
+  --navy-800: #e6ebf2;
+  --navy-900: #141d2b;
+  --border: rgba(255,255,255,.08);
+  --text: #e6ebf2;
+  --muted: #8a93a3;
+  --teal-100: rgba(26,187,156,.14);
+  --danger-bg: rgba(214,57,57,.16);
+  --warn-bg: rgba(245,159,0,.16);
+  --shadow: 0 0 0 1px rgba(255,255,255,.08), rgba(0,0,0,.3) 0 2px 4px 0;
+}
+:root[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+:root[data-theme="dark"] .sidebar { background: #141d2b; }
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .stat,
+:root[data-theme="dark"] .top-tools,
+:root[data-theme="dark"] .modal { background: var(--surface); color: var(--text); }
+:root[data-theme="dark"] input[type=text], :root[data-theme="dark"] input[type=number],
+:root[data-theme="dark"] input[type=date], :root[data-theme="dark"] input[type=password],
+:root[data-theme="dark"] input[type=email], :root[data-theme="dark"] input[type=url],
+:root[data-theme="dark"] input[type=search], :root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+  background: #141d2b; color: var(--text); border-color: var(--border);
+}
+:root[data-theme="dark"] th { background: #141d2b; color: #b3bccb; }
+:root[data-theme="dark"] td { border-bottom-color: rgba(255,255,255,.06); }
+:root[data-theme="dark"] tbody tr:hover { background: rgba(255,255,255,.03); }
+:root[data-theme="dark"] .btn.secondary { background: #223048; color: var(--text); border-color: var(--border); }
+:root[data-theme="dark"] .btn.secondary:hover { background: #2b3a55; }
+:root[data-theme="dark"] .conv-tabs button { background: #223048; color: #b3bccb; border-color: var(--border); }
+:root[data-theme="dark"] .conv-tabs button.active { background: var(--teal-500); color: #06231d; }
+:root[data-theme="dark"] .login-card { background: var(--surface); }
+:root[data-theme="dark"] .sc-bar-track { background: #223048; }
+:root[data-theme="dark"] .sc-name { background: rgba(26,187,156,.16); color: #7ee8d0; }
+:root[data-theme="dark"] .modal-backdrop { background: rgba(6, 12, 22, .72); }
+/* صفحة الشاشة: ألوانها الخاصة تتبع الوضع الليلي أيضاً */
+:root[data-theme="dark"] #view-screen.gt {
+  --gt-bg: #0f1623; --gt-surface: #1a2332; --gt-border: rgba(255,255,255,.08);
+  --gt-text: #e6ebf2; --gt-muted: #8a93a3; --gt-second: #b3bccb;
+  --gt-translucent: rgba(255,255,255,.08);
+  --gt-shadow: 0 0 0 1px rgba(255,255,255,.08), rgba(0,0,0,.3) 0 2px 4px 0;
+}
+:root[data-theme="dark"] #view-screen.gt .sc-bar-track { background: #223048; }
+/* الطباعة دائماً فاتحة */
+@media print { :root[data-theme="dark"] { --bg: #fff; --surface: #fff; --text: #111; } }

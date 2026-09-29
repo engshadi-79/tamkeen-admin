@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=195">
+  <link rel="stylesheet" href="styles/theme.css?v=198">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -48,6 +48,13 @@
         <h1>مساعد <span class="accent">تمكين</span> الإداري</h1>
         <small>مركز مسارات التمكين · PP-003</small>
       </div>
+      <div class="side-user" id="side-user" hidden>
+        <span class="side-avatar" id="side-avatar">؟</span>
+        <span class="side-user-text">
+          <b id="side-user-name"></b>
+          <small id="side-user-role"></small>
+        </span>
+      </div>
       <ul class="nav">
         <li><button data-view="dashboard"><span class="ico">▦</span>اللوحة الرئيسية</button></li>
         <li><button data-view="tracks"><span class="ico">◧</span>متابعة المسارات</button></li>
@@ -80,6 +87,7 @@
       <div class="top-tools no-print">
         <button type="button" class="tt-search" id="gs-open" title="بحث شامل (Ctrl+K)">🔍 <span>بحث في كل الأقسام…</span><kbd>Ctrl K</kbd></button>
         <button type="button" class="tt-btn" id="pwa-install" hidden title="تثبيت النظام تطبيقاً على هذا الجهاز">⤓ <span>تثبيت التطبيق</span></button>
+        <button type="button" class="tt-btn tt-theme" id="theme-toggle" title="تبديل الوضع الليلي" aria-label="تبديل الوضع الليلي">🌙</button>
         <button type="button" class="tt-btn tt-account" data-profile title="حسابي: كلمة المرور والجلسات">👤 حسابي</button>
         <button type="button" class="tt-btn tt-logout" id="tt-logout" hidden title="تسجيل الخروج من هذا الجهاز">⎋ <span>خروج</span></button>
         <div class="tt-bell-wrap">
@@ -776,6 +784,10 @@
         </div>
         <ul class="task-list" id="task-list"></ul>
       </section>
+      <footer class="app-foot no-print">
+        <span>مساعد تمكين الإداري — مركز مسارات التمكين للتدريب والتطوير</span>
+        <span id="foot-version"></span>
+      </footer>
     </main>
   </div>
 
@@ -1221,48 +1233,48 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=195"></script>
-  <script src="src/ui.js?v=195"></script>
-  <script src="src/templates.js?v=195"></script>
-  <script src="src/tracks.js?v=195"></script>
-  <script src="src/tasks.js?v=195"></script>
-  <script src="src/dashboard.js?v=195"></script>
-  <script src="src/letterhead-docx.js?v=195"></script>
-  <script src="src/docx.js?v=195"></script>
-  <script src="src/ai.js?v=195"></script>
-  <script src="src/doc-render.js?v=195"></script>
-  <script src="src/files-store.js?v=195"></script>
-  <script src="src/shared.js?v=195"></script>
-  <script src="src/cloud.js?v=195"></script>
-  <script src="src/drive.js?v=195"></script>
-  <script src="src/drive-ui.js?v=195"></script>
-  <script src="src/rtl-fixer.js?v=195"></script>
-  <script src="src/rtl-page.js?v=195"></script>
-  <script src="src/profile.js?v=195"></script>
-  <script src="src/admin.js?v=195"></script>
-  <script src="src/roster.js?v=195"></script>
-  <script src="src/registry.js?v=195"></script>
-  <script src="src/watch.js?v=195"></script>
-  <script src="src/charts.js?v=195"></script>
-  <script src="src/ai-assist.js?v=195"></script>
-  <script src="src/meetings.js?v=195"></script>
-  <script src="src/report.js?v=195"></script>
-  <script src="src/screen.js?v=195"></script>
-  <script src="src/letters.js?v=195"></script>
+  <script src="src/storage.js?v=198"></script>
+  <script src="src/ui.js?v=198"></script>
+  <script src="src/templates.js?v=198"></script>
+  <script src="src/tracks.js?v=198"></script>
+  <script src="src/tasks.js?v=198"></script>
+  <script src="src/dashboard.js?v=198"></script>
+  <script src="src/letterhead-docx.js?v=198"></script>
+  <script src="src/docx.js?v=198"></script>
+  <script src="src/ai.js?v=198"></script>
+  <script src="src/doc-render.js?v=198"></script>
+  <script src="src/files-store.js?v=198"></script>
+  <script src="src/shared.js?v=198"></script>
+  <script src="src/cloud.js?v=198"></script>
+  <script src="src/drive.js?v=198"></script>
+  <script src="src/drive-ui.js?v=198"></script>
+  <script src="src/rtl-fixer.js?v=198"></script>
+  <script src="src/rtl-page.js?v=198"></script>
+  <script src="src/profile.js?v=198"></script>
+  <script src="src/admin.js?v=198"></script>
+  <script src="src/roster.js?v=198"></script>
+  <script src="src/registry.js?v=198"></script>
+  <script src="src/watch.js?v=198"></script>
+  <script src="src/charts.js?v=198"></script>
+  <script src="src/ai-assist.js?v=198"></script>
+  <script src="src/meetings.js?v=198"></script>
+  <script src="src/report.js?v=198"></script>
+  <script src="src/screen.js?v=198"></script>
+  <script src="src/letters.js?v=198"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=195"></script>
-  <script src="src/converter-store.js?v=195"></script>
-  <script src="src/converter.js?v=195"></script>
+  <script src="src/converter-core.js?v=198"></script>
+  <script src="src/converter-store.js?v=198"></script>
+  <script src="src/converter.js?v=198"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=195"></script>
-  <script src="src/sheets.js?v=195"></script>
-  <script src="src/history.js?v=195"></script>
-  <script src="src/roster-audit.js?v=195"></script>
-  <script src="src/notify.js?v=195"></script>
-  <script src="src/search.js?v=195"></script>
-  <script src="src/realtime.js?v=195"></script>
-  <script src="src/app.js?v=195"></script>
+  <script src="src/hospitality.js?v=198"></script>
+  <script src="src/sheets.js?v=198"></script>
+  <script src="src/history.js?v=198"></script>
+  <script src="src/roster-audit.js?v=198"></script>
+  <script src="src/notify.js?v=198"></script>
+  <script src="src/search.js?v=198"></script>
+  <script src="src/realtime.js?v=198"></script>
+  <script src="src/app.js?v=198"></script>
 </body>
 </html>

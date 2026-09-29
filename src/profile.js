@@ -30,7 +30,20 @@
   };
 
   /* إخفاء أزرار القائمة الجانبية لما لا يُسمح به */
+  /* بطاقة المستخدم في أعلى الشريط الجانبي */
+  function renderSideUser() {
+    const box = document.getElementById("side-user");
+    if (!box) return;
+    const who = name();
+    box.hidden = !who;
+    if (!who) return;
+    document.getElementById("side-user-name").textContent = who;
+    document.getElementById("side-user-role").textContent = isAdmin() ? "مدير النظام" : "مستخدم";
+    document.getElementById("side-avatar").textContent = who.trim().charAt(0) || "؟";
+  }
+
   function applyAccess() {
+    renderSideUser();
     document.querySelectorAll("[data-view]").forEach((b) => { b.hidden = !canView(b.dataset.view); });
     document.querySelectorAll("[data-admin-only]").forEach((b) => { b.hidden = !isAdmin(); });
     document.querySelectorAll("[data-perm]").forEach((b) => { b.hidden = !can(b.dataset.perm); });

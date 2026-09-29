@@ -31,6 +31,29 @@
     window.scrollTo(0, 0);
   }
 
+  /* ===== الوضع الليلي (رموز قالب Gentelella) ===== */
+  const THEME_KEY = "tamkeen-admin:theme";
+  function applyTheme(mode) {
+    document.documentElement.setAttribute("data-theme", mode);
+    const btn = document.getElementById("theme-toggle");
+    if (btn) { btn.textContent = mode === "dark" ? "☀" : "🌙"; btn.title = mode === "dark" ? "الوضع النهاري" : "الوضع الليلي"; }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", mode === "dark" ? "#0f1623" : "#1a2332");
+  }
+  function initTheme() {
+    let mode = "";
+    try { mode = localStorage.getItem(THEME_KEY) || ""; } catch (e) { /* تخزين غير متاح */ }
+    if (!mode) mode = "light";   // الافتراضي نهاري؛ الوضع الليلي باختيار المستخدم من زر 🌙
+    applyTheme(mode);
+    const btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      applyTheme(next);
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* تخزين غير متاح */ }
+    });
+  }
+
   /* زر «تثبيت التطبيق»: يظهر حين يسمح المتصفح بالتثبيت (كروم وإيدج وأندرويد) */
   function initInstall() {
     let prompt = null;
@@ -84,6 +107,7 @@
     App.profile.init();
     App.shared.init();
     App.ai.migrateToShared();
+    initTheme();
     App.registry.init();
     if (App.screen) App.screen.init();
     if (App.watch) App.watch.init();
