@@ -854,3 +854,11 @@ body.has-trial-bar #login-screen { top: 38px; }
 #sc-filters .sc-f { flex: 0 0 auto; align-self: flex-end; height: auto; }
 #sc-filters .sc-f.sc-main { width: 210px; }
 #sc-filters .sc-f select, #sc-filters .sc-f input[type="search"] { height: 38px; }
+
+/* شريط الفلاتر: العنوان بجانب حقله، والكل في سطر واحد */
+#sc-filters.sc-filters { align-items: center; gap: 8px 16px; }
+#sc-filters .sc-f { flex-direction: row; align-items: center; gap: 6px; width: auto; }
+#sc-filters .sc-f > span { white-space: nowrap; font-size: 13px; color: var(--navy-800); }
+#sc-filters .sc-f select { width: auto; min-width: 150px; }
+#sc-filters .sc-f.sc-main select { min-width: 175px; font-size: 14px; border-color: var(--border); }
+#sc-filters .sc-f input[type="search"] { width: 190px; }

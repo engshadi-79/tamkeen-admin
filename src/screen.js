@@ -39,6 +39,16 @@
   /* مسارات المرحلة المختارة: جداول النظام لا تذكر المرحلة في كل صف،
      فنستنتجها من الصفوف التي تحملها (المجموعات والحضور والدرجات والمتابعات). */
   let scope = [];
+  let phaseOfGroup = new Map();   // المجموعة ← مرحلتها، من أي جدول ذكرهما معاً
+
+  function groupPhases(d) {
+    const src = [(d.groups || []), (d.attendance || []), ((d.grades || {}).tracks || []),
+      ((d.followUps || {}).pledges || []), ((d.followUps || {}).surveys || [])].flat();
+    const map = new Map();
+    src.forEach((r) => { if (r && r.group && r.course && !map.has(String(r.group))) map.set(String(r.group), String(r.course)); });
+    return map;
+  }
+
   function tracksOfPhase(d) {
     if (!filters.course) return [];
     const src = [(d.groups || []), (d.attendance || []), ((d.grades || {}).tracks || []),
@@ -49,12 +59,17 @@
   }
 
   /* صف يمر إن طابق كل فلتر يعنيه؛ والصف الذي لا يحمل المرحلة يُقاس بمسارات المرحلة */
+  /* مرحلة الصف: من الصف نفسه، أو من مجموعته إن عرفناها من جدول آخر */
+  const phaseOf = (row) => row.course || (row.group ? phaseOfGroup.get(String(row.group)) : "") || "";
+
   function keep(row) {
     if (!hits(row)) return false;
-    if (!FIELDS.every((f) => !filters[f] || row[f] === undefined || like(row[f], filters[f]))) return false;
-    if (filters.course && row.course === undefined && row.track && scope.length) {
-      return scope.some((t) => like(row.track, t));
-    }
+    if (!FIELDS.filter((f) => f !== "course").every((f) => !filters[f] || row[f] === undefined || like(row[f], filters[f]))) return false;
+    if (!filters.course) return true;
+    const phase = phaseOf(row);
+    if (phase) return like(phase, filters.course);
+    // لا مرحلة ولا مجموعة معروفة: يُقاس بمسارات المرحلة إن أمكن
+    if (row.track && scope.length) return scope.some((t) => like(row.track, t));
     return true;
   }
   const rows = (list) => (list || []).filter(keep);
@@ -67,10 +82,11 @@
     // صف يمر بكل الفلاتر عدا الحقل الذي نبني قائمته؛ ومسارات المرحلة تُحترم هنا أيضاً
     const fits = (row, skip) => {
       if (!hits(row)) return false;
-      if (!FIELDS.every((f) => f === skip || !filters[f] || row[f] === undefined || like(row[f], filters[f]))) return false;
-      if (skip !== "course" && filters.course && row.course === undefined && row.track && scope.length) {
-        return scope.some((t) => like(row.track, t));
-      }
+      if (!FIELDS.filter((f) => f !== "course" && f !== skip).every((f) => !filters[f] || row[f] === undefined || like(row[f], filters[f]))) return false;
+      if (skip === "course" || !filters.course) return true;
+      const phase = phaseOf(row);
+      if (phase) return like(phase, filters.course);
+      if (row.track && scope.length) return scope.some((t) => like(row.track, t));
       return true;
     };
     const feed = (list) => (list || []).forEach((r) => FIELDS.forEach((f) => { if (r[f] && fits(r, f)) out[f].add(String(r[f])); }));
@@ -311,6 +327,7 @@
       </section>`;
       return;
     }
+    phaseOfGroup = groupPhases(snap.data || {});
     scope = tracksOfPhase(snap.data || {});
     renderFilters(snap.data || {});
     const html = PANELS[panel].build(snap.data || {});
@@ -410,6 +427,13 @@
     $("sc-full").addEventListener("click", fullscreen);
     $("sc-key").addEventListener("click", copyKey);
     $("sc-how").addEventListener("click", howTo);
+    $("sc-copy").addEventListener("click", async () => {
+      if (!snap) { ui.toast("لا توجد لقطة بعد"); return; }
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(snap, null, 1));
+        ui.toast("نُسخت اللقطة — أرقام مجمّعة بلا أسماء");
+      } catch (e) { ui.toast("تعذّر النسخ: " + e.message); }
+    });
     $("sc-filters").addEventListener("change", (e) => {
       const sel = e.target.closest("[data-f]");
       if (!sel) return;
