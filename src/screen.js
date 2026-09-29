@@ -17,8 +17,8 @@
 
   /* ===== الفلاتر: تسري على كل اللوحات ===== */
   const FILTER_KEY = "tamkeen-admin:screen-filters";
-  const FIELDS = ["course", "group", "track", "trainer"];
-  let filters = { track: "", course: "", group: "", trainer: "", q: "" };
+  const FIELDS = ["course", "group", "track", "trainer", "form"];
+  let filters = { track: "", course: "", group: "", trainer: "", form: "", q: "" };
   try { filters = Object.assign(filters, JSON.parse(localStorage.getItem(FILTER_KEY) || "{}")); } catch (e) { /* تخزين غير متاح */ }
   const saveFilters = () => { try { localStorage.setItem(FILTER_KEY, JSON.stringify(filters)); } catch (e) { /* تخزين ممتلئ */ } };
 
@@ -92,7 +92,7 @@
   /* قيم القوائم المنسدلة: كل قائمة تعرض ما يتوافق مع بقية الفلاتر المختارة،
      فاختيار المرحلة يُبقي مجموعاتها وحدها، واختيار المسار يُبقي مدرّبيه. */
   function choices(d) {
-    const out = { track: new Set(), course: new Set(), group: new Set(), trainer: new Set() };
+    const out = { track: new Set(), course: new Set(), group: new Set(), trainer: new Set(), form: new Set() };
     // صف يمر بكل الفلاتر عدا الحقل الذي نبني قائمته؛ ومسارات المرحلة تُحترم هنا أيضاً
     const fits = (row, skip) => {
       if (!hits(row)) return false;
@@ -117,13 +117,13 @@
       const all = sort(set);
       return all.filter((v) => !all.some((o) => o !== v && norm(o).includes(norm(v)) && norm(o).length > norm(v).length));
     };
-    return { track: merge(out.track), course: sort(out.course), group: sort(out.group), trainer: sort(out.trainer) };
+    return { track: merge(out.track), course: sort(out.course), group: sort(out.group), trainer: sort(out.trainer), form: sort(out.form) };
   }
 
   /* النظام يسمّيها «الدورة»، والمستخدم يسمّيها «المرحلة» — تُعرض بتسميته وتُطابَق بقيمتها */
   const shown = (f, v) => (f === "course" ? String(v).replace(/الدورة/g, "المرحلة") : String(v));
-  const TITLE = { course: "المرحلة", group: "المجموعة", track: "المسار", trainer: "المدرب" };
-  const ALL = { course: "كل المراحل", group: "كل المجموعات", track: "كل المسارات", trainer: "كل المدربين" };
+  const TITLE = { course: "المرحلة", group: "المجموعة", track: "المسار", trainer: "المدرب", form: "الاستبيان" };
+  const ALL = { course: "كل المراحل", group: "كل المجموعات", track: "كل المسارات", trainer: "كل المدربين", form: "كل الاستبيانات" };
 
   function renderFilters(d) {
     const bar = $("sc-filters");
@@ -299,10 +299,10 @@
           value: num(r.missing),
           note: num(r.students) ? `من ${ui.fmt(num(r.students))}` : "",
         })), {}), true)
-      + card("لم يعبّئوا الاستبيان — لكل مجموعة", bars(sv.filter((r) => num(r.missing) > 0).map((r) => ({
-          label: [r.group, r.track].filter(Boolean).join(" · ") || "—",
+      + card("لم يعبّئوا الاستبيان — لكل مجموعة واستبيان", bars(sv.filter((r) => num(r.missing) > 0).map((r) => ({
+          label: [r.form, r.group].filter(Boolean).join(" — ") || r.track || "—",
           value: num(r.missing),
-          note: r.course || "",
+          note: [r.track, r.course].filter(Boolean).join(" · "),
         })), {}), true);
   }
 
@@ -464,7 +464,7 @@
     });
     $("sc-filters").addEventListener("click", (e) => {
       if (!e.target.closest("#sc-clear")) return;
-      filters = { track: "", course: "", group: "", trainer: "", q: "" };
+      filters = { track: "", course: "", group: "", trainer: "", form: "", q: "" };
       saveFilters();
       render();
     });
