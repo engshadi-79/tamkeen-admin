@@ -543,6 +543,27 @@
     w.document.close();
   }
 
+  /* ===== تشغيل سكربت القراءة في نظام المركز =====
+     المتصفح لا يسمح لموقع بتشغيل شيء داخل تبويب موقع آخر، فالزر ينسخ السكربت
+     ويفتح النظام، والعلامة المرجعية تشغّله بنقرة واحدة بعد سحبها مرة إلى شريط المفضلة. */
+  const KSACH = "https://tamkeen.ksach.org/admin/";
+  const scriptUrl = () => `${location.origin}${location.pathname.replace(/[^/]*$/, "")}tools/ksach-stats.js`;
+  const bookmarklet = () =>
+    `javascript:(function(){var s=document.createElement('script');s.src='${scriptUrl()}?'+Date.now();document.body.appendChild(s);})()`;
+
+  async function runInKsach() {
+    let copied = false;
+    try {
+      const code = await (await fetch(scriptUrl() + "?t=" + Date.now())).text();
+      await navigator.clipboard.writeText(code);
+      copied = true;
+    } catch (e) { /* الحافظة أو الشبكة */ }
+    window.open(KSACH, "_blank", "noopener");
+    ui.toast(copied
+      ? "فُتح النظام، والسكربت في الحافظة: اضغط F12 ← Console ← لصق ← Enter"
+      : "فُتح النظام. تعذّر نسخ السكربت — افتح «طريقة التشغيل» للخطوات");
+  }
+
   /* ===== وضع العرض: ملء الشاشة وتبديل اللوحات ===== */
   function rotate(on) {
     clearInterval(rotateTimer);
@@ -591,8 +612,14 @@
     w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تشغيل شاشة إحصاءات المركز</title>
       <style>body{font-family:Tahoma,Arial;margin:26px;line-height:1.9;background:#f4f6fa;color:#1b2433}
       h1{font-size:17pt;background:#0b1f3a;color:#fff;padding:10px;border-radius:8px}
-      li{margin:8px 0}code{background:#e7ecf3;padding:2px 6px;border-radius:4px}</style></head><body>
+      li{margin:8px 0}code{background:#e7ecf3;padding:2px 6px;border-radius:4px}
+      .mark{background:#e9f6f6;border:1px solid #0f8b8d;border-radius:10px;padding:10px}
+      .bm{display:inline-block;background:#0b1f3a;color:#fff;text-decoration:none;padding:6px 14px;border-radius:8px;margin:0 6px}
+      </style></head><body>
       <h1>كيف تعمل شاشة إحصاءات المركز؟</h1>
+      <p class="mark"><b>أسرع طريقة (مرة واحدة):</b> اسحب هذا الزر إلى شريط المفضلة في متصفحك:
+        <a class="bm" href="${bookmarklet().replace(/"/g, "&quot;")}">▶ تشغيل إحصاءات تمكين</a>
+        ثم افتح نظام المركز واضغط عليه — يعمل السكربت بنقرة واحدة بلا Console.</p>
       <ol>
         <li>المدير يضغط <b>«نسخ رمز الشاشة»</b> في أعلى الصفحة (الرمز يُنسخ ولا يظهر).</li>
         <li>افتح نظام المركز <code>tamkeen.ksach.org/admin</code> في تبويب جديد وأنت مسجّل دخولك.</li>
@@ -633,6 +660,7 @@
     $("sc-key").addEventListener("click", copyKey);
     $("sc-how").addEventListener("click", howTo);
     $("sc-report").addEventListener("click", fullReport);
+    $("sc-run").addEventListener("click", runInKsach);
     $("sc-period-apply").addEventListener("click", () => savePeriod(false));
     $("sc-period-clear").addEventListener("click", () => savePeriod(true));
     showPeriod();
