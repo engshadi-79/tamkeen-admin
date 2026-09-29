@@ -17,7 +17,7 @@
 
   /* ===== الفلاتر: تسري على كل اللوحات ===== */
   const FILTER_KEY = "tamkeen-admin:screen-filters";
-  const FIELDS = ["course", "track", "group", "trainer"];
+  const FIELDS = ["course", "group", "track", "trainer"];
   let filters = { track: "", course: "", group: "", trainer: "", q: "" };
   try { filters = Object.assign(filters, JSON.parse(localStorage.getItem(FILTER_KEY) || "{}")); } catch (e) { /* تخزين غير متاح */ }
   const saveFilters = () => { try { localStorage.setItem(FILTER_KEY, JSON.stringify(filters)); } catch (e) { /* تخزين ممتلئ */ } };
@@ -64,16 +64,25 @@
     return { track: merge(out.track), course: sort(out.course), group: sort(out.group), trainer: sort(out.trainer) };
   }
 
+  /* النظام يسمّيها «الدورة»، والمستخدم يسمّيها «المرحلة» — تُعرض بتسميته وتُطابَق بقيمتها */
+  const shown = (f, v) => (f === "course" ? String(v).replace(/الدورة/g, "المرحلة") : String(v));
+  const TITLE = { course: "المرحلة", group: "المجموعة", track: "المسار", trainer: "المدرب" };
+  const ALL = { course: "كل المراحل", group: "كل المجموعات", track: "كل المسارات", trainer: "كل المدربين" };
+
   function renderFilters(d) {
     const bar = $("sc-filters");
     if (!bar) return;
     const c = choices(d || {});
-    const LABEL = { course: "كل المراحل", track: "كل المسارات", group: "كل المجموعات", trainer: "كل المدربين" };
-    bar.innerHTML = FIELDS.map((f) => (c[f].length ? `<select data-f="${f}" aria-label="${esc(LABEL[f])}">
-        <option value="">${esc(LABEL[f])}</option>
-        ${c[f].map((v) => `<option ${v === filters[f] ? "selected" : ""}>${esc(v)}</option>`).join("")}
-      </select>` : "")).join("")
-      + `<input type="search" id="sc-q" placeholder="بحث في الأسماء…" value="${esc(filters.q)}">`
+    // المرحلة والمجموعة أولاً وبحجم أبرز، ثم بقية الفلاتر
+    const box = (f) => (c[f].length ? `<label class="sc-f ${f === "course" || f === "group" ? "main" : ""}">
+        <span>${esc(TITLE[f])}</span>
+        <select data-f="${f}" aria-label="${esc(TITLE[f])}">
+          <option value="">${esc(ALL[f])}</option>
+          ${c[f].map((v) => `<option value="${esc(v)}" ${v === filters[f] ? "selected" : ""}>${esc(shown(f, v))}</option>`).join("")}
+        </select>
+      </label>` : "");
+    bar.innerHTML = FIELDS.map(box).join("")
+      + `<label class="sc-f"><span>بحث</span><input type="search" id="sc-q" placeholder="اسم مجموعة أو مدرب…" value="${esc(filters.q)}"></label>`
       + (anyFilter() ? `<button type="button" class="btn small secondary" id="sc-clear">✕ مسح الفلاتر</button>` : "");
   }
   const pct = (part, whole) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
