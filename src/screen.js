@@ -41,11 +41,22 @@
   let scope = [];
   let phaseOfGroup = new Map();   // المجموعة ← مرحلتها، من أي جدول ذكرهما معاً
 
+  /* مرحلة كل مجموعة: المفتاح «المسار + المجموعة» لأن G1 و G2 تتكرران في كل المسارات،
+     ويُكتفى باسم المجموعة وحده إن لم يكن له إلا مرحلة واحدة في كل اللقطة. */
   function groupPhases(d) {
     const src = [(d.groups || []), (d.attendance || []), ((d.grades || {}).tracks || []),
       ((d.followUps || {}).pledges || []), ((d.followUps || {}).surveys || [])].flat();
     const map = new Map();
-    src.forEach((r) => { if (r && r.group && r.course && !map.has(String(r.group))) map.set(String(r.group), String(r.course)); });
+    const solo = new Map();
+    src.forEach((r) => {
+      if (!r || !r.group || !r.course) return;
+      const g = String(r.group), c = String(r.course);
+      if (r.track) { const k = String(r.track) + "|" + g; if (!map.has(k)) map.set(k, c); }
+      const seen = solo.get(g);
+      if (!seen) solo.set(g, { course: c, one: true });
+      else if (seen.course !== c) seen.one = false;
+    });
+    solo.forEach((v, g) => { if (v.one) map.set("|" + g, v.course); });
     return map;
   }
 
@@ -60,7 +71,10 @@
 
   /* صف يمر إن طابق كل فلتر يعنيه؛ والصف الذي لا يحمل المرحلة يُقاس بمسارات المرحلة */
   /* مرحلة الصف: من الصف نفسه، أو من مجموعته إن عرفناها من جدول آخر */
-  const phaseOf = (row) => row.course || (row.group ? phaseOfGroup.get(String(row.group)) : "") || "";
+  const phaseOf = (row) => row.course
+    || (row.group && row.track ? phaseOfGroup.get(String(row.track) + "|" + String(row.group)) : "")
+    || (row.group ? phaseOfGroup.get("|" + String(row.group)) : "")
+    || "";
 
   function keep(row) {
     if (!hits(row)) return false;
