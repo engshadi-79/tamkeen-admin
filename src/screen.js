@@ -49,6 +49,7 @@
     const fits = (row, skip) => hits(row) && FIELDS.every((f) => f === skip || !filters[f] || row[f] === undefined || like(row[f], filters[f]));
     const feed = (list) => (list || []).forEach((r) => FIELDS.forEach((f) => { if (r[f] && fits(r, f)) out[f].add(String(r[f])); }));
     feed(d.tracks); feed(d.attendance); feed(d.groups); feed(d.demographics); feed((d.grades || {}).tracks);
+    feed((d.followUps || {}).pledges); feed((d.followUps || {}).surveys);
     // المدرب يُستمد من المجموعات الباقية، فقائمة المدربين تتبع المرحلة والمسار
     const kept = new Set((d.groups || []).filter((g) => fits(g, "trainer")).map((g) => norm(g.trainer)).filter(Boolean));
     (d.trainers || []).forEach((t) => { if (t.name && (!kept.size || kept.has(norm(t.name)))) out.trainer.add(t.name); });
@@ -206,11 +207,43 @@
       + card("ذوو الإعاقة لكل مسار", bars(p.map((r) => ({ label: r.track || "—", value: num(r.disabled), note: `من ${ui.fmt(num(r.count) || num(r.healthy) + num(r.disabled))}` }))), true);
   }
 
+  /* المتابعات: من لم يوقّع تعهداً ومن لم يعبّئ الاستبيان — أعداد لكل مجموعة، بلا أسماء */
+  function panelFollowUps(d) {
+    const f = d.followUps || {};
+    const pl = rows(f.pledges);
+    const sv = rows(f.surveys);
+    const students = sum(pl, "students");
+    const signed = sum(pl, "pledged");
+    const noPledge = sum(pl, "missing");
+    const noSurvey = sum(sv, "missing");
+    if (!pl.length && !sv.length) {
+      return `<section class="card sc-empty"><h3>لا توجد بيانات متابعة</h3>
+        <p>هذه اللوحة تحتاج لقطة من سكربت القراءة بعد تحديثه: يقرأ صفحتَي «تعهدات الطلاب» و«الاستبيانات غير المعبّأة».</p></section>`;
+    }
+    return `<div class="sc-kpis">
+        ${kpi("لم يوقّع التعهد", ui.fmt(noPledge), students ? `من ${ui.fmt(students)} متدرباً` : "", noPledge ? "warn" : "good")}
+        ${kpi("وقّع التعهد", ui.fmt(signed), students ? pct(signed, students) + "%" : "", "good")}
+        ${kpi("لم يعبّئ الاستبيان", ui.fmt(noSurvey), "", noSurvey ? "warn" : "good")}
+        ${kpi("مجموعات فيها متأخرون", ui.fmt(pl.filter((r) => num(r.missing) > 0).length + sv.filter((r) => num(r.missing) > 0).length))}
+      </div>`
+      + card("لم يوقّعوا التعهد — لكل مجموعة", bars(pl.filter((r) => num(r.missing) > 0).map((r) => ({
+          label: [r.group, r.track].filter(Boolean).join(" · ") || "—",
+          value: num(r.missing),
+          note: num(r.students) ? `من ${ui.fmt(num(r.students))}` : "",
+        })), {}), true)
+      + card("لم يعبّئوا الاستبيان — لكل مجموعة", bars(sv.filter((r) => num(r.missing) > 0).map((r) => ({
+          label: [r.group, r.track].filter(Boolean).join(" · ") || "—",
+          value: num(r.missing),
+          note: r.course || "",
+        })), {}), true);
+  }
+
   const PANELS = [
     { name: "الطلبات والسعة", build: panelTracks },
     { name: "الحضور والمجموعات", build: panelAttendance },
     { name: "الدرجات والنتائج", build: panelGrades },
     { name: "خصائص المتدربين", build: panelPeople },
+    { name: "المتابعات", build: panelFollowUps },
   ];
 
   /* ===== الرسم ===== */
@@ -239,7 +272,7 @@
     const html = PANELS[panel].build(snap.data || {});
     box.innerHTML = html;
     // فلترة لم تُبقِ شيئاً: نقولها صراحة بدل لوحة فارغة
-    if (anyFilter() && !box.querySelector(".sc-bar-row")) {
+    if (anyFilter() && !box.querySelector(".sc-bar-row") && !box.querySelector(".sc-empty")) {
       box.insertAdjacentHTML("afterbegin", `<section class="card sc-empty"><h3>لا نتائج لهذه الفلترة</h3><p class="conv-hint">جرّب مسح بعض الفلاتر من الشريط أعلاه.</p></section>`);
     }
   }
@@ -301,6 +334,7 @@
         <li>افتح ملف <code>إحصاءات-الشاشة.js</code> بالمفكرة، حدّد كل شيء (Ctrl+A) وانسخه (Ctrl+C)، ثم الصقه في Console واضغط Enter.</li>
         <li>سيسألك عن «رمز الشاشة» مرة واحدة: الصقه واضغط موافق — ويُحفظ في هذا المتصفح فلا يُسأل ثانية.</li>
         <li>يقرأ السكربت صفحات التقارير (قراءة فقط)، ويرسل لقطة أرقام مجمّعة إلى خادم تمكين، ثم يعيدها كل ١٥ دقيقة ما دام التبويب مفتوحاً.</li>
+        <li>اللوحات خمس: الطلبات والسعة، الحضور والمجموعات، الدرجات والنتائج، خصائص المتدربين، والمتابعات (من لم يوقّع التعهد ومن لم يعبّئ الاستبيان — أعداد لكل مجموعة بلا أسماء).</li>
         <li>هذه الصفحة تُحدّث نفسها كل دقيقة عند كل مستخدم. زر <b>«ملء الشاشة»</b> يعرضها على شاشة القاعة ويبدّل اللوحات تلقائياً.</li>
       </ol>
       <p><b>ما لا يحدث:</b> لا تُرسل أسماء ولا أرقام هويات — أرقام مجمّعة فقط. ولا يعرف موقع تمكين كلمة مرور نظام المركز،
