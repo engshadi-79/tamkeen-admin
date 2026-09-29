@@ -873,3 +873,9 @@ body.has-trial-bar #login-screen { top: 38px; }
 
 .sc-names-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .sc-names-head h3 { margin: 0; }
+
+/* مدة الإحصاء */
+.sc-period { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin: 0 0 10px; }
+.sc-period .sc-f { width: 165px; }
+.sc-period input[type=date] { height: 38px; }
+#view-screen.sc-show .sc-period { display: none; }

@@ -177,12 +177,13 @@
   const legacyCopy = (id) => call("legacyCopy", { id });
   // شاشة إحصاءات نظام المركز: قراءة اللقطة، ورمز الدفع للمدير
   const stats = () => call("stats");
+  const setStatsPeriod = (from, to) => call("setStatsPeriod", { from, to });
   const statsKey = () => call("statsKey");
 
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
-    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay, history, revert, legacyCopy, stats, statsKey,
+    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay, history, revert, legacyCopy, stats, statsKey, setStatsPeriod,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});

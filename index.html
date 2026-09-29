@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles/theme.css?v=185">
+  <link rel="stylesheet" href="styles/theme.css?v=187">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -715,12 +715,20 @@
           <div class="btn-row no-print">
             <button class="btn navy" id="sc-full">⛶ ملء الشاشة</button>
             <button class="btn secondary" id="sc-refresh">🔄 تحديث الآن</button>
+            <button class="btn secondary" id="sc-report">🖨 تقرير شامل</button>
             <button class="btn secondary" id="sc-key" data-admin-only hidden>🔑 نسخ رمز الشاشة</button>
             <button class="btn secondary" id="sc-copy" data-admin-only hidden title="نسخ أرقام اللقطة لإرسالها عند وجود خلل">⧉ نسخ اللقطة</button>
             <button class="btn secondary" id="sc-how">؟ طريقة التشغيل</button>
           </div>
         </div>
         <div class="conv-tabs sc-tabs" id="sc-tabs"></div>
+        <div class="sc-period no-print">
+          <label class="sc-f"><span>من تاريخ</span><input type="date" id="sc-from"></label>
+          <label class="sc-f"><span>إلى تاريخ</span><input type="date" id="sc-to"></label>
+          <button type="button" class="btn small" id="sc-period-apply" data-admin-only hidden>تطبيق المدة</button>
+          <button type="button" class="btn small secondary" id="sc-period-clear" data-admin-only hidden>كل المدة</button>
+          <span class="conv-hint" id="sc-period-note"></span>
+        </div>
         <div class="sc-filters no-print" id="sc-filters"></div>
         <div id="sc-body"></div>
       </section>
@@ -1212,48 +1220,48 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=185"></script>
-  <script src="src/ui.js?v=185"></script>
-  <script src="src/templates.js?v=185"></script>
-  <script src="src/tracks.js?v=185"></script>
-  <script src="src/tasks.js?v=185"></script>
-  <script src="src/dashboard.js?v=185"></script>
-  <script src="src/letterhead-docx.js?v=185"></script>
-  <script src="src/docx.js?v=185"></script>
-  <script src="src/ai.js?v=185"></script>
-  <script src="src/doc-render.js?v=185"></script>
-  <script src="src/files-store.js?v=185"></script>
-  <script src="src/shared.js?v=185"></script>
-  <script src="src/cloud.js?v=185"></script>
-  <script src="src/drive.js?v=185"></script>
-  <script src="src/drive-ui.js?v=185"></script>
-  <script src="src/rtl-fixer.js?v=185"></script>
-  <script src="src/rtl-page.js?v=185"></script>
-  <script src="src/profile.js?v=185"></script>
-  <script src="src/admin.js?v=185"></script>
-  <script src="src/roster.js?v=185"></script>
-  <script src="src/registry.js?v=185"></script>
-  <script src="src/watch.js?v=185"></script>
-  <script src="src/charts.js?v=185"></script>
-  <script src="src/ai-assist.js?v=185"></script>
-  <script src="src/meetings.js?v=185"></script>
-  <script src="src/report.js?v=185"></script>
-  <script src="src/screen.js?v=185"></script>
-  <script src="src/letters.js?v=185"></script>
+  <script src="src/storage.js?v=187"></script>
+  <script src="src/ui.js?v=187"></script>
+  <script src="src/templates.js?v=187"></script>
+  <script src="src/tracks.js?v=187"></script>
+  <script src="src/tasks.js?v=187"></script>
+  <script src="src/dashboard.js?v=187"></script>
+  <script src="src/letterhead-docx.js?v=187"></script>
+  <script src="src/docx.js?v=187"></script>
+  <script src="src/ai.js?v=187"></script>
+  <script src="src/doc-render.js?v=187"></script>
+  <script src="src/files-store.js?v=187"></script>
+  <script src="src/shared.js?v=187"></script>
+  <script src="src/cloud.js?v=187"></script>
+  <script src="src/drive.js?v=187"></script>
+  <script src="src/drive-ui.js?v=187"></script>
+  <script src="src/rtl-fixer.js?v=187"></script>
+  <script src="src/rtl-page.js?v=187"></script>
+  <script src="src/profile.js?v=187"></script>
+  <script src="src/admin.js?v=187"></script>
+  <script src="src/roster.js?v=187"></script>
+  <script src="src/registry.js?v=187"></script>
+  <script src="src/watch.js?v=187"></script>
+  <script src="src/charts.js?v=187"></script>
+  <script src="src/ai-assist.js?v=187"></script>
+  <script src="src/meetings.js?v=187"></script>
+  <script src="src/report.js?v=187"></script>
+  <script src="src/screen.js?v=187"></script>
+  <script src="src/letters.js?v=187"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=185"></script>
-  <script src="src/converter-store.js?v=185"></script>
-  <script src="src/converter.js?v=185"></script>
+  <script src="src/converter-core.js?v=187"></script>
+  <script src="src/converter-store.js?v=187"></script>
+  <script src="src/converter.js?v=187"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=185"></script>
-  <script src="src/sheets.js?v=185"></script>
-  <script src="src/history.js?v=185"></script>
-  <script src="src/roster-audit.js?v=185"></script>
-  <script src="src/notify.js?v=185"></script>
-  <script src="src/search.js?v=185"></script>
-  <script src="src/realtime.js?v=185"></script>
-  <script src="src/app.js?v=185"></script>
+  <script src="src/hospitality.js?v=187"></script>
+  <script src="src/sheets.js?v=187"></script>
+  <script src="src/history.js?v=187"></script>
+  <script src="src/roster-audit.js?v=187"></script>
+  <script src="src/notify.js?v=187"></script>
+  <script src="src/search.js?v=187"></script>
+  <script src="src/realtime.js?v=187"></script>
+  <script src="src/app.js?v=187"></script>
 </body>
 </html>

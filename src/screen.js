@@ -11,6 +11,7 @@
   const CACHE = "tamkeen-admin:ksach-stats";
 
   let snap = null;                // { data, at, by }
+  let period = null;              // { from, to } المدة التي اخترناها للإحصاء
   let timer = null, rotateTimer = null, panel = 0, showing = false;
 
   const num = (v) => { const n = Number(String(v == null ? "" : v).replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; };
@@ -159,6 +160,8 @@
         snap = r.stats;
         cache(snap);
       }
+      period = r.period || null;
+      showPeriod();
       render();
       if (!quiet) ui.toast(snap ? "حُدّثت الأرقام" : "لا توجد لقطة بعد");
     } catch (e) {
@@ -310,8 +313,9 @@
 
   /* أسماء المتأخرين: للمدير وحده، ومطويّة، وتختفي في وضع ملء الشاشة (شاشة القاعة).
      اللقطة لا تحمل أرقام هوية ولا جوالات — أسماء فقط. */
+  let printing = false;   // التقرير المطبوع بلا أسماء
   function namesCard(title, list, withForm) {
-    if (!App.profile || !App.profile.isAdmin()) return "";
+    if (printing || !App.profile || !App.profile.isAdmin()) return "";
     const withNames = (list || []).filter((r) => (r.names || []).length);
     if (!withNames.length) return "";
     const blocks = withNames.map((r) => {
@@ -393,6 +397,7 @@
     }
     phaseOfGroup = groupPhases(snap.data || {});
     scope = tracksOfPhase(snap.data || {});
+    showPeriod();
     renderFilters(snap.data || {});
     const html = PANELS[panel].build(snap.data || {});
     box.innerHTML = html;
@@ -400,6 +405,72 @@
     if (anyFilter() && !box.querySelector(".sc-bar-row") && !box.querySelector(".sc-empty")) {
       box.insertAdjacentHTML("afterbegin", `<section class="card sc-empty"><h3>لا نتائج لهذه الفلترة</h3><p class="conv-hint">جرّب مسح بعض الفلاتر من الشريط أعلاه.</p></section>`);
     }
+  }
+
+  /* ===== مدة الإحصاء: تُحفظ على الخادم، ويقرأها سكربت القراءة في جولته التالية ===== */
+  function showPeriod() {
+    const from = $("sc-from"), to = $("sc-to"), note = $("sc-period-note");
+    if (!from || !to) return;
+    from.value = (period && period.from) || "";
+    to.value = (period && period.to) || "";
+    const applied = snap && snap.data && snap.data.period;
+    if (!note) return;
+    note.textContent = applied
+      ? `الأرقام المعروضة لمدة: ${applied.from || "البداية"} إلى ${applied.to || "اليوم"}`
+      : period && (period.from || period.to)
+        ? "المدة محفوظة — ستُطبَّق في الجولة القادمة لسكربت القراءة (خلال ١٥ دقيقة)"
+        : "الأرقام لكل المدة المتاحة في النظام";
+  }
+
+  async function savePeriod(clear) {
+    if (!App.profile.isAdmin()) { ui.toast("تحديد المدة للمدير وحده"); return; }
+    const from = clear ? "" : $("sc-from").value;
+    const to = clear ? "" : $("sc-to").value;
+    if (from && to && from > to) { ui.toast("تاريخ البداية بعد النهاية"); return; }
+    try {
+      const r = await App.cloud.setStatsPeriod(from, to);
+      period = r.period || null;
+      showPeriod();
+      ui.toast(clear ? "أُلغيت المدة" : "حُفظت المدة — تُطبَّق في الجولة القادمة");
+    } catch (e) { ui.toast(e.message); }
+  }
+
+  /* ===== تقرير شامل: كل اللوحات في صفحة واحدة مع أشرطتها، جاهزة للطباعة ===== */
+  function fullReport() {
+    if (!snap || !snap.data) { ui.toast("لا توجد أرقام بعد"); return; }
+    const d = snap.data;
+    const w = window.open("", "_blank", "noopener,width=1000,height=800");
+    if (!w) { ui.toast("اسمح بالنوافذ المنبثقة لعرض التقرير"); return; }
+    const applied = d.period;
+    const head = [
+      filters.course ? `المرحلة: ${filters.course}` : "",
+      filters.track ? `المسار: ${filters.track}` : "",
+      filters.group ? `المجموعة: ${filters.group}` : "",
+      applied ? `المدة: ${applied.from || "البداية"} إلى ${applied.to || "اليوم"}` : "المدة: كل المتاح",
+    ].filter(Boolean).join(" · ");
+    const section = (title, html) => `<section><h2>${esc(title)}</h2>${html}</section>`;
+    printing = true;
+    const body = PANELS.map((p) => section(p.name, p.build(d))).join("");
+    printing = false;
+    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+      <title>تقرير إحصاءات المركز</title>
+      <link rel="stylesheet" href="${location.origin}${location.pathname.replace(/[^/]*$/, "")}styles/theme.css">
+      <style>@page{size:A4;margin:12mm}
+        body{font-family:"Cairo",Tahoma,Arial;margin:18px;background:#fff;color:#1b2433}
+        h1{font-size:18pt;background:#0b1f3a;color:#fff;padding:10px;border-radius:8px;margin:0 0 6px}
+        p.meta{color:#5f6b7d;margin:0 0 16px;font-size:11pt}
+        section{break-inside:avoid;margin-bottom:18px}
+        section > h2{font-size:14pt;border-bottom:2px solid #0f8b8d;padding-bottom:4px}
+        .sc-names, .no-print, .sc-filters{display:none!important}
+        .sc-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+        .card{border:1px solid #dde3ec;border-radius:10px;padding:10px;margin:8px 0}
+      </style></head><body>
+      <h1>تقرير إحصاءات المركز</h1>
+      <p class="meta">${esc(head)} — أُخذت الأرقام ${esc(new Date(snap.at).toLocaleString("ar-EG"))}</p>
+      ${body}
+      <script>setTimeout(() => window.print(), 600);<\/script>
+      </body></html>`);
+    w.document.close();
   }
 
   /* ===== وضع العرض: ملء الشاشة وتبديل اللوحات ===== */
@@ -491,6 +562,10 @@
     $("sc-full").addEventListener("click", fullscreen);
     $("sc-key").addEventListener("click", copyKey);
     $("sc-how").addEventListener("click", howTo);
+    $("sc-report").addEventListener("click", fullReport);
+    $("sc-period-apply").addEventListener("click", () => savePeriod(false));
+    $("sc-period-clear").addEventListener("click", () => savePeriod(true));
+    showPeriod();
     $("sc-copy").addEventListener("click", async () => {
       if (!snap) { ui.toast("لا توجد لقطة بعد"); return; }
       try {

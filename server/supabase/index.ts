@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 23;
+const VERSION = 24;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -570,6 +570,18 @@ async function statsKeyOf(create: boolean) {
   return key;
 }
 
+/* المدة التي يختارها المستخدم في الشاشة: يقرأها سكربت القراءة في جولته التالية
+   فيجلب أرقام تلك المدة من تقرير النظام. التاريخ بصيغة YYYY-MM-DD. */
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+async function setStatsPeriod(req: any, user: any) {
+  const from = String(req.from || "").trim();
+  const to = String(req.to || "").trim();
+  if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) throw new Error("تاريخ غير صحيح");
+  const value = from || to ? { from, to, at: new Date().toISOString(), by: user.name } : null;
+  await db.from("kv").upsert({ key: "stats_period", value });
+  return { ok: true, period: value };
+}
+
 async function statsPush(req: any) {
   const key = await statsKeyOf(false);
   if (!key || String(req.key || "") !== key) {
@@ -582,7 +594,7 @@ async function statsPush(req: any) {
   if (body.length > STATS_MAX) throw new Error("اللقطة أكبر مما تقبله الشاشة");
   const value = { data, at: new Date().toISOString(), by: String(req.by || "").slice(0, 80) };
   await db.from("kv").upsert({ key: "ksach_stats", value });
-  return { ok: true, at: value.at };
+  return { ok: true, at: value.at, period: await kvGet("stats_period") };
 }
 
 /* ===== مساعد Google (سكربت Apps Script): القراءة الضوئية وإرسال الملخص اليومي ===== */
@@ -992,6 +1004,11 @@ Deno.serve(async (httpReq) => {
       case "forgot": return json(await forgot(req.username));
       // لقطة إحصاءات نظام المركز: برمز الشاشة لا بجلسة مستخدم
       case "statsPush": return json(await statsPush(req));
+      case "statsPeriod": {
+        const key = await statsKeyOf(false);
+        if (!key || String(req.key || "") !== key) return json({ error: "رمز الشاشة غير صحيح" });
+        return json({ period: await kvGet("stats_period") });
+      }
       case "reset": return json(await resetPassword(req.username, req.code, req.password));
       // النسخة الخارجية على Drive: برمز النسخ لا بجلسة مستخدم
       case "driveSnapshot":
@@ -1057,7 +1074,8 @@ Deno.serve(async (httpReq) => {
       }
       case "reserve": return json(await reserve(req.head, req.count));
       case "search": return json(await search(req.q));
-      case "stats": return json({ stats: await kvGet("ksach_stats") });
+      case "stats": return json({ stats: await kvGet("ksach_stats"), period: await kvGet("stats_period") });
+      case "setStatsPeriod": return json(await setStatsPeriod(req, user));
       case "statsKey": {
         if (!user.admin) throw new Error("رمز الشاشة للمدير وحده");
         return json({ key: await statsKeyOf(true) });
