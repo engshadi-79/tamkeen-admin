@@ -14,6 +14,60 @@
   let timer = null, rotateTimer = null, panel = 0, showing = false;
 
   const num = (v) => { const n = Number(String(v == null ? "" : v).replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; };
+
+  /* ===== الفلاتر: تسري على كل اللوحات ===== */
+  const FILTER_KEY = "tamkeen-admin:screen-filters";
+  const FIELDS = ["track", "course", "group", "trainer"];
+  let filters = { track: "", course: "", group: "", trainer: "", q: "" };
+  try { filters = Object.assign(filters, JSON.parse(localStorage.getItem(FILTER_KEY) || "{}")); } catch (e) { /* تخزين غير متاح */ }
+  const saveFilters = () => { try { localStorage.setItem(FILTER_KEY, JSON.stringify(filters)); } catch (e) { /* تخزين ممتلئ */ } };
+
+  /* أسماء المسارات تختلف قليلاً بين الجداول («الخياطة» و«الخياطة والتفصيل»)، فالمطابقة بالاحتواء */
+  const norm = (v) => String(v == null ? "" : v).replace(/[\u064B-\u0652]/g, "").replace(/[إأآا]/g, "ا").replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
+  function like(value, wanted) {
+    if (!wanted) return true;
+    const a = norm(value), b = norm(wanted);
+    if (!a) return false;
+    return a.includes(b) || b.includes(a);
+  }
+  /* البحث الحر: يطابق أي خانة نصية في الصف */
+  const hits = (row) => {
+    if (!filters.q) return true;
+    const text = norm(Object.values(row || {}).filter((v) => typeof v === "string").join(" "));
+    return text.includes(norm(filters.q));
+  };
+  /* صف يمر إن طابق كل فلتر يعنيه (الحقل الغائب عن الصف لا يمنعه) */
+  const keep = (row) => hits(row) && FIELDS.every((f) => !filters[f] || row[f] === undefined || like(row[f], filters[f]));
+  const rows = (list) => (list || []).filter(keep);
+  const anyFilter = () => !!(filters.q || FIELDS.some((f) => filters[f]));
+
+  /* قيم القوائم المنسدلة من اللقطة نفسها */
+  function choices(d) {
+    const out = { track: new Set(), course: new Set(), group: new Set(), trainer: new Set() };
+    const feed = (list) => (list || []).forEach((r) => FIELDS.forEach((f) => { if (r[f]) out[f].add(String(r[f])); }));
+    feed(d.tracks); feed(d.attendance); feed(d.groups); feed(d.demographics); feed((d.grades || {}).tracks);
+    (d.trainers || []).forEach((t) => { if (t.name) out.trainer.add(t.name); });
+    const sort = (set) => [...set].sort((a, b) => a.localeCompare(b, "ar"));
+    /* «الخياطة» و«الخياطة والتفصيل» اسمان لمسار واحد في جدولين: يُبقى الأطول */
+    const merge = (set) => {
+      const all = sort(set);
+      return all.filter((v) => !all.some((o) => o !== v && norm(o).includes(norm(v)) && norm(o).length > norm(v).length));
+    };
+    return { track: merge(out.track), course: sort(out.course), group: sort(out.group), trainer: sort(out.trainer) };
+  }
+
+  function renderFilters(d) {
+    const bar = $("sc-filters");
+    if (!bar) return;
+    const c = choices(d || {});
+    const LABEL = { track: "كل المسارات", course: "كل الدورات", group: "كل المجموعات", trainer: "كل المدربين" };
+    bar.innerHTML = FIELDS.map((f) => (c[f].length ? `<select data-f="${f}" aria-label="${esc(LABEL[f])}">
+        <option value="">${esc(LABEL[f])}</option>
+        ${c[f].map((v) => `<option ${v === filters[f] ? "selected" : ""}>${esc(v)}</option>`).join("")}
+      </select>` : "")).join("")
+      + `<input type="search" id="sc-q" placeholder="بحث في الأسماء…" value="${esc(filters.q)}">`
+      + (anyFilter() ? `<button type="button" class="btn small secondary" id="sc-clear">✕ مسح الفلاتر</button>` : "");
+  }
   const pct = (part, whole) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
   const sum = (list, key) => (list || []).reduce((a, r) => a + num(r[key]), 0);
 
@@ -61,7 +115,7 @@
 
   /* ===== اللوحات الأربع ===== */
   function panelTracks(d) {
-    const t = d.tracks || [];
+    const t = rows(d.tracks);
     const seats = sum(t, "seats"), students = sum(t, "students"), apps = sum(t, "applications");
     const accepted = sum(t, "accepted"), waiting = sum(t, "waiting");
     return `<div class="sc-kpis">
@@ -81,12 +135,15 @@
   }
 
   function panelAttendance(d) {
-    const a = d.attendance || [];
-    const g = d.groups || [];
+    const a = rows(d.attendance);
+    const g = rows(d.groups);
     const totalRows = sum(a, "total");
     const present = sum(a, "present");
     const rate = pct(present, totalRows);
-    const trainers = d.trainers || [];
+    // المدربون: يُفلترون باسمهم وبالمجموعات الباقية بعد الفلترة
+    const names = new Set(g.map((x) => norm(x.trainer)).filter(Boolean));
+    const trainers = (d.trainers || []).filter((t) => like(t.name, filters.trainer) && hits(t)
+      && (!names.size || !(filters.track || filters.course || filters.group) || names.has(norm(t.name))));
     return `<div class="sc-kpis">
         ${kpi("معدل الحضور", rate + "%", `${ui.fmt(present)} من ${ui.fmt(totalRows)} سجلاً`, rate < 80 ? "warn" : "good")}
         ${kpi("المجموعات", ui.fmt(g.length || a.length))}
@@ -105,21 +162,26 @@
 
   function panelGrades(d) {
     const gr = d.grades || {};
-    const rows = gr.tracks || [];
-    const passed = num(gr.passed), failed = num(gr.failed);
+    const list = rows(gr.tracks);
+    // مع الفلترة تُحسب الأرقام من الصفوف الباقية، وبلا فلترة من إجماليات اللقطة
+    const on = anyFilter() && (gr.tracks || []).length;
+    const students = sum(list, "count");
+    const avg = on ? (students ? Math.round(list.reduce((a, r) => a + num(r.average) * num(r.count), 0) / students) : 0) : num(gr.average);
+    const pick = (key) => (on ? sum(list, key) : num(gr[key]));
+    const passed = pick("passed"), failed = pick("failed");
     return `<div class="sc-kpis">
-        ${kpi("متوسط الدرجات", gr.average != null ? ui.fmt(Math.round(num(gr.average))) : "—")}
+        ${kpi("متوسط الدرجات", avg ? ui.fmt(avg) : "—", on ? `${ui.fmt(students)} طالباً بعد الفلترة` : "")}
         ${kpi("ناجح", ui.fmt(passed), passed + failed ? pct(passed, passed + failed) + "%" : "", "good")}
         ${kpi("راسب", ui.fmt(failed), "", failed ? "warn" : "")}
-        ${kpi("درجات معتمدة", ui.fmt(num(gr.approved)))}
-        ${kpi("بانتظار الاعتماد", ui.fmt(num(gr.pending)), "", num(gr.pending) ? "warn" : "")}
-        ${kpi("بانتظار التصحيح", ui.fmt(num(gr.awaitingGrading)))}
+        ${kpi("درجات معتمدة", ui.fmt(pick("approved")))}
+        ${kpi("بانتظار الاعتماد", ui.fmt(pick("pending")), "", pick("pending") ? "warn" : "")}
+        ${kpi("بانتظار التصحيح", on ? "—" : ui.fmt(num(gr.awaitingGrading)), on ? "لا يُفلتر" : "")}
       </div>`
-      + card("متوسط الدرجات لكل مسار", bars(rows.map((r) => ({ label: r.track || "—", value: Math.round(num(r.average)), note: `${ui.fmt(num(r.count))} طالباً` })), { isPercent: false }), true);
+      + card("متوسط الدرجات", bars(list.map((r) => ({ label: [r.track, r.group].filter(Boolean).join(" — ") || "—", value: Math.round(num(r.average)), note: `${ui.fmt(num(r.count))} طالباً` })), { isPercent: false }), true);
   }
 
   function panelPeople(d) {
-    const p = d.demographics || [];
+    const p = rows(d.demographics);
     const males = sum(p, "male"), females = sum(p, "female");
     const disabled = sum(p, "disabled"), healthy = sum(p, "healthy");
     const single = sum(p, "single"), married = sum(p, "married");
@@ -166,7 +228,13 @@
       </section>`;
       return;
     }
-    box.innerHTML = PANELS[panel].build(snap.data || {});
+    renderFilters(snap.data || {});
+    const html = PANELS[panel].build(snap.data || {});
+    box.innerHTML = html;
+    // فلترة لم تُبقِ شيئاً: نقولها صراحة بدل لوحة فارغة
+    if (anyFilter() && !box.querySelector(".sc-bar-row")) {
+      box.insertAdjacentHTML("afterbegin", `<section class="card sc-empty"><h3>لا نتائج لهذه الفلترة</h3><p class="conv-hint">جرّب مسح بعض الفلاتر من الشريط أعلاه.</p></section>`);
+    }
   }
 
   /* ===== وضع العرض: ملء الشاشة وتبديل اللوحات ===== */
@@ -257,6 +325,26 @@
     $("sc-full").addEventListener("click", fullscreen);
     $("sc-key").addEventListener("click", copyKey);
     $("sc-how").addEventListener("click", howTo);
+    $("sc-filters").addEventListener("change", (e) => {
+      const sel = e.target.closest("[data-f]");
+      if (!sel) return;
+      filters[sel.dataset.f] = sel.value;
+      saveFilters();
+      render();
+    });
+    let typing = null;
+    $("sc-filters").addEventListener("input", (e) => {
+      if (e.target.id !== "sc-q") return;
+      const v = e.target.value;
+      clearTimeout(typing);
+      typing = setTimeout(() => { filters.q = v; saveFilters(); render(); const q = $("sc-q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 300);
+    });
+    $("sc-filters").addEventListener("click", (e) => {
+      if (!e.target.closest("#sc-clear")) return;
+      filters = { track: "", course: "", group: "", trainer: "", q: "" };
+      saveFilters();
+      render();
+    });
     $("sc-tabs").addEventListener("click", (e) => {
       const b = e.target.closest("[data-panel]");
       if (!b) return;

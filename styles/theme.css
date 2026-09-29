@@ -833,3 +833,9 @@ body.has-trial-bar #login-screen { top: 38px; }
 #view-screen.sc-show .sc-bar-label, #view-screen.sc-show .sc-bar-val { font-size: 20px; }
 #view-screen.sc-show .sc-bar-track { height: 26px; }
 #view-screen.sc-show h2, #view-screen.sc-show .sc-card h3 { font-size: 26px; }
+
+/* فلاتر شاشة الإحصاءات */
+.sc-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 14px; }
+.sc-filters select, .sc-filters input[type="search"] { min-width: 150px; max-width: 260px; }
+.sc-filters input[type="search"] { flex: 1 1 180px; }
+#view-screen.sc-show .sc-filters { display: none; }
