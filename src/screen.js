@@ -420,11 +420,21 @@
       ["المتابعات", "مجموعات فيها متأخرون", pl.filter((r) => num(r.missing) > 0).length + sv.filter((r) => num(r.missing) > 0).length],
     ];
 
+    // لكل نوع أيقونته ولونه، كبطاقات الإحصاء في القالب
+    const LOOK = {
+      "الطلبات والسعة": ["📋", "blue"],
+      "الحضور والمجموعات": ["📅", "teal"],
+      "الدرجات والنتائج": ["📝", "purple"],
+      "خصائص المتدربين": ["👥", "azure"],
+      "المتابعات": ["✅", "yellow"],
+    };
     const cards = items.map(([kind, label, value, unit]) => {
       const shown = value == null ? "—" : ui.fmt(num(value)) + (unit || "");
-      return `<div class="sc-num"><span class="sc-num-kind">${esc(kind)}</span>
-        <span class="sc-num-label">${esc(label)}</span>
-        <span class="sc-num-value">${esc(shown)}</span></div>`;
+      const [icon, tone] = LOOK[kind] || ["▦", "teal"];
+      return `<div class="sc-num"><span class="sc-num-icon ${tone}">${icon}</span>
+        <span class="sc-num-body"><span class="sc-num-label">${esc(label)}</span>
+        <span class="sc-num-value">${esc(shown)}</span>
+        <span class="sc-num-kind">${esc(kind)}</span></span></div>`;
     }).join("");
     return `<div class="sc-nums">${cards}</div>`;
   }

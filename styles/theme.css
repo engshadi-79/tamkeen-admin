@@ -892,3 +892,95 @@ body.has-trial-bar #login-screen { top: 38px; }
 /* صفحة معروضة داخل الموقع حين تُحجب النافذة المنبثقة */
 .sc-sheet .sc-sheet-box { width: min(980px, 96vw); height: min(86vh, 900px); display: flex; flex-direction: column; }
 .sc-sheet-frame { flex: 1; width: 100%; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+
+/* ===== تجربة قالب Gentelella v4 — مقصورة على صفحة الشاشة (#view-screen.gt) ===== */
+#view-screen.gt {
+  --gt-primary: #1ABB9C; --gt-primary-lt: rgba(26,187,156,.08);
+  --gt-surface: #fff; --gt-bg: #f5f7fb;
+  --gt-border: #e6e7eb; --gt-translucent: rgba(4,32,69,.08);
+  --gt-text: #1e2633; --gt-muted: #7e8896; --gt-second: #626d7d;
+  --gt-blue: #066fd1; --gt-azure: #4299e1; --gt-green: #2fb344;
+  --gt-yellow: #f59f00; --gt-red: #d63939; --gt-purple: #ae3ec9;
+  --gt-radius: 6px; --gt-shadow: 0 0 0 1px var(--gt-translucent), rgba(30,38,51,.04) 0 2px 4px 0;
+  background: var(--gt-bg);
+  color: var(--gt-text);
+  padding: 18px 20px;
+  border-radius: 10px;
+}
+#view-screen.gt h2 { font-size: 20px; letter-spacing: -.3px; color: var(--gt-text); }
+#view-screen.gt .conv-hint { color: var(--gt-muted); }
+
+/* البطاقات: سطح أبيض بحدّ شعري وظل خفيف وعنوان بشريط سفلي */
+#view-screen.gt .card,
+#view-screen.gt .sc-card {
+  background: var(--gt-surface); border: 0; border-radius: var(--gt-radius);
+  box-shadow: var(--gt-shadow); padding: 0; margin-bottom: 16px;
+}
+#view-screen.gt .sc-card h3 {
+  margin: 0; padding: 12px 16px; font-size: 14px; font-weight: 600;
+  border-bottom: 1px solid var(--gt-border); color: var(--gt-text);
+}
+#view-screen.gt .sc-card > :not(h3):not(.sc-names-head) { padding: 0 16px 14px; }
+#view-screen.gt .sc-names-head { padding: 12px 16px; border-bottom: 1px solid var(--gt-border); }
+#view-screen.gt .sc-names-head h3 { border: 0; padding: 0; }
+#view-screen.gt .sc-empty { padding: 16px; }
+
+/* تبويبات على شكل أقراص */
+#view-screen.gt .sc-tabs button {
+  border: 1px solid var(--gt-border); background: var(--gt-surface); color: var(--gt-second);
+  border-radius: 99px; padding: 7px 16px; font-size: 13px; font-weight: 500;
+}
+#view-screen.gt .sc-tabs button.active {
+  background: var(--gt-primary); border-color: var(--gt-primary); color: #fff;
+}
+
+/* بطاقات الأرقام: أيقونة ملوّنة + عنوان صغير + رقم كبير */
+#view-screen.gt .sc-nums { gap: 12px; }
+#view-screen.gt .sc-num {
+  flex-direction: row; align-items: center; gap: 14px; padding: 16px;
+  background: var(--gt-surface); border: 0; border-radius: var(--gt-radius); box-shadow: var(--gt-shadow);
+}
+#view-screen.gt .sc-num-icon {
+  width: 40px; height: 40px; border-radius: var(--gt-radius); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 19px;
+  background: var(--gt-primary-lt); color: var(--gt-primary);
+}
+#view-screen.gt .sc-num-icon.blue { background: rgba(6,111,209,.06); }
+#view-screen.gt .sc-num-icon.azure { background: rgba(66,153,225,.06); }
+#view-screen.gt .sc-num-icon.purple { background: rgba(174,62,201,.06); }
+#view-screen.gt .sc-num-icon.yellow { background: rgba(245,159,0,.06); }
+#view-screen.gt .sc-num-body { display: flex; flex-direction: column; min-width: 0; }
+#view-screen.gt .sc-num-label {
+  font-size: 11.5px; color: var(--gt-muted); font-weight: 500; letter-spacing: .3px; line-height: 1.3;
+}
+#view-screen.gt .sc-num-value { font-size: 22px; font-weight: 600; letter-spacing: -.5px; line-height: 1.25; color: var(--gt-text); }
+#view-screen.gt .sc-num-kind { font-size: 11px; color: var(--gt-muted); font-weight: 400; }
+
+/* مؤشرات اللوحات الأخرى بالأسلوب نفسه */
+#view-screen.gt .sc-kpi {
+  background: var(--gt-surface); border: 0; border-top: 0; border-radius: var(--gt-radius);
+  box-shadow: var(--gt-shadow); padding: 16px; text-align: right;
+}
+#view-screen.gt .sc-kpi-v { font-size: 24px; font-weight: 600; letter-spacing: -.5px; color: var(--gt-text); }
+#view-screen.gt .sc-kpi-l { font-size: 11.5px; text-transform: none; color: var(--gt-muted); font-weight: 500; }
+#view-screen.gt .sc-kpi-s { color: var(--gt-muted); }
+#view-screen.gt .sc-kpi.good .sc-kpi-v { color: var(--gt-green); }
+#view-screen.gt .sc-kpi.warn .sc-kpi-v { color: var(--gt-red); }
+
+/* الأشرطة بلون القالب */
+#view-screen.gt .sc-bar-track { background: #eff0f3; border-radius: 4px; height: 8px; }
+#view-screen.gt .sc-bar-fill { background: var(--gt-primary); border-radius: 4px; }
+#view-screen.gt .sc-bar-fill.low { background: var(--gt-red); }
+#view-screen.gt .sc-bar-val { font-weight: 600; color: var(--gt-text); }
+#view-screen.gt .sc-name { background: var(--gt-primary-lt); color: #0f7f6b; }
+
+/* شريطا الفلاتر والمدة */
+#view-screen.gt .sc-filters, #view-screen.gt .sc-period {
+  background: var(--gt-surface); box-shadow: var(--gt-shadow); border-radius: var(--gt-radius);
+  padding: 12px 14px;
+}
+#view-screen.gt select, #view-screen.gt input[type=search], #view-screen.gt input[type=date] {
+  border: 1px solid var(--gt-border); border-radius: var(--gt-radius); color: var(--gt-text);
+}
+#view-screen.gt .btn.navy { background: var(--gt-primary); border-color: var(--gt-primary); }
+#view-screen.gt .btn.navy:hover { background: #169f85; }
