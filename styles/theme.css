@@ -888,3 +888,7 @@ body.has-trial-bar #login-screen { top: 38px; }
 .sc-num-value { font-size: 26px; font-weight: 800; color: var(--navy-900); line-height: 1.2; }
 #view-screen.sc-show .sc-num-value { font-size: 40px; }
 #view-screen.sc-show .sc-nums { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+
+/* صفحة معروضة داخل الموقع حين تُحجب النافذة المنبثقة */
+.sc-sheet .sc-sheet-box { width: min(980px, 96vw); height: min(86vh, 900px); display: flex; flex-direction: column; }
+.sc-sheet-frame { flex: 1; width: 100%; border: 1px solid var(--border); border-radius: 10px; background: #fff; }

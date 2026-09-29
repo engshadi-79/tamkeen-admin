@@ -242,7 +242,7 @@
   function viewModel() {
     const m = model();
     if (!m) return;
-    const w = window.open("", "_blank", "noopener,width=900,height=700");
+    const w = window.open("", "_blank", "width=900,height=700");
     if (!w) { ui.toast("اسمح بالنوافذ المنبثقة لعرض النموذج"); return; }
     w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${ui.esc(m.name)}</title>
       <style>body{font-family:Tahoma,Arial;margin:24px;line-height:1.9;white-space:pre-wrap;background:#f4f6fa;color:#1b2433}

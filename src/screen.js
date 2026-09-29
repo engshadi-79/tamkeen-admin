@@ -509,8 +509,7 @@
   function fullReport() {
     if (!snap || !snap.data) { ui.toast("لا توجد أرقام بعد"); return; }
     const d = snap.data;
-    const w = window.open("", "_blank", "noopener,width=1000,height=800");
-    if (!w) { ui.toast("اسمح بالنوافذ المنبثقة لعرض التقرير"); return; }
+    // الصفحة تُعرض في نافذة أو داخل الموقع
     const applied = d.period;
     const head = [
       filters.course ? `المرحلة: ${filters.course}` : "",
@@ -522,7 +521,7 @@
     printing = true;
     const body = PANELS.map((p) => section(p.name, p.build(d))).join("");
     printing = false;
-    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
       <title>تقرير إحصاءات المركز</title>
       <link rel="stylesheet" href="${location.origin}${location.pathname.replace(/[^/]*$/, "")}styles/theme.css">
       <style>@page{size:A4;margin:12mm}
@@ -538,9 +537,36 @@
       <h1>تقرير إحصاءات المركز</h1>
       <p class="meta">${esc(head)} — أُخذت الأرقام ${esc(new Date(snap.at).toLocaleString("ar-EG"))}</p>
       ${body}
-      <script>setTimeout(() => window.print(), 600);<\/script>
-      </body></html>`);
-    w.document.close();
+      </body></html>`;
+    openHtml(html, "تقرير إحصاءات المركز", true);
+  }
+
+  /* صفحة جاهزة تُعرض للمستخدم: تُفتح في نافذة إن سمح المتصفح،
+     وإلا تُعرض داخل الموقع في إطار — فلا تضيع لأن المنبثقة محجوبة. */
+  function openHtml(html, title, printIt) {
+    let w = null;
+    try { w = window.open("", "_blank", "width=1000,height=800"); } catch (e) { w = null; }
+    if (w && w.document) {
+      w.document.write(html);
+      w.document.close();
+      return;
+    }
+    const back = document.createElement("div");
+    back.className = "modal-backdrop open sc-sheet";
+    back.innerHTML = `<div class="modal sc-sheet-box">
+        <div class="modal-head"><b>${esc(title)}</b>
+          <span class="btn-row">${printIt ? `<button type="button" class="btn small" data-print>🖨 طباعة</button>` : ""}
+          <button type="button" class="btn small secondary" data-close>إغلاق</button></span></div>
+        <iframe class="sc-sheet-frame" title="${esc(title)}"></iframe>
+      </div>`;
+    document.body.append(back);
+    const frame = back.querySelector("iframe");
+    frame.srcdoc = html;
+    const close = () => back.remove();
+    back.querySelector("[data-close]").addEventListener("click", close);
+    back.addEventListener("click", (e) => { if (e.target === back) close(); });
+    const pr = back.querySelector("[data-print]");
+    if (pr) pr.addEventListener("click", () => { frame.contentWindow.focus(); frame.contentWindow.print(); });
   }
 
   /* ===== تشغيل سكربت القراءة في نظام المركز =====
@@ -607,9 +633,7 @@
   }
 
   function howTo() {
-    const w = window.open("", "_blank", "noopener,width=820,height=720");
-    if (!w) { ui.toast("اسمح بالنوافذ المنبثقة"); return; }
-    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تشغيل شاشة إحصاءات المركز</title>
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تشغيل شاشة إحصاءات المركز</title>
       <style>body{font-family:Tahoma,Arial;margin:26px;line-height:1.9;background:#f4f6fa;color:#1b2433}
       h1{font-size:17pt;background:#0b1f3a;color:#fff;padding:10px;border-radius:8px}
       li{margin:8px 0}code{background:#e7ecf3;padding:2px 6px;border-radius:4px}
@@ -639,8 +663,8 @@
       </ol>
       <p><b>ما لا يحدث:</b> لا تُرسل أسماء ولا أرقام هويات — أرقام مجمّعة فقط. ولا يعرف موقع تمكين كلمة مرور نظام المركز،
       ولا يفتح السكربت أي رابط تعديل أو حذف.</p>
-      </body></html>`);
-    w.document.close();
+      </body></html>`;
+    openHtml(html, "طريقة تشغيل شاشة إحصاءات المركز", false);
   }
 
   /* ===== التشغيل ===== */
