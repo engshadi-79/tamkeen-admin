@@ -618,8 +618,15 @@
       </style></head><body>
       <h1>كيف تعمل شاشة إحصاءات المركز؟</h1>
       <p class="mark"><b>أسرع طريقة (مرة واحدة):</b> اسحب هذا الزر إلى شريط المفضلة في متصفحك:
-        <a class="bm" href="${bookmarklet().replace(/"/g, "&quot;")}">▶ تشغيل إحصاءات تمكين</a>
+        <a class="bm" id="bm" href="${bookmarklet().replace(/"/g, "&quot;")}">▶ تشغيل إحصاءات تمكين</a>
         ثم افتح نظام المركز واضغط عليه — يعمل السكربت بنقرة واحدة بلا Console.</p>
+      <p class="mark"><b>لا تستطيع السحب؟</b> انسخ الرابط والصقه يدوياً:
+        <button id="cp" style="background:#0f8b8d;color:#fff;border:0;border-radius:8px;padding:6px 14px;cursor:pointer;font:inherit">⧉ نسخ رابط العلامة</button>
+        <br>ثم في كروم: اضغط <code>Ctrl+Shift+O</code> ← ⋮ ← <b>Add new bookmark</b> ← الصق الرابط في خانة URL واكتب اسماً.</p>
+      <script>document.getElementById("cp").addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(document.getElementById("bm").getAttribute("href")); document.getElementById("cp").textContent = "✔ نُسخ الرابط"; }
+        catch (e) { document.getElementById("cp").textContent = "انسخه يدوياً من زر التشغيل بالزر الأيمن"; }
+      });</script>
       <ol>
         <li>المدير يضغط <b>«نسخ رمز الشاشة»</b> في أعلى الصفحة (الرمز يُنسخ ولا يظهر).</li>
         <li>افتح نظام المركز <code>tamkeen.ksach.org/admin</code> في تبويب جديد وأنت مسجّل دخولك.</li>
