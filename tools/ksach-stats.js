@@ -159,6 +159,17 @@
   }
 
   /* اسم الطالب ورقم هويته من خانة «الطالب»: الرقم للمطابقة داخل المتصفح فقط ولا يُرسل */
+  /* خانة «المجموعة / المدرب» قد تكون سطرين يلتصقان بعد التنظيف:
+     «المجموعة الاولى اسراء خليل مرشد» — فنأخذ اسم المجموعة وحده والباقي مدرّبها. */
+  const GROUP_HEAD = /^\s*(بدون\s+مجموعة|غير\s+موزع|المجموعة\s+\S+|مجموعة\s+\S+|G\s?\d+)/;
+  function groupAndTrainer(v) {
+    const s = clean(v);
+    const m = s.match(GROUP_HEAD);
+    if (m) return { group: clean(m[1]), trainer: clean(s.slice(m[0].length)).replace(/^[\/|·\-–—,،\s]+/, "") };
+    const p = s.split(/\s\/\s|\s\|\s|\s·\s/).map(clean).filter(Boolean);
+    return { group: p[0] || "", trainer: p[1] || "" };
+  }
+
   const NAME_CUT = /STU-[\d-]+|\b\d{6,}\b|[|·]/;
   const nameOf = (v) => clean(String(clean(v)).split(NAME_CUT)[0]).replace(/[-–—,،]+$/, "").trim();
   const nidOf = (v) => (toLatin(clean(v)).match(/\b\d{9}\b/) || [""])[0];
@@ -219,19 +230,22 @@
     debug("الحضور حسب المجموعة", att);
 
     const groups = gr ? gr.rows.map((r) => {
-      const a = decompose(cell(r, gr.head, /المجموعة/));
+      const gt = groupAndTrainer(cell(r, gr.head, /المجموعة/));
+      const a = decompose(gt.group);
       const b = decompose(cell(r, gr.head, /المسار/));
       return {
-        group: a.group || a.track || b.group,
+        group: a.group || a.track || gt.group || b.group,
         track: b.track || a.track,
         course: b.course || a.course,
-        trainer: clean(cell(r, gr.head, /المدرب/)),
+        trainer: clean(cell(r, gr.head, /المدرب/)) || gt.trainer,
         students: num(cell(r, gr.head, /الطلاب/)),
       };
     }).filter((r) => r.group) : [];
 
     const attendance = att ? att.rows.map((r) => {
-      const a = decompose(cell(r, att.head, /المجموعة/));
+      const raw = cell(r, att.head, /المجموعة/);
+      const a = decompose(raw);
+      if (!a.group) { const gt = groupAndTrainer(raw); if (gt.group) a.group = gt.group; }
       const total = num(cell(r, att.head, /إجمالي/));
       const present = num(cell(r, att.head, /حاضر/));
       const absent = num(cell(r, att.head, /غياب/));
@@ -390,9 +404,9 @@
         if (!name) return;
         // عمود «المسار / الدورة» وعمود «المجموعة / المدرب» منفصلان: يُقرأ كلٌّ من مكانه
         const dt = decompose(cell(r, t.head, /المسار/));
-        const gRaw = clean(cell(r, t.head, /المجموعة/)).split(/\s\/\s|\s\|\s/)[0];
-        const dg = decompose(gRaw);
-        const group = dg.group || dg.track || gRaw;
+        const gt = groupAndTrainer(cell(r, t.head, /المجموعة/));
+        const dg = decompose(gt.group);
+        const group = dg.group || dg.track || gt.group;
         const nid = nidOf(raw);
         const id = nid || name + "|" + group;
         if (seen.has(id)) return;
