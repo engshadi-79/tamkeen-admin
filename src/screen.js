@@ -353,7 +353,8 @@
   async function exportNames(kind) {
     const d = (snap && snap.data) || {};
     const f = d.followUps || {};
-    const list = rows(kind === "survey" ? f.surveys : f.pledges).filter((r) => (r.names || []).length);
+    // التصدير يتبع ما يظهر: مجموعات حقيقية فقط، وبالفلاتر المختارة
+    const list = rows(kind === "survey" ? f.surveys : f.pledges).filter(realRow).filter((r) => (r.names || []).length);
     if (!list.length) { ui.toast("لا توجد أسماء لتصديرها"); return; }
     if (typeof ExcelJS === "undefined") { ui.toast("تعذّر تحميل مكتبة Excel"); return; }
     const title = kind === "survey" ? "لم يعبّئوا الاستبيان" : "لم يوقّعوا التعهد";
