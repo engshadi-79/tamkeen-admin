@@ -104,7 +104,10 @@
       if (row.track && scope.length) return scope.some((t) => like(row.track, t));
       return true;
     };
-    const feed = (list) => (list || []).forEach((r) => FIELDS.forEach((f) => { if (r[f] && fits(r, f)) out[f].add(String(r[f])); }));
+    /* «بدون مجموعة» و«غير موزع» وما شابههما ليست مجموعات، فلا تدخل القوائم */
+    const PLACEHOLDER = /^(بدون|غير\s*موزع|غير\s*محدد|—|-)\s*/;
+    const real = (f, v) => !(f === "group" && PLACEHOLDER.test(String(v)));
+    const feed = (list) => (list || []).forEach((r) => FIELDS.forEach((f) => { if (r[f] && real(f, r[f]) && fits(r, f)) out[f].add(String(r[f])); }));
     feed(d.tracks); feed(d.attendance); feed(d.groups); feed(d.demographics); feed((d.grades || {}).tracks);
     feed((d.followUps || {}).pledges); feed((d.followUps || {}).surveys);
     // المدرب يُستمد من المجموعات الباقية، فقائمة المدربين تتبع المرحلة والمسار

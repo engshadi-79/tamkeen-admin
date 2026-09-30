@@ -161,11 +161,16 @@
   /* اسم الطالب ورقم هويته من خانة «الطالب»: الرقم للمطابقة داخل المتصفح فقط ولا يُرسل */
   /* خانة «المجموعة / المدرب» قد تكون سطرين يلتصقان بعد التنظيف:
      «المجموعة الاولى اسراء خليل مرشد» — فنأخذ اسم المجموعة وحده والباقي مدرّبها. */
-  const GROUP_HEAD = /^\s*(بدون\s+مجموعة|غير\s+موزع|المجموعة\s+\S+|مجموعة\s+\S+|G\s?\d+)/;
+  const GROUP_HEAD = /^\s*(بدون\s+مجموعة|غير\s+موزع|المجموعة\s+\S+|مجموعة\s+\S+|G\s?\d+|الاولى|الأولى|الثانية|الثالثة|الرابعة)/;
+  const NO_GROUP = /^(بدون\s*مجموعة|غير\s*موزع|بدون|—|-)$/;
   function groupAndTrainer(v) {
     const s = clean(v);
     const m = s.match(GROUP_HEAD);
-    if (m) return { group: clean(m[1]), trainer: clean(s.slice(m[0].length)).replace(/^[\/|·\-–—,،\s]+/, "") };
+    if (m) {
+      const g = clean(m[1]);
+      // «بدون مجموعة» و«غير موزع» ليست مجموعات: تُترك فارغة فلا تظهر في القوائم
+      return { group: NO_GROUP.test(g) ? "" : g, trainer: clean(s.slice(m[0].length)).replace(/^[\/|·\-–—,،\s]+/, "") };
+    }
     const p = s.split(/\s\/\s|\s\|\s|\s·\s/).map(clean).filter(Boolean);
     return { group: p[0] || "", trainer: p[1] || "" };
   }
