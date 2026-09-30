@@ -1,7 +1,7 @@
 /* رسوم بيانية أفقية بسيطة على canvas (بلا مكتبات) تُدرج كصور في المعاينة وملف Word */
 (function (App) {
   const FONT = '"Sakkal Majalla", "Cairo", "Segoe UI", Tahoma, sans-serif';
-  const COLORS = { bar: "#0f8b8d", low: "#c0392b", grid: "#dde3ec", text: "#1b2433", muted: "#5f6b7d", threshold: "#b7791f" };
+  const COLORS = { bar: "#1ABB9C", low: "#d63939", grid: "#eff0f3", text: "#1e2633", muted: "#7e8896", threshold: "#f59f00" };
 
   /* يرجع { src, widthPt, heightPt } — عرض الصورة في المستند 440 نقطة */
   function horizontalBars({ title, labels, values, max = 100, unit = "%", threshold, lowBelow }) {
