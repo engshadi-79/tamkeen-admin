@@ -106,7 +106,7 @@
     };
     /* «بدون مجموعة» و«غير موزع» وما شابههما ليست مجموعات، فلا تدخل القوائم */
     const PLACEHOLDER = /^(بدون|غير\s*موزع|غير\s*محدد|—|-)\s*/;
-    const real = (f, v) => !(f === "group" && PLACEHOLDER.test(String(v)));
+    const real = (f, v) => (f !== "group" || realGroupName(v));
     const feed = (list) => (list || []).forEach((r) => FIELDS.forEach((f) => { if (r[f] && real(f, r[f]) && fits(r, f)) out[f].add(String(r[f])); }));
     feed(d.tracks); feed(d.attendance); feed(d.groups); feed(d.demographics); feed((d.grades || {}).tracks);
     feed((d.followUps || {}).pledges); feed((d.followUps || {}).surveys);
@@ -282,10 +282,22 @@
   }
 
   /* المتابعات: من لم يوقّع تعهداً ومن لم يعبّئ الاستبيان — أعداد لكل مجموعة، بلا أسماء */
+  /* حاويات الطلاب غير الموزّعين ليست مجموعات: لا تظهر في المتابعات ولا في الأسماء */
+  const NOT_GROUP = /^(بدون|غير\s*موزع|غير\s*محدد|—|-)\s*/;
+  /* اسم مجموعة فعلي: G1 أو «المجموعة الثانية» أو كلمتان على الأكثر.
+     ما طال عن ذلك فهو اسم مجموعة التصق باسم مدربها في جدول النظام. */
+  const GROUP_OK = /^(G\s?\d+|المجموعة\s+\S+|مجموعة\s+\S+|الاولى|الأولى|الثانية|الثالثة|الرابعة)$/;
+  function realGroupName(v) {
+    const g = String(v || "").trim();
+    if (!g || NOT_GROUP.test(g)) return false;
+    return GROUP_OK.test(g) || g.split(/\s+/).length <= 2;
+  }
+  const realRow = (r) => r && realGroupName(r.group);
+
   function panelFollowUps(d) {
     const f = d.followUps || {};
-    const pl = rows(f.pledges);
-    const sv = rows(f.surveys);
+    const pl = rows(f.pledges).filter(realRow);
+    const sv = rows(f.surveys).filter(realRow);
     const students = sum(pl, "students");
     const signed = sum(pl, "pledged");
     const noPledge = sum(pl, "missing");

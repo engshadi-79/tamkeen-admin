@@ -492,6 +492,7 @@
     const pledges = [];
     const used = new Set();
     (groups || []).forEach((g) => {
+      if (!g.group) return;   // حاوية بلا مجموعة: لا تُحسب
       const k = keyOf(g);
       const done = (pledged.get(k) || {}).pledged || 0;
       used.add(k);
