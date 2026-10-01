@@ -284,6 +284,95 @@
     return mapping;
   }
 
+  /* بيانات المسار التي تسد الحقول غير الموجودة في ملف الأفراد */
+  const TRACK_DATA_COLS = {
+    name: "اسم المسار (من صفحة المسارات)", code: "رمز المسار (من صفحة المسارات)", phaseGroupCode: "رمز المرحلة والمجموعة (من دليل الترميز)", englishName: "الاسم الإنجليزي للمسار (من صفحة المسارات)",
+    type: "نوع المسار (من صفحة المسارات)", beneficiaries: "عدد المستفيدين (من صفحة المسارات)", attendancePct: "نسبة الحضور (من صفحة المسارات)",
+    hoursCompleted: "الساعات المكتملة (من صفحة المسارات)", totalHours: "إجمالي الساعات التدريبية (من صفحة المسارات)",
+  };
+  const TRACK_DATA_HEADERS = Object.values(TRACK_DATA_COLS);
+
+  function trackDataFieldFor(label) {
+    const n = normalizeHeader(label);
+    if (/مدرب/.test(n)) return ""; // المدربون لهم ربط مستقل موجود
+    if (/(مرحله|مجموعه)/.test(n) && /(رمز|كود|رقم)/.test(n)) return TRACK_DATA_COLS.phaseGroupCode;
+    if (/نوع/.test(n) && /مسار|تدريب/.test(n)) return TRACK_DATA_COLS.type;
+    if (/مسار/.test(n) && /(رمز|كود|رقم)/.test(n)) return TRACK_DATA_COLS.code;
+    if (/مسار/.test(n) && /انجليزي|english|ترجمه/.test(n)) return TRACK_DATA_COLS.englishName;
+    if ((/اسم/.test(n) && /مسار/.test(n)) || /^المسار(?:ات)?(?:\s|$)|^مسار(?:\s|$)/.test(n)) return TRACK_DATA_COLS.name;
+    if (!/(اسم|هويه|رقم|جوال|هاتف)/.test(n) && /(عدد|اجمالي|مجموع|مستفيدون|مستفيدين|مستفيدات|متدربين|متدربون|منتفعين)/.test(n) && /(مستفيد|متدرب|منتفع)/.test(n)) return TRACK_DATA_COLS.beneficiaries;
+    if (/حضور/.test(n) && /(نسب|percent|%)/.test(n)) return TRACK_DATA_COLS.attendancePct;
+    if (/ساع/.test(n) && !/حضور|انصراف|وقت/.test(n)) return /(مكتمل|منجز|completed)/.test(n) ? TRACK_DATA_COLS.hoursCompleted : TRACK_DATA_COLS.totalHours;
+    return "";
+  }
+
+  /* يضيف أعمدة مرجعية فقط؛ لا يغيّر أي قيمة في ملف الأفراد نفسه. */
+  function addTrackDataColumns(data, tracks, source, catalog) {
+    for (let i = data.headers.length - 1; i >= 0; i--) {
+      if (!TRACK_DATA_HEADERS.includes(data.headers[i])) continue;
+      const key = data.headers[i];
+      data.headers.splice(i, 1);
+      data.rows.forEach((row) => { delete row[key]; });
+    }
+    const src = source === undefined ? { column: guessTrackColumn(data.headers) } : source || {};
+    const fixed = src.track ? (tracks || []).find((t) => t.id === src.track) : null;
+    const column = fixed ? "" : src.column && data.headers.includes(src.column) ? src.column : "";
+    const report = { column, track: fixed ? fixed.id : "", trackName: fixed ? fixed.name : "", filled: 0, unmatched: [] };
+    if (!column && !fixed) return report;
+    const refs = (catalog || []).filter((r) => r.kind === "path");
+    const routeRef = (track) => refs.find((r) => trackKey(r.name) === trackKey(track.name) || trackKey(r.name).includes(trackKey(track.name)) || trackKey(track.name).includes(trackKey(r.name)));
+    const phaseRows = (catalog || []).filter((r) => r.kind === "phaseCode");
+    const phaseCol = data.headers.find((h) => /مرحله/.test(normalizeHeader(h)) && !/(رمز|كود|رقم)/.test(normalizeHeader(h))) || "";
+    const groupCol = data.headers.find((h) => /مجموعه/.test(normalizeHeader(h)) && !/(رمز|كود|رقم)/.test(normalizeHeader(h))) || "";
+    const ordinalNumber = (v) => {
+      const n = normalizeHeader(v).replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+      const digit = n.match(/\d+/);
+      if (digit) return Number(digit[0]);
+      if (/اول|اولي/.test(n)) return 1;
+      if (/ثان/.test(n)) return 2;
+      if (/ثال/.test(n)) return 3;
+      if (/رابع/.test(n)) return 4;
+      return 0;
+    };
+    const missing = new Set();
+    data.rows.forEach((row) => {
+      const value = column ? row[column] : fixed.name;
+      const track = fixed || findTrack(tracks, value);
+      if (!track) { if (value != null && String(value).trim()) missing.add(String(value).trim()); return; }
+      const ref = routeRef(track);
+      const phaseNo = ordinalNumber(phaseCol && row[phaseCol]);
+      const groupNo = ordinalNumber(groupCol && row[groupCol]);
+      const phaseCode = ref && phaseNo && groupNo ? phaseRows.find((r) => r.trackCode === ref.code && ordinalNumber(r.phase) === phaseNo && ordinalNumber(r.group) === groupNo) : null;
+      const values = {
+        [TRACK_DATA_COLS.name]: track.name,
+        [TRACK_DATA_COLS.code]: (ref && ref.code) || track.code || "",
+        [TRACK_DATA_COLS.phaseGroupCode]: phaseCode ? phaseCode.code : "",
+        [TRACK_DATA_COLS.englishName]: (ref && ref.englishName) || track.englishName || "",
+        [TRACK_DATA_COLS.type]: track.type === "digital" ? "رقمي / تقني" : "حرفي / مهني",
+        [TRACK_DATA_COLS.beneficiaries]: Number(track.beneficiaries) || 0,
+        [TRACK_DATA_COLS.attendancePct]: Number(track.attendancePct) || 0,
+        [TRACK_DATA_COLS.hoursCompleted]: Number(track.hoursCompleted) || 0,
+        [TRACK_DATA_COLS.totalHours]: App.store ? App.store.TOTAL_HOURS : 130,
+      };
+      Object.assign(row, values);
+      report.filled++;
+    });
+    TRACK_DATA_HEADERS.forEach((h) => { if (!data.headers.includes(h)) data.headers.push(h); });
+    report.unmatched = [...missing].slice(0, 8);
+    return report;
+  }
+
+  function preferTrackData(mapping, templateHeaders, dataHeaders, dataRows, allowReplace) {
+    templateHeaders.forEach((h) => {
+      const source = trackDataFieldFor(h);
+      const hasValues = !dataRows || dataRows.some((r) => r[source] != null && String(r[source]).trim() !== "");
+      const current = mapping[h];
+      const currentIsRelated = current === source || (current && trackDataFieldFor(current) === source);
+      if (source && dataHeaders.includes(source) && hasValues && (!current || (allowReplace && !currentIsRelated))) mapping[h] = source;
+    });
+    return mapping;
+  }
+
   /* ===== العمر: يُحسب من عمود تاريخ الميلاد =====
      يقبل 1998-05-20 و20/05/1998 و«20-5-1998» والأرقام العربية وتواريخ Excel الرقمية. */
   const AGE_COLUMN = "العمر (محسوب من تاريخ الميلاد)";
@@ -1409,6 +1498,7 @@
     isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, guessKey, generate,
     gradeOf, addComputedGrade, preferComputedGrade, guessAverageColumn, GRADE_COLUMN,
     addTrainerColumns, preferTrainers, trainerColumnFor, guessTrackColumn, TRAINER_COLS, sortRowsByColumn,
+    addTrackDataColumns, preferTrackData, trackDataFieldFor, TRACK_DATA_COLS, TRACK_DATA_HEADERS,
     addAgeColumn, preferAge, guessBirthColumn, ageFrom, AGE_COLUMN,
     readTemplateTextFields,
     // للاختبار
