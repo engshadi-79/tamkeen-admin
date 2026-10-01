@@ -818,6 +818,16 @@ body.has-trial-bar #login-screen { top: 38px; }
 .dash-next-card .task-list { margin: 0; }
 #view-dashboard > .card:last-child { border-radius: 13px; }
 #view-dashboard > .card:last-child .dash-table-wrap { margin-top: 8px; }
+
+.track-catalog-card { margin-top: 18px; }
+.track-catalog-card .page-head { margin-bottom: 12px; }
+.track-catalog-card h3 { margin: 0; }
+.track-catalog-count { padding: 6px 12px; border-radius: 999px; background: var(--surface-soft, #f1f5f9); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.track-catalog-search { max-width: 520px; margin: 0 0 18px; }
+.track-catalog-title { margin: 18px 0 8px; color: var(--navy-900); font-size: 15px; }
+.track-catalog-table { min-width: 560px; }
+.track-catalog-table td, .track-catalog-table th { padding: 10px 12px; }
+.track-code-pill { display: inline-block; padding: 4px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-soft, #f8fafc); color: var(--navy-900); font: 700 12px/1.3 ui-monospace, Consolas, monospace; direction: ltr; }
 #view-dashboard .ch-card { border-radius: 13px; }
 #view-dashboard .ch-card h3 { font-size: 13px; }
 #view-dashboard .ch-card h3 small { font-size: 10px; }

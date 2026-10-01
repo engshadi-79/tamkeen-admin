@@ -5,9 +5,9 @@
   const { store, ui } = App;
   const SNAP_KEY = "tamkeen-admin:sync2";
   const SETTINGS_KEYS = ["registrySettings", "reportSettings", "rosterMeta", "aiSettings", "signer", "signerTitle", "fixedFields", "convDefaults", "hospitalityRows", "reportModel"];
-  const COLS = ["tracks", "tasks", "meetings", "customTemplates", "roster", "settings", "convTemplates", "hospitality", "sheets", "sheetRows", "letterApprovals"];
+  const COLS = ["tracks", "trackCodes", "tasks", "meetings", "customTemplates", "roster", "settings", "convTemplates", "hospitality", "sheets", "sheetRows", "letterApprovals"];
   let syncing = false, again = false, timer = null, people = [];
-  const LABELS = { tracks: "المسارات", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات", convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة", sheets: "جداول البيانات", sheetRows: "صفوف الجداول", letterApprovals: "طلبات اعتماد المراسلات" };
+  const LABELS = { tracks: "المسارات", trackCodes: "دليل ترميز المسارات والمراحل", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات", convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة", sheets: "جداول البيانات", sheetRows: "صفوف الجداول", letterApprovals: "طلبات اعتماد المراسلات" };
   const confirmedWipe = {}; // أقسام وافق المستخدم على حذفها الجماعي من هذا الجهاز
   const blocked = {};
 

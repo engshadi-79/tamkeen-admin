@@ -54,6 +54,22 @@
       </tr>`).join("") || `<tr><td colspan="9" class="empty">لا توجد مسارات. اضغط «+ مسار جديد».</td></tr>`;
 
     renderFoot();
+    renderCatalog();
+  }
+
+  function renderCatalog() {
+    const records = store.get().trackCodes || [];
+    const paths = records.filter((r) => r.kind === "path");
+    const codes = records.filter((r) => r.kind === "phaseCode");
+    const query = String((document.getElementById("track-catalog-search") || {}).value || "").trim().toLowerCase();
+    const matches = (r) => !query || [r.name, r.englishName, r.code, r.phase, r.trackName, r.trackCode, r.group].some((v) => String(v || "").toLowerCase().includes(query));
+    const pathBody = document.getElementById("track-paths-body");
+    const codeBody = document.getElementById("track-codes-body");
+    if (!pathBody || !codeBody) return;
+    pathBody.innerHTML = paths.filter(matches).map((r) => `<tr><td>${ui.esc(r.name)}</td><td dir="ltr">${ui.esc(r.englishName)}</td><td><span class="track-code-pill">${ui.esc(r.code)}</span></td></tr>`).join("") || `<tr><td colspan="3" class="empty">لا توجد نتائج مطابقة</td></tr>`;
+    codeBody.innerHTML = codes.filter(matches).map((r) => `<tr><td>${ui.esc(r.phase)}</td><td>${ui.esc(r.trackName)}</td><td>${ui.esc(r.group)}</td><td><span class="track-code-pill">${ui.esc(r.code)}</span></td></tr>`).join("") || `<tr><td colspan="4" class="empty">لا توجد نتائج مطابقة</td></tr>`;
+    const count = document.getElementById("track-catalog-count");
+    if (count) count.textContent = `${ui.fmt(paths.length)} مسارات · ${ui.fmt(codes.length)} رمز مرحلة ومجموعة`;
   }
 
   function renderFoot() {
@@ -210,7 +226,8 @@
       if (btn) removeTrack(btn.closest("tr").dataset.id);
     });
     document.getElementById("tracks-add").addEventListener("click", addTrack);
+    document.getElementById("track-catalog-search").addEventListener("input", renderCatalog);
   }
 
-  App.tracks = { init, render, ordered, summary, hoursPct, textSummary, TYPE_LABEL };
+  App.tracks = { init, render, ordered, summary, hoursPct, textSummary, TYPE_LABEL, renderCatalog };
 })(window.App = window.App || {});
