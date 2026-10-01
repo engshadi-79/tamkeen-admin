@@ -30,6 +30,37 @@
     });
     document.getElementById("alerts").innerHTML = alerts.length ? alerts.join("") : `<li class="ok">لا توجد تنبيهات حالياً — جميع المؤشرات ضمن الحدود المطلوبة.</li>`;
 
+    const team = new Map();
+    tasks.forEach((task) => {
+      const owner = String(task.owner || "").trim() || "بلا مسؤول";
+      const row = team.get(owner) || { open: 0, overdue: 0, done: 0, nextDate: "", nextDistance: Infinity };
+      if (task.done) row.done++;
+      else {
+        row.open++;
+        if (ui.isOverdue(task)) row.overdue++;
+        if (task.dueDate) {
+          const distance = Math.abs(Date.parse(`${task.dueDate}T00:00:00Z`) - Date.parse(`${ui.todayISO()}T00:00:00Z`));
+          if (Number.isFinite(distance) && distance < row.nextDistance) {
+            row.nextDate = task.dueDate;
+            row.nextDistance = distance;
+          }
+        }
+      }
+      team.set(owner, row);
+    });
+    const teamRows = [...team.entries()].sort((a, b) =>
+      b[1].overdue - a[1].overdue || b[1].open - a[1].open || a[0].localeCompare(b[0], "ar")
+    );
+    document.getElementById("dash-team").innerHTML = teamRows.length
+      ? teamRows.map(([owner, row]) => `<tr>
+          <td>${ui.esc(owner)}</td>
+          <td>${ui.fmt(row.open)}</td>
+          <td><span class="badge ${row.overdue ? "low" : "good"}">${ui.fmt(row.overdue)}</span></td>
+          <td>${ui.fmt(row.done)}</td>
+          <td>${row.nextDate ? ui.formatDate(row.nextDate) : "—"}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="5" class="empty">لا توجد مهام مسجلة بعد.</td></tr>`;
+
     const files = new Map();
     (App.registry ? App.registry.live() : []).forEach((r) => { if (r.track) files.set(r.track, (files.get(r.track) || 0) + 1); });
     document.getElementById("dash-tracks").innerHTML = trackList.map((t) => {

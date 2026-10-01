@@ -4,11 +4,13 @@
   const $ = (id) => document.getElementById(id);
   const FIELDS = ["subject", "recipient", "recipientTitle", "date", "ref", "attachments", "signer", "signerTitle", "details"];
   const REMEMBERED = ["signer", "signerTitle"];
+  let activeApproval = null;
+  let approvalTemplate = null;
 
   function allTemplates() {
     return templates.BUILT_IN.concat(store.get().customTemplates || []);
   }
-  const current = () => allTemplates().find((t) => t.id === $("tpl-select").value) || templates.BUILT_IN[0];
+  const current = () => approvalTemplate || allTemplates().find((t) => t.id === $("tpl-select").value) || templates.BUILT_IN[0];
   const isCustom = (t) => (store.get().customTemplates || []).some((c) => c.id === t.id);
 
   function values() {
@@ -134,7 +136,173 @@
     }
   }
 
-  async function registerOutgoing(file) {
+  const approvals = () => (store.get().letterApprovals = store.get().letterApprovals || []);
+  const approvalStatus = { pending: "بانتظار المراجعة", approved: "معتمد — بانتظار الإصدار", rejected: "يحتاج إلى تعديل", issued: "صادر" };
+  const approvalOwner = (r) => r.owner === (App.profile && App.profile.name());
+  const canIssueApproval = () => !!(activeApproval && activeApproval.approvalStatus === "approved" && approvalOwner(activeApproval) && App.profile.can("export"));
+
+  function renderApprovals() {
+    const host = $("letter-approvals");
+    if (!host) return;
+    const items = approvals().slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))).slice(0, 60);
+    if (!items.length) { host.innerHTML = `<p class="empty">لا توجد طلبات اعتماد بعد.</p>`; return; }
+    host.innerHTML = items.map((r) => {
+      const own = approvalOwner(r);
+      const kind = r.kind === "bulk" ? "إصدار جماعي" : "مراسلة";
+      let action = "";
+      if (r.approvalStatus === "pending") {
+        action = `<button class="btn small secondary" data-approval-action="preview" data-approval-id="${ui.esc(r.id)}">معاينة المسودة</button>`;
+        if (App.profile && App.profile.can("approve") && (!own || App.profile.isAdmin())) action += `<button class="btn small" data-approval-action="approve" data-approval-id="${ui.esc(r.id)}">اعتماد</button>
+          <button class="btn small danger" data-approval-action="reject" data-approval-id="${ui.esc(r.id)}">إعادة للتعديل</button>`;
+      } else if (r.approvalStatus === "approved" && own) {
+        action = `<button class="btn small navy" data-approval-action="issue" data-approval-id="${ui.esc(r.id)}">إصدار النسخة المعتمدة</button>`;
+      } else if (r.approvalStatus === "rejected" && own) {
+        action = `<button class="btn small secondary" data-approval-action="edit" data-approval-id="${ui.esc(r.id)}">تعديل وإعادة الإرسال</button>`;
+      }
+      return `<article class="approval-item">
+        <div class="approval-copy"><b>${ui.esc(r.fields && r.fields.subject || r.template && r.template.name || kind)}</b>
+          <span>${ui.esc(kind)} · ${ui.esc(r.owner || "")}${r.createdAt ? ` · ${ui.formatDate(r.createdAt.slice(0, 10))}` : ""}</span>
+          ${r.approvalNote ? `<small>${ui.esc(r.approvalNote)}</small>` : ""}</div>
+        <span class="approval-status ${ui.esc(r.approvalStatus)}">${ui.esc(approvalStatus[r.approvalStatus] || "غير محدد")}</span>
+        ${action ? `<div class="approval-actions">${action}</div>` : ""}
+      </article>`;
+    }).join("");
+  }
+
+  function captureFields() {
+    return Object.fromEntries(FIELDS.map((f) => [f, $("l-" + f).value]));
+  }
+
+  function requestApproval(extra) {
+    if (activeApproval) { ui.toast("أغلق معاينة الطلب الحالي قبل إرسال مسودة أخرى"); return; }
+    if (!App.cloud || !App.cloud.ready()) { ui.toast("سجّل الدخول إلى حساب المركز لإرسال طلب اعتماد مشترك"); return; }
+    const isBulk = extra && extra.kind === "bulk";
+    if (isBulk ? !(extra.rows || []).length : (!$("l-subject").value.trim() || !$("l-details").value.trim())) { ui.toast(isBulk ? "لا توجد صفوف لإرسالها للاعتماد" : "أدخل الموضوع ومتن المراسلة قبل إرسالها للاعتماد"); return; }
+    const request = Object.assign({
+      id: store.uid(), owner: App.profile.name(), approvalStatus: "pending", kind: "single",
+      fields: captureFields(), template: { id: current().id, name: current().name, bodyTemplate: current().bodyTemplate },
+      replyTo, qr: $("l-qr").checked, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    }, extra || {});
+    approvals().push(request);
+    store.save();
+    renderApprovals();
+    ui.toast("أُرسلت المسودة إلى قائمة الاعتماد");
+  }
+
+  function lockComposer(locked) {
+    FIELDS.forEach((f) => { $("l-" + f).readOnly = locked; });
+    $("tpl-select").disabled = locked;
+    $("l-qr").disabled = locked;
+  }
+
+  function loadApprovalPreview(request) {
+    activeApproval = request;
+    approvalTemplate = request.template;
+    FIELDS.forEach((f) => { $("l-" + f).value = request.fields && request.fields[f] || ""; });
+    if (request.template && allTemplates().some((t) => t.id === request.template.id)) $("tpl-select").value = request.template.id;
+    replyTo = request.replyTo || null;
+    $("l-qr").checked = !!request.qr;
+    verifyId = "";
+    lockComposer(true);
+    $("letter-approval-clear").hidden = false;
+    renderPreview();
+    if (request.kind === "bulk") {
+      bulkRows = request.rows || [];
+      $("lb-file").disabled = true;
+      $("lb-go").hidden = true;
+      $("lb-register").closest("label").hidden = true;
+      $("lb-info").innerHTML = `<p><b>${ui.fmt(bulkRows.length)}</b> خطاباً في هذا الطلب:</p><div class="approval-bulk-preview">${bulkRows.map((row, i) => `<article><b>${ui.fmt(i + 1)}.</b> ${Object.entries(row).map(([key, value]) => `<span><b>${ui.esc(key)}:</b> ${ui.esc(value)}</span>`).join(" · ")}</article>`).join("")}</div>`;
+      $("lb-modal").classList.add("open");
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function clearApprovalPreview() {
+    activeApproval = null;
+    approvalTemplate = null;
+    replyTo = null;
+    $("reply-note").hidden = true;
+    $("letter-approval-clear").hidden = true;
+    lockComposer(false);
+    renderSelect();
+  }
+
+  function editRejected(request) {
+    if (!request || request.approvalStatus !== "rejected" || !approvalOwner(request)) return;
+    activeApproval = null;
+    approvalTemplate = request.template || null;
+    FIELDS.forEach((f) => { $("l-" + f).value = request.fields && request.fields[f] || ""; });
+    if (request.template) {
+      let option = [...$("tpl-select").options].find((o) => o.value === request.template.id);
+      if (!option) { option = document.createElement("option"); option.value = request.template.id; option.textContent = `قالب الطلب: ${request.template.name}`; $("tpl-select").append(option); }
+      $("tpl-select").value = request.template.id;
+    }
+    replyTo = request.replyTo || null;
+    $("l-qr").checked = !!request.qr;
+    lockComposer(false);
+    $("letter-approval-clear").hidden = true;
+    if (request.kind === "bulk") {
+      openBulk();
+      $("lb-register").checked = !!request.register;
+      $("lb-info").innerHTML = `<p>أُعيد الطلب للمراجعة: ${ui.esc(request.approvalNote || "")}</p><p class="conv-hint">ارفع ملف Excel بعد تعديله ثم أرسل الطلب مرة أخرى.</p>`;
+    }
+    renderPreview();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function issueApproval(request) {
+    if (!request || request.approvalStatus !== "approved" || !approvalOwner(request) || !App.profile.can("export")) { ui.toast("لا يمكن إصدار هذا الطلب من هذا الحساب"); return; }
+    loadApprovalPreview(request);
+    if (request.kind === "bulk") {
+      bulkRows = request.rows || [];
+      $("lb-register").checked = !!request.register;
+      $("lb-progress").textContent = "";
+      $("lb-modal").classList.add("open");
+      await runBulk(true);
+      return;
+    }
+    ui.toast("تم تحميل النسخة المعتمدة؛ أزرار الإصدار أصبحت متاحة");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function markIssued(requestId) {
+    const req = approvals().find((r) => r.id === requestId);
+    if (!req) return;
+    req.approvalStatus = "issued";
+    req.issuedAt = new Date().toISOString();
+    req.updatedAt = req.issuedAt;
+    store.save();
+    activeApproval = null;
+    approvalTemplate = null;
+    lockComposer(false);
+    $("letter-approval-clear").hidden = true;
+    renderSelect();
+    renderApprovals();
+  }
+
+  async function approvalClick(e) {
+    const b = e.target.closest("[data-approval-action]");
+    if (!b) return;
+    const req = approvals().find((r) => r.id === b.dataset.approvalId);
+    if (!req) return;
+    if (b.dataset.approvalAction === "preview") { loadApprovalPreview(req); return; }
+    if (b.dataset.approvalAction === "issue") { await issueApproval(req); return; }
+    if (b.dataset.approvalAction === "edit") { editRejected(req); return; }
+    if (!App.profile.can("approve") || req.approvalStatus !== "pending" || (approvalOwner(req) && !App.profile.isAdmin())) return;
+    const action = b.dataset.approvalAction;
+    const note = action === "reject" ? prompt("ملاحظة للمُعدّ تساعده على التعديل:", "") : "";
+    if (action === "reject" && note === null) return;
+    req.approvalStatus = action === "approve" ? "approved" : "rejected";
+    req.approvalBy = App.profile.name();
+    req.approvalAt = new Date().toISOString();
+    req.approvalNote = note || "";
+    req.updatedAt = req.approvalAt;
+    store.save();
+    renderApprovals();
+    ui.toast(action === "approve" ? "اعتُمدت المسودة" : "أُعيدت المسودة للتعديل");
+  }
+
+  async function registerOutgoing(file, approvalId) {
     if (!App.registry) return;
     await ensureRef();
     const v = values();
@@ -148,20 +316,26 @@
       verifyId: $("l-qr").checked ? verifyId : "",
       file,
       replyTo,
+      approvalId,
     });
-    if (number) ui.toast(replyTo ? `سُجّل في الصادر برقم ${number} وربُط بالوارد` : `سُجّل في الصادر برقم ${number}`);
+    if (number) {
+      if (approvalId) markIssued(approvalId);
+      ui.toast(replyTo ? `سُجّل في الصادر برقم ${number} وربُط بالوارد` : `سُجّل في الصادر برقم ${number}`);
+    }
     if (number && replyTo) cancelReply();
   }
 
   async function exportWord() {
+    if (!canIssueApproval()) { ui.toast("أرسل المسودة للاعتماد أولاً، ثم أصدر النسخة بعد الموافقة"); return; }
     await ensureRef();
     const base = fileBase();
     const blob = App.docRender.exportWord(blocks(), base);
-    if (blob) await registerOutgoing({ blob, name: base + ".docx" });
+    if (blob) await registerOutgoing({ blob, name: base + ".docx" }, activeApproval.id);
   }
 
   async function exportPDF(asPdf) {
-    await registerOutgoing(null);
+    if (!canIssueApproval()) { ui.toast("أرسل المسودة للاعتماد أولاً، ثم أصدر النسخة بعد الموافقة"); return; }
+    await registerOutgoing(null, activeApproval.id);
     App.docRender.print(blocks(), fileBase(), asPdf);
   }
 
@@ -199,9 +373,12 @@
 
   function openBulk() {
     $("lb-file").value = "";
+    $("lb-file").disabled = false;
     bulkRows = [];
     $("lb-info").innerHTML = `<p class="conv-hint">ارفع ملف Excel صفه الأول عناوين الأعمدة، ثم صف لكل خطاب أو شهادة. الأعمدة المفهومة: ${Object.values(VAR_LABELS).map((v) => `«${v}»`).join("، ")}، أو أسماء المتغيرات نفسها مثل {{recipient}}. أي حقل غير موجود في الملف يؤخذ من القيم المكتوبة في الصفحة الآن.</p>`;
     $("lb-go").disabled = true;
+    $("lb-go").hidden = false;
+    $("lb-register").closest("label").hidden = false;
     $("lb-register").checked = false;
     $("lb-progress").textContent = "";
     $("lb-modal").classList.add("open");
@@ -218,7 +395,7 @@
       const mapped = headers.map((h) => ({ h, v: columnToVar(h) }));
       const known = mapped.filter((m) => m.v);
       const unknown = mapped.filter((m) => !m.v);
-      $("lb-info").innerHTML = `<p><b>${ui.fmt(rows.length)}</b> صفاً جاهزاً للإصدار بقالب «${ui.esc(current().name)}».</p>
+      $("lb-info").innerHTML = `<p><b>${ui.fmt(rows.length)}</b> صفاً جاهزاً للإرسال للاعتماد بقالب «${ui.esc(current().name)}».</p>
         <p class="conv-hint">أعمدة مفهومة: ${known.length ? known.map((m) => `«${ui.esc(m.h)}»`).join("، ") : "لا شيء"}.
         ${unknown.length ? `<br>أعمدة إضافية تُستخدم كمتغيرات داخل القالب: ${unknown.map((m) => `{{${ui.esc(m.h)}}}`).join("، ")}.` : ""}</p>`;
       $("lb-go").disabled = false;
@@ -228,8 +405,14 @@
     }
   }
 
-  async function runBulk() {
+  async function runBulk(fromApproval) {
     if (!bulkRows.length) return;
+    if (!fromApproval) {
+      requestApproval({ kind: "bulk", rows: bulkRows, register: $("lb-register").checked, fields: captureFields(), template: { id: current().id, name: current().name, bodyTemplate: current().bodyTemplate } });
+      closeBulk();
+      return;
+    }
+    if (!canIssueApproval() || activeApproval.kind !== "bulk") { ui.toast("هذا الإصدار الجماعي لا يحمل اعتماداً صالحاً"); return; }
     if (typeof JSZip === "undefined") { ui.toast("تعذّر تحميل مكتبة الضغط"); return; }
     const register = $("lb-register").checked;
     $("lb-go").disabled = true;
@@ -256,11 +439,13 @@
               party: [v.recipient, v.recipientTitle].filter(Boolean).join(" - "),
               subject: v.subject || current().name, kind: current().name, category: "خطابات",
               file: { blob, name },
+              approvalId: activeApproval.id,
             });
           }
         }
       }
       ui.download(`${App.docRender.cleanFileName(current().name)} - ${ui.fmt(bulkRows.length)} ملف - ${ui.todayISO()}.zip`, await zip.generateAsync({ type: "blob" }));
+      markIssued(activeApproval.id);
       ui.toast(register ? `صدر ${ui.fmt(bulkRows.length)} خطاباً وسُجّلت في الصادر` : `صدر ${ui.fmt(bulkRows.length)} ملفاً`);
       closeBulk();
     } catch (e) {
@@ -438,7 +623,10 @@
     REMEMBERED.forEach((f) =>
       $("l-" + f).addEventListener("change", () => { store.get()[f] = $("l-" + f).value.trim(); store.save(); })
     );
-    $("tpl-select").addEventListener("change", renderPreview);
+    $("tpl-select").addEventListener("change", () => {
+      if (approvalTemplate && $("tpl-select").value !== approvalTemplate.id) approvalTemplate = null;
+      renderPreview();
+    });
     $("l-qr").addEventListener("change", () => { verifyId = ""; renderPreview(); });
 
     $("lb-open").addEventListener("click", openBulk);
@@ -446,7 +634,13 @@
     $("lb-go").addEventListener("click", runBulk);
     $("lb-cancel").addEventListener("click", closeBulk);
     $("lb-modal").addEventListener("click", (e) => { if (e.target.id === "lb-modal") closeBulk(); });
-    $("btn-copy").addEventListener("click", () => ui.copyText(plainText()));
+    $("letter-approval-request").addEventListener("click", () => requestApproval());
+    $("letter-approval-clear").addEventListener("click", clearApprovalPreview);
+    $("letter-approvals").addEventListener("click", approvalClick);
+    $("btn-copy").addEventListener("click", () => {
+      if (!canIssueApproval()) { ui.toast("اعتمد المسودة قبل نسخ النص النهائي"); return; }
+      ui.copyText(plainText());
+    });
     $("btn-word").addEventListener("click", exportWord);
     $("btn-pdf").addEventListener("click", () => exportPDF(true));
     $("btn-print").addEventListener("click", () => exportPDF(false));
@@ -465,12 +659,15 @@
     $("tpl-modal").addEventListener("click", (e) => { if (e.target.id === "tpl-modal") closeEditor(); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeEditor(); });
     window.addEventListener("resize", () => { if ($("view-letters").classList.contains("active")) renderPreview(); });
+    store.onChange(renderApprovals);
+    store.onExternal(renderApprovals);
 
     $("vars-hint").innerHTML =
       "المتغيرات: " + templates.VARS.map((v) => `<code>{{${v}}}</code>`).join(" ") +
       "<br>التنسيق في بداية السطر: <code>#</code> عنوان في الوسط · <code>##</code> خط عريض · <code>&gt;&gt;</code> محاذاة لليسار (التوقيع) · <code>@@ الاسم | الصفة | المحترم</code> سطر المرسل إليه";
     renderSelect(templates.BUILT_IN[0].id);
+    renderApprovals();
   }
 
-  App.letters = { init, render: renderPreview, blocks, startReply, refreshTemplates: () => renderSelect() };
+  App.letters = { init, render: renderPreview, blocks, startReply, refreshTemplates: () => { renderSelect(); renderApprovals(); } };
 })(window.App = window.App || {});

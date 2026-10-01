@@ -26,6 +26,7 @@
   const can = (perm) => {
     const u = user();
     if (!u || u.admin) return true;
+    if (perm === "approve") return (u.perms || {}).approve === true;
     return (u.perms || {})[perm] !== false;
   };
 

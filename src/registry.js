@@ -105,7 +105,7 @@
   const assignNumber = async (type, date) => (await assignNumbers(type, date, 1))[0];
 
   /* يُستدعى عند تصدير خطاب أو تقرير: يضيف قيداً صادراً أو يحدّث القيد الموجود بنفس الرقم */
-  async function upsertOutgoing({ number, date, party, subject, kind, category, file, replyTo, verifyId }) {
+  async function upsertOutgoing({ number, date, party, subject, kind, category, file, replyTo, verifyId, approvalId }) {
     if (!number) return null;
     let rec = records().find((r) => r.type === "out" && r.number === number);
     if (!rec) {
@@ -114,6 +114,7 @@
       logAction(rec, "تصدير خطاب");
     } else logAction(rec, "إعادة تصدير");
     Object.assign(rec, { date, party, subject, kind: kind || rec.kind || "", source: "letters", deletedAt: null });
+    if (approvalId) rec.approvalId = approvalId;
     rec.category = category || rec.category || categoryOf(rec);
     if (!rec.track) rec.track = guessTrack(`${subject} ${party}`);
     if (verifyId) rec.verifyId = verifyId; // رمز التحقق المطبوع على الخطاب

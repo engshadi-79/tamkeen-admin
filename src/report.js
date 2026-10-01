@@ -22,6 +22,9 @@
     ["from", "to", "ref", "date", "recipient", "recipientTitle", "subject", "trainingStart", "trainingEnd", ...TEXTS].forEach((f) => (v[f] = $("r-" + f).value.trim()));
     v.charts = $("r-charts").checked;
     v.tasksList = $("r-tasks").checked;
+    v.compare = $("r-compare").value;
+    v.trackFilter = $("r-track-filter").value;
+    v.metrics = [...document.querySelectorAll("[data-report-metric]:checked")].map((el) => el.dataset.reportMetric);
     return v;
   }
 
@@ -34,7 +37,8 @@
   }
 
   function compute(v) {
-    const tracks = App.tracks.ordered();
+    const allTracks = App.tracks.ordered();
+    const tracks = v.trackFilter && v.trackFilter !== "all" ? allTracks.filter((t) => t.id === v.trackFilter) : allTracks;
     const sum = App.tracks.summary(tracks);
     const inRange = (d) => d && (!v.from || d >= v.from) && (!v.to || d <= v.to);
     const tasks = store.get().tasks;
@@ -44,20 +48,47 @@
     const overdue = tasks.filter((t) => !t.done && t.dueDate && t.dueDate < endDate);
     const meetings = App.meetings.inPeriod(v.from, v.to);
     const reg = App.registry.countInPeriod(v.from, v.to);
-    return { tracks, sum, doneTasks, overdue, meetings, reg, planned: plannedPct(v) };
+    return { tracks, allTracks, sum, doneTasks, overdue, meetings, reg, planned: plannedPct(v) };
+  }
+
+  const metricNames = { beneficiaries: "المستفيدون", attendance: "الحضور %", hours: "إنجاز الساعات %", tasks: "المهام المنجزة", meetings: "الاجتماعات", registry: "الوارد / الصادر" };
+  function comparisonRows(v, d) {
+    if (v.compare === "tracks") return d.tracks.map((t) => ({ label: t.name, values: {
+      beneficiaries: ui.fmt(t.beneficiaries), attendance: pct(Number(t.attendancePct) || 0), hours: pct(App.tracks.hoursPct(t)),
+    } }));
+    if (v.compare !== "months") return [];
+    if (!v.from || !v.to || v.from > v.to) return [];
+    const start = new Date(`${v.from}T00:00:00`), end = new Date(`${v.to}T00:00:00`), months = [];
+    for (let cur = new Date(start.getFullYear(), start.getMonth(), 1); cur <= end && months.length < 48; cur.setMonth(cur.getMonth() + 1)) {
+      const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}`;
+      const within = (date) => String(date || "").slice(0, 7) === key && String(date || "").slice(0, 10) >= v.from && String(date || "").slice(0, 10) <= v.to;
+      months.push({ label: key, values: {
+        tasks: ui.fmt(d.doneTasks.filter((t) => within(t.doneAt)).length),
+        meetings: ui.fmt(d.meetings.filter((m) => within(m.date)).length),
+        registry: `${ui.fmt(App.registry.live().filter((r) => within(r.date) && r.type === "in").length)} / ${ui.fmt(App.registry.live().filter((r) => within(r.date) && r.type === "out").length)}`,
+      } });
+    }
+    return months;
+  }
+  function selectedMetricNames(v) {
+    return v.metrics.filter((key) => (v.compare === "months" ? ["tasks", "meetings", "registry"].includes(key) : v.compare === "tracks" ? ["beneficiaries", "attendance", "hours"].includes(key) : true));
+  }
+  function filteredRows(rows, v) {
+    const keys = selectedMetricNames(v);
+    return rows.map((row) => [row.label, ...keys.map((key) => row.values[key] ?? "—")]);
   }
 
   let chartCache = { key: "", images: [] };
 
-  function chartImages(tracks) {
-    const key = JSON.stringify(tracks.map((t) => [t.name, t.attendancePct, t.hoursCompleted]));
+  function chartImages(tracks, metrics) {
+    const key = JSON.stringify([tracks.map((t) => [t.name, t.attendancePct, t.hoursCompleted]), metrics]);
     if (chartCache.key === key) return chartCache.images;
     const labels = tracks.map((t) => t.name);
     chartCache = {
       key,
       images: [
-        App.charts.horizontalBars({ title: "نسبة الحضور حسب المسار", labels, values: tracks.map((t) => t.attendancePct), threshold: ATTENDANCE_THRESHOLD, lowBelow: ATTENDANCE_THRESHOLD }),
-        App.charts.horizontalBars({ title: "نسبة إنجاز الساعات التدريبية حسب المسار", labels, values: tracks.map(App.tracks.hoursPct) }),
+        ...(metrics.includes("attendance") ? [App.charts.horizontalBars({ title: "نسبة الحضور حسب المسار", labels, values: tracks.map((t) => t.attendancePct), threshold: ATTENDANCE_THRESHOLD, lowBelow: ATTENDANCE_THRESHOLD })] : []),
+        ...(metrics.includes("hours") ? [App.charts.horizontalBars({ title: "نسبة إنجاز الساعات التدريبية حسب المسار", labels, values: tracks.map(App.tracks.hoursPct) })] : []),
       ],
     };
     return chartCache.images;
@@ -78,38 +109,42 @@
     const section = (title) => out.push({ kind: "para", text: "" }, { kind: "bold", text: `${ORD[n++]}: ${title}` });
 
     section("المؤشرات العامة");
-    const kpis = [
-      ["إجمالي المستفيدين", ui.fmt(d.sum.beneficiaries)],
-      ["عدد المسارات التدريبية", ui.fmt(d.tracks.length)],
-      ["متوسط نسبة الحضور", pct(d.sum.attendancePct)],
-      ["نسبة الإنجاز الفعلي للساعات التدريبية", pct(d.sum.completionPct)],
-    ];
-    if (d.planned != null) kpis.push(["نسبة الإنجاز المخطط حتى نهاية الفترة", pct(d.planned)], ["الفرق عن الخطة", `${d.sum.completionPct - d.planned >= 0 ? "+" : ""}${pct(d.sum.completionPct - d.planned)}`]);
-    kpis.push(
-      ["المهام المنجزة خلال الفترة", ui.fmt(d.doneTasks.length)],
-      ["المهام المتأخرة حتى نهاية الفترة", ui.fmt(d.overdue.length)],
-      ["الاجتماعات المنعقدة", ui.fmt(d.meetings.length)],
-      ["المراسلات الصادرة / الواردة", `${ui.fmt(d.reg.out)} / ${ui.fmt(d.reg.in)}`],
-    );
-    out.push({ kind: "table", headers: ["المؤشر", "القيمة"], widths: [0.65, 0.35], align: [null, "center"], rows: kpis });
+    const kpis = [];
+    if (v.metrics.includes("beneficiaries")) kpis.push(["إجمالي المستفيدين", ui.fmt(d.sum.beneficiaries)]);
+    kpis.push(["عدد المسارات التدريبية", ui.fmt(d.tracks.length)]);
+    if (v.metrics.includes("attendance")) kpis.push(["متوسط نسبة الحضور", pct(d.sum.attendancePct)]);
+    if (v.metrics.includes("hours")) kpis.push(["نسبة الإنجاز الفعلي للساعات التدريبية", pct(d.sum.completionPct)]);
+    if (v.metrics.includes("hours") && d.planned != null) kpis.push(["نسبة الإنجاز المخطط حتى نهاية الفترة", pct(d.planned)], ["الفرق عن الخطة", `${d.sum.completionPct - d.planned >= 0 ? "+" : ""}${pct(d.sum.completionPct - d.planned)}`]);
+    if (v.metrics.includes("tasks")) kpis.push(["المهام المنجزة خلال الفترة", ui.fmt(d.doneTasks.length)], ["المهام المتأخرة حتى نهاية الفترة", ui.fmt(d.overdue.length)]);
+    if (v.metrics.includes("meetings")) kpis.push(["الاجتماعات المنعقدة", ui.fmt(d.meetings.length)]);
+    if (v.metrics.includes("registry")) kpis.push(["المراسلات الصادرة / الواردة", `${ui.fmt(d.reg.out)} / ${ui.fmt(d.reg.in)}`]);
+    if (kpis.length) out.push({ kind: "table", headers: ["المؤشر", "القيمة"], widths: [0.65, 0.35], align: [null, "center"], rows: kpis });
 
+    const compare = comparisonRows(v, d), metricKeys = selectedMetricNames(v);
+    if (compare.length && metricKeys.length) {
+      section(v.compare === "tracks" ? "مقارنة المسارات" : "مقارنة الأشهر");
+      out.push({ kind: "table", headers: [v.compare === "tracks" ? "المسار" : "الشهر", ...metricKeys.map((key) => metricNames[key])], widths: [0.3, ...metricKeys.map(() => 0.7 / metricKeys.length)], align: [null, ...metricKeys.map(() => "center")], rows: filteredRows(compare, v) });
+    }
+
+    if (v.metrics.some((key) => ["beneficiaries", "attendance", "hours"].includes(key))) {
     section("مؤشرات المسارات التدريبية");
     out.push({
       kind: "table",
-      headers: ["المسار", "النوع", "المستفيدون", "الحضور", "الساعات المنجزة", "الإنجاز"],
-      widths: [0.32, 0.15, 0.13, 0.12, 0.15, 0.13],
-      align: [null, "center", "center", "center", "center", "center"],
-      rows: d.tracks.map((t) => [t.name, App.tracks.TYPE_LABEL[t.type], ui.fmt(t.beneficiaries), pct(Number(t.attendancePct) || 0), `${ui.fmt(t.hoursCompleted)} / ${store.TOTAL_HOURS}`, pct(App.tracks.hoursPct(t))]),
+      headers: ["المسار", "النوع", ...(v.metrics.includes("beneficiaries") ? ["المستفيدون"] : []), ...(v.metrics.includes("attendance") ? ["الحضور"] : []), ...(v.metrics.includes("hours") ? ["الساعات المنجزة", "الإنجاز"] : [])],
+      widths: [0.35, 0.18, ...Array(Math.max(1, v.metrics.filter((key) => ["beneficiaries", "attendance", "hours"].includes(key)).length + (v.metrics.includes("hours") ? 1 : 0))).fill(0.47 / Math.max(1, v.metrics.filter((key) => ["beneficiaries", "attendance", "hours"].includes(key)).length + (v.metrics.includes("hours") ? 1 : 0)))],
+      align: [null, "center", ...Array(Math.max(1, v.metrics.filter((key) => ["beneficiaries", "attendance", "hours"].includes(key)).length + (v.metrics.includes("hours") ? 1 : 0))).fill("center")],
+      rows: d.tracks.map((t) => [t.name, App.tracks.TYPE_LABEL[t.type], ...(v.metrics.includes("beneficiaries") ? [ui.fmt(t.beneficiaries)] : []), ...(v.metrics.includes("attendance") ? [pct(Number(t.attendancePct) || 0)] : []), ...(v.metrics.includes("hours") ? [`${ui.fmt(t.hoursCompleted)} / ${store.TOTAL_HOURS}`, pct(App.tracks.hoursPct(t))] : [])]),
     });
-    const low = d.tracks.filter((t) => Number(t.attendancePct) < ATTENDANCE_THRESHOLD);
+    }
+    const low = v.metrics.includes("attendance") ? d.tracks.filter((t) => Number(t.attendancePct) < ATTENDANCE_THRESHOLD) : [];
     if (low.length) out.push({ kind: "para", text: `مسارات حضورها أقل من ${ATTENDANCE_THRESHOLD}%: ${low.map((t) => t.name).join("، ")}.` });
 
-    if (v.charts) {
+    if (v.charts && v.metrics.some((key) => ["attendance", "hours"].includes(key))) {
       section("الرسوم البيانية");
-      chartImages(d.tracks).forEach((img) => out.push({ kind: "image", src: img.src, widthPt: img.widthPt, heightPt: img.heightPt }));
+      chartImages(d.tracks, v.metrics).forEach((img) => out.push({ kind: "image", src: img.src, widthPt: img.widthPt, heightPt: img.heightPt }));
     }
 
-    if (d.meetings.length) {
+    if (v.metrics.includes("meetings") && d.meetings.length) {
       section("الاجتماعات والقرارات");
       out.push({
         kind: "table",
@@ -126,7 +161,7 @@
 
     // الأرشيف خلال الفترة حسب نوع المستند (وارد / صادر)
     const regList = App.registry.live().filter((r) => (!v.from || r.date >= v.from) && (!v.to || r.date <= v.to));
-    if (regList.length) {
+    if (v.metrics.includes("registry") && regList.length) {
       section("الوارد والصادر والأرشيف خلال الفترة");
       const cats = [...new Set(regList.map((r) => r.category || "أخرى"))];
       const count = (c, t) => regList.filter((r) => (r.category || "أخرى") === c && r.type === t).length;
@@ -141,7 +176,7 @@
       if (followUp) out.push({ kind: "para", text: `وارد بحاجة إلى معالجة أو رد: ${ui.fmt(followUp)}.` });
     }
 
-    if (v.tasksList && d.doneTasks.length) {
+    if (v.metrics.includes("tasks") && v.tasksList && d.doneTasks.length) {
       section("المهام المنجزة خلال الفترة");
       out.push({
         kind: "table",
@@ -340,8 +375,54 @@
 
   function persistSettings() {
     const v = values();
-    Object.assign(settings(), { recipient: v.recipient, recipientTitle: v.recipientTitle, trainingStart: v.trainingStart, trainingEnd: v.trainingEnd });
+    Object.assign(settings(), { recipient: v.recipient, recipientTitle: v.recipientTitle, trainingStart: v.trainingStart, trainingEnd: v.trainingEnd, from: v.from, to: v.to, compare: v.compare, trackFilter: v.trackFilter, metrics: v.metrics, charts: v.charts, tasksList: v.tasksList });
     store.save();
+  }
+
+  async function exportExcel() {
+    if (!window.ExcelJS) { ui.toast("تعذّر تحميل مكتبة Excel"); return; }
+    const v = values(), d = compute(v), wb = new ExcelJS.Workbook();
+    wb.creator = "مساعد تمكين الإداري";
+    const sheet = wb.addWorksheet("المؤشرات", { views: [{ rightToLeft: true, state: "frozen", ySplit: 3 }] });
+    sheet.addRow(["تقرير المؤشرات الدوري"]);
+    sheet.addRow(["الفترة", `${v.from || "—"} إلى ${v.to || "—"}`]);
+    sheet.addRow(["المؤشر", "القيمة"]);
+    const summary = [];
+    if (v.metrics.includes("beneficiaries")) summary.push(["إجمالي المستفيدين", d.sum.beneficiaries]);
+    if (v.metrics.includes("attendance")) summary.push(["متوسط الحضور %", d.sum.attendancePct]);
+    if (v.metrics.includes("hours")) summary.push(["إنجاز الساعات %", d.sum.completionPct]);
+    if (v.metrics.includes("tasks")) summary.push(["المهام المنجزة", d.doneTasks.length], ["المهام المتأخرة", d.overdue.length]);
+    if (v.metrics.includes("meetings")) summary.push(["الاجتماعات", d.meetings.length]);
+    if (v.metrics.includes("registry")) summary.push(["الوارد", d.reg.in], ["الصادر", d.reg.out]);
+    summary.forEach((row) => sheet.addRow(row));
+    const trackKeys = v.metrics.filter((key) => ["beneficiaries", "attendance", "hours"].includes(key));
+    if (trackKeys.length) {
+      const trackSheet = wb.addWorksheet("بيانات المسارات", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+      trackSheet.addRow(["المسار", "النوع", ...trackKeys.map((key) => metricNames[key]), ...(v.metrics.includes("hours") ? ["الساعات المكتملة"] : [])]);
+      d.tracks.forEach((t) => trackSheet.addRow([t.name, App.tracks.TYPE_LABEL[t.type], ...trackKeys.map((key) => key === "beneficiaries" ? t.beneficiaries : key === "attendance" ? Number(t.attendancePct) || 0 : App.tracks.hoursPct(t)), ...(v.metrics.includes("hours") ? [t.hoursCompleted] : [])]));
+      trackSheet.columns.forEach((col) => { col.width = 22; });
+      trackSheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, trackSheet.rowCount), column: trackSheet.columnCount } };
+      trackSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      trackSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B1F3A" } };
+    }
+    const comparison = comparisonRows(v, d), keys = selectedMetricNames(v);
+    if (comparison.length && keys.length) {
+      const cmp = wb.addWorksheet(v.compare === "tracks" ? "مقارنة المسارات" : "مقارنة الأشهر", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+      cmp.addRow([v.compare === "tracks" ? "المسار" : "الشهر", ...keys.map((key) => metricNames[key])]);
+      filteredRows(comparison, v).forEach((row) => cmp.addRow(row));
+      cmp.columns.forEach((col) => { col.width = 22; });
+      cmp.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, cmp.rowCount), column: keys.length + 1 } };
+      cmp.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cmp.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B1F3A" } };
+    }
+    sheet.columns = [{ width: 34 }, { width: 24 }];
+    sheet.mergeCells("A1:B1");
+    sheet.getRow(1).font = { bold: true, size: 16, color: { argb: "FFFFFFFF" } };
+    sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B1F3A" } };
+    sheet.getRow(3).font = { bold: true };
+    sheet.getRow(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8EEF5" } };
+    sheet.autoFilter = { from: { row: 3, column: 1 }, to: { row: Math.max(3, sheet.rowCount), column: 2 } };
+    ui.download(fileBase() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
 
   async function exportAs(kind) {
@@ -400,17 +481,28 @@
     initAiFiles();
     const s = settings();
     defaultPeriod();
+    if (s.from) $("r-from").value = s.from;
+    if (s.to) $("r-to").value = s.to;
+    $("r-compare").value = s.compare || "none";
+    const trackSelect = $("r-track-filter");
+    App.tracks.ordered().forEach((t) => trackSelect.add(new Option(t.name, t.id)));
+    trackSelect.value = s.trackFilter || "all";
+    document.querySelectorAll("[data-report-metric]").forEach((el) => { el.checked = !Array.isArray(s.metrics) || s.metrics.includes(el.dataset.reportMetric); });
+    if (typeof s.charts === "boolean") $("r-charts").checked = s.charts;
+    if (typeof s.tasksList === "boolean") $("r-tasks").checked = s.tasksList;
     $("r-recipient").value = s.recipient;
     $("r-recipientTitle").value = s.recipientTitle;
     $("r-trainingStart").value = s.trainingStart;
     $("r-trainingEnd").value = s.trainingEnd;
 
-    document.querySelectorAll("#view-report input, #view-report textarea").forEach((el) => {
-      el.addEventListener(el.type === "checkbox" || el.type === "date" ? "change" : "input", renderPreview);
+    document.querySelectorAll("#view-report input, #view-report textarea, #view-report select").forEach((el) => {
+      el.addEventListener(el.type === "checkbox" || el.type === "date" || el.tagName === "SELECT" ? "change" : "input", renderPreview);
+      el.addEventListener("change", persistSettings);
     });
     ["r-recipient", "r-recipientTitle", "r-trainingStart", "r-trainingEnd"].forEach((id) => $(id).addEventListener("change", persistSettings));
     $("r-ref-auto").addEventListener("click", async () => { $("r-ref").value = await App.registry.assignNumber("out", $("r-date").value || ui.todayISO()); renderPreview(); });
     $("r-word").addEventListener("click", () => exportAs("word"));
+    $("r-excel").addEventListener("click", exportExcel);
     $("r-pdf").addEventListener("click", () => exportAs("pdf"));
     $("r-print").addEventListener("click", () => exportAs("print"));
   }

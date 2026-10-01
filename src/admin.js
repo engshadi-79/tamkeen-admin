@@ -28,6 +28,7 @@
     { id: "upload", label: "رفع الملفات إلى الأرشيف" },
     { id: "delete", label: "حذف القيود والسجلات" },
     { id: "export", label: "التصدير والطباعة" },
+    { id: "approve", label: "اعتماد المراسلات" },
     { id: "ai", label: "استخدام الذكاء الاصطناعي" },
   ];
 
@@ -138,7 +139,7 @@
       </label>`).join("");
     const perms = (u && u.perms) || {};
     $("adm-perms").innerHTML = PERMS.map((p) => `<label class="conv-check">
-        <input type="checkbox" data-perm="${p.id}" ${perms[p.id] !== false ? "checked" : ""}> ${esc(p.label)}
+        <input type="checkbox" data-perm="${p.id}" ${(p.id === "approve" ? perms[p.id] === true : perms[p.id] !== false) ? "checked" : ""}> ${esc(p.label)}
       </label>`).join("");
     $("adm-cancel").hidden = !u;
     syncAdminToggle();

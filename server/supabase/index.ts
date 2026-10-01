@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 24;
+const VERSION = 25;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -417,15 +417,22 @@ async function mergeCol(col: string, incoming: any[], deleted: Record<string, st
 
     // المستخدم يعدّل ويحذف قيوده فقط، والمدير كل القيود (والقيد بلا صاحب للمدير)
     const mayEdit = (row: any) => !ownerRules || user.admin || (row.owner && row.owner === user.name);
+    const canApproveLetters = !!user.admin || !!(user.perms || {}).approve;
 
     // سجل التعديلات: القيمة قبل كل تعديل وبعده، لمعرفة من غيّر ماذا والتراجع عنه
     const revs: any[] = [];
     const body = (d: any) => { if (!d) return ""; const { updatedAt: _u, ...rest } = d; return JSON.stringify(rest); };
+    const approvalContent = (d: any) => {
+      const copy = { ...(d || {}) };
+      ["approvalStatus", "approvalBy", "approvalAt", "approvalNote", "issuedAt", "updatedAt"].forEach((k) => delete copy[k]);
+      return JSON.stringify(copy);
+    };
 
     const newTombs: any[] = [];
     for (const id of delIds) {
       const row = cur.get(id);
       if (row && !mayEdit(row)) continue;
+      if (col === "letterApprovals" && row && !user.admin && ["approved", "issued"].includes(row.data?.approvalStatus)) continue;
       const at = String(deleted[id]);
       const prev = tomb.get(id);
       if (!prev || at > prev) { tomb.set(id, at); newTombs.push({ col, id, at }); }
@@ -445,15 +452,24 @@ async function mergeCol(col: string, incoming: any[], deleted: Record<string, st
       let next = rec;
       if (!row) {
         if (ownerRules && (!user.admin || !rec.owner)) next = { ...rec, owner: user.name };
+        if (col === "letterApprovals") next = { ...next, approvalStatus: "pending", approvalBy: "", approvalAt: "", approvalNote: "", issuedAt: "" };
       } else if (FIELD_MERGE.has(col)) {
         // دمج على مستوى الخانة: لا تمسح نسخةُ جهازٍ قديمة خانةً عدّلها غيره بعد آخر مزامنة له
         next = mergeFields(row.data, rec);
         if (body(next) === body(row.data)) continue;
       } else if (stampOf(rec) <= row.stamp) {
         continue;
+      } else if (ownerRules && col === "letterApprovals" && row.owner === user.name && row.data?.approvalStatus === "approved" && !user.admin) {
+        if (rec.approvalStatus === "issued" && approvalContent(rec) === approvalContent(row.data)) {
+          next = { ...row.data, approvalStatus: "issued", issuedAt: rec.issuedAt || rec.updatedAt, updatedAt: rec.updatedAt };
+        } else continue;
+      } else if (ownerRules && col === "letterApprovals" && row.owner === user.name && row.data?.approvalStatus === "pending" && ["approved", "rejected"].includes(rec.approvalStatus) && !user.admin) {
+        continue;
       } else if (!mayEdit(row)) {
         // قيد شخص آخر: يُقبل ربط الرد أو رابط الأرشفة فقط
-        if (rec.replyId && !row.data.replyId) {
+        if (col === "letterApprovals" && canApproveLetters && row.data?.approvalStatus === "pending" && ["approved", "rejected"].includes(rec.approvalStatus) && approvalContent(rec) === approvalContent(row.data)) {
+          next = { ...row.data, approvalStatus: rec.approvalStatus, approvalBy: user.name, approvalAt: rec.approvalAt || rec.updatedAt, approvalNote: rec.approvalNote || "", updatedAt: rec.updatedAt };
+        } else if (rec.replyId && !row.data.replyId) {
           next = { ...row.data, done: true, replyId: rec.replyId, replyNumber: rec.replyNumber, history: rec.history, updatedAt: rec.updatedAt };
         } else if (rec.driveId && !row.data.driveId) {
           next = { ...row.data, driveId: rec.driveId, driveLink: rec.driveLink, driveFolderId: rec.driveFolderId, drivePath: rec.drivePath, drivePending: false, updatedAt: rec.updatedAt };
@@ -671,7 +687,7 @@ async function syncAll(cols: Record<string, any>, user: any) {
     const recs = c.records || [];
     const del = c.deleted || {};
     result[name] = (recs.length || Object.keys(del).length)
-      ? await mergeCol(name, recs, del, user, false)
+      ? await mergeCol(name, recs, del, user, name === "letterApprovals")
       : await readCol(name);
   }
   return result;
