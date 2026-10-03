@@ -251,6 +251,10 @@
       const raw = cell(r, att.head, /المجموعة/);
       const a = decompose(raw);
       if (!a.group) { const gt = groupAndTrainer(raw); if (gt.group) a.group = gt.group; }
+      // إن كان للجدول عمود «المسار» فهو أصدق من تخمين المسار من خانة المجموعة
+      const own = decompose(cell(r, att.head, /المسار/));
+      if (own.track) { a.track = own.track; a.course = own.course || a.course; }
+      else if (a.track && a.group && a.track.startsWith(a.group)) a.track = "";
       const total = num(cell(r, att.head, /إجمالي/));
       const present = num(cell(r, att.head, /حاضر/));
       const absent = num(cell(r, att.head, /غياب/));
@@ -420,6 +424,10 @@
           name, nid, group,
           track: dt.track || dg.track,
           course: dt.course || dg.course || clean(cell(r, t.head, /الدورة|المرحلة/)),
+          // لجدول التقارير: رقم الطالب وحالته والمدرب كما وردوا
+          stu: clean(cell(r, t.head, /رقم الطالب|الرقم/)),
+          status: clean(cell(r, t.head, /^الحالة$/)),
+          trainer: gt.trainer,
         });
       });
     };
@@ -519,6 +527,7 @@
     /* تقرير «الاستبيانات غير المعبّأة» لا يعرض صفوفاً حتى يُختار استبيان،
        فنقرأ فلاتر الصفحة نفسها ونمرّ على خياراتها واحداً واحداً. */
     const surveys = new Map();
+    const surveyNames = new Map();   // الطالب ← الاستبيانات التي لم يعبّئها
     let formName = "";   // اسم الاستبيان الجاري، يُستعمل إن لم يذكره الجدول
     const SURVEY_PATH = "/admin/reports/evaluation-missing-submissions";
     const eatRows = (t) => {
@@ -533,8 +542,16 @@
         const key = `${trk.track}|${course}|${group}|${form}`;
         const s = surveys.get(key) || { track: trk.track, course, group, form, missing: 0, names: [] };
         s.missing++;
-        const nm = nameOf(cell(r, t.head, /الطالب/));
+        const rawStu = cell(r, t.head, /الطالب/);
+        const nm = nameOf(rawStu);
         if (nm && s.names.length < NAMES_MAX) s.names.push(nm);
+        // لمنشئ التقارير: أي استبيان ينقص كل طالب
+        const who = nidOf(rawStu) || ("n:" + nm);
+        if (who && form) {
+          const list = surveyNames.get(who) || [];
+          if (!list.includes(form)) list.push(form);
+          surveyNames.set(who, list);
+        }
         surveys.set(key, s);
       });
     };
@@ -570,7 +587,100 @@
       pledges: pledges.map((p) => ({ ...p, names: (namesByGroup.get(`${p.track}|${p.group}`) || []).slice() })),
       surveys: surveyRows.map((s) => ({ ...s, names: (s.names || []).slice() })),
     };
-    return { pledges, surveys: surveyRows, full };
+    // ما يلزم جدول الطلاب: من وقّع، وأي استبيان ينقص كل طالب
+    const missingByStudent = new Map();
+    surveyNames.forEach((v, k) => missingByStudent.set(k, v));
+    return { pledges, surveys: surveyRows, full, signedSet: signed, missingByStudent };
+  }
+
+  /* ===== جدول الطلاب الكامل: صف لكل طالب بحقوله من أربع صفحات =====
+     التدريب (صفحة الطلاب) + الشخصية (المتقدمون) + الدرجات + الالتزام،
+     والمطابقة برقم الهوية ثم بالاسم. يُستعمل في «منشئ التقارير» داخل تمكين. */
+  async function readStudentTable(students, groups, grades, followUps) {
+    const byId = new Map();
+    const byName = new Map();
+    const rows = students.map((s) => {
+      const r = {
+        name: s.name, nid: s.nid || "", phone: s.phone || "", stu: s.stu || "",
+        track: s.track || "", course: s.course || "", group: s.group || "",
+        trainer: s.trainer || "", status: s.status || "",
+        gender: "", governorate: "", health: "", marital: "", income: "",
+        practical: "", theory: "", activities: "", total: "", gradeStatus: "", approval: "",
+        pledged: "", missingSurveys: "", attendance: "",
+      };
+      if (r.nid) byId.set(r.nid, r);
+      if (!byName.has(r.name)) byName.set(r.name, r);
+      return r;
+    });
+    const find = (nid, name) => (nid && byId.get(nid)) || (name && byName.get(name)) || null;
+
+    // المدرب ونسبة حضور المجموعة
+    const gInfo = new Map();
+    (groups || []).forEach((g) => { if (g.group) gInfo.set(`${g.track}|${g.group}`, g); });
+    rows.forEach((r) => {
+      const g = gInfo.get(`${r.track}|${r.group}`);
+      if (g) { r.trainer = r.trainer || g.trainer || ""; r.course = r.course || g.course || ""; }
+    });
+
+    // ١) البيانات الشخصية من صفحة المتقدمين
+    try {
+      await eachPage("/admin/applicants", "المتقدمون", [/الاسم|الطالب/, /الهوية|الجوال|الجنس/], (t) => {
+        debug("المتقدمون", t);
+        t.rows.forEach((r) => {
+          const nid = nidOf(cell(r, t.head, /الهوية/) || cell(r, t.head, /الاسم|الطالب/));
+          const nm = nameOf(cell(r, t.head, /الاسم|الطالب/));
+          const row = find(nid, nm);
+          if (!row) return;
+          row.gender = clean(cell(r, t.head, /الجنس/)) || row.gender;
+          row.governorate = clean(cell(r, t.head, /المحافظة|العنوان/)) || row.governorate;
+          row.health = clean(cell(r, t.head, /الحالة الصحية|الوضع الصحي|إعاقة/)) || row.health;
+          row.marital = clean(cell(r, t.head, /الاجتماعية|الحالة الزوجية/)) || row.marital;
+          row.income = clean(cell(r, t.head, /الدخل/)) || row.income;
+          if (!row.phone) row.phone = (toLatin(clean(cell(r, t.head, /الجوال|الهاتف/))).match(/\b05\d{8}\b|\b\d{9,10}\b/) || [""])[0];
+        });
+      });
+    } catch (e) { console.warn("المتقدمون:", e.message); }
+
+    // ٢) الدرجات
+    try {
+      await eachPage("/admin/student-grades", "درجات التقارير", [/الطالب/, /^المجموع$/], (t) => {
+        t.rows.forEach((r) => {
+          const raw = cell(r, t.head, /الطالب/);
+          const row = find(nidOf(raw), nameOf(raw));
+          if (!row) return;
+          const num2 = (re) => { const v = firstNum(cell(r, t.head, re)); return isNaN(v) ? "" : v; };
+          row.practical = num2(/العملي/);
+          row.theory = num2(/النظري/);
+          row.activities = num2(/الأنشطة|الانشطة/);
+          row.total = num2(/^المجموع$/);
+          row.gradeStatus = clean(cell(r, t.head, /^الحالة$/));
+          row.approval = clean(cell(r, t.head, /^الاعتماد$/));
+        });
+      });
+    } catch (e) { console.warn("درجات التقارير:", e.message); }
+
+    // ٣) الالتزام: التعهد والاستبيانات غير المعبّأة ونسبة حضور المجموعة
+    const signed = followUps && followUps.signedSet;
+    rows.forEach((r) => {
+      if (signed) r.pledged = (r.nid && signed.has(r.nid)) || signed.has("n:" + r.name) ? "نعم" : "لا";
+    });
+    const miss = (followUps && followUps.missingByStudent) || new Map();
+    rows.forEach((r) => {
+      const list = miss.get(r.nid) || miss.get("n:" + r.name);
+      r.missingSurveys = list ? list.join("، ") : "";
+    });
+    const att = new Map();
+    const attByGroup = new Map();
+    ((followUps && followUps.attendance) || []).forEach((a) => {
+      att.set(`${a.track}|${a.group}`, a.rate);
+      if (a.group && !attByGroup.has(a.group)) attByGroup.set(a.group, a.rate);
+    });
+    rows.forEach((r) => {
+      const v = att.get(`${r.track}|${r.group}`);
+      r.attendance = v != null ? v : (attByGroup.get(r.group) != null ? attByGroup.get(r.group) : "");
+    });
+
+    return rows;
   }
 
   /* ===== الإرسال ===== */
@@ -601,14 +711,24 @@
     lastDetail = followUps.full || { pledges: followUps.pledges, surveys: followUps.surveys };
     csvBtn.disabled = false;
     delete followUps.full;   // لا تُرسل النسخة الكاملة
-    const data = { tracks, attendance: training.attendance, trainers: training.trainers, groups: training.groups, grades, demographics, followUps, period };
+
+    say("بناء جدول الطلاب للتقارير…");
+    followUps.attendance = training.attendance;
+    let studentRows = await readStudentTable(await readStudents(), training.groups, grades, followUps);
+    // سقف الخادم ١٫٥ ميغا للقطة كلها، وكل صف ~٤٠٠ بايت: نكتفي بألفي صف إن زادوا
+    if (studentRows.length > 2000) studentRows = studentRows.slice(0, 2000);
+    delete followUps.signedSet;
+    delete followUps.missingByStudent;
+    delete followUps.attendance;
+
+    const data = { tracks, attendance: training.attendance, trainers: training.trainers, groups: training.groups, grades, demographics, followUps, period, students: studentRows };
     say("إرسال إلى شاشة تمكين…");
     await push(data);
     const when = new Date().toLocaleTimeString("ar-EG");
     const noPledge = followUps.pledges.reduce((a, r) => a + r.missing, 0);
     const noSurvey = followUps.surveys.reduce((a, r) => a + r.missing, 0);
     const span = period ? `\nمدة الإحصاء: ${period.from || "—"} إلى ${period.to || "—"}` : "";
-    say(`أُرسلت ✔ ${when}\n${tracks.length} مساراً · ${training.groups.length} مجموعة · ${grades.students} درجة\nبلا تعهد ${noPledge} · بلا استبيان ${noSurvey}${span}\nللأسماء على جهازك: زر «⬇ ملف المتأخرين»\nالتحديث القادم بعد ١٥ دقيقة`);
+    say(`أُرسلت ✔ ${when}\n${tracks.length} مساراً · ${training.groups.length} مجموعة · ${studentRows.length} طالباً في جدول التقارير\nبلا تعهد ${noPledge} · بلا استبيان ${noSurvey}${span}\nللأسماء على جهازك: زر «⬇ ملف المتأخرين»\nالتحديث القادم بعد ١٥ دقيقة`);
   }
 
   for (let once = 0; !stopped; once++) {
