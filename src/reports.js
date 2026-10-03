@@ -306,6 +306,25 @@
       </div>`).join("");
   }
 
+  /* ماذا قرأ السكربت فعلاً من نظام المركز: صفحة صفحة، بأعمدتها وعدد صفوفها.
+     حقل فارغ في النموذج سببه صفحة لم تُقرأ أو عمود لم يظهر، وهذا يكشفه. */
+  function readLogCard() {
+    const s = snap();
+    const log = s && s.data && s.data.readLog;
+    if (!log) return `<p class="conv-hint">اللقطة الحالية من نسخة قديمة من سكربت القراءة، فلا تحمل سجلّ ما قُرئ. أعد تشغيل السكربت لتراه هنا.</p>`;
+    const keys = Object.keys(log);
+    if (!keys.length) return `<p class="conv-hint">لم يُقرأ شيء في آخر جولة.</p>`;
+    return `<table class="rep-map"><thead><tr><th>الصفحة</th><th>صفوف</th><th>الأعمدة التي قرأها</th></tr></thead><tbody>
+      ${keys.map((k) => {
+        const e = log[k] || {};
+        const bad = e.error || !e.rows;
+        return `<tr><td>${esc(k)}<div class="conv-hint" dir="ltr">${esc(e.path || "")}</div></td>
+          <td class="${bad ? "rep-warn" : "rep-full"}">${e.error ? "✖" : ui.fmt(e.rows || 0)}</td>
+          <td>${e.error ? `<span class="rep-warn">${esc(e.error)}</span>${(e.seen || []).map((x) => `<div class="conv-hint">${esc(x)}</div>`).join("")}`
+            : esc((e.cols || []).join(" · "))}</td></tr>`;
+      }).join("")}</tbody></table>`;
+  }
+
   /* مصدر المعدل ظاهر وقابل للتغيير، كما هو في صفحة المحوّل، لا يجري بصمت */
   function renderCalc() {
     const box = $("rep-calc");
@@ -529,7 +548,8 @@
         <div class="btn-row"><button type="button" class="btn" id="rep-save-import">حفظ على الخادم</button>
         <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
       </div>` : ""}
-      ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}`;
+      ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}
+      <details class="rep-readlog"><summary>ماذا قرأ سكربت القراءة من نظام المركز؟</summary>${readLogCard()}</details>`;
   }
 
   /* ===== تعبئة نموذج رسمي من بيانات النظام =====

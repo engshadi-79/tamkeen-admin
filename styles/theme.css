@@ -1407,3 +1407,6 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .rep-map .rep-full { color: #0e8a63; font-weight: 600; }
 .rep-map .rep-part { color: #b7791f; font-weight: 600; }
 .rep-map .rep-warn { color: #c0392b; font-weight: 600; }
+.rep-readlog { margin-top: 12px; font-size: 13px; }
+.rep-readlog summary { cursor: pointer; color: var(--teal-600, var(--teal-500)); font-weight: 600; }
+.rep-readlog .rep-map td { font-size: 12px; }

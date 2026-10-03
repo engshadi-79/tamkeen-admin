@@ -198,18 +198,60 @@
   const NAMES_MAX = 80;   // أكثر ما يُرسل من الأسماء لكل مجموعة
 
   /* كل صفحات جدول واحد: تتوقف عند الفراغ أو تكرار أول صف */
+  /* البيانات الشخصية (الميلاد والجوال والمستوى التعليمي) قد تكون في صفحة غير «المتقدمون»
+     حسب إعداد النظام، فنجرّب المعروف منها قراءةً فقط حتى يردّ أولها بجدول صالح. */
+  const PERSONAL_PAGES = [
+    "/admin/applicants", "/admin/students", "/admin/beneficiaries", "/admin/trainees",
+    "/admin/reports/students", "/admin/reports/beneficiaries", "/admin/student-profiles",
+  ];
+
+  async function firstPageThatWorks(paths, label, need, onRows) {
+    for (const path of paths) {
+      const before = readLog[label] && readLog[label].rows;
+      try {
+        await eachPage(path, label, need, onRows);
+      } catch (e) { continue; }
+      const e = readLog[label];
+      if (e && e.rows && e.rows !== before) return path;   // صفحة ردّت صفوفاً: تكفي
+    }
+    return "";
+  }
+
+  /* سجلّ القراءة: ماذا فُتح، وكم صفاً جاء، وما عناوين أعمدته. يُرسل مع اللقطة
+     فتعرف الصفحةُ في تمكين أين ضاعت البيانات بدل أن نخمّن. */
+  const readLog = {};
+  const noteRead = (label, path, t, rows) => {
+    let e = readLog[label];
+    if (!e || e.error || e.path !== path) e = readLog[label] = { path, rows: 0, pages: 0, cols: [] };
+    e.pages++;
+    e.rows += rows;
+    if (t && t.head && !e.cols.length) e.cols = t.head.slice(0, 30);
+  };
+
   async function eachPage(path, label, need, onRows) {
     let seenFirst = "";
     for (let page = 1; page <= MAX_PAGES; page++) {
       if (stopped) return;
       const sep = path.includes("?") ? "&" : "?";
-      const doc = await getDoc(`${path}${sep}page=${page}`);
-      const t = pick(tables(doc), ...need);
-      if (!t || !t.rows.length) return;
+      let doc;
+      try {
+        doc = await getDoc(`${path}${sep}page=${page}`);
+      } catch (e) {
+        if (page === 1) readLog[label] = { path, rows: 0, pages: 0, cols: [], error: e.message };
+        throw e;
+      }
+      const all = tables(doc);
+      const t = pick(all, ...need);
+      if (!t || !t.rows.length) {
+        if (page === 1) readLog[label] = { path, rows: 0, pages: 0, cols: [], error: all.length ? "لم يطابق أي جدول الأعمدة المطلوبة" : "لا جدول في الصفحة",
+          seen: all.slice(0, 3).map((x) => x.head.slice(0, 12).join(" | ")) };
+        return;
+      }
       const first = t.rows[0].join("|");
       if (first === seenFirst) return;
       seenFirst = first;
       say(`${label} — صفحة ${page}`);
+      noteRead(label, path, t, t.rows.length);
       onRows(t);
     }
   }
@@ -419,7 +461,9 @@
 
   /* قائمة الطلاب: الاسم والمجموعة (والهوية للمطابقة داخل المتصفح، ولا تُرسل).
      إن لم تعرض الصفحة صفوفاً بلا فلتر، نمرّ على خيارات فلتر الدورة. */
+  let studentsCache = null;    // تُقرأ مرة واحدة في الجولة
   async function readStudents() {
+    if (studentsCache) return studentsCache;
     const out = [];
     const seen = new Set();
     const eat = (t) => {
@@ -450,6 +494,7 @@
       });
     };
 
+    studentsCache = out;
     const first = await getDoc("/admin/students");
     const t0 = pick(tables(first), /الطالب/);
     if (window.TAMKEEN_DEBUG) {
@@ -644,7 +689,7 @@
 
     // ١) البيانات الشخصية من صفحة المتقدمين
     try {
-      await eachPage("/admin/applicants", "المتقدمون", [/الاسم|الطالب/, /الهوية|الجوال|الجنس/], (t) => {
+      await firstPageThatWorks(PERSONAL_PAGES, "المتقدمون", [/الاسم|الطالب/, /الهوية|الجوال|الجنس|الميلاد/], (t) => {
         debug("المتقدمون", t);
         t.rows.forEach((r) => {
           const nid = nidOf(cell(r, t.head, /الهوية/) || cell(r, t.head, /الاسم|الطالب/));
@@ -717,6 +762,8 @@
   }
 
   async function round() {
+    studentsCache = null;                                      // جولة جديدة: قراءة جديدة
+    Object.keys(readLog).forEach((k) => delete readLog[k]);
     say("قراءة المدة المطلوبة…");
     await readPeriod();
     say("قراءة المسارات والسعة…");
@@ -742,7 +789,7 @@
     delete followUps.missingByStudent;
     delete followUps.attendance;
 
-    const data = { tracks, attendance: training.attendance, trainers: training.trainers, groups: training.groups, grades, demographics, followUps, period, students: studentRows };
+    const data = { tracks, attendance: training.attendance, trainers: training.trainers, groups: training.groups, grades, demographics, followUps, period, students: studentRows, readLog };
     say("إرسال إلى شاشة تمكين…");
     await push(data);
     const when = new Date().toLocaleTimeString("ar-EG");
