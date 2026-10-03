@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 25;
+const VERSION = 26;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -586,6 +586,46 @@ async function statsKeyOf(create: boolean) {
   return key;
 }
 
+/* ===== جداول مستوردة من ملفات إكسل =====
+   يرفعها المستخدم من «منشئ التقارير»، فتُدمج أعمدتها مع صفوف الطلاب بالهوية أو الاسم.
+   كل ملف يُحفظ باسمه: رفعه ثانيةً يستبدل بياناته وحدها ويترك البقية. */
+const IMPORT_MAX = 1_500_000;    // حجم الجدول الواحد
+const IMPORTS_MAX = 20;          // عدد الجداول
+
+const importsOf = async () => ((await kvGet("report_imports")) || []) as any[];
+
+async function putImport(req: any, user: any) {
+  const name = String(req.name || "").trim().slice(0, 80);
+  if (!name) throw new Error("لا بد من اسم للجدول");
+  const rows = Array.isArray(req.rows) ? req.rows : null;
+  if (!rows) throw new Error("لا توجد صفوف في الطلب");
+  const fields = (Array.isArray(req.fields) ? req.fields : []).map((f: any) => String(f || "").slice(0, 60)).filter(Boolean);
+  if (!fields.length) throw new Error("لا توجد حقول في الجدول");
+  const body = JSON.stringify(rows);
+  if (body.length > IMPORT_MAX) throw new Error("الجدول أكبر مما يقبله الخادم");
+  const list = await importsOf();
+  const item = { name, fields, rows, by: user.name, at: new Date().toISOString(), count: rows.length };
+  const i = list.findIndex((x: any) => x && x.name === name);
+  if (i >= 0) list[i] = item;
+  else {
+    if (list.length >= IMPORTS_MAX) throw new Error(`لا يمكن تجاوز ${IMPORTS_MAX} جدولاً — احذف واحداً أولاً`);
+    list.push(item);
+  }
+  await db.from("kv").upsert({ key: "report_imports", value: list });
+  await log(user.name, "استيراد جدول للتقارير", `${name} — ${rows.length} صفاً`);
+  return { ok: true, imports: list.map(summary) };
+}
+
+async function dropImport(req: any, user: any) {
+  const name = String(req.name || "").trim();
+  const list = (await importsOf()).filter((x: any) => x && x.name !== name);
+  await db.from("kv").upsert({ key: "report_imports", value: list });
+  await log(user.name, "حذف جدول تقارير", name);
+  return { ok: true, imports: list.map(summary) };
+}
+
+const summary = (x: any) => ({ name: x.name, fields: x.fields, count: x.count, by: x.by, at: x.at });
+
 /* المدة التي يختارها المستخدم في الشاشة: يقرأها سكربت القراءة في جولته التالية
    فيجلب أرقام تلك المدة من تقرير النظام. التاريخ بصيغة YYYY-MM-DD. */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -1092,6 +1132,9 @@ Deno.serve(async (httpReq) => {
       case "search": return json(await search(req.q));
       case "stats": return json({ stats: await kvGet("ksach_stats"), period: await kvGet("stats_period") });
       case "setStatsPeriod": return json(await setStatsPeriod(req, user));
+      case "imports": return json({ imports: await importsOf() });
+      case "putImport": return json(await putImport(req, user));
+      case "dropImport": return json(await dropImport(req, user));
       case "statsKey": {
         if (!user.admin) throw new Error("رمز الشاشة للمدير وحده");
         return json({ key: await statsKeyOf(true) });

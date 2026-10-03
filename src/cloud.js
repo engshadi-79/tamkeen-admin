@@ -179,11 +179,15 @@
   const stats = () => call("stats");
   const setStatsPeriod = (from, to) => call("setStatsPeriod", { from, to });
   const statsKey = () => call("statsKey");
+  // جداول إكسل المستوردة لمنشئ التقارير
+  const imports = () => call("imports");
+  const putImport = (name, fields, rows) => call("putImport", { name, fields, rows });
+  const dropImport = (name) => call("dropImport", { name });
 
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
-    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay, history, revert, legacyCopy, stats, statsKey, setStatsPeriod,
+    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay, history, revert, legacyCopy, stats, statsKey, setStatsPeriod, imports, putImport, dropImport,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});
