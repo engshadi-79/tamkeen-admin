@@ -1401,3 +1401,6 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .track-bulk .btn { margin: 0; }
 .rep-phase { width: 260px; margin: 8px 0; }
 .rep-phase select { font-weight: 700; border-color: var(--teal-500); }
+.rep-calc { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.rep-calc .sc-f { width: 220px; }
+.rep-calc .conv-hint { flex: 1; min-width: 240px; }

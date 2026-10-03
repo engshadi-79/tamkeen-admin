@@ -59,6 +59,60 @@
      في جداوله يظهر هنا بلا أن نسمّيه مسبقاً. */
   const SYS = "sys:";
 
+  /* ===== المعدل والتقدير بالبرمجة نفسها التي في محوّل كشوف الدرجات =====
+     السلّم هناك هو المعتمد (٩٠ ممتاز، ٨٠ جيد جداً، ٧٥ جيد، دون ذلك راسب)، فنستدعي دالته
+     نفسها لا نسخة منها، حتى لا يفترق الكشف عن التقرير يوماً. */
+  const CALC = "calc:";
+  const CALC_FIELDS = [{ key: CALC + "المعدل", label: "المعدل" }, { key: CALC + "التقدير", label: "التقدير" }];
+  const calcGroup = () => [{ name: "المعدل والتقدير (كما في محوّل الكشوف)", fields: CALC_FIELDS.map((f) => ({ key: f.key, label: f.label })) }];
+
+  const AVG_KEY = "tamkeen-admin:report-avg";
+  let avgFrom = "", avgOutOf = 0;   // صفر: لم يُختر بعد، فيُقترح من البيانات
+  try {
+    const v = JSON.parse(localStorage.getItem(AVG_KEY) || "null");
+    if (v) { avgFrom = v.from || ""; avgOutOf = Number(v.outOf) || 0; }
+  } catch (e) { /* تخزين غير متاح */ }
+  const saveAvg = () => { try { localStorage.setItem(AVG_KEY, JSON.stringify({ from: avgFrom, outOf: avgOutOf })); } catch (e) { /* ممتلئ */ } };
+
+  const numOf = (v) => {
+    if (v == null || v === "") return null;
+    const t = String(v).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+      .replace(/[٫,]/g, ".").replace(/[%٪\s]/g, "");
+    return /^\d+(\.\d+)?$/.test(t) ? Number(t) : null;
+  };
+
+  /* مصدر المعدل: عمود اسمه «معدل» أو «النسبة» إن وُجد، وإلا «المجموع» */
+  function guessAvg(list) {
+    const fields = all();
+    const named = fields.find((f) => /معدل|^النسبة$/.test(norm(f.label)));
+    if (named && list.some((r) => numOf(r[named.key]) != null)) return named.key;
+    return list.some((r) => numOf(r.total) != null) ? "total" : "";
+  }
+
+  /* المجموع قد يكون من ١٠٠ أو من ٢٠٠: نقترح الأصل من أكبر قيمة ونتركه قابلاً للتغيير */
+  function guessOutOf(list, key) {
+    const nums = list.map((r) => numOf(r[key])).filter((n) => n != null);
+    if (!nums.length) return 100;
+    const max = Math.max(...nums);
+    if (max <= 1) return 1;            // نسب عشرية (0.86)
+    if (max <= 100) return 100;
+    return [110, 120, 150, 200, 250, 300, 400, 500, 1000].find((n) => max <= n) || Math.ceil(max / 50) * 50;
+  }
+
+  function withGrades(list) {
+    if (!avgFrom) avgFrom = guessAvg(list);
+    if (!avgFrom) return;
+    if (!avgOutOf) { avgOutOf = guessOutOf(list, avgFrom); saveAvg(); }
+    const grade = (App.converterCore && App.converterCore.gradeOf) || (() => "");
+    list.forEach((r) => {
+      const n = numOf(r[avgFrom]);
+      if (n == null) return;
+      const pct = Math.round((n * 100 / (avgOutOf || 100)) * 10) / 10;
+      r[CALC + "المعدل"] = pct;
+      r[CALC + "التقدير"] = grade(pct, false);
+    });
+  }
+
   /* بيانات الدورة التي يكتبها الموظف في «المسارات والرموز» (التواريخ والنوع والرمز):
      النظام الرسمي لا يعرفها، فتُكتب مرة لكل دورة وتلتصق هنا بكل طالب فيها. */
   const CRS = "crs:";
@@ -114,9 +168,9 @@
   const sysGroup = () => (sysFields.length
     ? [{ name: "من نظام المركز", fields: sysFields.map((k) => ({ key: k, label: k.slice(SYS.length) })) }]
     : []);
-  const groups = () => GROUPS.concat(sysGroup(), crsGroup(), exGroups());
+  const groups = () => GROUPS.concat(sysGroup(), crsGroup(), calcGroup(), exGroups());
   const all = () => groups().flatMap((g) => g.fields);
-  const labelOf = (k) => (all().find((f) => f.key === k) || {}).label || String(k).replace(/^x:[^:]*:/, "").replace(/^(sys|crs):/, "");
+  const labelOf = (k) => (all().find((f) => f.key === k) || {}).label || String(k).replace(/^x:[^:]*:/, "").replace(/^(sys|crs|calc):/, "");
 
   const ALL = GROUPS.flatMap((g) => g.fields);
 
@@ -158,7 +212,7 @@
   try {
     const saved = JSON.parse(localStorage.getItem(PICK_KEY) || "null");
     if (saved && saved.picked && saved.picked.length) {
-      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k) || /^(x|sys|crs):/.test(String(k)));
+      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k) || /^(x|sys|crs|calc):/.test(String(k)));
       filters = saved.filters || {};
       groupBy = saved.groupBy || "";
       if (saved.hideBlank === false) hideBlank = false;
@@ -187,8 +241,8 @@
     const list = base();
     readSysFields(list);
     const codes = (App.store && App.store.get().trackCodes) || [];
-    if (!extras.length && !codes.length) return list;
-    const stamp = `${list.length}|${extras.map((t) => t.name + ":" + t.count).join(",")}|${codes.length}:${codes.map((c) => c.start + c.end + c.type).join("").length}`;
+    if (!extras.length && !codes.length) { const copy = list.map((r) => ({ ...r })); withGrades(copy); return copy; }
+    const stamp = `${list.length}|${extras.map((t) => t.name + ":" + t.count).join(",")}|${codes.length}:${codes.map((c) => c.start + c.end + c.type).join("").length}|${avgFrom}:${avgOutOf}`;
     if (merged && mergedFor === stamp) return merged;
     const out = list.map((r) => ({ ...r }));
     const byId = new Map(), byName = new Map();
@@ -213,6 +267,7 @@
         });
       });
     });
+    withGrades(out);
     merged = out;
     mergedFor = stamp;
     return out;
@@ -249,6 +304,23 @@
           <input type="checkbox" data-field="${esc(f.key)}" ${picked.includes(f.key) ? "checked" : ""}> ${esc(f.label)}
         </label>`).join("")}</div>
       </div>`).join("");
+  }
+
+  /* مصدر المعدل ظاهر وقابل للتغيير، كما هو في صفحة المحوّل، لا يجري بصمت */
+  function renderCalc() {
+    const box = $("rep-calc");
+    if (!box) return;
+    const list = base();
+    if (!list.length) { box.innerHTML = ""; return; }
+    const fields = all().filter((f) => !f.key.startsWith(CALC) && list.some((r) => numOf(r[f.key]) != null));
+    const graded = students().filter((r) => r[CALC + "التقدير"]).length;
+    box.innerHTML = `<label class="sc-f"><span>المعدل يُحسب من</span>
+        <select id="rep-avg-from"><option value="">— لا شيء —</option>
+        ${fields.map((f) => `<option value="${esc(f.key)}" ${avgFrom === f.key ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</select></label>
+      <label class="sc-f" style="width:120px"><span>من أصل</span><input type="number" id="rep-avg-out" min="1" step="1" value="${esc(avgOutOf)}"></label>
+      <span class="conv-hint">${avgFrom
+        ? `حُسب التقدير لـ <b>${ui.fmt(graded)}</b> من ${ui.fmt(list.length)} — بسلّم كشوف الدرجات نفسه: ٩٠ فأكثر ممتاز، ٨٠–٨٩ جيد جداً، ٧٥–٧٩ جيد، دون ٧٥ راسب.`
+        : "اختر الحقل الذي يحمل درجة الطالب ليُحسب المعدل والتقدير."}</span>`;
   }
 
   function renderFilters() {
@@ -315,6 +387,7 @@
         + (!blank && !hideBlank ? ` <button type="button" class="conv-link" id="rep-hide-blank">أخفِ الفارغة</button>` : "")
       : "لا توجد بيانات بعد — شغّل سكربت القراءة من صفحة «شاشة إحصاءات المركز»";
     renderFields();
+    renderCalc();
     renderFilters();
     renderImports();
     $("rep-body").innerHTML = !students().length
@@ -472,8 +545,10 @@
     [/اسم.*(متدرب|طالب|خريج|مستفيد)|^الاسم/, "name"],
     [/هوية|الهويه|رقم.?وطني/, "nid"],
     [/جوال|هاتف|موبايل/, "phone"],
-    [/^المعدل$|الدرجة الكلية|^المجموع$/, "total"],
-    [/^التقدير$|^النتيجة$|^الحالة$/, "gradeStatus"],
+    [/^المعدل$|النسبة المئوية/, CALC + "المعدل"],
+    [/^التقدير$/, CALC + "التقدير"],
+    [/الدرجة الكلية|^المجموع$/, "total"],
+    [/^النتيجة$|^الحالة$/, "gradeStatus"],
     [/اسم (الدورة|البرنامج)|^الدورة$/, "track"],
     [/^المسار$/, "track"],
     [/^المرحلة$/, "course"],
@@ -680,6 +755,14 @@
       picked = all ? [...new Set([...picked, ...keys])] : picked.filter((k) => !keys.includes(k));
       order();
       save();
+      render();
+    });
+    $("rep-calc").addEventListener("change", (e) => {
+      if (e.target.id === "rep-avg-from") { avgFrom = e.target.value; avgOutOf = 0; }
+      else if (e.target.id === "rep-avg-out") avgOutOf = Math.max(1, Number(e.target.value) || 100);
+      else return;
+      merged = null;
+      saveAvg();
       render();
     });
     $("rep-filters").addEventListener("change", (e) => {
