@@ -1395,3 +1395,9 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .rep-map input[type="text"] { margin-top: 4px; width: 100%; max-width: 230px; }
 :root[data-theme="dark"] .rep-map { background: var(--card-bg); }
 .track-catalog-table input[type="date"], .track-catalog-table input[type="text"] { width: 100%; min-width: 125px; padding: 5px 7px; font-size: 12.5px; }
+.track-bulk { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; padding: 10px 12px; margin: 0 0 14px;
+  border: 1px dashed var(--teal-500); border-radius: var(--radius); background: color-mix(in srgb, var(--teal-500) 7%, transparent); }
+.track-bulk .sc-f { width: 165px; }
+.track-bulk .btn { margin: 0; }
+.rep-phase { width: 260px; margin: 8px 0; }
+.rep-phase select { font-weight: 700; border-color: var(--teal-500); }

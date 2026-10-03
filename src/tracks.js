@@ -78,6 +78,38 @@
       </tr>`).join("") || `<tr><td colspan="7" class="empty">لا توجد نتائج مطابقة</td></tr>`;
     const count = document.getElementById("track-catalog-count");
     if (count) count.textContent = `${ui.fmt(paths.length)} مسارات · ${ui.fmt(codes.length)} رمز مرحلة ومجموعة`;
+    fillPhases(codes);
+  }
+
+  /* المرحلة الواحدة فيها كل المسارات ومجموعاتها، وتواريخها واحدة غالباً:
+     تُكتب مرة هنا فتنزل على صفوفها كلها. */
+  function fillPhases(codes) {
+    const sel = document.getElementById("track-bulk-phase");
+    if (!sel) return;
+    const phases = [...new Set(codes.map((r) => r.phase).filter(Boolean))];
+    const keep = sel.value;
+    sel.innerHTML = phases.map((p) => `<option ${p === keep ? "selected" : ""}>${ui.esc(p)}</option>`).join("");
+  }
+
+  function applyToPhase() {
+    const phase = (document.getElementById("track-bulk-phase") || {}).value || "";
+    const start = document.getElementById("track-bulk-start").value;
+    const end = document.getElementById("track-bulk-end").value;
+    const type = document.getElementById("track-bulk-type").value.trim();
+    if (!phase) { ui.toast("اختر المرحلة"); return; }
+    if (!start && !end && !type) { ui.toast("اكتب تاريخاً أو نوعاً لتطبيقه"); return; }
+    const rows = (store.get().trackCodes || []).filter((r) => r.kind === "phaseCode" && r.phase === phase);
+    const now = new Date().toISOString();
+    rows.forEach((r) => {
+      if (start) r.start = start;
+      if (end) r.end = end;
+      if (type) r.type = type;
+      r.updatedAt = now;
+    });
+    store.save();
+    renderCatalog();
+    const what = [start && "بداية", end && "نهاية", type && "نوع التدريب"].filter(Boolean).join(" و");
+    ui.toast(`طُبّق ${what} على ${ui.fmt(rows.length)} ${rows.length <= 10 ? "صفوف" : "صفاً"} في ${phase}`);
   }
 
   function renderFoot() {
@@ -235,6 +267,8 @@
     });
     document.getElementById("tracks-add").addEventListener("click", addTrack);
     document.getElementById("track-catalog-search").addEventListener("input", renderCatalog);
+    const apply = document.getElementById("track-bulk-apply");
+    if (apply) apply.addEventListener("click", applyToPhase);
     const codeBody = document.getElementById("track-codes-body");
     if (codeBody) codeBody.addEventListener("change", (e) => {
       const input = e.target.closest("[data-code-f]");
