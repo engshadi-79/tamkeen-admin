@@ -294,9 +294,11 @@
 
   function sheetRows(ws) {
     const grid = [];
+    grid.nums = [];        // رقم كل صف في الورقة نفسها، فالصفوف الفارغة لا تُعدّ
     ws.eachRow({ includeEmpty: false }, (row) => {
       const cells = [];
       row.eachCell({ includeEmpty: true }, (c, i) => { cells[i - 1] = cellText(c); });
+      grid.nums.push(row.number);
       grid.push(cells);
     });
     return grid;
@@ -336,7 +338,8 @@
     if (head < 0) throw new Error("لم أجد صف عناوين في الملف");
     const cols = grid[head].map((c, i) => String(c == null ? "" : c).trim() || `عمود ${i + 1}`);
     const body = grid.slice(head + 1).filter((r) => r.some((c) => String(c == null ? "" : c).trim()));
-    if (!body.length) throw new Error(`قرأت العناوين (${cols.filter((c) => !/^عمود /.test(c)).slice(0, 3).join("، ")}…) لكن الملف لا يحمل صفوف بيانات تحتها`);
+    // نموذج بترويسة بلا بيانات: لا يُرفض، بل نعبّئه نحن من بيانات النظام
+    if (!body.length) return { mode: "fill", cols, headRow: (grid.nums || [])[head] || head + 1 };
     const idAt = cols.findIndex((c) => ID_COL.test(c));
     const nameAt = cols.findIndex((c) => NAME_COL.test(c));
     if (idAt < 0 && nameAt < 0) throw new Error("لا بد من عمود «رقم الهوية» أو «الاسم» لربط الصفوف بالطلاب");
@@ -368,6 +371,11 @@
     if (!ws) throw new Error("الملف لا يحتوي ورقة بيانات");
     const out = readGrid(sheetRows(ws));
     out.name = file.name.replace(/\.(xlsx|xlsm|xls)$/i, "").trim().slice(0, 80) || "جدول";
+    if (out.mode === "fill") {
+      out.buf = await file.arrayBuffer();
+      out.map = autoMap(out.cols);
+      return out;
+    }
     // كم صفاً منها سيجد طالباً؟ نقولها للمستخدم قبل الرفع
     const list = base();
     const ids = new Set(list.map((r) => idOf(r.nid)).filter(Boolean));
@@ -400,7 +408,8 @@
         <input type="file" id="rep-file" accept=".xlsx,.xlsm" hidden>
         <span class="conv-hint">يُربط بالطلاب بعمود «رقم الهوية» أو «الاسم»، وبقية الأعمدة تصير حقولاً للاختيار والفلترة.</span>
       </div>
-      ${staged ? `<div class="rep-staged">
+      ${staged && staged.mode === "fill" ? fillCard() : ""}
+      ${staged && staged.mode !== "fill" ? `<div class="rep-staged">
         <b>${esc(staged.name)}</b> — ${countOf(staged.rows.length, "صفوف", "صفاً", "صف", "صفان")}، ${countOf(staged.fields.length, "حقول", "حقلاً", "حقل", "حقلان")}، المطابقة بـ${esc(staged.matchedBy)}.
         <span class="${staged.hits ? "" : "rep-warn"}">${staged.hits ? `طابق ${countOf(staged.hits, "طلاب", "طالباً", "طالب", "طالبان")} من اللقطة` : "لم يطابق أي طالب في اللقطة الحالية"}</span>
         <div class="rep-chips">${staged.fields.map((c) => `<span class="rep-chip">${esc(c)}</span>`).join("")}</div>
@@ -408,6 +417,114 @@
         <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
       </div>` : ""}
       ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}`;
+  }
+
+  /* ===== تعبئة نموذج رسمي من بيانات النظام =====
+     ترفع النموذج فارغاً، فنقابل كل عنوان عمود فيه بحقل من حقول النظام،
+     ثم نكتب الصفوف تحته ونعيد الملف كما هو بتنسيقه وترويسته. */
+  const FILL_KEY = "tamkeen-admin:report-fill-maps";
+  const INDEX = "__index";     // عمود الترقيم
+  const CONST = "__const";     // قيمة ثابتة يكتبها المستخدم
+
+  /* مرادفات عناوين النماذج الرسمية لحقولنا */
+  const SYNONYMS = [
+    [/^(م|مسلسل|تسلسل|رقم)$/, INDEX],
+    [/اسم.*(متدرب|طالب|خريج|مستفيد)|^الاسم/, "name"],
+    [/هوية|الهويه|رقم.?وطني/, "nid"],
+    [/جوال|هاتف|موبايل/, "phone"],
+    [/^المعدل$|الدرجة الكلية|^المجموع$/, "total"],
+    [/^التقدير$|^النتيجة$|^الحالة$/, "gradeStatus"],
+    [/اسم (الدورة|البرنامج)|^الدورة$/, "track"],
+    [/^المسار$/, "track"],
+    [/^المرحلة$|رقم الدورة/, "course"],
+    [/مدرب/, "trainer"],
+    [/^الجنس$|^النوع$/, "gender"],
+    [/محافظة/, "governorate"],
+    [/^المجموعة$/, "group"],
+    [/نسبة الحضور|^الحضور$/, "attendance"],
+  ];
+
+  function autoMap(cols) {
+    const fields = all();
+    const byLabel = new Map(fields.map((f) => [norm(f.label), f.key]));
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(FILL_KEY) || "{}"); } catch (e) { /* تخزين غير متاح */ }
+    return cols.map((c) => {
+      const n = norm(c);
+      if (byLabel.has(n)) return { col: c, key: byLabel.get(n), value: "" };
+      for (const [re, key] of SYNONYMS) if (re.test(c)) return { col: c, key, value: "" };
+      // عنوان يحتوي اسم حقل أو العكس (الحقول القادمة من النظام تطابق غالباً بالاسم)
+      const near = fields.find((f) => norm(f.label).length > 3 && (n.includes(norm(f.label)) || norm(f.label).includes(n)));
+      return { col: c, key: near ? near.key : "", value: "" };
+    }).map((m, i) => {
+      const keep = (saved[staged && staged.name] || {})[i];
+      return keep ? { ...m, ...keep } : m;
+    });
+  }
+
+  function saveMap() {
+    if (!staged || staged.mode !== "fill") return;
+    try {
+      const all = JSON.parse(localStorage.getItem(FILL_KEY) || "{}");
+      all[staged.name] = Object.fromEntries(staged.map.map((m, i) => [i, { key: m.key, value: m.value }]));
+      localStorage.setItem(FILL_KEY, JSON.stringify(all));
+    } catch (e) { /* تخزين ممتلئ */ }
+  }
+
+  const valueFor = (row, m, i) => {
+    if (m.key === INDEX) return i + 1;
+    if (m.key === CONST) return m.value || "";
+    if (!m.key) return "";
+    const v = row[m.key];
+    return v == null ? "" : v;
+  };
+
+  async function fillTemplate() {
+    const list = rows();
+    if (!list.length) { ui.toast("لا توجد سجلات لتعبئتها — راجع الفلاتر"); return; }
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(staged.buf);
+    const ws = wb.worksheets[0];
+    const start = staged.headRow + 1;
+    // نمط الصف الأول تحت الترويسة (حدود وتوسيط النموذج) يُنسخ على بقية الصفوف
+    const style = [];
+    const first = ws.getRow(start);
+    staged.map.forEach((m, c) => { style[c] = first.getCell(c + 1).style; });
+    list.forEach((row, i) => {
+      const r = ws.getRow(start + i);
+      staged.map.forEach((m, c) => {
+        const cell = r.getCell(c + 1);
+        cell.value = valueFor(row, m, i);
+        if (style[c]) cell.style = { ...style[c] };
+      });
+      r.commit && r.commit();
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    ui.download(`${staged.name} - معبّأ.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    ui.toast(`عُبّئ ${countOf(list.length, "صفوف", "صفاً", "صف", "صفان")}`);
+    saveMap();
+  }
+
+  function fillCard() {
+    const fields = all();
+    const opt = (m) => `<option value="">— فارغ —</option>
+      <option value="${INDEX}" ${m.key === INDEX ? "selected" : ""}>ترقيم تسلسلي</option>
+      <option value="${CONST}" ${m.key === CONST ? "selected" : ""}>قيمة ثابتة</option>
+      ${fields.map((f) => `<option value="${esc(f.key)}" ${m.key === f.key ? "selected" : ""}>${esc(f.label)}</option>`).join("")}`;
+    const done = staged.map.filter((m) => m.key).length;
+    return `<div class="rep-staged">
+      <b>${esc(staged.name)}</b> — نموذج بلا بيانات، أعبّئه لك من بيانات النظام.
+      قابلتُ ${countOf(done, "أعمدة", "عموداً", "عموداً واحداً", "عمودين")} من ${countOf(staged.map.length, "أعمدة", "عموداً", "عموداً واحداً", "عمودين")}؛ راجع المقابلة وغيّر ما يلزم.
+      <table class="rep-map"><thead><tr><th>عمود النموذج</th><th>يُملأ من</th></tr></thead><tbody>
+      ${staged.map.map((m, i) => `<tr><td>${esc(m.col)}</td><td>
+        <select data-map="${i}">${opt(m)}</select>
+        ${m.key === CONST ? `<input type="text" data-const="${i}" value="${esc(m.value)}" placeholder="اكتب القيمة">` : ""}
+      </td></tr>`).join("")}
+      </tbody></table>
+      <div class="btn-row"><button type="button" class="btn" id="rep-fill">⬇ نزّل النموذج معبّأً (${countOf(rows().length, "صفوف", "صفاً", "صف واحد", "صفان")})</button>
+      <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
+      <p class="conv-hint">يُعبّأ بما يظهر في التقرير الآن، فالفلاتر أعلاه تسري عليه.</p>
+    </div>`;
   }
 
   async function saveImport() {
@@ -534,6 +651,13 @@
     });
     $("rep-body").addEventListener("click", (e) => { if (e.target.closest("#rep-pull")) pull(true); });
     $("rep-imports").addEventListener("change", async (e) => {
+      const m = e.target.closest("[data-map]");
+      if (m && staged && staged.map) {
+        staged.map[Number(m.dataset.map)].key = m.value;
+        saveMap();
+        renderImports();
+        return;
+      }
       const f = e.target.id === "rep-file" && e.target.files && e.target.files[0];
       if (!f) return;
       try { staged = await readFile(f); } catch (err) { staged = null; ui.toast(err.message); }
@@ -544,7 +668,12 @@
       const drop = e.target.closest("[data-drop]");
       if (drop) { dropImport(drop.dataset.drop); return; }
       if (e.target.closest("#rep-save-import")) saveImport();
+      if (e.target.closest("#rep-fill")) fillTemplate();
       if (e.target.closest("#rep-cancel-import")) { staged = null; renderImports(); }
+    });
+    $("rep-imports").addEventListener("input", (e) => {
+      const k = e.target.closest("[data-const]");
+      if (k && staged && staged.map) staged.map[Number(k.dataset.const)].value = e.target.value;
     });
     $("rep-meta").addEventListener("click", (e) => {
       if (e.target.closest("#rep-show-blank")) { hideBlank = false; save(); render(); }

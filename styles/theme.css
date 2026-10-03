@@ -1388,3 +1388,9 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .rep-import-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid var(--border);
   border-radius: var(--radius); padding: 7px 11px; font-size: 13px; }
 .rep-import-list b { color: var(--navy-900); }
+.rep-map { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 8px 0; background: var(--card-bg, #fff); }
+.rep-map th, .rep-map td { border: 1px solid var(--border); padding: 4px 7px; text-align: right; }
+.rep-map thead th { background: var(--navy-900); color: #fff; font-weight: 600; }
+.rep-map select { width: 100%; max-width: 230px; }
+.rep-map input[type="text"] { margin-top: 4px; width: 100%; max-width: 230px; }
+:root[data-theme="dark"] .rep-map { background: var(--card-bg); }
