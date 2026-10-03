@@ -58,6 +58,39 @@
   /* حقول يرسلها نظام المركز نفسه بأسماء أعمدته («sys:تاريخ الميلاد»)، فما يضيفه المركز
      في جداوله يظهر هنا بلا أن نسمّيه مسبقاً. */
   const SYS = "sys:";
+
+  /* بيانات الدورة التي يكتبها الموظف في «المسارات والرموز» (التواريخ والنوع والرمز):
+     النظام الرسمي لا يعرفها، فتُكتب مرة لكل دورة وتلتصق هنا بكل طالب فيها. */
+  const CRS = "crs:";
+  const CRS_FIELDS = [
+    { key: CRS + "رمز الدورة", pick: (r) => r.code },
+    { key: CRS + "بداية الدورة", pick: (r) => r.start },
+    { key: CRS + "نهاية الدورة", pick: (r) => r.end },
+    { key: CRS + "نوع التدريب", pick: (r) => r.type },
+  ];
+  const crsGroup = () => [{ name: "بيانات الدورة (من المسارات والرموز)", fields: CRS_FIELDS.map((f) => ({ key: f.key, label: f.key.slice(CRS.length) })) }];
+
+  /* المطابقة فضفاضة: «مسار التطريز والخياطة» في اللقطة و«التطريز والخياطة» في الدليل،
+     و«الدورة الثانية» و«المرحلة الثانية»، و«G1» و«المجموعة الأولى». */
+  /* «\b» في جافاسكربت حدٌّ بين حرف لاتيني وغيره، فلا يصلح للعربية: نفصل النمطين */
+  const ORDINALS = [
+    { d: "1", re: /الاولى|\bG\s?1\b|(^|\s)1(\s|$)/i },
+    { d: "2", re: /الثانيه|\bG\s?2\b|(^|\s)2(\s|$)/i },
+    { d: "3", re: /الثالثه|\bG\s?3\b|(^|\s)3(\s|$)/i },
+    { d: "4", re: /الرابعه|\bG\s?4\b|(^|\s)4(\s|$)/i },
+  ];
+  const ordinal = (v) => { const n = norm(v); for (const o of ORDINALS) if (o.re.test(n)) return o.d; return ""; };
+  const near = (a, b) => { const x = norm(a), y = norm(b); return !!x && !!y && (x.includes(y) || y.includes(x)); };
+
+  function courseOf(row) {
+    const list = (App.store && App.store.get().trackCodes) || [];
+    const codes = list.filter((r) => r && r.kind === "phaseCode");
+    if (!codes.length) return null;
+    const g = ordinal(row.group), c = ordinal(row.course);
+    return codes.find((r) => near(row.track, r.trackName) && (!g || ordinal(r.group) === g) && (!c || ordinal(r.phase) === c))
+      || codes.find((r) => near(row.track, r.trackName) && (!c || ordinal(r.phase) === c))
+      || null;
+  }
   let sysFields = [];
   function readSysFields(list) {
     const seen = new Map();
@@ -81,9 +114,9 @@
   const sysGroup = () => (sysFields.length
     ? [{ name: "من نظام المركز", fields: sysFields.map((k) => ({ key: k, label: k.slice(SYS.length) })) }]
     : []);
-  const groups = () => GROUPS.concat(sysGroup(), exGroups());
+  const groups = () => GROUPS.concat(sysGroup(), crsGroup(), exGroups());
   const all = () => groups().flatMap((g) => g.fields);
-  const labelOf = (k) => (all().find((f) => f.key === k) || {}).label || String(k).replace(/^x:[^:]*:/, "").replace(/^sys:/, "");
+  const labelOf = (k) => (all().find((f) => f.key === k) || {}).label || String(k).replace(/^x:[^:]*:/, "").replace(/^(sys|crs):/, "");
 
   const ALL = GROUPS.flatMap((g) => g.fields);
 
@@ -103,6 +136,7 @@
       return seen.size;
     };
     sysFields.forEach((k) => { if (few(k)) out.push(k); });
+    CRS_FIELDS.forEach((f) => { if (few(f.key)) out.push(f.key); });
     extras.forEach((t) => (t.fields || []).forEach((c) => {
       const k = exKey(t.name, c);
       const seen = new Set();
@@ -124,7 +158,7 @@
   try {
     const saved = JSON.parse(localStorage.getItem(PICK_KEY) || "null");
     if (saved && saved.picked && saved.picked.length) {
-      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k) || /^(x|sys):/.test(String(k)));
+      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k) || /^(x|sys|crs):/.test(String(k)));
       filters = saved.filters || {};
       groupBy = saved.groupBy || "";
       if (saved.hideBlank === false) hideBlank = false;
@@ -152,8 +186,9 @@
   function students() {
     const list = base();
     readSysFields(list);
-    if (!extras.length) return list;
-    const stamp = `${list.length}|${extras.map((t) => t.name + ":" + t.count).join(",")}`;
+    const codes = (App.store && App.store.get().trackCodes) || [];
+    if (!extras.length && !codes.length) return list;
+    const stamp = `${list.length}|${extras.map((t) => t.name + ":" + t.count).join(",")}|${codes.length}:${codes.map((c) => c.start + c.end + c.type).join("").length}`;
     if (merged && mergedFor === stamp) return merged;
     const out = list.map((r) => ({ ...r }));
     const byId = new Map(), byName = new Map();
@@ -162,6 +197,11 @@
       if (id) byId.set(id, r);
       const n = norm(r.name);
       if (n && !byName.has(n)) byName.set(n, r);
+    });
+    // بيانات الدورة من دليل الترميز
+    out.forEach((r) => {
+      const c = courseOf(r);
+      if (c) CRS_FIELDS.forEach((f) => { const v = f.pick(c); if (v) r[f.key] = v; });
     });
     extras.forEach((t) => {
       (t.rows || []).forEach((row) => {
@@ -224,7 +264,7 @@
       + `<label class="sc-f"><span>بحث</span><input type="search" id="rep-search" placeholder="اسم أو رقم…" value="${esc(search)}"></label>`
       + `<label class="sc-f"><span>تجميع حسب</span><select id="rep-group-by"><option value="">بلا تجميع (كل السجلات)</option>
         ${["track", "course", "group", "gender", "governorate", "health", "status", "pledged", "approval", "trainer"]
-          .concat(filterFields(list).filter((k) => k.startsWith(EX) || k.startsWith(SYS)))
+          .concat(filterFields(list).filter((k) => k.startsWith(EX) || k.startsWith(SYS) || k.startsWith(CRS)))
           .map((k) => `<option value="${k}" ${groupBy === k ? "selected" : ""}>${esc(labelOf(k))}</option>`).join("")}</select></label>`;
   }
 
@@ -436,7 +476,11 @@
     [/^التقدير$|^النتيجة$|^الحالة$/, "gradeStatus"],
     [/اسم (الدورة|البرنامج)|^الدورة$/, "track"],
     [/^المسار$/, "track"],
-    [/^المرحلة$|رقم الدورة/, "course"],
+    [/^المرحلة$/, "course"],
+    [/رقم الدورة|رمز الدورة/, CRS + "رمز الدورة"],
+    [/بداية (الدورة|التدريب)|تاريخ البدء|من تاريخ/, CRS + "بداية الدورة"],
+    [/نهاية (الدورة|التدريب)|تاريخ الانتهاء|إلى تاريخ|الى تاريخ/, CRS + "نهاية الدورة"],
+    [/نوع التدريب|^النوع$/, CRS + "نوع التدريب"],
     [/مدرب/, "trainer"],
     [/^الجنس$|^النوع$/, "gender"],
     [/محافظة/, "governorate"],

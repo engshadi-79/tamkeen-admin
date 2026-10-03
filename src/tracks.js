@@ -67,7 +67,15 @@
     const codeBody = document.getElementById("track-codes-body");
     if (!pathBody || !codeBody) return;
     pathBody.innerHTML = paths.filter(matches).map((r) => `<tr><td>${ui.esc(r.name)}</td><td dir="ltr">${ui.esc(r.englishName)}</td><td><span class="track-code-pill">${ui.esc(r.code)}</span></td></tr>`).join("") || `<tr><td colspan="3" class="empty">لا توجد نتائج مطابقة</td></tr>`;
-    codeBody.innerHTML = codes.filter(matches).map((r) => `<tr><td>${ui.esc(r.phase)}</td><td>${ui.esc(r.trackName)}</td><td>${ui.esc(r.group)}</td><td><span class="track-code-pill">${ui.esc(r.code)}</span></td></tr>`).join("") || `<tr><td colspan="4" class="empty">لا توجد نتائج مطابقة</td></tr>`;
+    /* بيانات الدورة التي لا يعرفها نظام المركز (تواريخها ونوعها) تُكتب هنا مرة واحدة،
+       فتدخل التقارير والنماذج الرسمية لكل طالب في تلك الدورة. */
+    codeBody.innerHTML = codes.filter(matches).map((r) => `<tr data-code-id="${ui.esc(r.id)}">
+        <td>${ui.esc(r.phase)}</td><td>${ui.esc(r.trackName)}</td><td>${ui.esc(r.group)}</td>
+        <td><span class="track-code-pill">${ui.esc(r.code)}</span></td>
+        <td><input type="date" data-code-f="start" value="${ui.esc(r.start || "")}"></td>
+        <td><input type="date" data-code-f="end" value="${ui.esc(r.end || "")}"></td>
+        <td><input type="text" data-code-f="type" list="track-train-types" value="${ui.esc(r.type || "")}" placeholder="دورة"></td>
+      </tr>`).join("") || `<tr><td colspan="7" class="empty">لا توجد نتائج مطابقة</td></tr>`;
     const count = document.getElementById("track-catalog-count");
     if (count) count.textContent = `${ui.fmt(paths.length)} مسارات · ${ui.fmt(codes.length)} رمز مرحلة ومجموعة`;
   }
@@ -227,6 +235,18 @@
     });
     document.getElementById("tracks-add").addEventListener("click", addTrack);
     document.getElementById("track-catalog-search").addEventListener("input", renderCatalog);
+    const codeBody = document.getElementById("track-codes-body");
+    if (codeBody) codeBody.addEventListener("change", (e) => {
+      const input = e.target.closest("[data-code-f]");
+      if (!input) return;
+      const id = input.closest("tr").dataset.codeId;
+      const row = (store.get().trackCodes || []).find((r) => r.id === id);
+      if (!row) return;
+      row[input.dataset.codeF] = input.value;
+      row.updatedAt = new Date().toISOString();
+      store.save();
+      ui.toast("حُفظ");
+    });
   }
 
   App.tracks = { init, render, ordered, summary, hoursPct, textSummary, TYPE_LABEL, renderCatalog };
