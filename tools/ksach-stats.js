@@ -195,6 +195,9 @@
   const NAME_CUT = /STU-[\d-]+|\b\d{6,}\b|[|·]/;
   const nameOf = (v) => clean(String(clean(v)).split(NAME_CUT)[0]).replace(/[-–—,،]+$/, "").trim();
   const nidOf = (v) => (toLatin(clean(v)).match(/\b\d{9}\b/) || [""])[0];
+  /* الاسم قد يُكتب رباعياً في صفحة وثلاثياً في أخرى، فنفهرسه كاملاً وبأول ثلاث كلمات */
+  const nameKey = (v) => clean(v).replace(/[\u064B-\u0652]/g, "").replace(/[إأآا]/g, "ا").replace(/ة/g, "ه").trim();
+  const shortKey = (v) => nameKey(v).split(" ").slice(0, 3).join(" ");
   const NAMES_MAX = 80;   // أكثر ما يُرسل من الأسماء لكل مجموعة
 
   /* كل صفحات جدول واحد: تتوقف عند الفراغ أو تكرار أول صف */
@@ -674,10 +677,12 @@
       // أعمدة صفحة الطلاب كما سمّاها النظام: تصير حقولاً في منشئ التقارير بلا تسمية مسبقة
       Object.entries(s.sys || {}).forEach(([k, v]) => { r["sys:" + k] = v; });
       if (r.nid) byId.set(r.nid, r);
-      if (!byName.has(r.name)) byName.set(r.name, r);
+      const full = nameKey(r.name), short = shortKey(r.name);
+      if (full && !byName.has(full)) byName.set(full, r);
+      if (short && !byName.has(short)) byName.set(short, r);
       return r;
     });
-    const find = (nid, name) => (nid && byId.get(nid)) || (name && byName.get(name)) || null;
+    const find = (nid, name) => (nid && byId.get(nid)) || (name && (byName.get(nameKey(name)) || byName.get(shortKey(name)))) || null;
 
     // المدرب ونسبة حضور المجموعة
     const gInfo = new Map();
@@ -688,14 +693,17 @@
     });
 
     // ١) البيانات الشخصية من صفحة المتقدمين
+    let personalSeen = 0, personalHit = 0;
     try {
       await firstPageThatWorks(PERSONAL_PAGES, "المتقدمون", [/الاسم|الطالب/, /الهوية|الجوال|الجنس|الميلاد/], (t) => {
         debug("المتقدمون", t);
         t.rows.forEach((r) => {
+          personalSeen++;
           const nid = nidOf(cell(r, t.head, /الهوية/) || cell(r, t.head, /الاسم|الطالب/));
           const nm = nameOf(cell(r, t.head, /الاسم|الطالب/));
           const row = find(nid, nm);
           if (!row) return;
+          personalHit++;
           row.gender = clean(cell(r, t.head, /الجنس/)) || row.gender;
           row.governorate = clean(cell(r, t.head, /المحافظة|العنوان/)) || row.governorate;
           row.health = clean(cell(r, t.head, /الحالة الصحية|الوضع الصحي|إعاقة/)) || row.health;
@@ -706,6 +714,10 @@
         });
       });
     } catch (e) { console.warn("المتقدمون:", e.message); }
+    if (readLog["المتقدمون"]) {
+      readLog["المتقدمون"].matched = personalHit;
+      if (personalSeen && !personalHit) readLog["المتقدمون"].error = `قُرئ ${personalSeen} صفاً لكن لم يطابق أي طالب بالهوية ولا بالاسم`;
+    }
 
     // ٢) الدرجات
     try {

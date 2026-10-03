@@ -549,7 +549,10 @@
         <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
       </div>` : ""}
       ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}
-      <details class="rep-readlog"><summary>ماذا قرأ سكربت القراءة من نظام المركز؟</summary>${readLogCard()}</details>`;
+      <details class="rep-readlog"><summary>ماذا قرأ سكربت القراءة من نظام المركز؟</summary>
+        ${readLogCard()}
+        <div class="btn-row"><button type="button" class="btn small secondary" id="rep-copy-diag">⧉ نسخ التشخيص</button></div>
+      </details>`;
   }
 
   /* ===== تعبئة نموذج رسمي من بيانات النظام =====
@@ -657,10 +660,12 @@
 
   function fillCard() {
     const fields = all();
+    const source = (k) => k.startsWith(SYS) ? " (من النظام)" : k.startsWith(CRS) ? " (من المسارات والرموز)"
+      : k.startsWith(CALC) ? " (محسوب)" : k.startsWith(EX) ? ` (من ملف: ${String(k).slice(EX.length).split(":")[0]})` : "";
     const opt = (m) => `<option value="">— فارغ —</option>
       <option value="${INDEX}" ${m.key === INDEX ? "selected" : ""}>ترقيم تسلسلي</option>
       <option value="${CONST}" ${m.key === CONST ? "selected" : ""}>قيمة ثابتة</option>
-      ${fields.map((f) => `<option value="${esc(f.key)}" ${m.key === f.key ? "selected" : ""}>${esc(f.label)}</option>`).join("")}`;
+      ${fields.map((f) => `<option value="${esc(f.key)}" ${m.key === f.key ? "selected" : ""}>${esc(f.label + source(f.key))}</option>`).join("")}`;
     const done = staged.map.filter((m) => m.key).length;
     const list = rows();
     // المرحلة التي يخصّها هذا النموذج: اختيارها هنا أوضح من البحث عنها بين الفلاتر
@@ -692,6 +697,23 @@
       })()}
       <p class="conv-hint">يُعبّأ بما يظهر في التقرير الآن: المرحلة أعلاه وبقية الفلاتر تسري عليه.</p>
     </div>`;
+  }
+
+  /* تشخيص يُنسخ ويُرسل عند استعصاء حقل: من أين يأتي كل حقل، وكم صفاً فيه قيمة */
+  function copyDiagnostics() {
+    const list = students();
+    const fieldStat = all().map((f) => ({
+      field: f.label, key: f.key,
+      filled: list.filter((r) => String(r[f.key] == null ? "" : r[f.key]).trim() !== "").length,
+    })).filter((x) => x.key !== "name" && x.key !== "nid");
+    const s = snap();
+    const out = {
+      at: s && s.at, students: list.length,
+      readLog: (s && s.data && s.data.readLog) || "لا سجلّ (سكربت قديم)",
+      sysFields, imports: extras.map((t) => ({ name: t.name, fields: t.fields, rows: t.count })),
+      fields: fieldStat,
+    };
+    ui.copyText(JSON.stringify(out, null, 1));
   }
 
   async function saveImport() {
@@ -845,6 +867,7 @@
       if (drop) { dropImport(drop.dataset.drop); return; }
       if (e.target.closest("#rep-save-import")) saveImport();
       if (e.target.closest("#rep-fill")) fillTemplate();
+      if (e.target.closest("#rep-copy-diag")) copyDiagnostics();
       if (e.target.closest("#rep-cancel-import")) { staged = null; renderImports(); }
     });
     $("rep-imports").addEventListener("input", (e) => {
