@@ -9,12 +9,14 @@
     const s = App.tracks.summary(trackList);
     const pending = tasks.filter((t) => !t.done);
     const overdue = pending.filter(ui.isOverdue);
+    const dateEl = document.getElementById("dash-date");
+    if (dateEl) dateEl.textContent = new Intl.DateTimeFormat("ar-PS", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date());
 
     document.getElementById("stats").innerHTML = `
-      <div class="stat"><div class="label">إجمالي المستفيدين</div><div class="value">${ui.fmt(s.beneficiaries)}</div><div class="sub">عبر ${ui.fmt(trackList.length)} مسارات تدريبية</div></div>
-      <div class="stat"><div class="label">نسبة الإنجاز العامة</div><div class="value">${ui.fmt(s.completionPct, 1)}%</div><div class="sub">متوسط الساعات المكتملة من ${store.TOTAL_HOURS}</div></div>
-      <div class="stat"><div class="label">متوسط نسبة الحضور</div><div class="value">${ui.fmt(s.attendancePct, 1)}%</div><div class="sub">الحد الأدنى المطلوب ${ATTENDANCE_THRESHOLD}%</div></div>
-      <div class="stat"><div class="label">مهام قيد الانتظار</div><div class="value">${ui.fmt(pending.length)}</div><div class="sub">${overdue.length ? `منها ${ui.fmt(overdue.length)} متأخرة` : "لا توجد مهام متأخرة"}</div></div>`;
+      <div class="stat stat-beneficiaries"><div class="stat-top"><span class="stat-icon" aria-hidden="true">♙</span><span class="stat-period">إجمالي</span></div><div class="label">المستفيدون</div><div class="value">${ui.fmt(s.beneficiaries)}</div><div class="sub">موزعون على ${ui.fmt(trackList.length)} مسارات</div></div>
+      <div class="stat stat-completion"><div class="stat-top"><span class="stat-icon" aria-hidden="true">◔</span><span class="stat-period">التدريب</span></div><div class="label">إنجاز الساعات</div><div class="value">${ui.fmt(s.completionPct, 1)}%</div><div class="stat-meter"><i style="width:${Math.max(0, Math.min(100, Number(s.completionPct) || 0))}%"></i></div><div class="sub">من إجمالي ${store.TOTAL_HOURS} ساعة لكل مسار</div></div>
+      <div class="stat stat-attendance"><div class="stat-top"><span class="stat-icon" aria-hidden="true">✓</span><span class="stat-period">الحضور</span></div><div class="label">متوسط الحضور</div><div class="value">${ui.fmt(s.attendancePct, 1)}%</div><div class="stat-meter"><i style="width:${Math.max(0, Math.min(100, Number(s.attendancePct) || 0))}%"></i></div><div class="sub">المستهدف ${ATTENDANCE_THRESHOLD}%</div></div>
+      <div class="stat stat-tasks ${overdue.length ? "has-overdue" : ""}"><div class="stat-top"><span class="stat-icon" aria-hidden="true">☑</span><span class="stat-period">المتابعة</span></div><div class="label">مهام مفتوحة</div><div class="value">${ui.fmt(pending.length)}</div><div class="sub">${overdue.length ? `${ui.fmt(overdue.length)} مهام متأخرة وتحتاج متابعة` : "لا توجد مهام متأخرة"}</div></div>`;
 
     const alerts = [];
     trackList.filter((t) => Number(t.attendancePct) < ATTENDANCE_THRESHOLD).forEach((t) => {
@@ -29,6 +31,39 @@
       alerts.push(`<li class="${days < 0 ? "danger" : "warn"}">الوارد <b>${ui.esc(rec.number)}</b>${rec.subject ? ` «${ui.esc(rec.subject)}»` : ""}${rec.party ? ` من ${ui.esc(rec.party)}` : ""}: ${when} (${ui.formatDate(rec.dueDate)}). <a href="#registry">فتح السجل</a></li>`);
     });
     document.getElementById("alerts").innerHTML = alerts.length ? alerts.join("") : `<li class="ok">لا توجد تنبيهات حالياً — جميع المؤشرات ضمن الحدود المطلوبة.</li>`;
+    const alertCount = document.getElementById("dash-alert-count");
+    if (alertCount) { alertCount.textContent = ui.fmt(alerts.length); alertCount.classList.toggle("is-clear", alerts.length === 0); }
+
+    const team = new Map();
+    tasks.forEach((task) => {
+      const owner = String(task.owner || "").trim() || "بلا مسؤول";
+      const row = team.get(owner) || { open: 0, overdue: 0, done: 0, nextDate: "", nextDistance: Infinity };
+      if (task.done) row.done++;
+      else {
+        row.open++;
+        if (ui.isOverdue(task)) row.overdue++;
+        if (task.dueDate) {
+          const distance = Math.abs(Date.parse(`${task.dueDate}T00:00:00Z`) - Date.parse(`${ui.todayISO()}T00:00:00Z`));
+          if (Number.isFinite(distance) && distance < row.nextDistance) {
+            row.nextDate = task.dueDate;
+            row.nextDistance = distance;
+          }
+        }
+      }
+      team.set(owner, row);
+    });
+    const teamRows = [...team.entries()].sort((a, b) =>
+      b[1].overdue - a[1].overdue || b[1].open - a[1].open || a[0].localeCompare(b[0], "ar")
+    );
+    document.getElementById("dash-team").innerHTML = teamRows.length
+      ? teamRows.map(([owner, row]) => `<tr>
+          <td><span class="dash-person"><i aria-hidden="true">${ui.esc(Array.from(owner)[0] || "؟")}</i><b>${ui.esc(owner)}</b></span></td>
+          <td><span class="dash-number">${ui.fmt(row.open)}</span></td>
+          <td><span class="dash-number ${row.overdue ? "is-late" : "is-zero"}">${ui.fmt(row.overdue)}</span></td>
+          <td><span class="dash-number ${row.done ? "is-done" : ""}">${ui.fmt(row.done)}</span></td>
+          <td>${row.nextDate ? ui.formatDate(row.nextDate) : "—"}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="5" class="empty">لا توجد مهام مسجلة بعد.</td></tr>`;
 
     const files = new Map();
     (App.registry ? App.registry.live() : []).forEach((r) => { if (r.track) files.set(r.track, (files.get(r.track) || 0) + 1); });

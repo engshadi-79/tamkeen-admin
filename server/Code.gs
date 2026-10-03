@@ -51,7 +51,7 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 12, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
+      case "status": return out_({ ok: true, version: 13, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
       case "login": {
         const res = login_(req.username, req.password);
@@ -65,12 +65,12 @@ function doPost(e) {
     if (!user) return out_({ error: "UNAUTHORIZED" });
     logRequest_(user, req);
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 12, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 13, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
       case "sync": return out_(sync_(req.records || [], req.deleted || {}, user));
-      case "syncAll": return out_(syncAll_(req.cols || {}));
+      case "syncAll": return out_(syncAll_(req.cols || {}, user));
       case "people": return out_({ people: Object.keys(users_()).map((u) => users_()[u]).filter((u) => u.active !== false).map((u) => ({ name: u.name, username: u.username })) });
       case "ocr": return out_(ocr_(req));
       case "upload": return out_(upload_(req));
@@ -447,7 +447,7 @@ function colFile_(name) {
   return it.hasNext() ? it.next() : root.createFile(fname, JSON.stringify({ records: [], deleted: {} }), "application/json");
 }
 
-function syncAll_(cols) {
+function syncAll_(cols, user) {
   const result = {};
   const names = Object.keys(cols).filter(isCol_);
   // قسم بلا تغييرات: قراءة فقط، بلا قفل ولا كتابة (يخفّف الازدحام كثيراً)
@@ -462,13 +462,44 @@ function syncAll_(cols) {
       const data = readData_(file);
       const incoming = cols[name] || {};
       const del = Object.assign({}, data.deleted || {});
-      Object.keys(incoming.deleted || {}).forEach((id) => { if (!del[id] || incoming.deleted[id] > del[id]) del[id] = incoming.deleted[id]; });
       const map = {};
       (data.records || []).forEach((r) => { map[r.id] = r; });
+      Object.keys(incoming.deleted || {}).forEach((id) => {
+        const row = map[id];
+        if (name === "letterApprovals" && row && !user.admin && (row.owner !== user.name || ["approved", "issued"].includes(row.approvalStatus))) return;
+        if (!del[id] || incoming.deleted[id] > del[id]) del[id] = incoming.deleted[id];
+      });
+      const approvalContent_ = (r) => {
+        const copy = Object.assign({}, r || {});
+        ["approvalStatus", "approvalBy", "approvalAt", "approvalNote", "issuedAt", "updatedAt"].forEach((k) => delete copy[k]);
+        return JSON.stringify(copy);
+      };
       (incoming.records || []).forEach((r) => {
         if (!r || !r.id) return;
         if (del[r.id] && resurrects_(r, del[r.id])) return; // محذوف حديثاً: يُتجاهل
-        if (!map[r.id] || stamp_(r) > stamp_(map[r.id])) map[r.id] = r;
+        const cur = map[r.id];
+        if (name !== "letterApprovals") { if (!cur || stamp_(r) > stamp_(cur)) map[r.id] = r; return; }
+        if (!cur) {
+          r.owner = user.admin && r.owner ? r.owner : user.name;
+          r.approvalStatus = "pending";
+          delete r.approvalBy; delete r.approvalAt; delete r.approvalNote; delete r.issuedAt;
+          map[r.id] = r;
+          return;
+        }
+        if (stamp_(r) <= stamp_(cur)) return;
+        if (user.admin || cur.owner === user.name) {
+          if (!user.admin && cur.approvalStatus === "pending" && ["approved", "rejected"].includes(r.approvalStatus)) return;
+          if (!user.admin && cur.approvalStatus === "approved") {
+            if (r.approvalStatus !== "issued" || approvalContent_(r) !== approvalContent_(cur)) return;
+            map[r.id] = Object.assign({}, cur, { approvalStatus: "issued", issuedAt: r.issuedAt || r.updatedAt, updatedAt: r.updatedAt });
+            return;
+          }
+          map[r.id] = r;
+          return;
+        }
+        if (user.perms && user.perms.approve && cur.approvalStatus === "pending" && ["approved", "rejected"].includes(r.approvalStatus) && approvalContent_(r) === approvalContent_(cur)) {
+          map[r.id] = Object.assign({}, cur, { approvalStatus: r.approvalStatus, approvalBy: user.name, approvalAt: r.approvalAt || r.updatedAt, approvalNote: r.approvalNote || "", updatedAt: r.updatedAt });
+        }
       });
       Object.keys(del).forEach((id) => { if (map[id] && stamp_(map[id]) <= del[id]) delete map[id]; });
       const merged = { records: Object.keys(map).map((k) => map[k]), deleted: del };

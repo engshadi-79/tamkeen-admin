@@ -16,7 +16,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <!-- قالب Gentelella v4 كاملاً (مجمَّع من مصدره)، ثم تنسيقنا فوقه للغة والتخطيط -->
   <link rel="stylesheet" href="styles/gentelella.css?v=209">
-  <link rel="stylesheet" href="styles/theme.css?v=209">
+  <link rel="stylesheet" href="styles/theme.css?v=211">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -49,6 +49,7 @@
         <img src="assets/logo-white.png" alt="تمكين" class="brand-logo">
         <h1>مساعد <span class="accent">تمكين</span> الإداري</h1>
         <small>مركز مسارات التمكين · PP-003</small>
+        <button type="button" id="mobile-menu-toggle" aria-expanded="false" aria-controls="primary-nav">☰ <span>القائمة</span></button>
       </div>
       <div class="side-user" id="side-user" hidden>
         <span class="side-avatar" id="side-avatar">؟</span>
@@ -57,7 +58,7 @@
           <small id="side-user-role"></small>
         </span>
       </div>
-      <ul class="nav">
+      <ul class="nav" id="primary-nav">
         <li><button data-view="dashboard"><span class="ico">▦</span>اللوحة الرئيسية</button></li>
         <li><button data-view="tracks"><span class="ico">◧</span>متابعة المسارات</button></li>
         <li><button data-view="letters"><span class="ico">✉</span>المراسلات والتقارير</button></li>
@@ -102,29 +103,45 @@
       </div>
       <!-- ===== اللوحة الرئيسية ===== -->
       <section class="view" id="view-dashboard">
-        <div class="page-head">
-          <div><h2>اللوحة الرئيسية</h2><p>نظرة شاملة على مؤشرات المشروع والمهام</p></div>
+        <div class="dash-hero">
+          <div class="dash-hero-copy"><span class="dash-eyebrow">مركز مسارات التمكين · PP-003</span><h2>أهلاً بك في لوحة المتابعة</h2><p>ملخص أداء المركز والمهام التي تحتاج إلى متابعة.</p><div class="dash-date" id="dash-date"></div></div>
+          <div class="dash-hero-actions"><a class="btn dash-action-primary" href="#tasks">☑ <span>متابعة المهام</span></a><a class="btn dash-action-ghost" href="#letters">✉ <span>إنشاء مراسلة</span></a></div>
         </div>
         <div class="stats" id="stats"></div>
         <div class="ch-grid-wrap" id="dash-charts"></div>
-        <div class="card">
-          <h3>التنبيهات</h3>
-          <ul class="alerts" id="alerts"></ul>
-        </div>
-        <div class="grid-2">
-          <div class="card">
-            <h3>حالة المسارات</h3>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>المسار</th><th>النوع</th><th>المستفيدون</th><th>الحضور</th><th>الإنجاز</th><th>ملفات الأرشيف</th></tr></thead>
-                <tbody id="dash-tracks"></tbody>
+        <div class="dash-work-grid">
+          <div class="card dash-team-card">
+            <div class="dash-section-head">
+              <div><span class="dash-section-kicker">توزيع المسؤوليات</span><h3>متابعة أعمال الفريق</h3><p>المهام حسب المسؤول وحالة الإنجاز</p></div>
+              <a class="dash-text-link" href="#tasks">كل المهام <span aria-hidden="true">←</span></a>
+            </div>
+            <div class="table-wrap dash-table-wrap">
+              <table class="dash-table">
+                <thead><tr><th>المسؤول</th><th>مفتوحة</th><th>متأخرة</th><th>منجزة</th><th>أقرب موعد</th></tr></thead>
+                <tbody id="dash-team"></tbody>
               </table>
             </div>
           </div>
-          <div class="card">
-            <h3>أقرب المهام غير المنجزة</h3>
-            <ul class="task-list" id="dash-tasks"></ul>
+          <div class="dash-side-stack">
+            <div class="card dash-alert-card">
+              <div class="dash-section-head"><div><span class="dash-section-kicker">تحتاج انتباهك</span><h3>التنبيهات</h3></div><span class="dash-alert-count" id="dash-alert-count">0</span></div>
+              <ul class="alerts" id="alerts"></ul>
+            </div>
+            <div class="card dash-next-card">
+              <div class="dash-section-head"><div><span class="dash-section-kicker">الخطوة التالية</span><h3>أقرب المهام</h3></div><a class="dash-text-link" href="#tasks">عرض الكل</a></div>
+              <ul class="task-list" id="dash-tasks"></ul>
+            </div>
           </div>
+        </div>
+        <div class="card">
+          <div class="dash-section-head">
+            <div><span class="dash-section-kicker">نظرة على البرامج</span><h3>حالة المسارات التدريبية</h3><p>الحضور والساعات المكتملة وملفات الأرشيف لكل مسار</p></div>
+            <a class="dash-text-link" href="#tracks">إدارة المسارات <span aria-hidden="true">←</span></a>
+          </div>
+          <div class="table-wrap dash-table-wrap"><table class="dash-table dash-track-table">
+            <thead><tr><th>المسار</th><th>النوع</th><th>المستفيدون</th><th>الحضور</th><th>الإنجاز</th><th>الأرشيف</th></tr></thead>
+            <tbody id="dash-tracks"></tbody>
+          </table></div>
         </div>
       </section>
 
@@ -154,12 +171,20 @@
         <div class="page-head">
           <div><h2>المراسلات والتقارير</h2><p>اختر قالباً واملأ الحقول، وستظهر المعاينة فوراً</p></div>
           <div class="btn-row no-print">
-            <button class="btn" id="btn-copy">نسخ النص</button>
-            <button class="btn navy" id="btn-word">تصدير Word</button>
+            <button class="btn secondary" id="letter-approval-clear" hidden>إغلاق المعاينة</button>
+            <button class="btn" id="btn-copy" data-perm="export">نسخ النص</button>
+            <button class="btn navy" id="btn-word" data-perm="export">تصدير Word</button>
             <button class="btn" id="lb-open" data-perm="export">📑 إصدار جماعي من Excel</button>
-            <button class="btn navy" id="btn-pdf">تصدير PDF</button>
-            <button class="btn navy" id="btn-print">🖨 طباعة</button>
+            <button class="btn navy" id="btn-pdf" data-perm="export">تصدير PDF</button>
+            <button class="btn navy" id="btn-print" data-perm="export">🖨 طباعة</button>
           </div>
+        </div>
+        <div class="card approval-card">
+          <div class="page-head approval-head">
+            <div><h3>طلبات اعتماد المراسلات</h3><p>أرسل المسودة للمراجعة قبل التصدير. بعد اعتمادها، يصدرها صاحب الطلب.</p></div>
+            <button type="button" class="btn navy" id="letter-approval-request">إرسال المسودة للاعتماد</button>
+          </div>
+          <div id="letter-approvals" class="approval-list" aria-live="polite"></div>
         </div>
         <div class="letters-layout">
           <div class="card">
@@ -210,6 +235,7 @@
         <div class="page-head">
           <div><h2>التقرير الدوري</h2><p>يجمع مؤشرات المسارات والمهام والاجتماعات والمراسلات للفترة تلقائياً، مع رسوم بيانية، على الترويسة الرسمية</p></div>
           <div class="btn-row no-print">
+            <button class="btn navy" id="r-excel">تصدير Excel</button>
             <button class="btn navy" id="r-word">تصدير Word</button>
             <button class="btn navy" id="r-pdf">تصدير PDF</button>
             <button class="btn navy" id="r-print">🖨 طباعة</button>
@@ -221,6 +247,22 @@
               <label class="field"><span>الفترة من</span><input type="date" id="r-from"></label>
               <label class="field"><span>إلى</span><input type="date" id="r-to"></label>
             </div>
+            <fieldset class="drv-users-box report-options">
+              <legend>تخصيص المؤشرات والمقارنة</legend>
+              <div class="grid-fields">
+                <label class="field"><span>نوع المقارنة</span><select id="r-compare"><option value="none">بدون مقارنة</option><option value="tracks">مقارنة المسارات</option><option value="months">مقارنة الأشهر</option></select></label>
+                <label class="field"><span>المسارات (للمقارنة)</span><select id="r-track-filter"><option value="all">كل المسارات</option></select></label>
+              </div>
+              <div class="report-metrics">
+                <label class="conv-check"><input type="checkbox" data-report-metric="beneficiaries" checked> المستفيدون</label>
+                <label class="conv-check"><input type="checkbox" data-report-metric="attendance" checked> الحضور</label>
+                <label class="conv-check"><input type="checkbox" data-report-metric="hours" checked> إنجاز الساعات</label>
+                <label class="conv-check"><input type="checkbox" data-report-metric="tasks" checked> المهام المنجزة والمتأخرة</label>
+                <label class="conv-check"><input type="checkbox" data-report-metric="meetings" checked> الاجتماعات</label>
+                <label class="conv-check"><input type="checkbox" data-report-metric="registry" checked> الوارد والصادر</label>
+              </div>
+              <p class="conv-hint">المقارنة الشهرية تستخدم سجلات المهام والاجتماعات والمراسلات المؤرخة داخل الفترة، بينما مقارنة المسارات تستخدم مؤشرات المسارات الحالية.</p>
+            </fieldset>
             <div class="grid-fields">
               <label class="field"><span>تاريخ التقرير</span><input type="date" id="r-date"></label>
               <label class="field"><span>رقم الصادر <button type="button" class="conv-link" id="r-ref-auto">رقم تلقائي</button></span><input type="text" id="r-ref" placeholder="يُولَّد تلقائياً عند التصدير"></label>
@@ -581,22 +623,18 @@
 
       <!-- ===== تحويل ملف حسب قالب ===== -->
       <section class="view" id="view-converter">
-        <div class="page-head">
-          <div><h2>تحويل ملف حسب قالب</h2><p>اختر قالباً (Excel أو Word) يحدّد شكل المخرجات، وملف بيانات Excel، ثم اربط الأعمدة واحصل على ملف واحد مطابق للقالب</p></div>
+        <div class="cv-intro">
+          <div class="cv-intro-mark" aria-hidden="true">⇄</div>
+          <div class="cv-intro-copy"><span class="cv-eyebrow">أداة إعداد الكشوف</span><h2>حوّل بياناتك إلى قالب جاهز</h2><p>اختر قالب Excel أو Word، اربطه بملف البيانات، ثم راجع النتيجة ونزّلها.</p></div>
+          <div class="cv-trust"><span>▦ Excel</span><span>▤ Word</span><span>🔒 معالجة محلية</span></div>
         </div>
-        <details class="card fx-card" id="fx-card">
-          <summary><b>📌 البيانات الثابتة</b> <small class="conv-hint">— تُعبّأ تلقائياً في كل كشف فيه حقل بالاسم نفسه، وتظهر لكل المستخدمين</small></summary>
-          <p class="conv-hint">اكتب اسم الحقل كما يظهر في القالب (عموداً أو حقلاً مثل {{اسم المركز}}) وقيمته. إن كان في ملف البيانات عمود بالاسم نفسه فيه قيم، فهو أولى.</p>
-          <div id="fx-list"></div>
-          <button type="button" class="conv-link" id="fx-add">+ إضافة حقل</button>
-        </details>
-        <div class="card mg-card">
-          <h3>① دمج ملفات البيانات في ملف واحد <small class="conv-hint">— اختياري: عندما تكون بيانات الأشخاص أنفسهم موزّعة على أكثر من ملف</small></h3>
-          <label class="field"><span>ملفات Excel (حدّد عدة ملفات معاً بالضغط على Ctrl)</span><input type="file" id="mg-files" accept=".xlsx" multiple></label>
-          <div id="mg-body"></div>
-        </div>
+        <ol class="cv-steps" aria-label="خطوات التحويل">
+          <li><span>01</span><div><b>اختر الملفات</b><small>قالب + بيانات Excel</small></div></li>
+          <li><span>02</span><div><b>اربط الأعمدة</b><small>طابق الحقول المطلوبة</small></div></li>
+          <li><span>03</span><div><b>راجع ونزّل</b><small>تحقق من النتيجة النهائية</small></div></li>
+        </ol>
         <div class="card">
-          <h3>② المقارنة مع القالب</h3>
+          <div class="cv-card-heading"><div><span class="cv-step-tag">الخطوة 1</span><h3>اختر القالب وملف البيانات</h3><p>يمكنك استخدام قالب محفوظ أو رفع قالب جديد.</p></div><span class="cv-required">مطلوب لإكمال التحويل</span></div>
           <div class="conv-tabs full">
             <button type="button" data-conv-mode="saved">من القوالب المحفوظة</button>
             <button type="button" data-conv-mode="upload">رفع قالب جديد</button>
@@ -633,11 +671,27 @@
               <p class="conv-save-error" id="conv-save-error"></p>
             </div>
           </div>
-          <button type="button" class="btn" id="conv-parse">تحليل الملفين</button>
+          <div class="cv-action-row"><div><b>جاهز لبدء المطابقة؟</b><small>سيتم تحليل أسماء الأعمدة قبل إنشاء النتيجة.</small></div><button type="button" class="btn navy cv-primary" id="conv-parse">تحليل الملفين <span aria-hidden="true">←</span></button></div>
           <p class="conv-error" id="conv-error" hidden></p>
-          <p class="conv-hint">معالجة ملف البيانات تتم كاملة داخل هذا المتصفح ولا يُرفع إلى أي خادم. القوالب المحفوظة مشتركة بين كل المستخدمين.</p>
+          <p class="conv-hint cv-privacy">🔒 معالجة ملف البيانات تتم كاملة داخل هذا المتصفح ولا يُرفع إلى أي خادم. القوالب المحفوظة مشتركة بين كل المستخدمين.</p>
           <div class="conv-share" id="conv-share"><span id="conv-share-text"></span> <button type="button" class="btn small" id="conv-share-now" hidden>☁ رفع الآن</button> <button type="button" class="btn small" id="conv-share-again" hidden>↺ إعادة مشاركتها</button></div>
         </div>
+        <details class="card cv-advanced">
+          <summary><span><b>إعدادات إضافية</b><small>الدمج بين ملفات بيانات متعددة والحقول الثابتة</small></span><span class="cv-advanced-toggle"><span class="cv-open-label">فتح الإعدادات</span><span class="cv-close-label">إخفاء</span></span></summary>
+          <div class="cv-advanced-grid">
+            <details class="fx-card" id="fx-card">
+              <summary><b>📌 البيانات الثابتة</b><small>تُعبّأ تلقائياً في كل قالب يطابق حقوله</small></summary>
+              <p class="conv-hint">اكتب اسم الحقل كما يظهر في القالب (عموداً أو حقلاً مثل {{اسم المركز}}) وقيمته. إن كان في ملف البيانات عمود بالاسم نفسه فيه قيم، فهو أولى.</p>
+              <div id="fx-list"></div>
+              <button type="button" class="conv-link" id="fx-add">+ إضافة حقل</button>
+            </details>
+            <div class="mg-card">
+              <h3>دمج ملفات البيانات <small>اختياري عند توزيع بيانات الأشخاص بين ملفات متعددة</small></h3>
+              <label class="field"><span>اختر ملفين أو أكثر من Excel</span><input type="file" id="mg-files" accept=".xlsx" multiple></label>
+              <div id="mg-body"></div>
+            </div>
+          </div>
+        </details>
         <div class="card" id="conv-result" hidden></div>
       </section>
 
@@ -1119,7 +1173,7 @@
       <label class="conv-check strong"><input type="checkbox" id="lb-register"> ترقيم كل ملف وتسجيله في الصادر تلقائياً</label>
       <p class="conv-hint" id="lb-progress" aria-live="polite"></p>
       <div class="btn-row">
-        <button class="btn navy" type="button" id="lb-go" disabled>⬇ توليد الملفات (ملف مضغوط)</button>
+        <button class="btn navy" type="button" id="lb-go" disabled>📨 إرسال للاعتماد</button>
         <button class="btn secondary" type="button" id="lb-cancel">إلغاء</button>
       </div>
     </div>
@@ -1235,48 +1289,48 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/storage.js?v=209"></script>
-  <script src="src/ui.js?v=209"></script>
-  <script src="src/templates.js?v=209"></script>
-  <script src="src/tracks.js?v=209"></script>
-  <script src="src/tasks.js?v=209"></script>
-  <script src="src/dashboard.js?v=209"></script>
-  <script src="src/letterhead-docx.js?v=209"></script>
-  <script src="src/docx.js?v=209"></script>
-  <script src="src/ai.js?v=209"></script>
-  <script src="src/doc-render.js?v=209"></script>
-  <script src="src/files-store.js?v=209"></script>
-  <script src="src/shared.js?v=209"></script>
-  <script src="src/cloud.js?v=209"></script>
-  <script src="src/drive.js?v=209"></script>
-  <script src="src/drive-ui.js?v=209"></script>
-  <script src="src/rtl-fixer.js?v=209"></script>
-  <script src="src/rtl-page.js?v=209"></script>
-  <script src="src/profile.js?v=209"></script>
-  <script src="src/admin.js?v=209"></script>
-  <script src="src/roster.js?v=209"></script>
-  <script src="src/registry.js?v=209"></script>
-  <script src="src/watch.js?v=209"></script>
-  <script src="src/charts.js?v=209"></script>
-  <script src="src/ai-assist.js?v=209"></script>
-  <script src="src/meetings.js?v=209"></script>
-  <script src="src/report.js?v=209"></script>
-  <script src="src/screen.js?v=209"></script>
-  <script src="src/letters.js?v=209"></script>
+  <script src="src/storage.js?v=210"></script>
+  <script src="src/ui.js?v=210"></script>
+  <script src="src/templates.js?v=210"></script>
+  <script src="src/tracks.js?v=210"></script>
+  <script src="src/tasks.js?v=210"></script>
+  <script src="src/dashboard.js?v=211"></script>
+  <script src="src/letterhead-docx.js?v=210"></script>
+  <script src="src/docx.js?v=210"></script>
+  <script src="src/ai.js?v=210"></script>
+  <script src="src/doc-render.js?v=210"></script>
+  <script src="src/files-store.js?v=210"></script>
+  <script src="src/shared.js?v=210"></script>
+  <script src="src/cloud.js?v=210"></script>
+  <script src="src/drive.js?v=210"></script>
+  <script src="src/drive-ui.js?v=210"></script>
+  <script src="src/rtl-fixer.js?v=210"></script>
+  <script src="src/rtl-page.js?v=210"></script>
+  <script src="src/profile.js?v=210"></script>
+  <script src="src/admin.js?v=210"></script>
+  <script src="src/roster.js?v=210"></script>
+  <script src="src/registry.js?v=210"></script>
+  <script src="src/watch.js?v=210"></script>
+  <script src="src/charts.js?v=210"></script>
+  <script src="src/ai-assist.js?v=210"></script>
+  <script src="src/meetings.js?v=210"></script>
+  <script src="src/report.js?v=211"></script>
+  <script src="src/screen.js?v=210"></script>
+  <script src="src/letters.js?v=210"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=209"></script>
-  <script src="src/converter-store.js?v=209"></script>
-  <script src="src/converter.js?v=209"></script>
+  <script src="src/converter-core.js?v=210"></script>
+  <script src="src/converter-store.js?v=210"></script>
+  <script src="src/converter.js?v=211"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=209"></script>
-  <script src="src/sheets.js?v=209"></script>
-  <script src="src/history.js?v=209"></script>
-  <script src="src/roster-audit.js?v=209"></script>
-  <script src="src/notify.js?v=209"></script>
-  <script src="src/search.js?v=209"></script>
-  <script src="src/realtime.js?v=209"></script>
-  <script src="src/app.js?v=209"></script>
+  <script src="src/hospitality.js?v=210"></script>
+  <script src="src/sheets.js?v=210"></script>
+  <script src="src/history.js?v=210"></script>
+  <script src="src/roster-audit.js?v=210"></script>
+  <script src="src/notify.js?v=210"></script>
+  <script src="src/search.js?v=210"></script>
+  <script src="src/realtime.js?v=210"></script>
+  <script src="src/app.js?v=210"></script>
 </body>
 </html>

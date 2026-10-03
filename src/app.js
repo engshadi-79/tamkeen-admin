@@ -7,6 +7,15 @@
     if (!VIEWS.includes(view)) view = "dashboard";
     // صفحة ممنوعة على هذا المستخدم: يُنقل إلى أول صفحة مسموحة
     if (App.profile && !App.profile.canView(view)) view = App.profile.firstView();
+    const sidebar = document.querySelector(".sidebar");
+    const menu = document.getElementById("mobile-menu-toggle");
+    if (sidebar && menu && window.matchMedia("(max-width: 760px)").matches) {
+      sidebar.classList.remove("nav-open");
+      menu.setAttribute("aria-expanded", "false");
+      const nav = document.getElementById("primary-nav");
+      nav.inert = true;
+      nav.setAttribute("aria-hidden", "true");
+    }
     VIEWS.forEach((v) => {
       document.getElementById("view-" + v).classList.toggle("active", v === view);
       document.querySelector(`[data-view="${v}"]`).classList.toggle("active", v === view);
@@ -136,6 +145,40 @@
     document.querySelectorAll("[data-view]").forEach((btn) =>
       btn.addEventListener("click", () => show(btn.dataset.view))
     );
+    const menu = document.getElementById("mobile-menu-toggle");
+    const nav = document.getElementById("primary-nav");
+    const mobile = window.matchMedia("(max-width: 760px)");
+    nav.inert = mobile.matches;
+    nav.setAttribute("aria-hidden", String(mobile.matches));
+    menu.addEventListener("click", () => {
+      const open = document.querySelector(".sidebar").classList.toggle("nav-open");
+      menu.setAttribute("aria-expanded", String(open));
+      nav.inert = !open;
+      nav.setAttribute("aria-hidden", String(!open));
+    });
+    window.addEventListener("resize", () => {
+      const isMobile = mobile.matches;
+      if (!isMobile) {
+        document.querySelector(".sidebar").classList.remove("nav-open");
+        nav.inert = false;
+        nav.removeAttribute("aria-hidden");
+        menu.setAttribute("aria-expanded", "false");
+      } else if (!document.querySelector(".sidebar").classList.contains("nav-open")) {
+        nav.inert = true;
+        nav.setAttribute("aria-hidden", "true");
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const sidebar = document.querySelector(".sidebar");
+      if (sidebar.classList.contains("nav-open")) {
+        sidebar.classList.remove("nav-open");
+        menu.setAttribute("aria-expanded", "false");
+        nav.inert = true;
+        nav.setAttribute("aria-hidden", "true");
+        menu.focus();
+      }
+    });
     // تثبيت الأداة كتطبيق والعمل عند ضعف الإنترنت
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       navigator.serviceWorker.register("sw.js").catch(() => { /* غير متاح */ });
