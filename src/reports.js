@@ -1,5 +1,7 @@
 /* منشئ التقارير: جدول الطلاب القادم من نظام المركز، تختار حقوله وتصفّيه فيخرج تقريرك.
-   البيانات تصل مع لقطة «شاشة إحصاءات المركز» نفسها (سكربت القراءة يدفعها)، فلا اتصال من هنا بالنظام. */
+   البيانات تصل مع لقطة «شاشة إحصاءات المركز» نفسها (سكربت القراءة يدفعها)، فلا اتصال من هنا بالنظام.
+   وتُضاف إليها جداول إكسل يرفعها المستخدم: تُحفظ على الخادم فيراها الجميع،
+   وتُدمج أعمدتها مع صف الطالب بمطابقة رقم الهوية ثم الاسم. */
 (function (App) {
   const { ui } = App;
   const $ = (id) => document.getElementById(id);
@@ -53,11 +55,38 @@
       ],
     },
   ];
-  const ALL = GROUPS.flatMap((g) => g.fields);
-  const labelOf = (k) => (ALL.find((f) => f.key === k) || {}).label || k;
+  /* الجداول المستوردة: كل جدول يصير مجموعة حقول باسمه، ومفتاح الحقل «x:الجدول:العمود» */
+  let extras = [];              // [{ name, fields, rows, count, by, at }]
+  const EX = "x:";
+  const exKey = (table, col) => `${EX}${table}:${col}`;
+  const exGroups = () => extras.map((t) => ({
+    name: `📄 ${t.name}`, table: t.name,
+    fields: (t.fields || []).map((c) => ({ key: exKey(t.name, c), label: c })),
+  }));
+  const groups = () => GROUPS.concat(exGroups());
+  const all = () => groups().flatMap((g) => g.fields);
+  const labelOf = (k) => (all().find((f) => f.key === k) || {}).label || String(k).replace(/^x:[^:]*:/, "");
 
-  /* الفلاتر: حقول قليلة القيم تصلح قوائمَ منسدلة */
-  const FILTERS = ["course", "track", "group", "gender", "status", "pledged", "approval"];
+  const ALL = GROUPS.flatMap((g) => g.fields);
+
+  /* الفلاتر: حقول قليلة القيم تصلح قوائمَ منسدلة. أعمدة الإكسل تنضمّ إليها
+     ما دامت قيمها معدودة (لا نضع حقل ملاحظات حرّاً في قائمة منسدلة). */
+  const BASE_FILTERS = ["course", "track", "group", "gender", "status", "pledged", "approval"];
+  const FILTER_MAX = 40;
+  function filterFields(list) {
+    const out = [...BASE_FILTERS];
+    extras.forEach((t) => (t.fields || []).forEach((c) => {
+      const k = exKey(t.name, c);
+      const seen = new Set();
+      for (const r of list) {
+        const v = String(r[k] == null ? "" : r[k]).trim();
+        if (v) seen.add(v);
+        if (seen.size > FILTER_MAX) return;
+      }
+      if (seen.size) out.push(k);
+    }));
+    return out;
+  }
 
   let picked = ALL.filter((f) => f.on).map((f) => f.key);
   let filters = {};
@@ -66,31 +95,64 @@
   try {
     const saved = JSON.parse(localStorage.getItem(PICK_KEY) || "null");
     if (saved && saved.picked && saved.picked.length) {
-      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k));
+      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k) || String(k).startsWith("x:"));
       filters = saved.filters || {};
       groupBy = saved.groupBy || "";
-      picked = ALL.map((f) => f.key).filter((k) => picked.includes(k));
+
     }
   } catch (e) { /* تخزين غير متاح */ }
   /* الأعمدة تتبع ترتيب المجموعات أعلاه لا ترتيب النقر */
-  const order = () => { picked = ALL.map((f) => f.key).filter((k) => picked.includes(k)); };
+  const order = () => { const seq = all().map((f) => f.key); picked = seq.filter((k) => picked.includes(k)).concat(picked.filter((k) => !seq.includes(k))); };
   const save = () => { try { localStorage.setItem(PICK_KEY, JSON.stringify({ picked, filters, groupBy })); } catch (e) { /* ممتلئ */ } };
 
   const snap = () => {
     if (App.screen && App.screen.snapshot) return App.screen.snapshot();
     try { return JSON.parse(localStorage.getItem("tamkeen-admin:ksach-stats") || "null"); } catch (e) { return null; }
   };
-  const students = () => {
+  const base = () => {
     const s = snap();
     return (s && s.data && s.data.students) || [];
   };
 
   const norm = (v) => String(v == null ? "" : v).replace(/[ً-ْ]/g, "").replace(/[إأآا]/g, "ا").replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
+  const idOf = (v) => String(v == null ? "" : v).replace(/[^\d]/g, "");
+
+  /* صف الطالب + أعمدة كل جدول مستورد، بمطابقة الهوية ثم الاسم */
+  let merged = null, mergedFor = "";
+  function students() {
+    const list = base();
+    if (!extras.length) return list;
+    const stamp = `${list.length}|${extras.map((t) => t.name + ":" + t.count).join(",")}`;
+    if (merged && mergedFor === stamp) return merged;
+    const out = list.map((r) => ({ ...r }));
+    const byId = new Map(), byName = new Map();
+    out.forEach((r) => {
+      const id = idOf(r.nid);
+      if (id) byId.set(id, r);
+      const n = norm(r.name);
+      if (n && !byName.has(n)) byName.set(n, r);
+    });
+    extras.forEach((t) => {
+      (t.rows || []).forEach((row) => {
+        const target = byId.get(idOf(row._id)) || byName.get(norm(row._name));
+        if (!target) return;
+        (t.fields || []).forEach((c) => {
+          const v = row[c];
+          if (v != null && String(v).trim() !== "") target[exKey(t.name, c)] = v;
+        });
+      });
+    });
+    merged = out;
+    mergedFor = stamp;
+    return out;
+  }
 
   function rows() {
     const q = norm(search);
-    return students().filter((r) => {
-      for (const f of FILTERS) {
+    const list = students();
+    const keys = filterFields(list);
+    return list.filter((r) => {
+      for (const f of keys) {
         if (filters[f] && norm(r[f]) !== norm(filters[f])) return false;
       }
       if (!q) return true;
@@ -100,7 +162,7 @@
 
   /* ===== الواجهة ===== */
   function renderFields() {
-    $("rep-fields").innerHTML = GROUPS.map((g) => `<div class="rep-group">
+    $("rep-fields").innerHTML = groups().map((g) => `<div class="rep-group">
         <div class="rep-group-head"><b>${esc(g.name)}</b>
           <button type="button" class="conv-link" data-all="${esc(g.name)}">الكل</button>
           <button type="button" class="conv-link" data-none="${esc(g.name)}">لا شيء</button>
@@ -114,7 +176,7 @@
   function renderFilters() {
     const list = students();
     const vals = (key) => [...new Set(list.map((r) => String(r[key] == null ? "" : r[key]).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")).slice(0, 60);
-    $("rep-filters").innerHTML = FILTERS.map((f) => {
+    $("rep-filters").innerHTML = filterFields(list).map((f) => {
       const options = vals(f);
       if (!options.length) return "";
       return `<label class="sc-f"><span>${esc(labelOf(f))}</span>
@@ -123,7 +185,9 @@
     }).join("")
       + `<label class="sc-f"><span>بحث</span><input type="search" id="rep-search" placeholder="اسم أو رقم…" value="${esc(search)}"></label>`
       + `<label class="sc-f"><span>تجميع حسب</span><select id="rep-group-by"><option value="">بلا تجميع (كل السجلات)</option>
-        ${["track", "course", "group", "gender", "governorate", "health", "status", "pledged", "approval", "trainer"].map((k) => `<option value="${k}" ${groupBy === k ? "selected" : ""}>${esc(labelOf(k))}</option>`).join("")}</select></label>`;
+        ${["track", "course", "group", "gender", "governorate", "health", "status", "pledged", "approval", "trainer"]
+          .concat(filterFields(list).filter((k) => k.startsWith(EX)))
+          .map((k) => `<option value="${k}" ${groupBy === k ? "selected" : ""}>${esc(labelOf(k))}</option>`).join("")}</select></label>`;
   }
 
   function summary(list) {
@@ -171,12 +235,143 @@
       : "لا توجد بيانات بعد — شغّل سكربت القراءة من صفحة «شاشة إحصاءات المركز»";
     renderFields();
     renderFilters();
+    renderImports();
     $("rep-body").innerHTML = !students().length
       ? `<section class="card sc-empty"><h3>لا توجد بيانات طلاب بعد</h3>
           <p>هذه الصفحة تعرض بيانات نظام المركز التي يجلبها سكربت القراءة. افتح «شاشة إحصاءات المركز» واضغط «▶ تشغيل القراءة في النظام»، وبعد «أُرسلت ✔» عُد إلى هنا.</p>
           <p class="conv-hint">${s && s.at ? `آخر لقطة وصلت ${esc(new Date(s.at).toLocaleString("ar-EG"))} وليس فيها جدول طلاب — هذا يعني أن السكربت المُشغَّل نسخة قديمة. أعد تشغيله من زر «▶ تشغيل القراءة في النظام» ليأخذ النسخة الجديدة.` : "لم تصل أي لقطة إلى الخادم بعد."}</p>
           <div class="btn-row"><button type="button" class="btn" id="rep-pull">🔄 اسحب آخر لقطة</button></div></section>`
       : `<section class="card">${groupBy ? summary(list) : table(list)}</section>`;
+  }
+
+  /* ===== استيراد ملفات إكسل =====
+     نقرأ أول ورقة، نعدّ أول صف فيه خانتان نصيّتان أو أكثر ترويسةً،
+     ونبحث عن عمود هوية (أرقام من ٩-١٠ خانات) أو عمود اسم للمطابقة. */
+  const ID_COL = /هوية|الهويه|رقم.?وطني|identity|id\b/i;
+  const NAME_COL = /الاسم|اسم|الطالب|المتدرب|name/i;
+  const SKIP_COL = /^(#|م|مسلسل|تسلسل|رقم)$/;
+
+  function sheetRows(ws) {
+    const grid = [];
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      const cells = [];
+      row.eachCell({ includeEmpty: true }, (c, i) => { cells[i - 1] = cellText(c); });
+      grid.push(cells);
+    });
+    return grid;
+  }
+  function cellText(c) {
+    const v = c && c.value;
+    if (v == null) return "";
+    if (typeof v === "object") {
+      if (v.richText) return v.richText.map((t) => t.text).join("");
+      if (v.text != null) return String(v.text);
+      if (v.result != null) return String(v.result);
+      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      return "";
+    }
+    return String(v).trim();
+  }
+
+  function readGrid(grid) {
+    const head = grid.findIndex((r) => r.filter((c) => String(c || "").trim()).length >= 2);
+    if (head < 0) throw new Error("لم أجد صف عناوين في الملف");
+    const cols = grid[head].map((c, i) => String(c || "").trim() || `عمود ${i + 1}`);
+    const body = grid.slice(head + 1).filter((r) => r.some((c) => String(c || "").trim()));
+    const idAt = cols.findIndex((c) => ID_COL.test(c));
+    const nameAt = cols.findIndex((c) => NAME_COL.test(c));
+    if (idAt < 0 && nameAt < 0) throw new Error("لا بد من عمود «رقم الهوية» أو «الاسم» لربط الصفوف بالطلاب");
+    const fields = cols.filter((c, i) => i !== idAt && i !== nameAt && !SKIP_COL.test(c));
+    const rows = body.map((r) => {
+      const o = { _id: idAt >= 0 ? String(r[idAt] || "") : "", _name: nameAt >= 0 ? String(r[nameAt] || "") : "" };
+      cols.forEach((c, i) => { if (i !== idAt && i !== nameAt && !SKIP_COL.test(c)) o[c] = String(r[i] == null ? "" : r[i]).trim(); });
+      return o;
+    }).filter((o) => o._id || o._name);
+    if (!rows.length) throw new Error("لا توجد صفوف فيها هوية أو اسم");
+    if (!fields.length) throw new Error("الملف لا يحمل أعمدة بيانات غير الاسم والهوية");
+    return { fields, rows, matchedBy: idAt >= 0 ? "رقم الهوية" : "الاسم" };
+  }
+
+  /* تمييز العدد في العربية: واحد ومثنّى، ثم جمع القلة ٣-١٠، ثم المفرد المنصوب */
+  const countOf = (n, few, many, one, two) => {
+    if (n === 1) return one || few;
+    if (n === 2) return two || (one ? one + "ان" : few);
+    return `${ui.fmt(n)} ${n <= 10 ? few : many}`;
+  };
+
+  let staged = null;    // الملف المقروء قبل رفعه
+  async function readFile(file) {
+    if (typeof ExcelJS === "undefined") throw new Error("تعذّر تحميل مكتبة Excel");
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await file.arrayBuffer());
+    const ws = wb.worksheets[0];
+    if (!ws) throw new Error("الملف لا يحتوي ورقة بيانات");
+    const out = readGrid(sheetRows(ws));
+    out.name = file.name.replace(/\.(xlsx|xlsm|xls)$/i, "").trim().slice(0, 80) || "جدول";
+    // كم صفاً منها سيجد طالباً؟ نقولها للمستخدم قبل الرفع
+    const list = base();
+    const ids = new Set(list.map((r) => idOf(r.nid)).filter(Boolean));
+    const names = new Set(list.map((r) => norm(r.name)).filter(Boolean));
+    out.hits = out.rows.filter((r) => (r._id && ids.has(idOf(r._id))) || (r._name && names.has(norm(r._name)))).length;
+    return out;
+  }
+
+  async function loadImports(quiet) {
+    if (!App.cloud || !App.cloud.ready()) return;
+    try {
+      const r = await App.cloud.imports();
+      extras = Array.isArray(r.imports) ? r.imports : [];
+      merged = null;
+      // عمود اختفى من ملف أُعيد رفعه لا يبقى عموداً فارغاً في التقرير
+      const live = new Set(all().map((f) => f.key));
+      const kept = picked.filter((k) => !k.startsWith(EX) || live.has(k));
+      if (kept.length !== picked.length) { picked = kept; save(); }
+    } catch (e) { if (!quiet) ui.toast(e.message); }
+  }
+
+  function renderImports() {
+    const box = $("rep-imports");
+    if (!box) return;
+    const list = extras.map((t) => `<li><b>${esc(t.name)}</b>
+        <span class="conv-hint">${countOf(t.count || (t.rows || []).length, "صفوف", "صفاً", "صف", "صفان")} · ${countOf((t.fields || []).length, "حقول", "حقلاً", "حقل", "حقلان")} · ${esc(t.by || "")} ${t.at ? esc(new Date(t.at).toLocaleDateString("ar-EG")) : ""}</span>
+        <button type="button" class="conv-link" data-drop="${esc(t.name)}">حذف</button></li>`).join("");
+    box.innerHTML = `<div class="rep-import-row">
+        <label class="btn secondary" for="rep-file">⬆ اختر ملف إكسل</label>
+        <input type="file" id="rep-file" accept=".xlsx,.xlsm" hidden>
+        <span class="conv-hint">يُربط بالطلاب بعمود «رقم الهوية» أو «الاسم»، وبقية الأعمدة تصير حقولاً للاختيار والفلترة.</span>
+      </div>
+      ${staged ? `<div class="rep-staged">
+        <b>${esc(staged.name)}</b> — ${countOf(staged.rows.length, "صفوف", "صفاً", "صف", "صفان")}، ${countOf(staged.fields.length, "حقول", "حقلاً", "حقل", "حقلان")}، المطابقة بـ${esc(staged.matchedBy)}.
+        <span class="${staged.hits ? "" : "rep-warn"}">${staged.hits ? `طابق ${countOf(staged.hits, "طلاب", "طالباً", "طالب", "طالبان")} من اللقطة` : "لم يطابق أي طالب في اللقطة الحالية"}</span>
+        <div class="rep-chips">${staged.fields.map((c) => `<span class="rep-chip">${esc(c)}</span>`).join("")}</div>
+        <div class="btn-row"><button type="button" class="btn" id="rep-save-import">حفظ على الخادم</button>
+        <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
+      </div>` : ""}
+      ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}`;
+  }
+
+  async function saveImport() {
+    if (!staged) return;
+    try {
+      const r = await App.cloud.putImport(staged.name, staged.fields, staged.rows);
+      if (r.error) throw new Error(r.error);
+      staged = null;
+      await loadImports();
+      render();
+      ui.toast("حُفظ الجدول — حقوله صارت متاحة للجميع");
+    } catch (e) { ui.toast(e.message); }
+  }
+
+  async function dropImport(name) {
+    if (!confirm(`حذف الجدول «${name}» وحقوله من التقارير؟`)) return;
+    try {
+      await App.cloud.dropImport(name);
+      picked = picked.filter((k) => !k.startsWith(`${EX}${name}:`));
+      save();
+      await loadImports();
+      render();
+      ui.toast("حُذف الجدول");
+    } catch (e) { ui.toast(e.message); }
   }
 
   /* ===== التصدير والطباعة ===== */
@@ -252,7 +447,7 @@
     });
     $("rep-fields").addEventListener("click", (e) => {
       const all = e.target.closest("[data-all]"), none = e.target.closest("[data-none]");
-      const g = GROUPS.find((x) => x.name === ((all && all.dataset.all) || (none && none.dataset.none)));
+      const g = groups().find((x) => x.name === ((all && all.dataset.all) || (none && none.dataset.none)));
       if (!g) return;
       const keys = g.fields.map((f) => f.key);
       picked = all ? [...new Set([...picked, ...keys])] : picked.filter((k) => !keys.includes(k));
@@ -278,10 +473,23 @@
       }, 300);
     });
     $("rep-body").addEventListener("click", (e) => { if (e.target.closest("#rep-pull")) pull(true); });
+    $("rep-imports").addEventListener("change", async (e) => {
+      const f = e.target.id === "rep-file" && e.target.files && e.target.files[0];
+      if (!f) return;
+      try { staged = await readFile(f); } catch (err) { staged = null; ui.toast(err.message); }
+      e.target.value = "";
+      renderImports();
+    });
+    $("rep-imports").addEventListener("click", (e) => {
+      const drop = e.target.closest("[data-drop]");
+      if (drop) { dropImport(drop.dataset.drop); return; }
+      if (e.target.closest("#rep-save-import")) saveImport();
+      if (e.target.closest("#rep-cancel-import")) { staged = null; renderImports(); }
+    });
     $("rep-clear").addEventListener("click", () => { filters = {}; search = ""; groupBy = ""; save(); render(); });
     $("rep-excel").addEventListener("click", toExcel);
     $("rep-print").addEventListener("click", print);
   }
 
-  App.reports = { init, render: () => { render(); pull(false); } };
+  App.reports = { init, render: () => { render(); pull(false); loadImports(true).then(render); } };
 })(window.App = window.App || {});

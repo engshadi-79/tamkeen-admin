@@ -1375,3 +1375,16 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .rep-table .rep-total td { font-weight: 700; background: color-mix(in srgb, var(--teal-500) 12%, transparent); }
 #view-reports .table-wrap { max-height: 62vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); }
 :root[data-theme="dark"] .rep-group { background: var(--card-bg); }
+
+/* جداول إكسل المضافة إلى منشئ التقارير */
+.rep-import-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.rep-import-row label.btn { margin: 0; }
+.rep-staged { border: 1px dashed var(--teal-500); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px;
+  background: color-mix(in srgb, var(--teal-500) 7%, transparent); font-size: 13px; }
+.rep-staged .rep-chips { margin: 8px 0; }
+.rep-staged .btn-row { margin: 0; }
+.rep-warn { color: #c0392b; font-weight: 600; }
+.rep-import-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rep-import-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 7px 11px; font-size: 13px; }
+.rep-import-list b { color: var(--navy-900); }
