@@ -125,6 +125,23 @@
   const at = (head, re) => head.findIndex((h) => re.test(h));
   const cell = (row, head, re) => { const i = at(head, re); return i < 0 ? "" : row[i]; };
 
+  /* كل أعمدة الصف كما يسمّيها النظام، لتصير حقولاً في «منشئ التقارير» بلا أن نعدّ أسماءها هنا:
+     ما يضيفه المركز في جداوله غداً يظهر عندنا من تلقائه. */
+  const SYS_SKIP = /^(#|م|مسلسل|تسلسل|الرقم|إجراءات|اجراءات|خيارات|تعديل|حذف|عرض|تحديد|الصورة)$/;
+  /* أعمدة لها حقولها المسمّاة في جدول التقارير، فلا تتكرر مرتين في قائمة الحقول */
+  const SYS_KNOWN = /^(الاسم|الطالب|اسم الطالب|رقم الهوية|الهوية|الجوال|الهاتف|الجنس|المحافظة|الحالة الصحية|الحالة الاجتماعية|مستوى الدخل|المسار|المجموعة|الحالة|رقم الطالب|الدورة|المرحلة|المدرب|العملي|النظري|الأنشطة|الانشطة|المجموع|الاعتماد)$/;
+  function sysOf(head, row) {
+    const out = {};
+    head.forEach((h, i) => {
+      const key = clean(h);
+      if (!key || SYS_SKIP.test(key) || SYS_KNOWN.test(key)) return;
+      const v = clean(row[i]);
+      if (!v || v === "-" || v === "—" || v.length > 80) return;
+      if (out[key] === undefined) out[key] = v;
+    });
+    return out;
+  }
+
   /* ===== تفكيك خانة «المسار / الدورة / المجموعة» بأشكالها في النظام =====
      «مسار الحلاقة الرجالية - G2»
      «مسار التجميل النسائي - كوافير المرحلة الثانية · G2»
@@ -424,10 +441,11 @@
           name, nid, group,
           track: dt.track || dg.track,
           course: dt.course || dg.course || clean(cell(r, t.head, /الدورة|المرحلة/)),
-          // لجدول التقارير: رقم الطالب وحالته والمدرب كما وردوا
+          // لجدول التقارير: رقم الطالب وحالته والمدرب كما وردوا، وكل أعمدة الصفحة كما سمّاها النظام
           stu: clean(cell(r, t.head, /رقم الطالب|الرقم/)),
           status: clean(cell(r, t.head, /^الحالة$/)),
           trainer: gt.trainer,
+          sys: sysOf(t.head, r),
         });
       });
     };
@@ -608,6 +626,8 @@
         practical: "", theory: "", activities: "", total: "", gradeStatus: "", approval: "",
         pledged: "", missingSurveys: "", attendance: "",
       };
+      // أعمدة صفحة الطلاب كما سمّاها النظام: تصير حقولاً في منشئ التقارير بلا تسمية مسبقة
+      Object.entries(s.sys || {}).forEach(([k, v]) => { r["sys:" + k] = v; });
       if (r.nid) byId.set(r.nid, r);
       if (!byName.has(r.name)) byName.set(r.name, r);
       return r;
@@ -637,6 +657,7 @@
           row.marital = clean(cell(r, t.head, /الاجتماعية|الحالة الزوجية/)) || row.marital;
           row.income = clean(cell(r, t.head, /الدخل/)) || row.income;
           if (!row.phone) row.phone = (toLatin(clean(cell(r, t.head, /الجوال|الهاتف/))).match(/\b05\d{8}\b|\b\d{9,10}\b/) || [""])[0];
+          Object.entries(sysOf(t.head, r)).forEach(([k, v]) => { if (row["sys:" + k] === undefined) row["sys:" + k] = v; });
         });
       });
     } catch (e) { console.warn("المتقدمون:", e.message); }
