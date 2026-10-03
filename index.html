@@ -165,6 +165,17 @@
             </table>
           </div>
         </div>
+        <div class="card track-catalog-card">
+          <div class="page-head">
+            <div><h3>دليل ترميز المسارات والمراحل</h3><p>المرجع المعتمد لأسماء المسارات ورموزها، ورموز المرحلة والمجموعة المرتبطة بها.</p></div>
+            <span class="track-catalog-count" id="track-catalog-count"></span>
+          </div>
+          <label class="field track-catalog-search"><span>بحث في الاسم أو الرمز أو المرحلة</span><input type="search" id="track-catalog-search" placeholder="مثال: AC أو المرحلة الثانية"></label>
+          <h4 class="track-catalog-title">المسارات</h4>
+          <div class="table-wrap"><table class="track-catalog-table"><thead><tr><th>المسار</th><th>الاسم الإنجليزي</th><th>الرمز</th></tr></thead><tbody id="track-paths-body"></tbody></table></div>
+          <h4 class="track-catalog-title">رموز المرحلة والمجموعة</h4>
+          <div class="table-wrap"><table class="track-catalog-table"><thead><tr><th>المرحلة</th><th>المسار</th><th>المجموعة</th><th>الرمز</th></tr></thead><tbody id="track-codes-body"></tbody></table></div>
+        </div>
       </section>
 
       <!-- ===== المراسلات ===== -->
@@ -1307,6 +1318,7 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
+  <script src="src/track-catalog.js?v=213"></script>
   <script src="src/storage.js?v=213"></script>
   <script src="src/ui.js?v=213"></script>
   <script src="src/templates.js?v=213"></script>

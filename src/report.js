@@ -133,8 +133,15 @@
       headers: ["المسار", "النوع", ...(v.metrics.includes("beneficiaries") ? ["المستفيدون"] : []), ...(v.metrics.includes("attendance") ? ["الحضور"] : []), ...(v.metrics.includes("hours") ? ["الساعات المنجزة", "الإنجاز"] : [])],
       widths: [0.35, 0.18, ...Array(Math.max(1, v.metrics.filter((key) => ["beneficiaries", "attendance", "hours"].includes(key)).length + (v.metrics.includes("hours") ? 1 : 0))).fill(0.47 / Math.max(1, v.metrics.filter((key) => ["beneficiaries", "attendance", "hours"].includes(key)).length + (v.metrics.includes("hours") ? 1 : 0)))],
       align: [null, "center", ...Array(Math.max(1, v.metrics.filter((key) => ["beneficiaries", "attendance", "hours"].includes(key)).length + (v.metrics.includes("hours") ? 1 : 0))).fill("center")],
-      rows: d.tracks.map((t) => [t.name, App.tracks.TYPE_LABEL[t.type], ...(v.metrics.includes("beneficiaries") ? [ui.fmt(t.beneficiaries)] : []), ...(v.metrics.includes("attendance") ? [pct(Number(t.attendancePct) || 0)] : []), ...(v.metrics.includes("hours") ? [`${ui.fmt(t.hoursCompleted)} / ${store.TOTAL_HOURS}`, pct(App.tracks.hoursPct(t))] : [])]),
+    rows: d.tracks.map((t) => [t.name, App.tracks.TYPE_LABEL[t.type], ...(v.metrics.includes("beneficiaries") ? [ui.fmt(t.beneficiaries)] : []), ...(v.metrics.includes("attendance") ? [pct(Number(t.attendancePct) || 0)] : []), ...(v.metrics.includes("hours") ? [`${ui.fmt(t.hoursCompleted)} / ${store.TOTAL_HOURS}`, pct(App.tracks.hoursPct(t))] : [])]),
     });
+    }
+    if (v.metrics.some((key) => ["beneficiaries", "attendance", "hours"].includes(key))) {
+      const catalog = (store.get().trackCodes || []).filter((r) => r.kind === "phaseCode");
+      if (catalog.length) {
+        section("مرجع ترميز المراحل والمجموعات");
+        out.push({ kind: "table", headers: ["المرحلة", "المسار", "المجموعة", "الرمز"], widths: [0.2, 0.42, 0.2, 0.18], align: [null, null, null, "center"], rows: catalog.map((r) => [r.phase, r.trackName, r.group, r.code]) });
+      }
     }
     const low = v.metrics.includes("attendance") ? d.tracks.filter((t) => Number(t.attendancePct) < ATTENDANCE_THRESHOLD) : [];
     if (low.length) out.push({ kind: "para", text: `مسارات حضورها أقل من ${ATTENDANCE_THRESHOLD}%: ${low.map((t) => t.name).join("، ")}.` });
@@ -404,6 +411,16 @@
       trackSheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, trackSheet.rowCount), column: trackSheet.columnCount } };
       trackSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
       trackSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B1F3A" } };
+      const catalog = (store.get().trackCodes || []).filter((r) => r.kind === "phaseCode");
+      if (catalog.length) {
+        const codeSheet = wb.addWorksheet("ترميز المراحل", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+        codeSheet.addRow(["المرحلة", "المسار", "المجموعة", "رمز المسار", "الرمز"]);
+        catalog.forEach((r) => codeSheet.addRow([r.phase, r.trackName, r.group, r.trackCode, r.code]));
+        codeSheet.columns = [{ width: 20 }, { width: 40 }, { width: 20 }, { width: 16 }, { width: 24 }];
+        codeSheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: codeSheet.rowCount, column: codeSheet.columnCount } };
+        codeSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        codeSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B1F3A" } };
+      }
     }
     const comparison = comparisonRows(v, d), keys = selectedMetricNames(v);
     if (comparison.length && keys.length) {

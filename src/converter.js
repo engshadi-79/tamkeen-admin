@@ -271,7 +271,7 @@
 
   function filterControl() {
     const p = state.parsed;
-    const hidden = Object.values(core().TRAINER_COLS).concat(core().GRADE_COLUMN);
+    const hidden = Object.values(core().TRAINER_COLS).concat(core().TRACK_DATA_HEADERS || [], core().GRADE_COLUMN);
     const cols = p.dataHeaders.filter((h) => !hidden.includes(h));
     let body = "";
     if (state.filterCol) {
@@ -312,11 +312,22 @@
       const v = prof.trainerFrom || "";
       const source = v.startsWith("track:") ? { track: v.slice(6) } : v.startsWith("col:") ? { column: col(v.slice(4)) } : {};
       state.trainers = core().addTrainerColumns(data, tracksList(), source);
+      if (prof.trackDataFrom === undefined) {
+        state.trackDataSource = source;
+        state.trackData = core().addTrackDataColumns(data, tracksList(), source, store().get().trackCodes || []);
+      }
     }
-    const virtual = [core().GRADE_COLUMN].concat(Object.values(core().TRAINER_COLS));
+    if (prof.trackDataFrom !== undefined) {
+      const v = prof.trackDataFrom || "";
+      state.trackDataSource = v.startsWith("track:") ? { track: v.slice(6) } : v.startsWith("col:") ? { column: col(v.slice(4)) } : {};
+      state.trackData = core().addTrackDataColumns(data, tracksList(), state.trackDataSource, store().get().trackCodes || []);
+    }
+    const virtual = [core().GRADE_COLUMN].concat(Object.values(core().TRAINER_COLS), core().TRACK_DATA_HEADERS || []);
     Object.keys(prof.mapping || {}).forEach((h) => {
       if (!p.templateHeaders.includes(h)) return;
       const src = prof.mapping[h];
+      state.userMappings = state.userMappings || {};
+      state.userMappings[h] = !!src && !(core().TRACK_DATA_HEADERS || []).includes(src) && !virtual.slice(0, 1 + Object.values(core().TRAINER_COLS).length).includes(src);
       if (!src) { state.mapping[h] = ""; return; }
       const c = virtual.includes(src) ? (p.dataHeaders.includes(src) ? src : "") : col(src);
       if (c) state.mapping[h] = c; // عمود غير موجود في هذا الملف: يبقى الربط التلقائي
@@ -348,6 +359,7 @@
       mapping,
       gradeFrom: (state.grade || {}).from || "",
       trainerFrom: r.track ? `track:${r.track}` : r.column ? `col:${r.column}` : "",
+      trackDataFrom: state.trackDataSource && state.trackDataSource.track ? `track:${state.trackDataSource.track}` : state.trackDataSource && state.trackDataSource.column ? `col:${state.trackDataSource.column}` : "",
       groupBy1: state.groupBy1 || "",
       groupBy2: state.groupBy2 || "",
       autoNumberHeader: state.autoNumberHeader || "",
@@ -395,7 +407,7 @@
     const r = state.trainers || {};
     const current = r.track ? `track:${r.track}` : r.column ? `col:${r.column}` : "";
     const tracks = tracksList();
-    const cols = p.dataHeaders.filter((h) => !Object.values(core().TRAINER_COLS).includes(h) && h !== core().GRADE_COLUMN);
+    const cols = p.dataHeaders.filter((h) => !Object.values(core().TRAINER_COLS).includes(h) && !(core().TRACK_DATA_HEADERS || []).includes(h) && h !== core().GRADE_COLUMN);
     const options = opt("", "— لا تضف المدربين —", !current)
       + `<optgroup label="حسب عمود المسار في البيانات">${cols.map((h) => opt(`col:${h}`, h, `col:${h}` === current)).join("")}</optgroup>`
       + `<optgroup label="مسار واحد لكل الصفوف">${tracks.map((t) => opt(`track:${t.id}`, t.name, `track:${t.id}` === current)).join("")}</optgroup>`;
@@ -414,6 +426,26 @@
     </div>`;
   }
 
+  /* استكمال الحقول الغائبة من سجل المسار؛ الاختيار الافتراضي هو عمود المسار في ملف البيانات */
+  function trackDataControl() {
+    const p = state.parsed;
+    const wants = p.templateHeaders.concat(state.placeholders || []).filter((h) => core().trackDataFieldFor(h));
+    if (!wants.length) return "";
+    const r = state.trackData || {};
+    const source = state.trackDataSource || (r.column ? { column: r.column } : {});
+    const current = source.track ? `track:${source.track}` : source.column ? `col:${source.column}` : "";
+    const tracks = tracksList();
+    const excluded = Object.values(core().TRAINER_COLS).concat(core().TRACK_DATA_HEADERS || [], core().GRADE_COLUMN);
+    const cols = p.dataHeaders.filter((h) => !excluded.includes(h));
+    const options = opt("", "— بدون مصدر —", !current)
+      + `<optgroup label="تحديد المسار من كل صف">${cols.map((h) => opt(`col:${h}`, h, `col:${h}` === current)).join("")}</optgroup>`
+      + `<optgroup label="مسار واحد لكل الصفوف">${tracks.map((t) => opt(`track:${t.id}`, t.name, `track:${t.id}` === current)).join("")}</optgroup>`;
+    const status = current
+      ? `تُملأ الحقول المرتبطة بالمسار تلقائياً لـ <b>${ui.fmt(r.filled || 0)}</b> صفاً${r.unmatched && r.unmatched.length ? ` <span class="warn">— لم تُطابق هذه القيم: ${r.unmatched.map(esc).join("، ")}</span>` : ""}`
+      : `<span class="warn">اختر عمود المسار من ملف البيانات أو مساراً واحداً إذا كان الكشف خاصاً بمسار واحد.</span>`;
+    return `<div class="conv-grade-note"><label>🧭 استكمال البيانات من صفحة المسارات <select data-track-data-from>${options}</select></label><div>${status}</div><small>تُستخدم بيانات المسار للحقول غير المربوطة، مثل الاسم والرمز والنوع وعدد المستفيدين والحضور والساعات. بيانات الأفراد الموجودة في الملف تبقى كما هي.</small></div>`;
+  }
+
   function setTrainerSource(value) {
     const p = state.parsed;
     const source = value.startsWith("track:") ? { track: value.slice(6) } : value.startsWith("col:") ? { column: value.slice(4) } : {};
@@ -426,6 +458,40 @@
       core().preferTrainers(t.mapping, t.headers, p.dataHeaders);
     });
     renderResult();
+  }
+
+  function setTrackDataSource(value) {
+    const p = state.parsed;
+    const source = value.startsWith("track:") ? { track: value.slice(6) } : value.startsWith("col:") ? { column: value.slice(4) } : {};
+    state.trackDataSource = source;
+    state.trackData = core().addTrackDataColumns({ headers: p.dataHeaders, rows: p.dataRows }, tracksList(), source, store().get().trackCodes || []);
+    Object.keys(state.trackDataAutoMapped || {}).forEach((k) => { if (state.mapping[k] === state.trackDataAutoMapped[k]) delete state.mapping[k]; });
+    core().preferTrackData(state.mapping, p.templateHeaders.filter((h) => !state.userMappings?.[h] && !String(state.constants[h] || "").trim()), p.dataHeaders, p.dataRows, true);
+    state.trackDataAutoMapped = Object.fromEntries(p.templateHeaders.filter((h) => core().trackDataFieldFor(h) && state.mapping[h] === core().trackDataFieldFor(h)).map((h) => [h, state.mapping[h]]));
+    refreshTrackPlaceholders();
+    (state.extras || []).forEach((t) => {
+      core().preferTrackData(t.mapping, t.headers, p.dataHeaders, p.dataRows);
+    });
+    renderResult();
+  }
+
+  function refreshTrackPlaceholders() {
+    const p = state.parsed;
+    if (!p) return;
+    const placeholders = state.placeholders || [];
+    placeholders.forEach((ph) => {
+      if (p.dataHeaders.includes(ph)) return;
+      const source = core().trackDataFieldFor(ph);
+      if (source && p.dataHeaders.includes(source)) p.dataRows.forEach((row) => { row[ph] = row[source] == null ? "" : row[source]; });
+    });
+    const norm = core().normalizeHeader;
+    const dataNorm = p.dataHeaders.map(norm);
+    state.extraFields = placeholders.filter((ph) => {
+      const n = norm(ph);
+      const source = core().trackDataFieldFor(ph);
+      if (source && p.dataHeaders.includes(source) && p.dataRows.some((r) => r[source] != null && String(r[source]).trim())) return false;
+      return !dataNorm.some((d) => d === n || d.includes(n) || n.includes(d)) && !p.templateHeaders.some((h) => norm(h) === n) && !/^تاريخ\d+$/.test(ph);
+    });
   }
 
   function setGradeSource(header) {
@@ -643,15 +709,30 @@
       state.grade = core().addComputedGrade(data);
       state.trainers = core().addTrainerColumns(data, tracksList());
       state.age = core().addAgeColumn(data);
-      state.mapping = core().preferAge(core().preferTrainers(core().preferComputedGrade(core().suggestColumnMapping(templateHeaders, data.headers), templateHeaders, data.headers), templateHeaders, data.headers), templateHeaders, data.headers);
+      state.trackDataSource = state.trainers.track ? { track: state.trainers.track } : state.trainers.column ? { column: state.trainers.column } : undefined;
+      state.trackData = core().addTrackDataColumns(data, tracksList(), state.trackDataSource, store().get().trackCodes || []);
+      state.userMappings = {};
+      state.mapping = core().suggestColumnMapping(templateHeaders, data.headers);
+      core().preferComputedGrade(state.mapping, templateHeaders, data.headers);
+      core().preferTrainers(state.mapping, templateHeaders, data.headers);
+      core().preferTrackData(state.mapping, templateHeaders, data.headers, data.rows, true);
+      core().preferAge(state.mapping, templateHeaders, data.headers);
+      state.trackDataAutoMapped = Object.fromEntries(templateHeaders.filter((h) => core().trackDataFieldFor(h) && state.mapping[h] === core().trackDataFieldFor(h)).map((h) => [h, state.mapping[h]]));
       state.constants = {};
       const placeholders = await core().readTemplatePlaceholders(templateBuffer, templateIsDocx);
       state.placeholders = placeholders;
+      placeholders.forEach((ph) => {
+        const source = core().trackDataFieldFor(ph);
+        if (!source || !data.headers.includes(source)) return;
+        data.rows.forEach((row) => { if (row[source] != null) row[ph] = row[source]; });
+      });
       // حقول القالب التي لا يوجد لها عمود في ملف البيانات ولا في عناوين القالب
       const norm = core().normalizeHeader;
       const dataNorm = data.headers.map(norm);
       state.extraFields = placeholders.filter((ph) => {
         const n = norm(ph);
+        const trackSource = core().trackDataFieldFor(ph);
+        if (trackSource && data.headers.includes(trackSource) && data.rows.some((r) => r[trackSource] != null && String(r[trackSource]).trim())) return false;
         return !dataNorm.some((d) => d === n || d.includes(n) || n.includes(d)) && !templateHeaders.some((h) => norm(h) === n) && !/^تاريخ\d+$/.test(ph);
       });
       state.outputFormat = templateIsDocx ? "docx" : "xlsx";
@@ -661,7 +742,7 @@
         : [];
       await prepareExtras(data);
       state.fixedOrigin = {};
-      state.filterCol = core().guessTrackColumn(data.headers.filter((h) => !Object.values(core().TRAINER_COLS).includes(h)));
+      state.filterCol = core().guessTrackColumn(data.headers.filter((h) => !Object.values(core().TRAINER_COLS).includes(h) && !(core().TRACK_DATA_HEADERS || []).includes(h)));
       state.filterOut = new Set();
       state.pickOrder = [];
       state.pickHidden = new Set();
@@ -677,6 +758,9 @@
       state.groupWeekdays = {};
       state.datesWeekdays = [];
       applyProfile();
+      core().preferTrackData(state.mapping, templateHeaders.filter((h) => !state.userMappings?.[h] && !String(state.constants[h] || "").trim()), data.headers, data.rows, true);
+      state.trackDataAutoMapped = Object.fromEntries(templateHeaders.filter((h) => core().trackDataFieldFor(h) && state.mapping[h] === core().trackDataFieldFor(h)).map((h) => [h, state.mapping[h]]));
+      refreshTrackPlaceholders();
       renderResult();
       $("conv-result").scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (e) {
@@ -702,10 +786,12 @@
       const buffer = await saved.file.arrayBuffer();
       const isDocx = saved.format === "docx";
       const headers = saved.headers && saved.headers.length ? saved.headers : await core().readTemplateHeaders(buffer, isDocx);
-      const mapping = core().preferTrainers(core().preferComputedGrade(core().suggestColumnMapping(headers, data.headers), headers, data.headers), headers, data.headers);
+      const mapping = core().preferTrackData(core().preferTrainers(core().preferComputedGrade(core().suggestColumnMapping(headers, data.headers), headers, data.headers), headers, data.headers), headers, data.headers, data.rows, true);
       const placeholders = await core().readTemplatePlaceholders(buffer, isDocx);
       const extraFields = placeholders.filter((ph) => {
         const n = norm(ph);
+        const trackSource = core().trackDataFieldFor(ph);
+        if (trackSource && data.headers.includes(trackSource) && data.rows.some((r) => r[trackSource] != null && String(r[trackSource]).trim())) return false;
         return !dataNorm.some((d) => d === n || d.includes(n) || n.includes(d)) && !headers.some((h) => norm(h) === n) && !/^تاريخ\d+$/.test(ph);
       });
       state.extras.push({ id, name: saved.name, buffer, isDocx, headers, mapping, defaultGroupBy: saved.defaultGroupBy || [], missing: headers.filter((h) => !mapping[h]).concat(extraFields) });
@@ -987,6 +1073,7 @@
     html += gradeControl();
     html += ageControl();
     html += trainerControl();
+    html += trackDataControl();
     html += filterControl();
     if (missing.length || extra.length) {
       const field = (name, hint) => {
@@ -1200,6 +1287,7 @@
     const p = state.parsed;
     if (t.dataset.gradeFrom != null) { setGradeSource(t.value); return; }
     if (t.dataset.trainerFrom != null) { setTrainerSource(t.value); return; }
+    if (t.dataset.trackDataFrom != null) { setTrackDataSource(t.value); return; }
     if (t.dataset.filterCol != null) { state.filterCol = t.value; state.filterOut = new Set(); renderResult(); return; }
     if (t.dataset.filterVal != null) {
       if (t.checked) state.filterOut.delete(t.dataset.filterVal); else state.filterOut.add(t.dataset.filterVal);
@@ -1208,7 +1296,10 @@
       return;
     }
     if (t.dataset.map != null) {
-      state.mapping[p.templateHeaders[Number(t.dataset.map)]] = t.value;
+      const header = p.templateHeaders[Number(t.dataset.map)];
+      state.mapping[header] = t.value;
+      state.userMappings = state.userMappings || {};
+      state.userMappings[header] = true;
       renderResult();
       return;
     }
