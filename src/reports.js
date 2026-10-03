@@ -149,6 +149,19 @@
       + (list.length > shown.length ? `<p class="conv-hint">يُعرض ${ui.fmt(shown.length)} من ${ui.fmt(list.length)} — التصدير يأخذها كلها.</p>` : "");
   }
 
+  /* اللقطة تصل من الخادم لا من هذه الصفحة: نسحب أحدثها عند كل دخول،
+     وإلا بقينا على نسخة متصفحك القديمة. */
+  let pulling = false;
+  async function pull(say) {
+    if (pulling || !App.screen || !App.screen.load) return;
+    pulling = true;
+    const before = students().length;
+    try { await App.screen.load(true); } catch (e) { /* الشاشة تتولى التبليغ */ }
+    pulling = false;
+    render();
+    if (say) ui.toast(students().length ? (students().length === before ? "لا جديد في اللقطة" : "وصلت بيانات جديدة") : "لا توجد لقطة فيها جدول طلاب");
+  }
+
   function render() {
     if (!$("rep-body")) return;
     const s = snap();
@@ -160,7 +173,9 @@
     renderFilters();
     $("rep-body").innerHTML = !students().length
       ? `<section class="card sc-empty"><h3>لا توجد بيانات طلاب بعد</h3>
-          <p>هذه الصفحة تعرض بيانات نظام المركز التي يجلبها سكربت القراءة. افتح «شاشة إحصاءات المركز» واضغط «▶ تشغيل القراءة في النظام»، وبعد «أُرسلت ✔» عُد إلى هنا.</p></section>`
+          <p>هذه الصفحة تعرض بيانات نظام المركز التي يجلبها سكربت القراءة. افتح «شاشة إحصاءات المركز» واضغط «▶ تشغيل القراءة في النظام»، وبعد «أُرسلت ✔» عُد إلى هنا.</p>
+          <p class="conv-hint">${s && s.at ? `آخر لقطة وصلت ${esc(new Date(s.at).toLocaleString("ar-EG"))} وليس فيها جدول طلاب — هذا يعني أن السكربت المُشغَّل نسخة قديمة. أعد تشغيله من زر «▶ تشغيل القراءة في النظام» ليأخذ النسخة الجديدة.` : "لم تصل أي لقطة إلى الخادم بعد."}</p>
+          <div class="btn-row"><button type="button" class="btn" id="rep-pull">🔄 اسحب آخر لقطة</button></div></section>`
       : `<section class="card">${groupBy ? summary(list) : table(list)}</section>`;
   }
 
@@ -262,10 +277,11 @@
         if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
       }, 300);
     });
+    $("rep-body").addEventListener("click", (e) => { if (e.target.closest("#rep-pull")) pull(true); });
     $("rep-clear").addEventListener("click", () => { filters = {}; search = ""; groupBy = ""; save(); render(); });
     $("rep-excel").addEventListener("click", toExcel);
     $("rep-print").addEventListener("click", print);
   }
 
-  App.reports = { init, render };
+  App.reports = { init, render: () => { render(); pull(false); } };
 })(window.App = window.App || {});
