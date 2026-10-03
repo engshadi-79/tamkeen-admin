@@ -563,13 +563,24 @@
     [/نسبة الحضور|^الحضور$/, "attendance"],
   ];
 
+  /* «البيانات الثابتة» التي يحفظها المستخدم في صفحة المحوّل (اسم المركز، نوع التدريب…)
+     إعداد مشترك يصل الجميع، فنستعمله هنا بدل أن نطلب كتابته من جديد. */
+  function fixedList() {
+    if (App.converter && App.converter.fixedFields) { try { return App.converter.fixedFields() || []; } catch (e) { /* قبل تهيئة الصفحة */ } }
+    const f = (App.store && App.store.get().fixedFields) || [];
+    return Array.isArray(f) && f.length ? f : [{ name: "اسم المركز", value: "مركز مسارات التمكين للتدريب والتطوير" }];
+  }
+
   function autoMap(cols) {
     const fields = all();
     const byLabel = new Map(fields.map((f) => [norm(f.label), f.key]));
+    const fixed = new Map(fixedList().filter((f) => f && f.name).map((f) => [norm(f.name), String(f.value == null ? "" : f.value)]));
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(FILL_KEY) || "{}"); } catch (e) { /* تخزين غير متاح */ }
     return cols.map((c) => {
       const n = norm(c);
+      // قيمة ثابتة محفوظة بالاسم نفسه تسبق كل شيء: هي ما يقصده النموذج حرفياً
+      for (const [name, value] of fixed) if (n === name || n.includes(name)) return { col: c, key: CONST, value };
       if (byLabel.has(n)) return { col: c, key: byLabel.get(n), value: "" };
       for (const [re, key] of SYNONYMS) if (re.test(c)) return { col: c, key, value: "" };
       // عنوان يحتوي اسم حقل أو العكس (الحقول القادمة من النظام تطابق غالباً بالاسم)
@@ -631,6 +642,7 @@
       <option value="${CONST}" ${m.key === CONST ? "selected" : ""}>قيمة ثابتة</option>
       ${fields.map((f) => `<option value="${esc(f.key)}" ${m.key === f.key ? "selected" : ""}>${esc(f.label)}</option>`).join("")}`;
     const done = staged.map.filter((m) => m.key).length;
+    const list = rows();
     // المرحلة التي يخصّها هذا النموذج: اختيارها هنا أوضح من البحث عنها بين الفلاتر
     const phases = [...new Set(students().map((r) => String(r.course || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
     const phasePick = phases.length ? `<label class="sc-f rep-phase"><span>المرحلة التي يخصّها النموذج</span>
@@ -639,15 +651,25 @@
     return `<div class="rep-staged">
       <b>${esc(staged.name)}</b> — نموذج بلا بيانات، أعبّئه لك من بيانات النظام.
       قابلتُ ${countOf(done, "أعمدة", "عموداً", "عموداً واحداً", "عمودين")} من ${countOf(staged.map.length, "أعمدة", "عموداً", "عموداً واحداً", "عمودين")}؛ راجع المقابلة وغيّر ما يلزم.
-      <table class="rep-map"><thead><tr><th>عمود النموذج</th><th>يُملأ من</th></tr></thead><tbody>
-      ${staged.map.map((m, i) => `<tr><td>${esc(m.col)}</td><td>
+      <table class="rep-map"><thead><tr><th>عمود النموذج</th><th>يُملأ من</th><th>فيه بيانات</th></tr></thead><tbody>
+      ${staged.map.map((m, i) => {
+        const full = m.key === INDEX || m.key === CONST ? list.length
+          : m.key ? list.filter((r) => String(r[m.key] == null ? "" : r[m.key]).trim() !== "").length : 0;
+        const tone = !m.key ? "" : full === 0 ? "rep-warn" : full < list.length ? "rep-part" : "rep-full";
+        return `<tr><td>${esc(m.col)}</td><td>
         <select data-map="${i}">${opt(m)}</select>
         ${m.key === CONST ? `<input type="text" data-const="${i}" value="${esc(m.value)}" placeholder="اكتب القيمة">` : ""}
-      </td></tr>`).join("")}
+      </td><td class="${tone}">${!m.key ? "—" : full === list.length ? "الكل" : `${ui.fmt(full)} من ${ui.fmt(list.length)}`}</td></tr>`;
+      }).join("")}
       </tbody></table>
       ${phasePick}
-      <div class="btn-row"><button type="button" class="btn" id="rep-fill">⬇ نزّل النموذج معبّأً (${countOf(rows().length, "صفوف", "صفاً", "صف واحد", "صفان")})</button>
+      <div class="btn-row"><button type="button" class="btn" id="rep-fill">⬇ نزّل النموذج معبّأً (${countOf(list.length, "صفوف", "صفاً", "صف واحد", "صفان")})</button>
       <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
+      ${(() => {
+        const empty = staged.map.filter((m) => m.key && m.key !== INDEX && m.key !== CONST
+          && !list.some((r) => String(r[m.key] == null ? "" : r[m.key]).trim() !== "")).map((m) => m.col);
+        return empty.length ? `<p class="conv-hint rep-warn">لا بيانات في اللقطة لـ: ${esc(empty.join("، "))} — أعد تشغيل سكربت القراءة في نظام المركز (النسخة الجديدة تقرأ أعمدة صفحة المتقدمين)، أو اربط هذه الأعمدة بحقل آخر أو بقيمة ثابتة.</p>` : "";
+      })()}
       <p class="conv-hint">يُعبّأ بما يظهر في التقرير الآن: المرحلة أعلاه وبقية الفلاتر تسري عليه.</p>
     </div>`;
   }
