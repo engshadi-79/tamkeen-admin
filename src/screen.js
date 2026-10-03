@@ -762,5 +762,5 @@
     App.nav && App.nav.onView && App.nav.onView("screen", show, hide);
   }
 
-  App.screen = { init, render, show, hide, load };
+  App.screen = { init, render, show, hide, load, snapshot: () => snap || cached() };
 })(window.App = window.App || {});

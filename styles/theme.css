@@ -1356,3 +1356,22 @@ tbody tr:hover { background: #f9fafb; }
 /* التقدّم والخطوط الفاصلة */
 .progress > i { background: var(--teal-500); }
 hr { border: 0; border-top: 1px solid var(--border); }
+
+/* ===== منشئ التقارير ===== */
+.rep-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.rep-group { border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px; background: var(--card-bg, #fff); }
+.rep-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 13px; }
+.rep-group-head b { color: var(--navy-900); }
+.rep-group-head .conv-link { font-size: 11px; }
+.rep-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rep-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; padding: 4px 9px; border: 1px solid var(--border);
+  border-radius: 999px; cursor: pointer; color: var(--muted); background: var(--bg); user-select: none; }
+.rep-chip input { accent-color: var(--teal-500); margin: 0; }
+.rep-chip.on { border-color: var(--teal-500); color: var(--navy-900); background: color-mix(in srgb, var(--teal-500) 10%, transparent); font-weight: 600; }
+.rep-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rep-table th, .rep-table td { border: 1px solid var(--border); padding: 5px 7px; text-align: center; }
+.rep-table thead th { background: var(--navy-900); color: #fff; font-weight: 600; position: sticky; top: 0; }
+.rep-table tbody tr:nth-child(even) { background: var(--bg); }
+.rep-table .rep-total td { font-weight: 700; background: color-mix(in srgb, var(--teal-500) 12%, transparent); }
+#view-reports .table-wrap { max-height: 62vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+:root[data-theme="dark"] .rep-group { background: var(--card-bg); }

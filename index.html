@@ -15,8 +15,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <!-- قالب Gentelella v4 كاملاً (مجمَّع من مصدره)، ثم تنسيقنا فوقه للغة والتخطيط -->
-  <link rel="stylesheet" href="styles/gentelella.css?v=209">
-  <link rel="stylesheet" href="styles/theme.css?v=212">
+  <link rel="stylesheet" href="styles/gentelella.css?v=213">
+  <link rel="stylesheet" href="styles/theme.css?v=213">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -72,6 +72,7 @@
         <li><button data-view="hospitality"><span class="ico">☕</span>كشف توزيع الضيافة</button></li>
         <li><button data-view="sheets"><span class="ico">📊</span>جداول البيانات</button></li>
         <li><button data-view="screen"><span class="ico">📺</span>شاشة إحصاءات المركز</button></li>
+        <li><button data-view="reports"><span class="ico">🧮</span>منشئ التقارير</button></li>
         <li><button data-view="history"><span class="ico">🕘</span>سجل التعديلات</button></li>
         <li><button data-view="tasks"><span class="ico">☑</span>المهام والمتابعات</button></li>
       </ul>
@@ -809,6 +810,23 @@
         <div id="sc-body"></div>
       </section>
 
+      <section class="view gt" id="view-reports">
+        <div class="page-head">
+          <div><h2>منشئ التقارير</h2><p id="rep-meta" class="conv-hint"></p></div>
+          <div class="btn-row no-print">
+            <button class="btn navy" id="rep-excel">⬇ تصدير Excel</button>
+            <button class="btn secondary" id="rep-print">🖨 طباعة</button>
+            <button class="btn secondary" id="rep-clear">↺ تصفير الاختيارات</button>
+          </div>
+        </div>
+        <section class="card no-print">
+          <h3>الحقول التي تريدها في التقرير</h3>
+          <div id="rep-fields" class="rep-fields"></div>
+        </section>
+        <div class="sc-filters no-print" id="rep-filters"></div>
+        <div id="rep-body"></div>
+      </section>
+
       <!-- ===== سجل التعديلات ===== -->
       <section class="view" id="view-history">
         <div class="page-head">
@@ -1300,49 +1318,50 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/track-catalog.js?v=212"></script>
-  <script src="src/storage.js?v=212"></script>
-  <script src="src/ui.js?v=210"></script>
-  <script src="src/templates.js?v=210"></script>
-  <script src="src/tracks.js?v=212"></script>
-  <script src="src/tasks.js?v=210"></script>
-  <script src="src/dashboard.js?v=211"></script>
-  <script src="src/letterhead-docx.js?v=210"></script>
-  <script src="src/docx.js?v=210"></script>
-  <script src="src/ai.js?v=210"></script>
-  <script src="src/doc-render.js?v=210"></script>
-  <script src="src/files-store.js?v=210"></script>
-  <script src="src/shared.js?v=212"></script>
-  <script src="src/cloud.js?v=210"></script>
-  <script src="src/drive.js?v=210"></script>
-  <script src="src/drive-ui.js?v=210"></script>
-  <script src="src/rtl-fixer.js?v=210"></script>
-  <script src="src/rtl-page.js?v=210"></script>
-  <script src="src/profile.js?v=210"></script>
-  <script src="src/admin.js?v=210"></script>
-  <script src="src/roster.js?v=210"></script>
-  <script src="src/registry.js?v=210"></script>
-  <script src="src/watch.js?v=210"></script>
-  <script src="src/charts.js?v=210"></script>
-  <script src="src/ai-assist.js?v=210"></script>
-  <script src="src/meetings.js?v=210"></script>
-  <script src="src/report.js?v=212"></script>
-  <script src="src/screen.js?v=210"></script>
-  <script src="src/letters.js?v=210"></script>
+  <script src="src/track-catalog.js?v=213"></script>
+  <script src="src/storage.js?v=213"></script>
+  <script src="src/ui.js?v=213"></script>
+  <script src="src/templates.js?v=213"></script>
+  <script src="src/tracks.js?v=213"></script>
+  <script src="src/tasks.js?v=213"></script>
+  <script src="src/dashboard.js?v=213"></script>
+  <script src="src/letterhead-docx.js?v=213"></script>
+  <script src="src/docx.js?v=213"></script>
+  <script src="src/ai.js?v=213"></script>
+  <script src="src/doc-render.js?v=213"></script>
+  <script src="src/files-store.js?v=213"></script>
+  <script src="src/shared.js?v=213"></script>
+  <script src="src/cloud.js?v=213"></script>
+  <script src="src/drive.js?v=213"></script>
+  <script src="src/drive-ui.js?v=213"></script>
+  <script src="src/rtl-fixer.js?v=213"></script>
+  <script src="src/rtl-page.js?v=213"></script>
+  <script src="src/profile.js?v=213"></script>
+  <script src="src/admin.js?v=213"></script>
+  <script src="src/roster.js?v=213"></script>
+  <script src="src/registry.js?v=213"></script>
+  <script src="src/watch.js?v=213"></script>
+  <script src="src/charts.js?v=213"></script>
+  <script src="src/ai-assist.js?v=213"></script>
+  <script src="src/meetings.js?v=213"></script>
+  <script src="src/report.js?v=213"></script>
+  <script src="src/screen.js?v=213"></script>
+  <script src="src/reports.js?v=213"></script>
+  <script src="src/letters.js?v=213"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=212"></script>
-  <script src="src/converter-store.js?v=210"></script>
-  <script src="src/converter.js?v=212"></script>
+  <script src="src/converter-core.js?v=213"></script>
+  <script src="src/converter-store.js?v=213"></script>
+  <script src="src/converter.js?v=213"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=210"></script>
-  <script src="src/sheets.js?v=210"></script>
-  <script src="src/history.js?v=210"></script>
-  <script src="src/roster-audit.js?v=210"></script>
-  <script src="src/notify.js?v=210"></script>
-  <script src="src/search.js?v=210"></script>
-  <script src="src/realtime.js?v=210"></script>
-  <script src="src/app.js?v=210"></script>
+  <script src="src/hospitality.js?v=213"></script>
+  <script src="src/sheets.js?v=213"></script>
+  <script src="src/history.js?v=213"></script>
+  <script src="src/roster-audit.js?v=213"></script>
+  <script src="src/notify.js?v=213"></script>
+  <script src="src/search.js?v=213"></script>
+  <script src="src/realtime.js?v=213"></script>
+  <script src="src/app.js?v=213"></script>
 </body>
 </html>
