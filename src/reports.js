@@ -556,6 +556,11 @@
       <option value="${CONST}" ${m.key === CONST ? "selected" : ""}>قيمة ثابتة</option>
       ${fields.map((f) => `<option value="${esc(f.key)}" ${m.key === f.key ? "selected" : ""}>${esc(f.label)}</option>`).join("")}`;
     const done = staged.map.filter((m) => m.key).length;
+    // المرحلة التي يخصّها هذا النموذج: اختيارها هنا أوضح من البحث عنها بين الفلاتر
+    const phases = [...new Set(students().map((r) => String(r.course || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
+    const phasePick = phases.length ? `<label class="sc-f rep-phase"><span>المرحلة التي يخصّها النموذج</span>
+        <select id="rep-fill-phase"><option value="">كل المراحل</option>
+        ${phases.map((p) => `<option ${filters.course === p ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>` : "";
     return `<div class="rep-staged">
       <b>${esc(staged.name)}</b> — نموذج بلا بيانات، أعبّئه لك من بيانات النظام.
       قابلتُ ${countOf(done, "أعمدة", "عموداً", "عموداً واحداً", "عمودين")} من ${countOf(staged.map.length, "أعمدة", "عموداً", "عموداً واحداً", "عمودين")}؛ راجع المقابلة وغيّر ما يلزم.
@@ -565,9 +570,10 @@
         ${m.key === CONST ? `<input type="text" data-const="${i}" value="${esc(m.value)}" placeholder="اكتب القيمة">` : ""}
       </td></tr>`).join("")}
       </tbody></table>
+      ${phasePick}
       <div class="btn-row"><button type="button" class="btn" id="rep-fill">⬇ نزّل النموذج معبّأً (${countOf(rows().length, "صفوف", "صفاً", "صف واحد", "صفان")})</button>
       <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
-      <p class="conv-hint">يُعبّأ بما يظهر في التقرير الآن، فالفلاتر أعلاه تسري عليه.</p>
+      <p class="conv-hint">يُعبّأ بما يظهر في التقرير الآن: المرحلة أعلاه وبقية الفلاتر تسري عليه.</p>
     </div>`;
   }
 
@@ -695,6 +701,7 @@
     });
     $("rep-body").addEventListener("click", (e) => { if (e.target.closest("#rep-pull")) pull(true); });
     $("rep-imports").addEventListener("change", async (e) => {
+      if (e.target.id === "rep-fill-phase") { filters.course = e.target.value; save(); render(); return; }
       const m = e.target.closest("[data-map]");
       if (m && staged && staged.map) {
         staged.map[Number(m.dataset.map)].key = m.value;
