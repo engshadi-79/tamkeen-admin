@@ -1394,3 +1394,4 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .rep-map select { width: 100%; max-width: 230px; }
 .rep-map input[type="text"] { margin-top: 4px; width: 100%; max-width: 230px; }
 :root[data-theme="dark"] .rep-map { background: var(--card-bg); }
+.track-catalog-table input[type="date"], .track-catalog-table input[type="text"] { width: 100%; min-width: 125px; padding: 5px 7px; font-size: 12.5px; }
