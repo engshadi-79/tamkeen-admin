@@ -289,7 +289,7 @@
      نقرأ أول ورقة، نعدّ أول صف فيه خانتان نصيّتان أو أكثر ترويسةً،
      ونبحث عن عمود هوية (أرقام من ٩-١٠ خانات) أو عمود اسم للمطابقة. */
   const ID_COL = /هوية|الهويه|رقم.?وطني|identity|id\b/i;
-  const NAME_COL = /الاسم|اسم|الطالب|المتدرب|name/i;
+  const NAME_COL = /^(الاسم|اسم|الطالب|المتدرب)|اسم (الطالب|المتدرب|الخريج|المستفيد)|الاسم الرباعي|full ?name|^name$/i;
   const SKIP_COL = /^(#|م|مسلسل|تسلسل|رقم)$/;
 
   function sheetRows(ws) {
@@ -314,11 +314,29 @@
     return String(v).trim();
   }
 
+  /* صف العناوين ليس أول صف فيه خانتان: النماذج الرسمية تبدأ بعنوان ممدود على كل الأعمدة
+     (خانة مدمجة تُقرأ خاناتٍ متكررة بالنص نفسه)، وقد يتلوه صف فارغ. فنبحث في أوائل الصفوف
+     عن أكثرها شبهاً بترويسة: عناوين مختلفة، ويُرجَّح ما فيه اسم أو هوية. */
+  function headerAt(grid) {
+    let best = -1, bestScore = 0;
+    grid.slice(0, 12).forEach((r, i) => {
+      const cells = r.map((c) => String(c == null ? "" : c).trim()).filter(Boolean);
+      const distinct = new Set(cells).size;
+      if (distinct < 2) return;                       // عنوان ممدود: خانة واحدة مكرّرة
+      let score = distinct;
+      if (cells.some((c) => ID_COL.test(c))) score += 6;
+      if (cells.some((c) => NAME_COL.test(c))) score += 6;
+      if (score > bestScore) { bestScore = score; best = i; }
+    });
+    return best;
+  }
+
   function readGrid(grid) {
-    const head = grid.findIndex((r) => r.filter((c) => String(c || "").trim()).length >= 2);
+    const head = headerAt(grid);
     if (head < 0) throw new Error("لم أجد صف عناوين في الملف");
-    const cols = grid[head].map((c, i) => String(c || "").trim() || `عمود ${i + 1}`);
-    const body = grid.slice(head + 1).filter((r) => r.some((c) => String(c || "").trim()));
+    const cols = grid[head].map((c, i) => String(c == null ? "" : c).trim() || `عمود ${i + 1}`);
+    const body = grid.slice(head + 1).filter((r) => r.some((c) => String(c == null ? "" : c).trim()));
+    if (!body.length) throw new Error(`قرأت العناوين (${cols.filter((c) => !/^عمود /.test(c)).slice(0, 3).join("، ")}…) لكن الملف لا يحمل صفوف بيانات تحتها`);
     const idAt = cols.findIndex((c) => ID_COL.test(c));
     const nameAt = cols.findIndex((c) => NAME_COL.test(c));
     if (idAt < 0 && nameAt < 0) throw new Error("لا بد من عمود «رقم الهوية» أو «الاسم» لربط الصفوف بالطلاب");
@@ -326,9 +344,10 @@
     const rows = body.map((r) => {
       const o = { _id: idAt >= 0 ? String(r[idAt] || "") : "", _name: nameAt >= 0 ? String(r[nameAt] || "") : "" };
       cols.forEach((c, i) => { if (i !== idAt && i !== nameAt && !SKIP_COL.test(c)) o[c] = String(r[i] == null ? "" : r[i]).trim(); });
+      o._id = o._id.trim(); o._name = o._name.trim();
       return o;
     }).filter((o) => o._id || o._name);
-    if (!rows.length) throw new Error("لا توجد صفوف فيها هوية أو اسم");
+    if (!rows.length) throw new Error("الصفوف تحت العناوين كلها بلا هوية ولا اسم");
     if (!fields.length) throw new Error("الملف لا يحمل أعمدة بيانات غير الاسم والهوية");
     return { fields, rows, matchedBy: idAt >= 0 ? "رقم الهوية" : "الاسم" };
   }
