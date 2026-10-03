@@ -1540,5 +1540,5 @@
     $("conv-parse").scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  App.converter = { init, render: renderSource, refresh: refreshSaved, useData };
+  App.converter = { init, render: renderSource, refresh: refreshSaved, useData, fixedFields };
 })(window.App = window.App || {});

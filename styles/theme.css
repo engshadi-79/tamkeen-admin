@@ -1404,3 +1404,6 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .rep-calc { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 .rep-calc .sc-f { width: 220px; }
 .rep-calc .conv-hint { flex: 1; min-width: 240px; }
+.rep-map .rep-full { color: #0e8a63; font-weight: 600; }
+.rep-map .rep-part { color: #b7791f; font-weight: 600; }
+.rep-map .rep-warn { color: #c0392b; font-weight: 600; }
