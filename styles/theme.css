@@ -1499,3 +1499,31 @@ hr { border: 0; border-top: 1px solid var(--border); }
   #view-dashboard .row.col-4 { grid-template-columns: minmax(0, 1fr); }
   #view-dashboard .stat-spark { display: none; }
 }
+
+/* لوحة كثيفة: ستّ بطاقات في صفّ، وجدول مضغوط، وقائمة أولويات */
+#view-dashboard .row.col-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+#view-dashboard .dash-dense .stat { padding: 11px 12px; gap: 9px; }
+#view-dashboard .dash-dense .stat-icon { width: 32px; height: 32px; }
+#view-dashboard .dash-dense .stat-icon svg { width: 17px; height: 17px; }
+#view-dashboard .dash-dense .stat-value { font-size: 19px; }
+#view-dashboard .dash-dense .stat-label { font-size: 11.5px; }
+#view-dashboard .dash-dense .stat-subtext { font-size: 11px; }
+#view-dashboard .dash-dense .stat-spark { height: 24px; }
+.dash-centre-table { font-size: 12.5px; }
+.dash-centre-table th, .dash-centre-table td { padding: 6px 8px; white-space: nowrap; }
+.dash-centre-table td:first-child { white-space: normal; min-width: 150px; }
+.dash-meter { display: inline-block; width: 52px; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; vertical-align: middle; margin-inline-end: 6px; }
+.dash-meter > i { display: block; height: 100%; background: var(--teal-500); border-radius: 3px; }
+.dash-need { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.dash-need li { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); font-size: 12.5px; }
+.dash-need li.danger { border-inline-start: 3px solid #c0392b; background: rgba(192,57,43,.05); }
+.dash-need li.warn { border-inline-start: 3px solid #b7791f; background: rgba(183,121,31,.06); }
+.dash-need li.ok { border-inline-start: 3px solid #0e8a63; background: rgba(14,138,99,.05); }
+.dash-need-n { font-weight: 700; font-size: 15px; color: var(--navy-900); min-width: 34px; }
+.dash-need-t { flex: 1; min-width: 0; }
+.dash-need li a { white-space: nowrap; font-size: 12px; }
+.dash-centre-empty { text-align: center; }
+@media (max-width: 1300px) { #view-dashboard .row.col-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { #view-dashboard .row.col-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { #view-dashboard .row.col-6 { grid-template-columns: minmax(0, 1fr); } }

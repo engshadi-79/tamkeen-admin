@@ -10,6 +10,9 @@
     clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
     tasks: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>',
+    pledge: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 15l2 2 4-4"/>',
+    form: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/>',
+    mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/>',
   };
   const icon = (tone, path) => `<div class="stat-icon ${tone}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${path}</svg></div>`;
 
@@ -36,25 +39,156 @@
       </div>
     </div>`;
 
+  /* ===== حال المركز من لقطة نظام المركز =====
+     الأرقام التي يعيش عليها المركز (طلاب وحضور وتعهدات واستبيانات ودرجات) تصل مع اللقطة
+     نفسها التي تغذّي الشاشة ومنشئ التقارير، فتُقرأ هنا بلا طلب جديد. */
+  const snapshot = () => (App.screen && App.screen.snapshot ? App.screen.snapshot() : null);
+  const centreRows = () => { const s = snapshot(); return (s && s.data && s.data.students) || []; };
+  const numOf = (v) => { const n = Number(String(v == null ? "" : v).replace(/[^\d.]/g, "")); return isNaN(n) ? null : n; };
+  const mean = (list) => { const n = list.filter((v) => v != null); return n.length ? n.reduce((a, b) => a + b, 0) / n.length : null; };
+  const isNo = (v) => String(v || "").trim() === "لا";
+  // «غير معتمد» تحتوي كلمة «معتمد»، فالاحتواء وحده يعدّها معتمدة: نشترط أن تبدأ بها
+  const notApproved = (r) => String(r.total || "").trim() !== "" && !/^معتمد/.test(String(r.approval || "").trim());
+
+  function centreStats() {
+    const rows = centreRows();
+    if (!rows.length) return null;
+    return {
+      students: rows.length,
+      attendance: mean(rows.map((r) => numOf(r.attendance))),
+      noPledge: rows.filter((r) => isNo(r.pledged)).length,
+      noSurvey: rows.filter((r) => String(r.missingSurveys || "").trim()).length,
+      unapproved: rows.filter(notApproved).length,
+      phases: [...new Set(rows.map((r) => String(r.course || "").trim()).filter(Boolean))],
+    };
+  }
+
+  /* صف لكل مسار: طلابه ونِسبه. النسبة تُعرض رقماً وشريطاً معاً، فلا يُفهم اللون وحده. */
+  function centreByTrack() {
+    const rows = centreRows();
+    const map = new Map();
+    rows.forEach((r) => {
+      const k = String(r.track || "").trim() || "— بلا مسار —";
+      const g = map.get(k) || { track: k, n: 0, att: [], pledged: 0, survey: 0 };
+      g.n++;
+      const a = numOf(r.attendance);
+      if (a != null) g.att.push(a);
+      if (!isNo(r.pledged) && String(r.pledged || "").trim()) g.pledged++;
+      if (!String(r.missingSurveys || "").trim()) g.survey++;
+      map.set(k, g);
+    });
+    return [...map.values()].map((g) => ({
+      track: g.track, n: g.n,
+      attendance: mean(g.att),
+      pledgePct: g.n ? (g.pledged / g.n) * 100 : null,
+      surveyPct: g.n ? (g.survey / g.n) * 100 : null,
+    })).sort((a, b) => b.n - a.n);
+  }
+
+  /* الحضور دون الحد خطر أحمر، والتعهد والاستبيان تقصير يُنبَّه عليه بالكهرماني لا بالأحمر */
+  const meter = (v, warn, tone) => v == null ? "—"
+    : `<span class="dash-meter"><i style="width:${Math.max(0, Math.min(100, v))}%${v < warn ? `;background:${tone || "#c0392b"}` : ""}"></i></span><b>${ui.fmt(v, 0)}%</b>`;
+
+  function centreCards(pending, overdue) {
+    const box = document.getElementById("dash-centre");
+    if (!box) return;
+    const c = centreStats();
+    if (!c) {
+      box.innerHTML = `<section class="card dash-centre-empty"><h3>حال المركز</h3>
+        <p class="conv-hint">أرقام المركز (الطلاب والحضور والتعهدات والاستبيانات) تصل مع لقطة نظام المركز.
+        افتح «شاشة إحصاءات المركز» وشغّل القراءة، فتظهر هنا تلقائياً.</p>
+        <div class="btn-row"><a class="btn secondary" href="#screen">فتح شاشة الإحصاءات</a></div></section>`;
+      return;
+    }
+    const tracks = centreByTrack();
+    const need = actionItems(c, tracks, overdue);
+    box.innerHTML = `
+      <section class="card dash-centre-card">
+        <div class="dash-section-head">
+          <div><span class="dash-section-kicker">من نظام المركز</span><h3>المسارات</h3>
+            <p>${ui.fmt(c.students)} طالباً في ${ui.fmt(c.phases.length)} مراحل</p></div>
+          <a class="dash-text-link" href="#screen">الشاشة <span aria-hidden="true">←</span></a>
+        </div>
+        <div class="table-wrap dash-table-wrap">
+          <table class="dash-table dash-centre-table">
+            <thead><tr><th>المسار</th><th>الطلاب</th><th>الحضور</th><th>وقّعوا التعهد</th><th>عبّأوا الاستبيان</th></tr></thead>
+            <tbody>${tracks.map((t) => `<tr>
+              <td>${ui.esc(t.track)}</td>
+              <td>${ui.fmt(t.n)}</td>
+              <td>${meter(t.attendance, ATTENDANCE_THRESHOLD)}</td>
+              <td>${meter(t.pledgePct, 90, "#b7791f")}</td>
+              <td>${meter(t.surveyPct, 90, "#b7791f")}</td>
+            </tr>`).join("")}</tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card dash-need-card">
+        <div class="dash-section-head"><div><span class="dash-section-kicker">الأولويات</span><h3>يحتاج إجراءً</h3></div>
+          <span class="dash-alert-count">${ui.fmt(need.length)}</span></div>
+        <ul class="dash-need">${need.length ? need.map((x) => `<li class="${x.tone}">
+            <span class="dash-need-n">${ui.fmt(x.n)}</span>
+            <span class="dash-need-t">${x.text}</span>
+            ${x.href ? `<a href="${x.href}">${x.action}</a>` : ""}</li>`).join("")
+          : `<li class="ok"><span class="dash-need-t">لا شيء متأخر — كل المؤشرات ضمن الحد.</span></li>`}</ul>
+      </section>`;
+  }
+
+  /* قائمة واحدة مرتّبة بالأهم بدل ثلاث لوحات متفرّقة */
+  function actionItems(c, tracks, overdue) {
+    const out = [];
+    if (c.noPledge) out.push({ n: c.noPledge, tone: "danger", text: "طالباً لم يوقّعوا التعهد", href: "#reports", action: "التقارير" });
+    if (c.noSurvey) out.push({ n: c.noSurvey, tone: "warn", text: "طالباً لم يعبّئوا استبياناً", href: "#reports", action: "التقارير" });
+    if (c.unapproved) out.push({ n: c.unapproved, tone: "warn", text: "درجة غير معتمدة", href: "#screen", action: "الشاشة" });
+    const low = tracks.filter((t) => t.attendance != null && t.attendance < ATTENDANCE_THRESHOLD);
+    if (low.length) out.push({ n: low.length, tone: "danger", text: `مساراً حضورها دون ${ATTENDANCE_THRESHOLD}% (${ui.esc(low.map((t) => t.track).slice(0, 2).join("، "))}${low.length > 2 ? "…" : ""})`, href: "#screen", action: "الشاشة" });
+    if (overdue.length) out.push({ n: overdue.length, tone: "danger", text: "مهمة متأخرة عن موعدها", href: "#tasks", action: "المهام" });
+    const late = (App.registry ? App.registry.followUps() : []).filter((x) => x.days < 0).length;
+    if (late) out.push({ n: late, tone: "warn", text: "وارداً تجاوز موعد معالجته", href: "#registry", action: "السجل" });
+    return out.sort((a, b) => (a.tone === b.tone ? b.n - a.n : a.tone === "danger" ? -1 : 1));
+  }
+
   function statCards(trackList, s, pending, overdue) {
     const names = trackList.map((t) => t.name);
-    const pct = (v) => `${ui.fmt(v, 1)}%`;
-    const good = (ok, text) => `<span class="stat-change ${ok ? "up" : "down"}">${text}</span>`;
-    return [
-      statCard("teal", SVG.people, "المستفيدون", ui.fmt(s.beneficiaries), "",
-        `موزعون على ${ui.fmt(trackList.length)} مسارات`,
-        spark(trackList.map((t) => t.beneficiaries), names)),
-      statCard("blue", SVG.clock, "إنجاز الساعات", pct(s.completionPct), "",
-        `من ${store.TOTAL_HOURS} ساعة لكل مسار`,
-        spark(trackList.map((t) => App.tracks.hoursPct(t)), names, "blue")),
-      statCard(Number(s.attendancePct) >= ATTENDANCE_THRESHOLD ? "green" : "yellow", SVG.check, "متوسط الحضور", pct(s.attendancePct),
-        good(Number(s.attendancePct) >= ATTENDANCE_THRESHOLD, `المستهدف ${ATTENDANCE_THRESHOLD}%`),
-        `${ui.fmt(trackList.filter((t) => Number(t.attendancePct) < ATTENDANCE_THRESHOLD).length)} مسارات دون الحد`,
-        spark(trackList.map((t) => t.attendancePct), names, Number(s.attendancePct) >= ATTENDANCE_THRESHOLD ? "green" : "yellow")),
-      statCard(overdue.length ? "red" : "purple", SVG.tasks, "مهام مفتوحة", ui.fmt(pending.length),
-        overdue.length ? `<span class="stat-change down">${ui.fmt(overdue.length)} متأخرة</span>` : "",
-        overdue.length ? "تحتاج متابعة اليوم" : "لا توجد مهام متأخرة", ""),
-    ].join("");
+    const c = centreStats();
+    const pct = (v) => v == null ? "—" : `${ui.fmt(v, 1)}%`;
+    const cards = [];
+
+    if (c) {
+      // أرقام المركز الحيّة أولاً: هي ما يسأل عنه الناس
+      const byPhase = {};
+      centreRows().forEach((r) => { const k = String(r.course || "").trim() || "—"; byPhase[k] = (byPhase[k] || 0) + 1; });
+      cards.push(statCard("teal", SVG.people, "طلاب المركز", ui.fmt(c.students), "",
+        `في ${ui.fmt(c.phases.length)} مراحل`, spark(Object.values(byPhase), Object.keys(byPhase))));
+      cards.push(statCard(c.attendance != null && c.attendance >= ATTENDANCE_THRESHOLD ? "green" : "yellow", SVG.check,
+        "حضور المجموعات", pct(c.attendance),
+        c.attendance == null ? "" : `<span class="stat-change ${c.attendance >= ATTENDANCE_THRESHOLD ? "up" : "down"}">المستهدف ${ATTENDANCE_THRESHOLD}%</span>`,
+        "متوسط مجموعات الطلاب", ""));
+      cards.push(statCard(c.noPledge ? "red" : "green", SVG.pledge, "بلا تعهد موقَّع", ui.fmt(c.noPledge), "",
+        c.students ? `${ui.fmt((c.noPledge / c.students) * 100, 0)}% من الطلاب` : "", ""));
+      cards.push(statCard(c.noSurvey ? "yellow" : "green", SVG.form, "استبيان ناقص", ui.fmt(c.noSurvey), "",
+        c.students ? `${ui.fmt((c.noSurvey / c.students) * 100, 0)}% من الطلاب` : "", ""));
+    } else {
+      cards.push(statCard("teal", SVG.people, "المستفيدون", ui.fmt(s.beneficiaries), "",
+        `موزعون على ${ui.fmt(trackList.length)} مسارات`, spark(trackList.map((t) => t.beneficiaries), names)));
+      cards.push(statCard("blue", SVG.clock, "إنجاز الساعات", pct(s.completionPct), "",
+        `من ${store.TOTAL_HOURS} ساعة لكل مسار`, spark(trackList.map((t) => App.tracks.hoursPct(t)), names, "blue")));
+      cards.push(statCard(Number(s.attendancePct) >= ATTENDANCE_THRESHOLD ? "green" : "yellow", SVG.check,
+        "متوسط الحضور", pct(s.attendancePct), "", `المستهدف ${ATTENDANCE_THRESHOLD}%`,
+        spark(trackList.map((t) => t.attendancePct), names, "green")));
+      cards.push(statCard("blue", SVG.clock, "المسارات", ui.fmt(trackList.length), "", "في صفحة متابعة المسارات", ""));
+    }
+
+    // ثم ما يخصّ عمل المكتب
+    cards.push(statCard(overdue.length ? "red" : "purple", SVG.tasks, "مهام مفتوحة", ui.fmt(pending.length),
+      overdue.length ? `<span class="stat-change down">${ui.fmt(overdue.length)} متأخرة</span>` : "",
+      overdue.length ? "تحتاج متابعة اليوم" : "لا توجد مهام متأخرة", ""));
+    const follow = App.registry ? App.registry.followUps() : [];
+    const late = follow.filter((x) => x.days < 0).length;
+    cards.push(statCard(late ? "red" : "blue", SVG.mail, "وارد يحتاج معالجة", ui.fmt(follow.length),
+      late ? `<span class="stat-change down">${ui.fmt(late)} متأخر</span>` : "",
+      follow.length ? "مستحق خلال ٣ أيام أو متأخر" : "لا يوجد وارد مستحق", ""));
+
+    return cards.join("");
   }
 
   function render() {
@@ -67,6 +201,7 @@
     if (dateEl) dateEl.textContent = new Intl.DateTimeFormat("ar-PS", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date());
 
     document.getElementById("stats").innerHTML = statCards(trackList, s, pending, overdue);
+    centreCards(pending, overdue);
 
     const alerts = [];
     trackList.filter((t) => Number(t.attendancePct) < ATTENDANCE_THRESHOLD).forEach((t) => {
