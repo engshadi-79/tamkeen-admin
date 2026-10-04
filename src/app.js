@@ -20,6 +20,7 @@
       document.getElementById("view-" + v).classList.toggle("active", v === view);
       document.querySelector(`[data-view="${v}"]`).classList.toggle("active", v === view);
     });
+    openGroupOf(view);
     if (view === "dashboard") App.dashboard.render();
     if (view === "tracks") App.tracks.render();
     if (view === "letters") App.letters.render();
@@ -39,6 +40,35 @@
     if (view === "admin") App.admin.render();
     if (location.hash.slice(1) !== view) history.replaceState(null, "", "#" + view);
     window.scrollTo(0, 0);
+  }
+
+  /* أقسام القائمة الجانبية: ستة عشر بنداً في عمود واحد يصعب تصفّحها، فتُجمع وتُطوى.
+     القسم الذي فيه الصفحة المفتوحة يُفتح دائماً، وبقيّة الأقسام تتذكّر حالتها. */
+  const GROUPS_KEY = "tamkeen-admin:nav-groups";
+  const readGroups = () => { try { return JSON.parse(localStorage.getItem(GROUPS_KEY) || "{}") || {}; } catch (e) { return {}; } };
+  const writeGroups = (v) => { try { localStorage.setItem(GROUPS_KEY, JSON.stringify(v)); } catch (e) { /* ممتلئ */ } };
+
+  function openGroupOf(view) {
+    const btn = document.querySelector(`[data-view="${view}"]`);
+    const group = btn && btn.closest(".nav-group");
+    if (group) group.classList.add("open");
+  }
+
+  function initGroups() {
+    const state = readGroups();
+    document.querySelectorAll(".nav-group").forEach((g) => {
+      const name = g.dataset.group;
+      // أول مرة: الأقسام مطويّة إلا ما فيه الصفحة المفتوحة
+      if (state[name]) g.classList.add("open");
+      const head = g.querySelector(".nav-head");
+      if (!head) return;
+      head.addEventListener("click", () => {
+        g.classList.toggle("open");
+        const next = readGroups();
+        next[name] = g.classList.contains("open");
+        writeGroups(next);
+      });
+    });
   }
 
   /* رقم النسخة التي يشغّلها هذا المتصفح فعلاً، وزر يمسح المخزَّن ويجلب الأحدث.
@@ -169,6 +199,7 @@
     document.querySelectorAll("[data-view]").forEach((btn) =>
       btn.addEventListener("click", () => show(btn.dataset.view))
     );
+    initGroups();
     const menu = document.getElementById("mobile-menu-toggle");
     const nav = document.getElementById("primary-nav");
     const mobile = window.matchMedia("(max-width: 760px)");
