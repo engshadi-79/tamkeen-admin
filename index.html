@@ -15,8 +15,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <!-- قالب Gentelella v4 كاملاً (مجمَّع من مصدره)، ثم تنسيقنا فوقه للغة والتخطيط -->
-  <link rel="stylesheet" href="styles/gentelella.css?v=234">
-  <link rel="stylesheet" href="styles/theme.css?v=234">
+  <link rel="stylesheet" href="styles/gentelella.css?v=235">
+  <link rel="stylesheet" href="styles/theme.css?v=235">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -129,13 +129,23 @@
       </div>
       <!-- ===== اللوحة الرئيسية ===== -->
       <section class="view" id="view-dashboard">
-        <div class="dash-hero">
-          <div class="dash-hero-copy"><span class="dash-eyebrow">مركز مسارات التمكين · PP-003</span><h2>أهلاً بك في لوحة المتابعة</h2><p>ملخص أداء المركز والمهام التي تحتاج إلى متابعة.</p><div class="dash-date" id="dash-date"></div></div>
-          <div class="dash-hero-actions"><a class="btn dash-action-primary" href="#tasks">☑ <span>متابعة المهام</span></a><a class="btn dash-action-ghost" href="#letters">✉ <span>إنشاء مراسلة</span></a></div>
+        <!-- ترويسة الصفحة وبطاقات الأرقام ببنية القالب نفسها (page-header / card > stat) -->
+        <div class="page-header">
+          <div class="page-header-row">
+            <div>
+              <div class="page-pretitle">مركز مسارات التمكين · PP-003</div>
+              <h1 class="page-title">لوحة المتابعة</h1>
+              <div class="dash-date" id="dash-date"></div>
+            </div>
+            <div class="page-actions">
+              <a class="btn navy" href="#tasks">☑ متابعة المهام</a>
+              <a class="btn secondary" href="#letters">✉ إنشاء مراسلة</a>
+            </div>
+          </div>
         </div>
-        <div class="stats" id="stats"></div>
+        <div class="row col-4" id="stats"></div>
         <div class="ch-grid-wrap" id="dash-charts"></div>
-        <div class="dash-work-grid">
+        <div class="row col-8-4 dash-work-grid">
           <div class="card dash-team-card">
             <div class="dash-section-head">
               <div><span class="dash-section-kicker">توزيع المسؤوليات</span><h3>متابعة أعمال الفريق</h3><p>المهام حسب المسؤول وحالة الإنجاز</p></div>
@@ -1374,50 +1384,50 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/track-catalog.js?v=234"></script>
-  <script src="src/storage.js?v=234"></script>
-  <script src="src/ui.js?v=234"></script>
-  <script src="src/templates.js?v=234"></script>
-  <script src="src/tracks.js?v=234"></script>
-  <script src="src/tasks.js?v=234"></script>
-  <script src="src/dashboard.js?v=234"></script>
-  <script src="src/letterhead-docx.js?v=234"></script>
-  <script src="src/docx.js?v=234"></script>
-  <script src="src/ai.js?v=234"></script>
-  <script src="src/doc-render.js?v=234"></script>
-  <script src="src/files-store.js?v=234"></script>
-  <script src="src/shared.js?v=234"></script>
-  <script src="src/cloud.js?v=234"></script>
-  <script src="src/drive.js?v=234"></script>
-  <script src="src/drive-ui.js?v=234"></script>
-  <script src="src/rtl-fixer.js?v=234"></script>
-  <script src="src/rtl-page.js?v=234"></script>
-  <script src="src/profile.js?v=234"></script>
-  <script src="src/admin.js?v=234"></script>
-  <script src="src/roster.js?v=234"></script>
-  <script src="src/registry.js?v=234"></script>
-  <script src="src/watch.js?v=234"></script>
-  <script src="src/charts.js?v=234"></script>
-  <script src="src/ai-assist.js?v=234"></script>
-  <script src="src/meetings.js?v=234"></script>
-  <script src="src/report.js?v=234"></script>
-  <script src="src/screen.js?v=234"></script>
-  <script src="src/reports.js?v=234"></script>
-  <script src="src/letters.js?v=234"></script>
+  <script src="src/track-catalog.js?v=235"></script>
+  <script src="src/storage.js?v=235"></script>
+  <script src="src/ui.js?v=235"></script>
+  <script src="src/templates.js?v=235"></script>
+  <script src="src/tracks.js?v=235"></script>
+  <script src="src/tasks.js?v=235"></script>
+  <script src="src/dashboard.js?v=235"></script>
+  <script src="src/letterhead-docx.js?v=235"></script>
+  <script src="src/docx.js?v=235"></script>
+  <script src="src/ai.js?v=235"></script>
+  <script src="src/doc-render.js?v=235"></script>
+  <script src="src/files-store.js?v=235"></script>
+  <script src="src/shared.js?v=235"></script>
+  <script src="src/cloud.js?v=235"></script>
+  <script src="src/drive.js?v=235"></script>
+  <script src="src/drive-ui.js?v=235"></script>
+  <script src="src/rtl-fixer.js?v=235"></script>
+  <script src="src/rtl-page.js?v=235"></script>
+  <script src="src/profile.js?v=235"></script>
+  <script src="src/admin.js?v=235"></script>
+  <script src="src/roster.js?v=235"></script>
+  <script src="src/registry.js?v=235"></script>
+  <script src="src/watch.js?v=235"></script>
+  <script src="src/charts.js?v=235"></script>
+  <script src="src/ai-assist.js?v=235"></script>
+  <script src="src/meetings.js?v=235"></script>
+  <script src="src/report.js?v=235"></script>
+  <script src="src/screen.js?v=235"></script>
+  <script src="src/reports.js?v=235"></script>
+  <script src="src/letters.js?v=235"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=234"></script>
-  <script src="src/converter-store.js?v=234"></script>
-  <script src="src/converter.js?v=234"></script>
+  <script src="src/converter-core.js?v=235"></script>
+  <script src="src/converter-store.js?v=235"></script>
+  <script src="src/converter.js?v=235"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=234"></script>
-  <script src="src/sheets.js?v=234"></script>
-  <script src="src/history.js?v=234"></script>
-  <script src="src/roster-audit.js?v=234"></script>
-  <script src="src/notify.js?v=234"></script>
-  <script src="src/search.js?v=234"></script>
-  <script src="src/realtime.js?v=234"></script>
-  <script src="src/app.js?v=234"></script>
+  <script src="src/hospitality.js?v=235"></script>
+  <script src="src/sheets.js?v=235"></script>
+  <script src="src/history.js?v=235"></script>
+  <script src="src/roster-audit.js?v=235"></script>
+  <script src="src/notify.js?v=235"></script>
+  <script src="src/search.js?v=235"></script>
+  <script src="src/realtime.js?v=235"></script>
+  <script src="src/app.js?v=235"></script>
 </body>
 </html>
