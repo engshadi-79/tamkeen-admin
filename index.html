@@ -15,8 +15,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <!-- قالب Gentelella v4 كاملاً (مجمَّع من مصدره)، ثم تنسيقنا فوقه للغة والتخطيط -->
-  <link rel="stylesheet" href="styles/gentelella.css?v=233">
-  <link rel="stylesheet" href="styles/theme.css?v=233">
+  <link rel="stylesheet" href="styles/gentelella.css?v=234">
+  <link rel="stylesheet" href="styles/theme.css?v=234">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -58,23 +58,48 @@
           <small id="side-user-role"></small>
         </span>
       </div>
+      <!-- القائمة بأقسام تُطوى: ستة عشر بنداً في عمود واحد يصعب تصفّحها -->
       <ul class="nav" id="primary-nav">
         <li><button data-view="dashboard"><span class="ico">▦</span>اللوحة الرئيسية</button></li>
-        <li><button data-view="tracks"><span class="ico">◧</span>متابعة المسارات</button></li>
-        <li><button data-view="letters"><span class="ico">✉</span>المراسلات والتقارير</button></li>
-        <li><button data-view="report"><span class="ico">📊</span>التقرير الدوري</button></li>
-        <li><button data-view="meetings"><span class="ico">📋</span>محاضر الاجتماعات</button></li>
-        <li><button data-view="registry"><span class="ico">🗂</span>الوارد والصادر</button></li>
-        <li><button data-view="roster"><span class="ico">👥</span>المستفيدون والتعهدات</button></li>
-        <li><button data-view="rtl"><span class="ico">⇆</span>تصحيح اتجاه Word</button></li>
-        <li><button data-view="converter"><span class="ico">⇄</span>تحويل ملف حسب قالب</button></li>
-        <li><button data-view="admin" data-admin-only hidden><span class="ico">⚙</span>لوحة التحكم</button></li>
-        <li><button data-view="hospitality"><span class="ico">☕</span>كشف توزيع الضيافة</button></li>
-        <li><button data-view="sheets"><span class="ico">📊</span>جداول البيانات</button></li>
-        <li><button data-view="screen"><span class="ico">📺</span>شاشة إحصاءات المركز</button></li>
-        <li><button data-view="reports"><span class="ico">🧮</span>منشئ التقارير</button></li>
-        <li><button data-view="history"><span class="ico">🕘</span>سجل التعديلات</button></li>
         <li><button data-view="tasks"><span class="ico">☑</span>المهام والمتابعات</button></li>
+
+        <li class="nav-group" data-group="training">
+          <button type="button" class="nav-head">التدريب والمستفيدون</button>
+          <ul>
+            <li><button data-view="tracks"><span class="ico">◧</span>متابعة المسارات</button></li>
+            <li><button data-view="roster"><span class="ico">👥</span>المستفيدون والتعهدات</button></li>
+            <li><button data-view="screen"><span class="ico">📺</span>شاشة إحصاءات المركز</button></li>
+            <li><button data-view="reports"><span class="ico">🧮</span>منشئ التقارير</button></li>
+          </ul>
+        </li>
+
+        <li class="nav-group" data-group="docs">
+          <button type="button" class="nav-head">المراسلات والمحاضر</button>
+          <ul>
+            <li><button data-view="registry"><span class="ico">🗂</span>الوارد والصادر</button></li>
+            <li><button data-view="letters"><span class="ico">✉</span>المراسلات والتقارير</button></li>
+            <li><button data-view="meetings"><span class="ico">📋</span>محاضر الاجتماعات</button></li>
+            <li><button data-view="report"><span class="ico">📊</span>التقرير الدوري</button></li>
+          </ul>
+        </li>
+
+        <li class="nav-group" data-group="tools">
+          <button type="button" class="nav-head">أدوات الملفات</button>
+          <ul>
+            <li><button data-view="converter"><span class="ico">⇄</span>تحويل ملف حسب قالب</button></li>
+            <li><button data-view="rtl"><span class="ico">⇆</span>تصحيح اتجاه Word</button></li>
+            <li><button data-view="sheets"><span class="ico">📊</span>جداول البيانات</button></li>
+            <li><button data-view="hospitality"><span class="ico">☕</span>كشف توزيع الضيافة</button></li>
+          </ul>
+        </li>
+
+        <li class="nav-group" data-group="system">
+          <button type="button" class="nav-head">النظام</button>
+          <ul>
+            <li><button data-view="admin" data-admin-only hidden><span class="ico">⚙</span>لوحة التحكم</button></li>
+            <li><button data-view="history"><span class="ico">🕘</span>سجل التعديلات</button></li>
+          </ul>
+        </li>
       </ul>
       <div class="sidebar-foot">
         البيانات محفوظة على هذا الجهاز فقط
@@ -1349,50 +1374,50 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/track-catalog.js?v=233"></script>
-  <script src="src/storage.js?v=233"></script>
-  <script src="src/ui.js?v=233"></script>
-  <script src="src/templates.js?v=233"></script>
-  <script src="src/tracks.js?v=233"></script>
-  <script src="src/tasks.js?v=233"></script>
-  <script src="src/dashboard.js?v=233"></script>
-  <script src="src/letterhead-docx.js?v=233"></script>
-  <script src="src/docx.js?v=233"></script>
-  <script src="src/ai.js?v=233"></script>
-  <script src="src/doc-render.js?v=233"></script>
-  <script src="src/files-store.js?v=233"></script>
-  <script src="src/shared.js?v=233"></script>
-  <script src="src/cloud.js?v=233"></script>
-  <script src="src/drive.js?v=233"></script>
-  <script src="src/drive-ui.js?v=233"></script>
-  <script src="src/rtl-fixer.js?v=233"></script>
-  <script src="src/rtl-page.js?v=233"></script>
-  <script src="src/profile.js?v=233"></script>
-  <script src="src/admin.js?v=233"></script>
-  <script src="src/roster.js?v=233"></script>
-  <script src="src/registry.js?v=233"></script>
-  <script src="src/watch.js?v=233"></script>
-  <script src="src/charts.js?v=233"></script>
-  <script src="src/ai-assist.js?v=233"></script>
-  <script src="src/meetings.js?v=233"></script>
-  <script src="src/report.js?v=233"></script>
-  <script src="src/screen.js?v=233"></script>
-  <script src="src/reports.js?v=233"></script>
-  <script src="src/letters.js?v=233"></script>
+  <script src="src/track-catalog.js?v=234"></script>
+  <script src="src/storage.js?v=234"></script>
+  <script src="src/ui.js?v=234"></script>
+  <script src="src/templates.js?v=234"></script>
+  <script src="src/tracks.js?v=234"></script>
+  <script src="src/tasks.js?v=234"></script>
+  <script src="src/dashboard.js?v=234"></script>
+  <script src="src/letterhead-docx.js?v=234"></script>
+  <script src="src/docx.js?v=234"></script>
+  <script src="src/ai.js?v=234"></script>
+  <script src="src/doc-render.js?v=234"></script>
+  <script src="src/files-store.js?v=234"></script>
+  <script src="src/shared.js?v=234"></script>
+  <script src="src/cloud.js?v=234"></script>
+  <script src="src/drive.js?v=234"></script>
+  <script src="src/drive-ui.js?v=234"></script>
+  <script src="src/rtl-fixer.js?v=234"></script>
+  <script src="src/rtl-page.js?v=234"></script>
+  <script src="src/profile.js?v=234"></script>
+  <script src="src/admin.js?v=234"></script>
+  <script src="src/roster.js?v=234"></script>
+  <script src="src/registry.js?v=234"></script>
+  <script src="src/watch.js?v=234"></script>
+  <script src="src/charts.js?v=234"></script>
+  <script src="src/ai-assist.js?v=234"></script>
+  <script src="src/meetings.js?v=234"></script>
+  <script src="src/report.js?v=234"></script>
+  <script src="src/screen.js?v=234"></script>
+  <script src="src/reports.js?v=234"></script>
+  <script src="src/letters.js?v=234"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=233"></script>
-  <script src="src/converter-store.js?v=233"></script>
-  <script src="src/converter.js?v=233"></script>
+  <script src="src/converter-core.js?v=234"></script>
+  <script src="src/converter-store.js?v=234"></script>
+  <script src="src/converter.js?v=234"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=233"></script>
-  <script src="src/sheets.js?v=233"></script>
-  <script src="src/history.js?v=233"></script>
-  <script src="src/roster-audit.js?v=233"></script>
-  <script src="src/notify.js?v=233"></script>
-  <script src="src/search.js?v=233"></script>
-  <script src="src/realtime.js?v=233"></script>
-  <script src="src/app.js?v=233"></script>
+  <script src="src/hospitality.js?v=234"></script>
+  <script src="src/sheets.js?v=234"></script>
+  <script src="src/history.js?v=234"></script>
+  <script src="src/roster-audit.js?v=234"></script>
+  <script src="src/notify.js?v=234"></script>
+  <script src="src/search.js?v=234"></script>
+  <script src="src/realtime.js?v=234"></script>
+  <script src="src/app.js?v=234"></script>
 </body>
 </html>
