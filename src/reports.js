@@ -629,9 +629,17 @@
 
   /* حقول كثيرة قد تحمل الاسم نفسه: «تاريخ الميلاد» من ملف الدورة الثانية وآخر من ملف الأولى،
      و«الجوال» من النظام ومن ملف. نختار الأكثر امتلاءً في الصفوف المعروضة الآن. */
+  /* «الجوال» و«رقم الجوال» و«رقم الهاتف» شيء واحد: نردّ الاسم إلى أصله قبل المقارنة،
+     وإلا ظلّ عمود النموذج على مصدر فارغ وبجانبه مصدر مليء باسم آخر. */
+  function canonOf(label) {
+    const v = String(label || "");
+    for (const [re, key] of SYNONYMS) if (key !== INDEX && key !== CONST && re.test(v)) return key;
+    return norm(v);
+  }
+
   function fullestFor(label, list) {
-    const n = norm(label);
-    const same = all().filter((f) => norm(f.label) === n);
+    const n = canonOf(label);
+    const same = all().filter((f) => canonOf(f.label) === n);
     if (same.length < 2) return same[0] ? same[0].key : "";
     let best = same[0].key, bestN = -1;
     same.forEach((f) => {
@@ -661,14 +669,19 @@
     const fields = all();
     const byLabel = new Map(fields.map((f) => [norm(f.label), f.key]));
     const fixed = new Map(fixedList().filter((f) => f && f.name).map((f) => [norm(f.name), String(f.value == null ? "" : f.value)]));
+    const listNow = rows();
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(FILL_KEY) || "{}"); } catch (e) { /* تخزين غير متاح */ }
     return cols.map((c) => {
       const n = norm(c);
       // قيمة ثابتة محفوظة بالاسم نفسه تسبق كل شيء: هي ما يقصده النموذج حرفياً
       for (const [name, value] of fixed) if (n === name || n.includes(name)) return { col: c, key: CONST, value };
-      if (byLabel.has(n)) return { col: c, key: byLabel.get(n), value: "" };
-      for (const [re, key] of SYNONYMS) if (re.test(c)) return { col: c, key, value: "" };
+      if (byLabel.has(n)) return { col: c, key: fullestFor(c, listNow) || byLabel.get(n), value: "" };
+      for (const [re, key] of SYNONYMS) {
+        if (!re.test(c)) continue;
+        if (key === INDEX || key === CONST) return { col: c, key, value: "" };
+        return { col: c, key: fullestFor(c, listNow) || key, value: "" };
+      }
       // عنوان يحتوي اسم حقل أو العكس (الحقول القادمة من النظام تطابق غالباً بالاسم)
       const near = fields.find((f) => norm(f.label).length > 3 && (n.includes(norm(f.label)) || norm(f.label).includes(n)));
       return { col: c, key: near ? near.key : "", value: "" };
