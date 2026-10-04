@@ -122,7 +122,26 @@
     { key: CRS + "نهاية الدورة", pick: (r) => r.end },
     { key: CRS + "نوع التدريب", pick: (r) => r.type },
   ];
-  const crsGroup = () => [{ name: "بيانات الدورة (من المسارات والرموز)", fields: CRS_FIELDS.map((f) => ({ key: f.key, label: f.key.slice(CRS.length) })) }];
+  /* لكل مسار مدرّبان مسجّلان في «متابعة المسارات»: العمودان في النموذج الرسمي
+     («اسم المدرب 1» و«اسم المدرب 2») يأخذ كلٌّ منهما مدرّبه لا المدرّب نفسه مرتين. */
+  const TRK = "trk:";
+  const TRK_FIELDS = [
+    { key: TRK + "المدرب الأول", pick: (t) => t.trainer1 },
+    { key: TRK + "المدرب الثاني", pick: (t) => t.trainer2 },
+  ];
+  const crsGroup = () => [{ name: "بيانات الدورة (من المسارات والرموز)",
+    fields: CRS_FIELDS.map((f) => ({ key: f.key, label: f.key.slice(CRS.length) }))
+      .concat(TRK_FIELDS.map((f) => ({ key: f.key, label: f.key.slice(TRK.length) }))) }];
+
+  /* المطابقة بنفس دالة المحوّل (تطابق تام ثم احتواء)، فلا يفترق الكشف عن التقرير */
+  function trackOf(row) {
+    const tracks = (App.store && App.store.get().tracks) || [];
+    if (!tracks.length) return null;
+    const find = App.converterCore && App.converterCore.findTrack;
+    if (find) return find(tracks, row.track);
+    const k = norm(String(row.track || "").replace(/^مسار\s*/, ""));
+    return tracks.find((t) => { const n = norm(String(t.name || "").replace(/^مسار\s*/, "")); return n && (n === k || n.includes(k) || k.includes(n)); }) || null;
+  }
 
   /* المطابقة فضفاضة: «مسار التطريز والخياطة» في اللقطة و«التطريز والخياطة» في الدليل،
      و«الدورة الثانية» و«المرحلة الثانية»، و«G1» و«المجموعة الأولى». */
@@ -170,7 +189,7 @@
     : []);
   const groups = () => GROUPS.concat(sysGroup(), crsGroup(), calcGroup(), exGroups());
   const all = () => groups().flatMap((g) => g.fields);
-  const labelOf = (k) => (all().find((f) => f.key === k) || {}).label || String(k).replace(/^x:[^:]*:/, "").replace(/^(sys|crs|calc):/, "");
+  const labelOf = (k) => (all().find((f) => f.key === k) || {}).label || String(k).replace(/^x:[^:]*:/, "").replace(/^(sys|crs|calc|trk):/, "");
 
   const ALL = GROUPS.flatMap((g) => g.fields);
 
@@ -190,7 +209,7 @@
       return seen.size;
     };
     sysFields.forEach((k) => { if (few(k)) out.push(k); });
-    CRS_FIELDS.forEach((f) => { if (few(f.key)) out.push(f.key); });
+    CRS_FIELDS.concat(TRK_FIELDS).forEach((f) => { if (few(f.key)) out.push(f.key); });
     extras.forEach((t) => (t.fields || []).forEach((c) => {
       const k = exKey(t.name, c);
       const seen = new Set();
@@ -212,7 +231,7 @@
   try {
     const saved = JSON.parse(localStorage.getItem(PICK_KEY) || "null");
     if (saved && saved.picked && saved.picked.length) {
-      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k) || /^(x|sys|crs|calc):/.test(String(k)));
+      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k) || /^(x|sys|crs|calc|trk):/.test(String(k)));
       filters = saved.filters || {};
       groupBy = saved.groupBy || "";
       if (saved.hideBlank === false) hideBlank = false;
@@ -241,8 +260,9 @@
     const list = base();
     readSysFields(list);
     const codes = (App.store && App.store.get().trackCodes) || [];
-    if (!extras.length && !codes.length) { const copy = list.map((r) => ({ ...r })); withGrades(copy); return copy; }
-    const stamp = `${list.length}|${extras.map((t) => t.name + ":" + t.count).join(",")}|${codes.length}:${codes.map((c) => c.start + c.end + c.type).join("").length}|${avgFrom}:${avgOutOf}`;
+    const trk = ((App.store && App.store.get().tracks) || []).map((t) => `${t.name}${t.trainer1}${t.trainer2}`).join("|");
+    if (!extras.length && !codes.length && !trk) { const copy = list.map((r) => ({ ...r })); withGrades(copy); return copy; }
+    const stamp = `${list.length}|${extras.map((t) => t.name + ":" + t.count).join(",")}|${codes.length}:${codes.map((c) => c.start + c.end + c.type).join("").length}|${avgFrom}:${avgOutOf}|${trk.length}`;
     if (merged && mergedFor === stamp) return merged;
     const out = list.map((r) => ({ ...r }));
     const byId = new Map(), byName = new Map();
@@ -252,10 +272,12 @@
       const n = norm(r.name);
       if (n && !byName.has(n)) byName.set(n, r);
     });
-    // بيانات الدورة من دليل الترميز
+    // بيانات الدورة من دليل الترميز، ومدربا المسار من صفحة المسارات
     out.forEach((r) => {
       const c = courseOf(r);
       if (c) CRS_FIELDS.forEach((f) => { const v = f.pick(c); if (v) r[f.key] = v; });
+      const t = trackOf(r);
+      if (t) TRK_FIELDS.forEach((f) => { const v = f.pick(t); if (v) r[f.key] = v; });
     });
     extras.forEach((t) => {
       (t.rows || []).forEach((row) => {
@@ -355,7 +377,7 @@
       + `<label class="sc-f"><span>بحث</span><input type="search" id="rep-search" placeholder="اسم أو رقم…" value="${esc(search)}"></label>`
       + `<label class="sc-f"><span>تجميع حسب</span><select id="rep-group-by"><option value="">بلا تجميع (كل السجلات)</option>
         ${["track", "course", "group", "gender", "governorate", "health", "status", "pledged", "approval", "trainer"]
-          .concat(filterFields(list).filter((k) => k.startsWith(EX) || k.startsWith(SYS) || k.startsWith(CRS)))
+          .concat(filterFields(list).filter((k) => k.startsWith(EX) || k.startsWith(SYS) || k.startsWith(CRS) || k.startsWith(TRK)))
           .map((k) => `<option value="${k}" ${groupBy === k ? "selected" : ""}>${esc(labelOf(k))}</option>`).join("")}</select></label>`;
   }
 
@@ -650,6 +672,8 @@
     [/بداية (الدورة|التدريب)|تاريخ البدء|من تاريخ/, CRS + "بداية الدورة"],
     [/نهاية (الدورة|التدريب)|تاريخ الانتهاء|إلى تاريخ|الى تاريخ/, CRS + "نهاية الدورة"],
     [/نوع التدريب|^النوع$/, CRS + "نوع التدريب"],
+    [/مدرب.*(2|٢|الثاني|الثانية)|الثاني.*مدرب/, TRK + "المدرب الثاني"],
+    [/مدرب.*(1|١|الأول|الاول)|الأول.*مدرب/, TRK + "المدرب الأول"],
     [/مدرب/, "trainer"],
     [/^الجنس$|^النوع$/, "gender"],
     [/محافظة/, "governorate"],
@@ -825,7 +849,7 @@
     </div>`;
   }
 
-  const source = (k) => k.startsWith(SYS) ? " (من النظام)" : k.startsWith(CRS) ? " (من المسارات والرموز)"
+  const source = (k) => k.startsWith(SYS) ? " (من النظام)" : k.startsWith(CRS) || k.startsWith(TRK) ? " (من المسارات والرموز)"
     : k.startsWith(CALC) ? " (محسوب)" : k.startsWith(EX) ? ` (من ملف: ${String(k).slice(EX.length).split(":")[0]})` : "";
 
   /* التشخيص يُرسم داخل الصفحة نفسها لا في نافذة منبثقة: لا حاجب يحجبه */
