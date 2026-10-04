@@ -594,6 +594,36 @@
     return Array.isArray(f) && f.length ? f : [{ name: "اسم المركز", value: "مركز مسارات التمكين للتدريب والتطوير" }];
   }
 
+  /* حقول كثيرة قد تحمل الاسم نفسه: «تاريخ الميلاد» من ملف الدورة الثانية وآخر من ملف الأولى،
+     و«الجوال» من النظام ومن ملف. نختار الأكثر امتلاءً في الصفوف المعروضة الآن. */
+  function fullestFor(label, list) {
+    const n = norm(label);
+    const same = all().filter((f) => norm(f.label) === n);
+    if (same.length < 2) return same[0] ? same[0].key : "";
+    let best = same[0].key, bestN = -1;
+    same.forEach((f) => {
+      const c = list.filter((r) => String(r[f.key] == null ? "" : r[f.key]).trim() !== "").length;
+      if (c > bestN) { bestN = c; best = f.key; }
+    });
+    return best;
+  }
+
+  /* بعد تغيير المرحلة قد يصير مصدرٌ فارغاً وآخرُ بالاسم نفسه مليئاً: ننتقل إليه
+     ما لم يكن المستخدم قد اختار بنفسه. */
+  function refreshMap(list) {
+    if (!staged || staged.mode !== "fill" || !staged.map) return;
+    staged.map.forEach((m) => {
+      if (m.user || m.key === INDEX || m.key === CONST) return;
+      const label = m.key ? labelOf(m.key) : m.col;
+      const alt = fullestFor(label, list);
+      if (alt && alt !== m.key) {
+        const now = m.key ? list.filter((r) => String(r[m.key] == null ? "" : r[m.key]).trim() !== "").length : 0;
+        const next = list.filter((r) => String(r[alt] == null ? "" : r[alt]).trim() !== "").length;
+        if (next > now) m.key = alt;
+      }
+    });
+  }
+
   function autoMap(cols) {
     const fields = all();
     const byLabel = new Map(fields.map((f) => [norm(f.label), f.key]));
@@ -664,8 +694,9 @@
       <option value="${INDEX}" ${m.key === INDEX ? "selected" : ""}>ترقيم تسلسلي</option>
       <option value="${CONST}" ${m.key === CONST ? "selected" : ""}>قيمة ثابتة</option>
       ${fields.map((f) => `<option value="${esc(f.key)}" ${m.key === f.key ? "selected" : ""}>${esc(f.label + source(f.key))}</option>`).join("")}`;
-    const done = staged.map.filter((m) => m.key).length;
     const list = rows();
+    refreshMap(list);
+    const done = staged.map.filter((m) => m.key).length;
     // المرحلة التي يخصّها هذا النموذج: اختيارها هنا أوضح من البحث عنها بين الفلاتر
     const phases = [...new Set(students().map((r) => String(r.course || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
     const phasePick = phases.length ? `<label class="sc-f rep-phase"><span>المرحلة التي يخصّها النموذج</span>
@@ -691,7 +722,9 @@
       ${(() => {
         const empty = staged.map.filter((m) => m.key && m.key !== INDEX && m.key !== CONST
           && !list.some((r) => String(r[m.key] == null ? "" : r[m.key]).trim() !== "")).map((m) => m.col);
-        return empty.length ? `<p class="conv-hint rep-warn">لا بيانات في اللقطة لـ: ${esc(empty.join("، "))} — أعد تشغيل سكربت القراءة في نظام المركز (النسخة الجديدة تقرأ أعمدة صفحة المتقدمين)، أو اربط هذه الأعمدة بحقل آخر أو بقيمة ثابتة.</p>` : "";
+        if (!empty.length) return "";
+        const where = filters.course ? `في «${esc(filters.course)}»` : "في اللقطة";
+        return `<p class="conv-hint rep-warn">لا بيانات ${where} لـ: ${esc(empty.join("، "))} — إن كان مصدرها ملفاً فهو يخصّ مرحلة أخرى (ارفع ملف هذه المرحلة)، وإن كان مصدرها النظام فأعد تشغيل سكربت القراءة. وإلا فاربطها بحقل آخر أو بقيمة ثابتة.</p>`;
       })()}
       <p class="conv-hint">يُعبّأ بما يظهر في التقرير الآن: المرحلة أعلاه وبقية الفلاتر تسري عليه.</p>
     </div>`;
@@ -878,6 +911,7 @@
       const m = e.target.closest("[data-map]");
       if (m && staged && staged.map) {
         staged.map[Number(m.dataset.map)].key = m.value;
+        staged.map[Number(m.dataset.map)].user = true;
         saveMap();
         renderImports();
         return;
