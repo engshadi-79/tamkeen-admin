@@ -719,11 +719,22 @@
     const style = [];
     const first = ws.getRow(start);
     staged.map.forEach((m, c) => { style[c] = first.getCell(c + 1).style; });
+    /* خانة منسّقة كنسبة مئوية تضرب ما فيها في مئة عند العرض: «١٠٠» تظهر «١٠٠٠٠٪».
+       فنكتب فيها الكسر (١ تعني ١٠٠٪)، ونكتب الرقم كما هو في الخانة العادية. */
+    const isPct = (c) => /%/.test((style[c] && style[c].numFmt) || "");
+    const forCell = (v, c) => {
+      const n = numOf(v);
+      if (n == null) return v;
+      if (isPct(c)) return n > 1 ? n / 100 : n;   // ٨٨ ← ٠٫٨٨، و٠٫٨٨ تبقى كما هي
+      // رقم يبقى رقماً إن لم يتغيّر بكتابته رقماً؛ «٠٥٩١٠٠٠٠٠١» يبقى نصاً وإلا سقط صفره
+      return String(n) === String(v).trim() ? n : v;
+    };
     list.forEach((row, i) => {
       const r = ws.getRow(start + i);
       staged.map.forEach((m, c) => {
         const cell = r.getCell(c + 1);
-        cell.value = valueFor(row, m, i);
+        const raw = valueFor(row, m, i);
+        cell.value = m.key === CONST ? raw : forCell(raw, c);
         if (style[c]) cell.style = { ...style[c] };
       });
       r.commit && r.commit();
