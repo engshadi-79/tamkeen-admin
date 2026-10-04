@@ -409,7 +409,7 @@
     renderCalc();
     renderFilters();
     renderImports();
-    $("rep-body").innerHTML = !students().length
+    $("rep-body").innerHTML = diagOpen ? diagCard() : !students().length
       ? `<section class="card sc-empty"><h3>لا توجد بيانات طلاب بعد</h3>
           <p>هذه الصفحة تعرض بيانات نظام المركز التي يجلبها سكربت القراءة. افتح «شاشة إحصاءات المركز» واضغط «▶ تشغيل القراءة في النظام»، وبعد «أُرسلت ✔» عُد إلى هنا.</p>
           <p class="conv-hint">${s && s.at ? `آخر لقطة وصلت ${esc(new Date(s.at).toLocaleString("ar-EG"))} وليس فيها جدول طلاب — هذا يعني أن السكربت المُشغَّل نسخة قديمة. أعد تشغيله من زر «▶ تشغيل القراءة في النظام» ليأخذ النسخة الجديدة.` : "لم تصل أي لقطة إلى الخادم بعد."}</p>
@@ -700,30 +700,25 @@
   const source = (k) => k.startsWith(SYS) ? " (من النظام)" : k.startsWith(CRS) ? " (من المسارات والرموز)"
     : k.startsWith(CALC) ? " (محسوب)" : k.startsWith(EX) ? ` (من ملف: ${String(k).slice(EX.length).split(":")[0]})` : "";
 
-  /* نافذة التشخيص: تفتح من زر ظاهر في رأس الصفحة، لا من داخل قسم مطوي */
-  function showDiagnostics() {
+  /* التشخيص يُرسم داخل الصفحة نفسها لا في نافذة منبثقة: لا حاجب يحجبه */
+  let diagOpen = false;
+  function diagCard() {
     const list = students();
     const stat = all().map((f) => ({ label: f.label + source(f.key), key: f.key,
       filled: list.filter((r) => String(r[f.key] == null ? "" : r[f.key]).trim() !== "").length }))
       .sort((a, b) => a.filled - b.filled);
-    const back = document.createElement("div");
-    back.className = "modal-backdrop open";
-    back.innerHTML = `<div class="modal rep-diag-box">
-      <div class="modal-head"><b>🩺 تشخيص البيانات</b>
-        <span class="btn-row"><button type="button" class="btn small" data-copy>⧉ نسخ التشخيص</button>
-        <button type="button" class="btn small secondary" data-close>إغلاق</button></span></div>
-      <p class="conv-hint">${ui.fmt(list.length)} طالباً في اللقطة. الحقول الفارغة أعلى القائمة.</p>
+    return `<section class="card" id="rep-diag-card">
+      <div class="page-head"><div><h3>🩺 تشخيص البيانات</h3>
+        <p class="conv-hint">${ui.fmt(list.length)} طالباً في اللقطة. الحقول الفارغة أعلى القائمة.</p></div>
+        <div class="btn-row"><button type="button" class="btn" id="rep-diag-copy">⧉ نسخ التشخيص</button>
+        <button type="button" class="btn secondary" id="rep-diag-close">✕ إغلاق التشخيص</button></div></div>
       <h4>ما قرأه سكربت القراءة من نظام المركز</h4>
       ${readLogCard()}
       <h4>امتلاء الحقول</h4>
       <table class="rep-map"><thead><tr><th>الحقل</th><th>فيه بيانات</th></tr></thead><tbody>
         ${stat.map((x) => `<tr><td>${esc(x.label)}</td>
           <td class="${x.filled === 0 ? "rep-warn" : x.filled < list.length ? "rep-part" : "rep-full"}">${ui.fmt(x.filled)} من ${ui.fmt(list.length)}</td></tr>`).join("")}
-      </tbody></table></div>`;
-    document.body.append(back);
-    back.querySelector("[data-close]").addEventListener("click", () => back.remove());
-    back.querySelector("[data-copy]").addEventListener("click", copyDiagnostics);
-    back.addEventListener("click", (e) => { if (e.target === back) back.remove(); });
+      </tbody></table></section>`;
   }
 
   /* تشخيص يُنسخ ويُرسل عند استعصاء حقل: من أين يأتي كل حقل، وكم صفاً فيه قيمة */
@@ -873,7 +868,11 @@
         if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
       }, 300);
     });
-    $("rep-body").addEventListener("click", (e) => { if (e.target.closest("#rep-pull")) pull(true); });
+    $("rep-body").addEventListener("click", (e) => {
+      if (e.target.closest("#rep-pull")) pull(true);
+      if (e.target.closest("#rep-diag-copy")) copyDiagnostics();
+      if (e.target.closest("#rep-diag-close")) { diagOpen = false; render(); }
+    });
     $("rep-imports").addEventListener("change", async (e) => {
       if (e.target.id === "rep-fill-phase") { filters.course = e.target.value; save(); render(); return; }
       const m = e.target.closest("[data-map]");
@@ -906,7 +905,7 @@
       if (e.target.closest("#rep-hide-blank")) { hideBlank = true; save(); render(); }
     });
     $("rep-clear").addEventListener("click", () => { filters = {}; search = ""; groupBy = ""; hideBlank = true; save(); render(); });
-    $("rep-diag").addEventListener("click", showDiagnostics);
+    $("rep-diag").addEventListener("click", () => { diagOpen = true; render(); $("rep-diag-card").scrollIntoView({ block: "start" }); });
     $("rep-excel").addEventListener("click", toExcel);
     $("rep-print").addEventListener("click", print);
   }

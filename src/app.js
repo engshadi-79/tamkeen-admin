@@ -41,6 +41,27 @@
     window.scrollTo(0, 0);
   }
 
+  /* رقم النسخة التي يشغّلها هذا المتصفح فعلاً، وزر يمسح المخزَّن ويجلب الأحدث.
+     بدونه لا يعرف المستخدم (ولا نحن) أنه ما زال على إصدار قديم. */
+  function showVersion() {
+    const src = (document.querySelector('script[src*="src/app.js"]') || {}).src || "";
+    const v = (src.match(/[?&]v=(\d+)/) || [])[1];
+    const out = document.getElementById("foot-version");
+    if (out && v) out.textContent = `النسخة ${v}`;
+    const btn = document.getElementById("foot-refresh");
+    if (btn) btn.addEventListener("click", async () => {
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch (e) { /* متصفح بلا تخزين مؤقت */ }
+      location.reload(true);
+    });
+  }
+
   /* ===== الوضع الليلي (رموز قالب Gentelella) ===== */
   const THEME_KEY = "tamkeen-admin:theme";
   function applyTheme(mode) {
@@ -121,6 +142,7 @@
     App.registry.init();
     if (App.screen) App.screen.init();
     if (App.reports) App.reports.init();
+    showVersion();
     if (App.watch) App.watch.init();
     App.roster.init();
     App.admin.init();

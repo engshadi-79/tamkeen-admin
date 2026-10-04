@@ -1412,3 +1412,4 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .rep-readlog .rep-map td { font-size: 12px; }
 .rep-diag-box { max-width: 760px; width: 94vw; max-height: 86vh; overflow: auto; }
 .rep-diag-box h4 { margin: 14px 0 6px; color: var(--navy-900); font-size: 14px; }
+#foot-refresh { margin-right: 10px; font-size: 12px; }
