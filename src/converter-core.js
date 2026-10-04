@@ -1496,7 +1496,7 @@
   App.converterCore = {
     MAX_ROWS, normalizeHeader, suggestColumnMapping, resolveDefaultColumn, computeGroupKey,
     isDocxName, readTemplateHeaders, readTemplatePlaceholders, readDataFile, mergeDataFiles, guessKey, generate,
-    gradeOf, addComputedGrade, preferComputedGrade, guessAverageColumn, GRADE_COLUMN,
+    gradeOf, addComputedGrade, preferComputedGrade, guessAverageColumn, GRADE_COLUMN, findTrack,
     addTrainerColumns, preferTrainers, trainerColumnFor, guessTrackColumn, TRAINER_COLS, sortRowsByColumn,
     addTrackDataColumns, preferTrackData, trackDataFieldFor, TRACK_DATA_COLS, TRACK_DATA_HEADERS,
     addAgeColumn, preferAge, guessBirthColumn, ageFrom, AGE_COLUMN,
