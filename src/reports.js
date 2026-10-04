@@ -395,6 +395,22 @@
     if (say) ui.toast(students().length ? (students().length === before ? "لا جديد في اللقطة" : "وصلت بيانات جديدة") : "لا توجد لقطة فيها جدول طلاب");
   }
 
+  const TAB_KEY = "tamkeen-admin:report-tab";
+  let tab = "report";
+  try { tab = localStorage.getItem(TAB_KEY) || "report"; } catch (e) { /* تخزين غير متاح */ }
+
+  function showTab(name) {
+    tab = name;
+    try { localStorage.setItem(TAB_KEY, name); } catch (e) { /* ممتلئ */ }
+    ["report", "form", "sources"].forEach((t) => {
+      const pane = $(`rep-pane-${t}`);
+      if (pane) pane.hidden = t !== name;
+    });
+    document.querySelectorAll("#rep-tabs [data-rep-tab]").forEach((b) => b.classList.toggle("active", b.dataset.repTab === name));
+    if (name !== "sources") diagOpen = false;
+    render();
+  }
+
   function render() {
     if (!$("rep-body")) return;
     const s = snap();
@@ -408,8 +424,13 @@
     renderFields();
     renderCalc();
     renderFilters();
-    renderImports();
-    $("rep-body").innerHTML = diagOpen ? diagCard() : !students().length
+    renderForm();
+    renderSources();
+    const sum = $("rep-pick-sum");
+    if (sum) sum.textContent = picked.length ? `${countOf(picked.length, "حقول", "حقلاً", "حقل", "حقلان")}: ${picked.map(labelOf).slice(0, 4).join("، ")}${picked.length > 4 ? "…" : ""}` : "لم تختر حقلاً بعد";
+    const diagBox = $("rep-diag-body");
+    if (diagBox) diagBox.innerHTML = diagOpen ? diagCard() : "";
+    $("rep-body").innerHTML = !students().length
       ? `<section class="card sc-empty"><h3>لا توجد بيانات طلاب بعد</h3>
           <p>هذه الصفحة تعرض بيانات نظام المركز التي يجلبها سكربت القراءة. افتح «شاشة إحصاءات المركز» واضغط «▶ تشغيل القراءة في النظام»، وبعد «أُرسلت ✔» عُد إلى هنا.</p>
           <p class="conv-hint">${s && s.at ? `آخر لقطة وصلت ${esc(new Date(s.at).toLocaleString("ar-EG"))} وليس فيها جدول طلاب — هذا يعني أن السكربت المُشغَّل نسخة قديمة. أعد تشغيله من زر «▶ تشغيل القراءة في النظام» ليأخذ النسخة الجديدة.` : "لم تصل أي لقطة إلى الخادم بعد."}</p>
@@ -561,31 +582,48 @@
     } catch (e) { if (!quiet) ui.toast(e.message); }
   }
 
-  function renderImports() {
-    const box = $("rep-imports");
+  /* الصفحة ثلاث وظائف: تقرير تبنيه، ونموذج رسمي تعبّئه، ومصادر تغذّيهما.
+     فُصلت كلٌّ في تبويبها حتى لا تزدحم الشاشة بما لا يلزم الآن. */
+  const uploadRow = (hint) => `<div class="rep-import-row">
+      <label class="btn secondary" for="rep-file">⬆ اختر ملف إكسل</label>
+      <input type="file" id="rep-file" accept=".xlsx,.xlsm" hidden>
+      <span class="conv-hint">${hint}</span>
+    </div>`;
+
+  function renderForm() {
+    const box = $("rep-form");
     if (!box) return;
+    box.innerHTML = staged && staged.mode === "fill"
+      ? fillCard()
+      : `<h3>تعبئة نموذج رسمي</h3>
+        <p class="conv-hint">ارفع النموذج <b>فارغاً</b> (عناوينه بلا صفوف)، فأقابل أعمدته بحقول النظام وأعيده إليك معبّأً بتنسيقه كما هو.</p>
+        ${uploadRow("نموذج الوزارة مثلاً. إن كان الملف يحمل بيانات فسيُضاف مصدرَ حقول بدل أن يُعبَّأ.")}
+        ${staged ? stagedImportCard() : ""}`;
+  }
+
+  const stagedImportCard = () => `<div class="rep-staged">
+      <b>${esc(staged.name)}</b>${staged.sheet ? ` — ورقة «${esc(staged.sheet)}»` : ""} — ${countOf(staged.rows.length, "صفوف", "صفاً", "صف", "صفان")}، ${countOf(staged.fields.length, "حقول", "حقلاً", "حقل", "حقلان")}، المطابقة بـ${esc(staged.matchedBy)}${staged.bytes ? `، ${(staged.bytes / 1048576).toFixed(2)} ميغا` : ""}.
+      ${staged.dropped ? `<div class="conv-hint">تُركت أعمدة فارغة تماماً: ${esc(staged.dropped.join("، "))}</div>` : ""}
+      <span class="${staged.hits ? "" : "rep-warn"}">${staged.hits ? `طابق ${countOf(staged.hits, "طلاب", "طالباً", "طالب", "طالبان")} من اللقطة` : "لم يطابق أي طالب في اللقطة الحالية"}</span>
+      <div class="rep-chips">${staged.fields.map((c) => `<span class="rep-chip">${esc(c)}</span>`).join("")}</div>
+      <div class="btn-row"><button type="button" class="btn" id="rep-save-import">حفظ على الخادم</button>
+      <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
+    </div>`;
+
+  function renderSources() {
+    const box = $("rep-sources");
+    if (!box) return;
+    const s = snap();
     const list = extras.map((t) => `<li><b>${esc(t.name)}</b>
         <span class="conv-hint">${countOf(t.count || (t.rows || []).length, "صفوف", "صفاً", "صف", "صفان")} · ${countOf((t.fields || []).length, "حقول", "حقلاً", "حقل", "حقلان")} · ${esc(t.by || "")} ${t.at ? esc(new Date(t.at).toLocaleDateString("ar-EG")) : ""}</span>
         <button type="button" class="conv-link" data-drop="${esc(t.name)}">حذف</button></li>`).join("");
-    box.innerHTML = `<div class="rep-import-row">
-        <label class="btn secondary" for="rep-file">⬆ اختر ملف إكسل</label>
-        <input type="file" id="rep-file" accept=".xlsx,.xlsm" hidden>
-        <span class="conv-hint">يُربط بالطلاب بعمود «رقم الهوية» أو «الاسم»، وبقية الأعمدة تصير حقولاً للاختيار والفلترة.</span>
-      </div>
-      ${staged && staged.mode === "fill" ? fillCard() : ""}
-      ${staged && staged.mode !== "fill" ? `<div class="rep-staged">
-        <b>${esc(staged.name)}</b>${staged.sheet ? ` — ورقة «${esc(staged.sheet)}»` : ""} — ${countOf(staged.rows.length, "صفوف", "صفاً", "صف", "صفان")}، ${countOf(staged.fields.length, "حقول", "حقلاً", "حقل", "حقلان")}، المطابقة بـ${esc(staged.matchedBy)}${staged.bytes ? `، ${(staged.bytes / 1048576).toFixed(2)} ميغا` : ""}.
-        ${staged.dropped ? `<div class="conv-hint">تُركت أعمدة فارغة تماماً: ${esc(staged.dropped.join("، "))}</div>` : ""}
-        <span class="${staged.hits ? "" : "rep-warn"}">${staged.hits ? `طابق ${countOf(staged.hits, "طلاب", "طالباً", "طالب", "طالبان")} من اللقطة` : "لم يطابق أي طالب في اللقطة الحالية"}</span>
-        <div class="rep-chips">${staged.fields.map((c) => `<span class="rep-chip">${esc(c)}</span>`).join("")}</div>
-        <div class="btn-row"><button type="button" class="btn" id="rep-save-import">حفظ على الخادم</button>
-        <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
-      </div>` : ""}
-      ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}
-      <details class="rep-readlog"><summary>ماذا قرأ سكربت القراءة من نظام المركز؟</summary>
-        ${readLogCard()}
-        <div class="btn-row"><button type="button" class="btn small secondary" id="rep-copy-diag">⧉ نسخ التشخيص</button></div>
-      </details>`;
+    box.innerHTML = `<div class="page-head"><div><h3>مصادر البيانات</h3>
+        <p class="conv-hint">${s && s.at ? `لقطة نظام المركز: ${esc(new Date(s.at).toLocaleString("ar-EG"))}` : "لم تصل لقطة من نظام المركز بعد"}</p></div>
+        <div class="btn-row"><button type="button" class="btn secondary" id="rep-pull-src">🔄 اسحب آخر لقطة</button>
+        <button type="button" class="btn secondary" id="rep-diag">🩺 تشخيص البيانات</button></div></div>
+      <h4>جداول إكسل مضافة</h4>
+      ${staged && staged.mode !== "fill" ? stagedImportCard() : uploadRow("كشف فيه بيانات الطلاب؛ أعمدته تصير حقولاً تُستعمل في التقارير والنماذج.")}
+      ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}`;
   }
 
   /* ===== تعبئة نموذج رسمي من بيانات النظام =====
@@ -912,42 +950,78 @@
   }
 
   /* ===== الأحداث ===== */
+  /* مستمع واحد للقسم كله بدل مستمع لكل صندوق: الصناديق تُعاد كتابتها عند كل رسم،
+     وتعليق المستمعات على الجذر يبقيها صالحة بلا إعادة ربط. */
   function init() {
-    if (!$("rep-body")) return;
-    $("rep-fields").addEventListener("change", (e) => {
-      const b = e.target.closest("[data-field]");
-      if (!b) return;
-      const k = b.dataset.field;
-      picked = b.checked ? [...new Set([...picked, k])] : picked.filter((x) => x !== k);
-      order();
-      save();
-      render();
+    const root = document.getElementById("view-reports");
+    if (!root) return;
+
+    root.addEventListener("change", async (e) => {
+      const t = e.target;
+
+      if (t.closest("[data-field]")) {
+        const k = t.dataset.field;
+        picked = t.checked ? [...new Set([...picked, k])] : picked.filter((x) => x !== k);
+        order(); save(); render();
+        return;
+      }
+      if (t.id === "rep-avg-from") { avgFrom = t.value; avgOutOf = 0; merged = null; saveAvg(); render(); return; }
+      if (t.id === "rep-avg-out") { avgOutOf = Math.max(1, Number(t.value) || 100); merged = null; saveAvg(); render(); return; }
+      if (t.closest("[data-filter]")) { filters[t.dataset.filter] = t.value; save(); render(); return; }
+      if (t.id === "rep-group-by") { groupBy = t.value; save(); render(); return; }
+      if (t.id === "rep-fill-phase") { filters.course = t.value; save(); render(); return; }
+      if (t.closest("[data-map]") && staged && staged.map) {
+        const i = Number(t.dataset.map);
+        staged.map[i].key = t.value;
+        staged.map[i].user = true;
+        saveMap();
+        renderForm();
+        return;
+      }
+      if (t.id === "rep-file") {
+        const f = t.files && t.files[0];
+        if (!f) return;
+        try { staged = await readFile(f); } catch (err) { staged = null; ui.toast(err.message); }
+        t.value = "";
+        if (staged && staged.mode === "fill") showTab("form");
+        else if (staged) showTab("sources");
+        else render();
+      }
     });
-    $("rep-fields").addEventListener("click", (e) => {
+
+    root.addEventListener("click", (e) => {
+      const tabBtn = e.target.closest("[data-rep-tab]");
+      if (tabBtn) { showTab(tabBtn.dataset.repTab); return; }
+      const drop = e.target.closest("[data-drop]");
+      if (drop) { dropImport(drop.dataset.drop); return; }
+      if (e.target.closest("#rep-save-import")) return void saveImport();
+      if (e.target.closest("#rep-fill")) return void fillTemplate();
+      if (e.target.closest("#rep-cancel-import")) { staged = null; render(); return; }
+      if (e.target.closest("#rep-pull") || e.target.closest("#rep-pull-src")) return void pull(true);
+      if (e.target.closest("#rep-diag")) { diagOpen = true; render(); const c = $("rep-diag-card"); if (c) c.scrollIntoView({ block: "start" }); return; }
+      if (e.target.closest("#rep-diag-copy")) return void copyDiagnostics();
+      if (e.target.closest("#rep-diag-close")) { diagOpen = false; render(); return; }
+      if (e.target.closest("#rep-show-blank")) { hideBlank = false; save(); render(); return; }
+      if (e.target.closest("#rep-hide-blank")) { hideBlank = true; save(); render(); return; }
+      if (e.target.closest("#rep-clear")) { filters = {}; search = ""; groupBy = ""; hideBlank = true; save(); render(); return; }
+      if (e.target.closest("#rep-excel")) return void toExcel();
+      if (e.target.closest("#rep-print")) return void print();
       const all = e.target.closest("[data-all]"), none = e.target.closest("[data-none]");
-      const g = groups().find((x) => x.name === ((all && all.dataset.all) || (none && none.dataset.none)));
-      if (!g) return;
-      const keys = g.fields.map((f) => f.key);
-      picked = all ? [...new Set([...picked, ...keys])] : picked.filter((k) => !keys.includes(k));
-      order();
-      save();
-      render();
+      if (all || none) {
+        const g = groups().find((x) => x.name === ((all && all.dataset.all) || (none && none.dataset.none)));
+        if (!g) return;
+        const keys = g.fields.map((f) => f.key);
+        picked = all ? [...new Set([...picked, ...keys])] : picked.filter((k) => !keys.includes(k));
+        order(); save(); render();
+      }
     });
-    $("rep-calc").addEventListener("change", (e) => {
-      if (e.target.id === "rep-avg-from") { avgFrom = e.target.value; avgOutOf = 0; }
-      else if (e.target.id === "rep-avg-out") avgOutOf = Math.max(1, Number(e.target.value) || 100);
-      else return;
-      merged = null;
-      saveAvg();
-      render();
-    });
-    $("rep-filters").addEventListener("change", (e) => {
-      const sel = e.target.closest("[data-filter]");
-      if (sel) { filters[sel.dataset.filter] = sel.value; save(); render(); return; }
-      if (e.target.id === "rep-group-by") { groupBy = e.target.value; save(); render(); }
-    });
+
     let typing = null;
-    $("rep-filters").addEventListener("input", (e) => {
+    root.addEventListener("input", (e) => {
+      if (e.target.closest("[data-const]") && staged && staged.map) {
+        staged.map[Number(e.target.dataset.const)].value = e.target.value;
+        return;
+      }
       if (e.target.id !== "rep-search") return;
       const v = e.target.value;
       clearTimeout(typing);
@@ -958,47 +1032,8 @@
         if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
       }, 300);
     });
-    $("rep-body").addEventListener("click", (e) => {
-      if (e.target.closest("#rep-pull")) pull(true);
-      if (e.target.closest("#rep-diag-copy")) copyDiagnostics();
-      if (e.target.closest("#rep-diag-close")) { diagOpen = false; render(); }
-    });
-    $("rep-imports").addEventListener("change", async (e) => {
-      if (e.target.id === "rep-fill-phase") { filters.course = e.target.value; save(); render(); return; }
-      const m = e.target.closest("[data-map]");
-      if (m && staged && staged.map) {
-        staged.map[Number(m.dataset.map)].key = m.value;
-        staged.map[Number(m.dataset.map)].user = true;
-        saveMap();
-        renderImports();
-        return;
-      }
-      const f = e.target.id === "rep-file" && e.target.files && e.target.files[0];
-      if (!f) return;
-      try { staged = await readFile(f); } catch (err) { staged = null; ui.toast(err.message); }
-      e.target.value = "";
-      renderImports();
-    });
-    $("rep-imports").addEventListener("click", (e) => {
-      const drop = e.target.closest("[data-drop]");
-      if (drop) { dropImport(drop.dataset.drop); return; }
-      if (e.target.closest("#rep-save-import")) saveImport();
-      if (e.target.closest("#rep-fill")) fillTemplate();
-      if (e.target.closest("#rep-copy-diag")) copyDiagnostics();
-      if (e.target.closest("#rep-cancel-import")) { staged = null; renderImports(); }
-    });
-    $("rep-imports").addEventListener("input", (e) => {
-      const k = e.target.closest("[data-const]");
-      if (k && staged && staged.map) staged.map[Number(k.dataset.const)].value = e.target.value;
-    });
-    $("rep-meta").addEventListener("click", (e) => {
-      if (e.target.closest("#rep-show-blank")) { hideBlank = false; save(); render(); }
-      if (e.target.closest("#rep-hide-blank")) { hideBlank = true; save(); render(); }
-    });
-    $("rep-clear").addEventListener("click", () => { filters = {}; search = ""; groupBy = ""; hideBlank = true; save(); render(); });
-    $("rep-diag").addEventListener("click", () => { diagOpen = true; render(); $("rep-diag-card").scrollIntoView({ block: "start" }); });
-    $("rep-excel").addEventListener("click", toExcel);
-    $("rep-print").addEventListener("click", print);
+
+    showTab(tab);
   }
 
   App.reports = { init, render: () => { render(); pull(false); loadImports(true).then(render); } };

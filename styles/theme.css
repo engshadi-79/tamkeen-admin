@@ -1413,3 +1413,27 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .rep-diag-box { max-width: 760px; width: 94vw; max-height: 86vh; overflow: auto; }
 .rep-diag-box h4 { margin: 14px 0 6px; color: var(--navy-900); font-size: 14px; }
 #foot-refresh { margin-right: 10px; font-size: 12px; }
+
+/* ===== تنظيم صفحة منشئ التقارير: تبويبات ولوحة حقول مطويّة ===== */
+.rep-tabs { margin: 0 0 14px; }
+.rep-pane { display: block; }
+.rep-pick { padding: 0; }
+.rep-pick > summary { cursor: pointer; padding: 11px 14px; display: flex; align-items: center; gap: 10px;
+  font-size: 14px; color: var(--navy-900); list-style: none; }
+.rep-pick > summary::-webkit-details-marker { display: none; }
+.rep-pick > summary::before { content: "▾"; color: var(--muted); font-size: 12px; transition: transform .15s; }
+.rep-pick:not([open]) > summary::before { transform: rotate(90deg); }
+.rep-pick > summary:hover { background: var(--bg); }
+.rep-pick-sum { color: var(--muted); font-size: 12.5px; font-weight: 400; }
+.rep-pick > .rep-fields, .rep-pick > .rep-calc { padding: 0 14px 14px; }
+.rep-pick > .rep-calc { margin-top: 0; padding-top: 10px; }
+.rep-bar { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.rep-bar .sc-filters { flex: 1; margin: 0; }
+.rep-bar > .conv-link { padding-bottom: 8px; white-space: nowrap; }
+#rep-form h3, #rep-sources h3 { margin: 0 0 4px; }
+#rep-sources h4 { margin: 16px 0 8px; color: var(--navy-900); font-size: 13.5px; }
+#rep-sources .page-head { margin-bottom: 6px; }
+@media (max-width: 760px) {
+  .rep-bar { flex-direction: column; align-items: stretch; }
+  .rep-tabs { overflow-x: auto; }
+}
