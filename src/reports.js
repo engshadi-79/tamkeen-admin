@@ -495,24 +495,56 @@
   };
 
   let staged = null;    // الملف المقروء قبل رفعه
+  const MAX_IMPORT = 1_500_000;   // سقف الخادم للجدول الواحد
+
+  /* الملف الشامل قد يوزّع دوراته على أوراق: نأخذ الورقة الأغنى بالبيانات لا أولاها */
+  function bestSheet(wb) {
+    let best = null, bestRows = -1, bestName = "";
+    wb.worksheets.forEach((ws) => {
+      let grid;
+      try { grid = sheetRows(ws); } catch (e) { return; }
+      let read;
+      try { read = readGrid(grid); } catch (e) { return; }
+      const n = read.mode === "fill" ? 0 : read.rows.length;
+      if (n > bestRows) { bestRows = n; best = read; bestName = ws.name; }
+    });
+    if (!best) throw new Error("لم أجد في الملف ورقة فيها جدول");
+    best.sheet = bestName;
+    return best;
+  }
+
   async function readFile(file) {
     if (typeof ExcelJS === "undefined") throw new Error("تعذّر تحميل مكتبة Excel");
+    const buf = await file.arrayBuffer();
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(await file.arrayBuffer());
-    const ws = wb.worksheets[0];
-    if (!ws) throw new Error("الملف لا يحتوي ورقة بيانات");
-    const out = readGrid(sheetRows(ws));
+    await wb.xlsx.load(buf);
+    if (!wb.worksheets.length) throw new Error("الملف لا يحتوي ورقة بيانات");
+    const out = wb.worksheets.length === 1 ? readGrid(sheetRows(wb.worksheets[0])) : bestSheet(wb);
     out.name = file.name.replace(/\.(xlsx|xlsm|xls)$/i, "").trim().slice(0, 80) || "جدول";
     if (out.mode === "fill") {
-      out.buf = await file.arrayBuffer();
+      out.buf = buf;
       out.map = autoMap(out.cols);
       return out;
     }
-    // كم صفاً منها سيجد طالباً؟ نقولها للمستخدم قبل الرفع
+    // عمود لا قيمة فيه لأي صف لا يُرفع: يثقل الجدول ويزحم قائمة الحقول
+    const empty = out.fields.filter((c) => !out.rows.some((r) => String(r[c] == null ? "" : r[c]).trim() !== ""));
+    if (empty.length) {
+      out.dropped = empty;
+      out.fields = out.fields.filter((c) => !empty.includes(c));
+      out.rows.forEach((r) => empty.forEach((c) => delete r[c]));
+    }
+    if (!out.fields.length) throw new Error("كل أعمدة الملف فارغة عدا الاسم والهوية");
+    // كم صفاً منها سيجد طالباً؟ وكم حجمه؟ نقولهما قبل الرفع لا بعد الرفض
     const list = base();
     const ids = new Set(list.map((r) => idOf(r.nid)).filter(Boolean));
     const names = new Set(list.map((r) => norm(r.name)).filter(Boolean));
     out.hits = out.rows.filter((r) => (r._id && ids.has(idOf(r._id))) || (r._name && names.has(norm(r._name)))).length;
+    out.bytes = JSON.stringify(out.rows).length;
+    if (out.bytes > MAX_IMPORT) {
+      const heavy = [...out.fields].map((c) => ({ c, n: out.rows.reduce((a, r) => a + String(r[c] || "").length, 0) }))
+        .sort((a, b) => b.n - a.n).slice(0, 3).map((x) => x.c).join("، ");
+      throw new Error(`الجدول ${(out.bytes / 1048576).toFixed(1)} ميغا والسقف ١٫٥ — احذف من الملف أعمدة لا يحتاجها التقرير (أثقلها: ${heavy}) أو قسّمه إلى ملفين.`);
+    }
     return out;
   }
 
@@ -542,7 +574,8 @@
       </div>
       ${staged && staged.mode === "fill" ? fillCard() : ""}
       ${staged && staged.mode !== "fill" ? `<div class="rep-staged">
-        <b>${esc(staged.name)}</b> — ${countOf(staged.rows.length, "صفوف", "صفاً", "صف", "صفان")}، ${countOf(staged.fields.length, "حقول", "حقلاً", "حقل", "حقلان")}، المطابقة بـ${esc(staged.matchedBy)}.
+        <b>${esc(staged.name)}</b>${staged.sheet ? ` — ورقة «${esc(staged.sheet)}»` : ""} — ${countOf(staged.rows.length, "صفوف", "صفاً", "صف", "صفان")}، ${countOf(staged.fields.length, "حقول", "حقلاً", "حقل", "حقلان")}، المطابقة بـ${esc(staged.matchedBy)}${staged.bytes ? `، ${(staged.bytes / 1048576).toFixed(2)} ميغا` : ""}.
+        ${staged.dropped ? `<div class="conv-hint">تُركت أعمدة فارغة تماماً: ${esc(staged.dropped.join("، "))}</div>` : ""}
         <span class="${staged.hits ? "" : "rep-warn"}">${staged.hits ? `طابق ${countOf(staged.hits, "طلاب", "طالباً", "طالب", "طالبان")} من اللقطة` : "لم يطابق أي طالب في اللقطة الحالية"}</span>
         <div class="rep-chips">${staged.fields.map((c) => `<span class="rep-chip">${esc(c)}</span>`).join("")}</div>
         <div class="btn-row"><button type="button" class="btn" id="rep-save-import">حفظ على الخادم</button>
