@@ -14,7 +14,8 @@
   const TAMKEEN = "https://wvgrjnwowueoiphgcrhg.supabase.co/functions/v1/tamkeen";
   const EVERY = 15 * 60 * 1000;   // كل ربع ساعة
   const DELAY = 350;              // مهلة بين الطلبات حتى لا نثقل على الخادم
-  const MAX_PAGES = 60;
+  const MAX_PAGES = 300;          // جدول من آلاف الصفوف يُقرأ كاملاً لا أوّله
+  const PER_PAGE = 100;           // نطلب صفحة أكبر؛ النظام إن تجاهلها فلا ضرر
 
   /* رمز الشاشة: يُطلب مرة واحدة ويُحفظ في هذا المتصفح
      (لمسحه: localStorage.removeItem("tamkeen-screen-key")) */
@@ -127,9 +128,9 @@
 
   /* كل أعمدة الصف كما يسمّيها النظام، لتصير حقولاً في «منشئ التقارير» بلا أن نعدّ أسماءها هنا:
      ما يضيفه المركز في جداوله غداً يظهر عندنا من تلقائه. */
-  const SYS_SKIP = /^(#|م|مسلسل|تسلسل|الرقم|إجراءات|اجراءات|خيارات|تعديل|حذف|عرض|تحديد|الصورة)$/;
+  const SYS_SKIP = /^(#|م|مسلسل|تسلسل|الرقم|الإجراءات|الاجراءات|إجراءات|اجراءات|خيارات|تعديل|حذف|عرض|تحديد|الصورة)$|^اختيار/;
   /* أعمدة لها حقولها المسمّاة في جدول التقارير، فلا تتكرر مرتين في قائمة الحقول */
-  const SYS_KNOWN = /^(الاسم|الطالب|اسم الطالب|رقم الهوية|الهوية|الجوال|الهاتف|الجنس|المحافظة|الحالة الصحية|الحالة الاجتماعية|مستوى الدخل|المسار|المجموعة|الحالة|رقم الطالب|الدورة|المرحلة|المدرب|العملي|النظري|الأنشطة|الانشطة|المجموع|الاعتماد)$/;
+  const SYS_KNOWN = /^(الاسم|الطالب|اسم الطالب|رقم الهوية|الهوية|الجوال|الهاتف|الجنس|المحافظة|الحالة الصحية|الحالة الاجتماعية|مستوى الدخل|المسار|المجموعة|الحالة|رقم الطالب|الدورة|المرحلة|المدرب|العملي|النظري|الأنشطة|الانشطة|المجموع|الاعتماد)$|^(المسار|المجموعة)\s*\/|^الحالة\s*\//;
   function sysOf(head, row) {
     const out = {};
     head.forEach((h, i) => {
@@ -233,18 +234,25 @@
 
   async function eachPage(path, label, need, onRows) {
     let seenFirst = "";
+    let wide = true;   // نطلب صفحة أكبر، فإن لم يقبلها النظام رجعنا إلى ترقيمه العادي
     for (let page = 1; page <= MAX_PAGES; page++) {
       if (stopped) return;
       const sep = path.includes("?") ? "&" : "?";
-      let doc;
-      try {
-        doc = await getDoc(`${path}${sep}page=${page}`);
-      } catch (e) {
-        if (page === 1) readLog[label] = { path, rows: 0, pages: 0, cols: [], error: e.message };
-        throw e;
+      const url = (w) => `${path}${sep}${w ? `per_page=${PER_PAGE}&` : ""}page=${page}`;
+      let doc = null, all = [], t = null;
+      for (const w of wide ? [true, false] : [false]) {
+        try {
+          doc = await getDoc(url(w));
+        } catch (e) {
+          if (w) continue;                                   // الصفحة الأكبر مرفوضة: جرّب العادية
+          if (page === 1) readLog[label] = { path, rows: 0, pages: 0, cols: [], error: e.message };
+          throw e;
+        }
+        all = tables(doc);
+        t = pick(all, ...need);
+        if (t && t.rows.length) { wide = w; break; }
+        if (!w) break;
       }
-      const all = tables(doc);
-      const t = pick(all, ...need);
       if (!t || !t.rows.length) {
         if (page === 1) readLog[label] = { path, rows: 0, pages: 0, cols: [], error: all.length ? "لم يطابق أي جدول الأعمدة المطلوبة" : "لا جدول في الصفحة",
           seen: all.slice(0, 3).map((x) => x.head.slice(0, 12).join(" | ")) };
@@ -256,6 +264,7 @@
       say(`${label} — صفحة ${page}`);
       noteRead(label, path, t, t.rows.length);
       onRows(t);
+      if (page === MAX_PAGES && readLog[label]) readLog[label].capped = `توقّفت القراءة عند ${MAX_PAGES} صفحة؛ قد يكون في الجدول أكثر`;
     }
   }
 
