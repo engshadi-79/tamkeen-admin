@@ -3,6 +3,60 @@
   const { store, ui } = App;
   const ATTENDANCE_THRESHOLD = 80;
 
+  /* بطاقات الأرقام ببنية القالب: أيقونة، ثم عنوان وقيمة وفرق، ثم أعمدة صغيرة.
+     الأعمدة ليست زينة: كل عمود مسارٌ وارتفاعه قيمته في هذا المؤشر. */
+  const SVG = {
+    people: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    check: '<path d="M20 6L9 17l-5-5"/>',
+    tasks: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>',
+  };
+  const icon = (tone, path) => `<div class="stat-icon ${tone}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${path}</svg></div>`;
+
+  /* شريط صغير لكل مسار، ارتفاعه نسبته إلى أكبر قيمة، مع عنوانه عند التحويم */
+  function spark(values, labels, tone) {
+    const nums = values.map((v) => Number(v) || 0);
+    const max = Math.max(...nums, 1);
+    return `<div class="stat-spark">${nums.slice(-12).map((v, i) => {
+      const h = Math.max(8, Math.round((v / max) * 100));
+      const title = labels && labels[i] ? `${labels[i]}: ${ui.fmt(v)}` : ui.fmt(v);
+      return `<div class="bar" style="height:${h}%${tone ? `;background:var(--${tone})` : ""}" title="${ui.esc(title)}"></div>`;
+    }).join("")}</div>`;
+  }
+
+  const statCard = (tone, path, label, value, badge, sub, bars) => `<div class="card">
+      <div class="stat">
+        ${icon(tone, path)}
+        <div class="stat-content">
+          <div class="stat-label">${ui.esc(label)}</div>
+          <div class="stat-value-row"><span class="stat-value">${value}</span>${badge || ""}</div>
+          <div class="stat-subtext">${sub}</div>
+        </div>
+        ${bars || ""}
+      </div>
+    </div>`;
+
+  function statCards(trackList, s, pending, overdue) {
+    const names = trackList.map((t) => t.name);
+    const pct = (v) => `${ui.fmt(v, 1)}%`;
+    const good = (ok, text) => `<span class="stat-change ${ok ? "up" : "down"}">${text}</span>`;
+    return [
+      statCard("teal", SVG.people, "المستفيدون", ui.fmt(s.beneficiaries), "",
+        `موزعون على ${ui.fmt(trackList.length)} مسارات`,
+        spark(trackList.map((t) => t.beneficiaries), names)),
+      statCard("blue", SVG.clock, "إنجاز الساعات", pct(s.completionPct), "",
+        `من ${store.TOTAL_HOURS} ساعة لكل مسار`,
+        spark(trackList.map((t) => App.tracks.hoursPct(t)), names, "blue")),
+      statCard(Number(s.attendancePct) >= ATTENDANCE_THRESHOLD ? "green" : "yellow", SVG.check, "متوسط الحضور", pct(s.attendancePct),
+        good(Number(s.attendancePct) >= ATTENDANCE_THRESHOLD, `المستهدف ${ATTENDANCE_THRESHOLD}%`),
+        `${ui.fmt(trackList.filter((t) => Number(t.attendancePct) < ATTENDANCE_THRESHOLD).length)} مسارات دون الحد`,
+        spark(trackList.map((t) => t.attendancePct), names, Number(s.attendancePct) >= ATTENDANCE_THRESHOLD ? "green" : "yellow")),
+      statCard(overdue.length ? "red" : "purple", SVG.tasks, "مهام مفتوحة", ui.fmt(pending.length),
+        overdue.length ? `<span class="stat-change down">${ui.fmt(overdue.length)} متأخرة</span>` : "",
+        overdue.length ? "تحتاج متابعة اليوم" : "لا توجد مهام متأخرة", ""),
+    ].join("");
+  }
+
   function render() {
     const { tasks } = store.get();
     const trackList = App.tracks.ordered();
@@ -12,11 +66,7 @@
     const dateEl = document.getElementById("dash-date");
     if (dateEl) dateEl.textContent = new Intl.DateTimeFormat("ar-PS", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date());
 
-    document.getElementById("stats").innerHTML = `
-      <div class="stat stat-beneficiaries"><div class="stat-top"><span class="stat-icon" aria-hidden="true">♙</span><span class="stat-period">إجمالي</span></div><div class="label">المستفيدون</div><div class="value">${ui.fmt(s.beneficiaries)}</div><div class="sub">موزعون على ${ui.fmt(trackList.length)} مسارات</div></div>
-      <div class="stat stat-completion"><div class="stat-top"><span class="stat-icon" aria-hidden="true">◔</span><span class="stat-period">التدريب</span></div><div class="label">إنجاز الساعات</div><div class="value">${ui.fmt(s.completionPct, 1)}%</div><div class="stat-meter"><i style="width:${Math.max(0, Math.min(100, Number(s.completionPct) || 0))}%"></i></div><div class="sub">من إجمالي ${store.TOTAL_HOURS} ساعة لكل مسار</div></div>
-      <div class="stat stat-attendance"><div class="stat-top"><span class="stat-icon" aria-hidden="true">✓</span><span class="stat-period">الحضور</span></div><div class="label">متوسط الحضور</div><div class="value">${ui.fmt(s.attendancePct, 1)}%</div><div class="stat-meter"><i style="width:${Math.max(0, Math.min(100, Number(s.attendancePct) || 0))}%"></i></div><div class="sub">المستهدف ${ATTENDANCE_THRESHOLD}%</div></div>
-      <div class="stat stat-tasks ${overdue.length ? "has-overdue" : ""}"><div class="stat-top"><span class="stat-icon" aria-hidden="true">☑</span><span class="stat-period">المتابعة</span></div><div class="label">مهام مفتوحة</div><div class="value">${ui.fmt(pending.length)}</div><div class="sub">${overdue.length ? `${ui.fmt(overdue.length)} مهام متأخرة وتحتاج متابعة` : "لا توجد مهام متأخرة"}</div></div>`;
+    document.getElementById("stats").innerHTML = statCards(trackList, s, pending, overdue);
 
     const alerts = [];
     trackList.filter((t) => Number(t.attendancePct) < ATTENDANCE_THRESHOLD).forEach((t) => {
