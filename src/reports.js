@@ -660,8 +660,6 @@
 
   function fillCard() {
     const fields = all();
-    const source = (k) => k.startsWith(SYS) ? " (من النظام)" : k.startsWith(CRS) ? " (من المسارات والرموز)"
-      : k.startsWith(CALC) ? " (محسوب)" : k.startsWith(EX) ? ` (من ملف: ${String(k).slice(EX.length).split(":")[0]})` : "";
     const opt = (m) => `<option value="">— فارغ —</option>
       <option value="${INDEX}" ${m.key === INDEX ? "selected" : ""}>ترقيم تسلسلي</option>
       <option value="${CONST}" ${m.key === CONST ? "selected" : ""}>قيمة ثابتة</option>
@@ -697,6 +695,35 @@
       })()}
       <p class="conv-hint">يُعبّأ بما يظهر في التقرير الآن: المرحلة أعلاه وبقية الفلاتر تسري عليه.</p>
     </div>`;
+  }
+
+  const source = (k) => k.startsWith(SYS) ? " (من النظام)" : k.startsWith(CRS) ? " (من المسارات والرموز)"
+    : k.startsWith(CALC) ? " (محسوب)" : k.startsWith(EX) ? ` (من ملف: ${String(k).slice(EX.length).split(":")[0]})` : "";
+
+  /* نافذة التشخيص: تفتح من زر ظاهر في رأس الصفحة، لا من داخل قسم مطوي */
+  function showDiagnostics() {
+    const list = students();
+    const stat = all().map((f) => ({ label: f.label + source(f.key), key: f.key,
+      filled: list.filter((r) => String(r[f.key] == null ? "" : r[f.key]).trim() !== "").length }))
+      .sort((a, b) => a.filled - b.filled);
+    const back = document.createElement("div");
+    back.className = "modal-backdrop open";
+    back.innerHTML = `<div class="modal rep-diag-box">
+      <div class="modal-head"><b>🩺 تشخيص البيانات</b>
+        <span class="btn-row"><button type="button" class="btn small" data-copy>⧉ نسخ التشخيص</button>
+        <button type="button" class="btn small secondary" data-close>إغلاق</button></span></div>
+      <p class="conv-hint">${ui.fmt(list.length)} طالباً في اللقطة. الحقول الفارغة أعلى القائمة.</p>
+      <h4>ما قرأه سكربت القراءة من نظام المركز</h4>
+      ${readLogCard()}
+      <h4>امتلاء الحقول</h4>
+      <table class="rep-map"><thead><tr><th>الحقل</th><th>فيه بيانات</th></tr></thead><tbody>
+        ${stat.map((x) => `<tr><td>${esc(x.label)}</td>
+          <td class="${x.filled === 0 ? "rep-warn" : x.filled < list.length ? "rep-part" : "rep-full"}">${ui.fmt(x.filled)} من ${ui.fmt(list.length)}</td></tr>`).join("")}
+      </tbody></table></div>`;
+    document.body.append(back);
+    back.querySelector("[data-close]").addEventListener("click", () => back.remove());
+    back.querySelector("[data-copy]").addEventListener("click", copyDiagnostics);
+    back.addEventListener("click", (e) => { if (e.target === back) back.remove(); });
   }
 
   /* تشخيص يُنسخ ويُرسل عند استعصاء حقل: من أين يأتي كل حقل، وكم صفاً فيه قيمة */
@@ -879,6 +906,7 @@
       if (e.target.closest("#rep-hide-blank")) { hideBlank = true; save(); render(); }
     });
     $("rep-clear").addEventListener("click", () => { filters = {}; search = ""; groupBy = ""; hideBlank = true; save(); render(); });
+    $("rep-diag").addEventListener("click", showDiagnostics);
     $("rep-excel").addEventListener("click", toExcel);
     $("rep-print").addEventListener("click", print);
   }
