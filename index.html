@@ -15,10 +15,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <!-- قالب Gentelella v4 كاملاً (مجمَّع من مصدره)، ثم تنسيقنا فوقه للغة والتخطيط -->
-  <link rel="stylesheet" href="styles/gentelella.css?v=246">
-  <link rel="stylesheet" href="styles/theme.css?v=246">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles/gentelella.css?v=247">
+  <link rel="stylesheet" href="styles/theme.css?v=247">
   <!-- هوية «تمكين التنفيذية»: طبقة الصبغ النهائية فوق كل ما سبق -->
-  <link rel="stylesheet" href="styles/executive.css?v=246">
+  <link rel="stylesheet" href="styles/executive.css?v=247">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -49,9 +50,11 @@
     <aside class="sidebar">
       <div class="brand">
         <img src="assets/logo-white.png" alt="تمكين" class="brand-logo">
-        <h1>مساعد <span class="accent">تمكين</span> الإداري</h1>
-        <small>مركز مسارات التمكين · PP-003</small>
-        <button type="button" id="mobile-menu-toggle" aria-expanded="false" aria-controls="primary-nav">☰ <span>القائمة</span></button>
+        <span class="brand-copy">
+          <h1>تمكين <span class="accent">الإداري</span></h1>
+          <small>بوابة الحوكمة الرقمية</small>
+        </span>
+        <button type="button" id="mobile-menu-toggle" aria-expanded="false" aria-controls="primary-nav" aria-label="القائمة"><span class="material-symbols-outlined">menu_open</span></button>
       </div>
       <div class="side-user" id="side-user" hidden>
         <span class="side-avatar" id="side-avatar">؟</span>
@@ -62,72 +65,97 @@
       </div>
       <!-- القائمة بأقسام تُطوى: ستة عشر بنداً في عمود واحد يصعب تصفّحها -->
       <ul class="nav" id="primary-nav">
-        <li><button data-view="dashboard"><span class="ico">▦</span>اللوحة الرئيسية</button></li>
-        <li><button data-view="tasks"><span class="ico">☑</span>المهام والمتابعات</button></li>
+        <li><button data-view="dashboard"><span class="ico material-symbols-outlined">space_dashboard</span><span class="nav-text">اللوحة الرئيسية</span></button></li>
+        <li><button data-view="tasks"><span class="ico material-symbols-outlined">fact_check</span><span class="nav-text">المهام والمتابعات</span></button></li>
 
         <li class="nav-group" data-group="training">
-          <button type="button" class="nav-head">التدريب والمستفيدون</button>
+          <button type="button" class="nav-head">١. التدريب والمستفيدون</button>
           <ul>
-            <li><button data-view="tracks"><span class="ico">◧</span>متابعة المسارات</button></li>
-            <li><button data-view="roster"><span class="ico">👥</span>المستفيدون والتعهدات</button></li>
-            <li><button data-view="screen"><span class="ico">📺</span>شاشة إحصاءات المركز</button></li>
-            <li><button data-view="reports"><span class="ico">🧮</span>منشئ التقارير</button></li>
+            <li><button data-view="tracks"><span class="ico material-symbols-outlined">route</span><span class="nav-text">متابعة المسارات</span></button></li>
+            <li><button data-view="roster"><span class="ico material-symbols-outlined">groups_3</span><span class="nav-text">المستفيدون والتعهدات</span></button></li>
+            <li><button data-view="screen"><span class="ico material-symbols-outlined">analytics</span><span class="nav-text">شاشة إحصاءات المركز</span></button></li>
+            <li><button data-view="reports"><span class="ico material-symbols-outlined">bar_chart_4_bars</span><span class="nav-text">منشئ التقارير</span></button></li>
           </ul>
         </li>
 
         <li class="nav-group" data-group="docs">
-          <button type="button" class="nav-head">المراسلات والمحاضر</button>
+          <button type="button" class="nav-head">٢. المراسلات والمحاضر</button>
           <ul>
-            <li><button data-view="registry"><span class="ico">🗂</span>الوارد والصادر</button></li>
-            <li><button data-view="letters"><span class="ico">✉</span>المراسلات والتقارير</button></li>
-            <li><button data-view="meetings"><span class="ico">📋</span>محاضر الاجتماعات</button></li>
-            <li><button data-view="report"><span class="ico">📊</span>التقرير الدوري</button></li>
+            <li><button data-view="registry"><span class="ico material-symbols-outlined">move_to_inbox</span><span class="nav-text">الوارد والصادر</span></button></li>
+            <li><button data-view="letters"><span class="ico material-symbols-outlined">mark_email_read</span><span class="nav-text">المراسلات والتقارير</span></button></li>
+            <li><button data-view="meetings"><span class="ico material-symbols-outlined">history_edu</span><span class="nav-text">محاضر الاجتماعات</span></button></li>
+            <li><button data-view="report"><span class="ico material-symbols-outlined">calendar_month</span><span class="nav-text">التقرير الدوري</span></button></li>
           </ul>
         </li>
 
         <li class="nav-group" data-group="tools">
-          <button type="button" class="nav-head">أدوات الملفات</button>
+          <button type="button" class="nav-head">٣. أدوات الملفات</button>
           <ul>
-            <li><button data-view="converter"><span class="ico">⇄</span>تحويل ملف حسب قالب</button></li>
-            <li><button data-view="rtl"><span class="ico">⇆</span>تصحيح اتجاه Word</button></li>
-            <li><button data-view="sheets"><span class="ico">📊</span>جداول البيانات</button></li>
-            <li><button data-view="hospitality"><span class="ico">☕</span>كشف توزيع الضيافة</button></li>
+            <li><button data-view="converter"><span class="ico material-symbols-outlined">transform</span><span class="nav-text">تحويل ملف حسب قالب</span></button></li>
+            <li><button data-view="rtl"><span class="ico material-symbols-outlined">flip</span><span class="nav-text">تصحيح اتجاه Word</span></button></li>
+            <li><button data-view="sheets"><span class="ico material-symbols-outlined">table_chart</span><span class="nav-text">جداول البيانات</span></button></li>
+            <li><button data-view="hospitality"><span class="ico material-symbols-outlined">room_service</span><span class="nav-text">كشف توزيع الضيافة</span></button></li>
           </ul>
         </li>
 
         <li class="nav-group" data-group="system">
-          <button type="button" class="nav-head">النظام</button>
+          <button type="button" class="nav-head">٤. النظام والتكوين</button>
           <ul>
-            <li><button data-view="admin" data-admin-only hidden><span class="ico">⚙</span>لوحة التحكم</button></li>
-            <li><button data-view="history"><span class="ico">🕘</span>سجل التعديلات</button></li>
+            <li><button data-view="admin" data-admin-only hidden><span class="ico material-symbols-outlined">tune</span><span class="nav-text">لوحة التحكم</span></button></li>
+            <li><button data-view="history"><span class="ico material-symbols-outlined">receipt_long</span><span class="nav-text">سجل التعديلات</span></button></li>
           </ul>
         </li>
       </ul>
       <div class="sidebar-foot">
-        البيانات محفوظة على هذا الجهاز فقط
-        <div>
+        <span class="sf-note">البيانات محفوظة على هذا الجهاز فقط</span>
+        <div class="sf-actions">
           <button id="btn-export" title="تنزيل ملف JSON بجميع البيانات">نسخة احتياطية</button>
           <button id="btn-import" title="استعادة البيانات من ملف JSON">استعادة</button>
           <button id="btn-reset" title="حذف البيانات والعودة للقيم الافتراضية">إعادة ضبط</button>
         </div>
         <input type="file" id="import-file" accept="application/json,.json" hidden>
+        <div class="sf-badge">
+          <span class="sf-dot"></span>
+          <span>خادم العمليات آمن</span>
+          <b>KSR-24</b>
+        </div>
       </div>
     </aside>
 
-    <main class="main">
-      <div class="top-tools no-print">
-        <button type="button" class="tt-search" id="gs-open" title="بحث شامل (Ctrl+K)">🔍 <span>بحث في كل الأقسام…</span><kbd>Ctrl K</kbd></button>
-        <button type="button" class="tt-btn" id="pwa-install" hidden title="تثبيت النظام تطبيقاً على هذا الجهاز">⤓ <span>تثبيت التطبيق</span></button>
-        <button type="button" class="tt-btn tt-account" data-profile title="حسابي: كلمة المرور والجلسات">👤 حسابي</button>
-        <button type="button" class="tt-btn tt-logout" id="tt-logout" hidden title="تسجيل الخروج من هذا الجهاز">⎋ <span>خروج</span></button>
-        <div class="tt-bell-wrap">
-          <button type="button" class="tt-btn tt-bell" id="notif-bell" aria-label="التنبيهات" hidden>🔔<span class="notif-count" id="notif-count" hidden>0</span></button>
-          <div class="notif-panel" id="notif-panel" hidden>
-            <div class="notif-head"><b>التنبيهات</b><button type="button" class="conv-link" id="notif-push" hidden>🔔 تفعيل إشعارات المتصفح</button></div>
-            <ul class="notif-list" id="notif-list"></ul>
+    <div class="shell">
+      <header class="topbar no-print">
+        <div class="tb-identity">
+          <div class="tb-copy">
+            <div class="tb-title-row">
+              <h1 class="tb-title">مساعد تمكين الإداري</h1>
+              <span class="tb-chip">PP-003 • مركز مسارات التمكين</span>
+            </div>
+            <div class="tb-meta">
+              <span class="tb-live"><i></i> النظام متصل</span>
+              <span class="tb-sep">•</span>
+              <span id="tb-snap">لقطة نظام المركز</span>
+            </div>
           </div>
         </div>
-      </div>
+        <div class="top-tools">
+          <button type="button" class="tt-search" id="gs-open" title="بحث شامل (Ctrl+K)"><span class="material-symbols-outlined">search</span> <span>بحث في كل الأقسام…</span><kbd>Ctrl K</kbd></button>
+          <button type="button" class="tt-btn" id="pwa-install" hidden title="تثبيت النظام تطبيقاً على هذا الجهاز"><span class="material-symbols-outlined">install_desktop</span> <span>تثبيت التطبيق</span></button>
+          <div class="tt-bell-wrap">
+            <button type="button" class="tt-btn tt-bell" id="notif-bell" aria-label="التنبيهات" hidden><span class="material-symbols-outlined">notifications</span><span class="notif-count" id="notif-count" hidden>0</span></button>
+            <div class="notif-panel" id="notif-panel" hidden>
+              <div class="notif-head"><b>التنبيهات</b><button type="button" class="conv-link" id="notif-push" hidden>تفعيل إشعارات المتصفح</button></div>
+              <ul class="notif-list" id="notif-list"></ul>
+            </div>
+          </div>
+          <span class="tt-divider"></span>
+          <button type="button" class="tt-user" data-profile title="حسابي: كلمة المرور والجلسات">
+            <span class="tt-user-copy"><b id="tt-user-name">حسابي</b><small id="tt-user-role">المستخدم الحالي</small></span>
+            <span class="tt-avatar material-symbols-outlined">person</span>
+          </button>
+          <button type="button" class="tt-btn tt-logout" id="tt-logout" hidden title="تسجيل الخروج من هذا الجهاز"><span class="material-symbols-outlined">logout</span></button>
+        </div>
+      </header>
+    <main class="main">
       <!-- ===== اللوحة الرئيسية ===== -->
       <section class="view" id="view-dashboard">
         <!-- ترويسة الصفحة وبطاقات الأرقام ببنية القالب نفسها (page-header / card > stat) -->
@@ -945,12 +973,23 @@
         </div>
         <ul class="task-list" id="task-list"></ul>
       </section>
-      <footer class="app-foot no-print">
-        <span>مساعد تمكين الإداري — مركز مسارات التمكين للتدريب والتطوير</span>
-        <span id="foot-version"></span>
-        <button type="button" class="conv-link" id="foot-refresh" title="يمسح النسخة المخزّنة في متصفحك ويحمّل أحدث إصدار">↻ تحديث النسخة</button>
-      </footer>
     </main>
+      <footer class="statusbar no-print">
+        <div class="sb-side">
+          <span class="sb-item sb-ok"><span class="sb-dot"></span> اتصال نشط ومؤمّن</span>
+          <span class="sb-sep">|</span>
+          <span class="sb-item">مركز مسارات التمكين للتدريب والتطوير</span>
+          <span class="sb-sep">|</span>
+          <span class="sb-item">يعمل دون اتصال (PWA)</span>
+        </div>
+        <div class="sb-side">
+          <span class="sb-item" id="foot-version"></span>
+          <button type="button" class="conv-link" id="foot-refresh" title="يمسح النسخة المخزّنة في متصفحك ويحمّل أحدث إصدار">↻ تحديث النسخة</button>
+          <span class="sb-sep">|</span>
+          <span class="sb-item sb-code">PP-003</span>
+        </div>
+      </footer>
+    </div>
   </div>
 
   <!-- نافذة تحرير القوالب -->
@@ -1395,49 +1434,49 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/track-catalog.js?v=246"></script>
-  <script src="src/storage.js?v=246"></script>
-  <script src="src/ui.js?v=246"></script>
-  <script src="src/templates.js?v=246"></script>
-  <script src="src/tracks.js?v=246"></script>
-  <script src="src/tasks.js?v=246"></script>
-  <script src="src/dashboard.js?v=246"></script>
-  <script src="src/docx.js?v=246"></script>
-  <script src="src/ai.js?v=246"></script>
-  <script src="src/doc-render.js?v=246"></script>
-  <script src="src/files-store.js?v=246"></script>
-  <script src="src/shared.js?v=246"></script>
-  <script src="src/cloud.js?v=246"></script>
-  <script src="src/drive.js?v=246"></script>
-  <script src="src/drive-ui.js?v=246"></script>
-  <script src="src/rtl-fixer.js?v=246"></script>
-  <script src="src/rtl-page.js?v=246"></script>
-  <script src="src/profile.js?v=246"></script>
-  <script src="src/admin.js?v=246"></script>
-  <script src="src/roster.js?v=246"></script>
-  <script src="src/registry.js?v=246"></script>
-  <script src="src/watch.js?v=246"></script>
-  <script src="src/charts.js?v=246"></script>
-  <script src="src/ai-assist.js?v=246"></script>
-  <script src="src/meetings.js?v=246"></script>
-  <script src="src/report.js?v=246"></script>
-  <script src="src/screen.js?v=246"></script>
-  <script src="src/reports.js?v=246"></script>
-  <script src="src/letters.js?v=246"></script>
+  <script src="src/track-catalog.js?v=247"></script>
+  <script src="src/storage.js?v=247"></script>
+  <script src="src/ui.js?v=247"></script>
+  <script src="src/templates.js?v=247"></script>
+  <script src="src/tracks.js?v=247"></script>
+  <script src="src/tasks.js?v=247"></script>
+  <script src="src/dashboard.js?v=247"></script>
+  <script src="src/docx.js?v=247"></script>
+  <script src="src/ai.js?v=247"></script>
+  <script src="src/doc-render.js?v=247"></script>
+  <script src="src/files-store.js?v=247"></script>
+  <script src="src/shared.js?v=247"></script>
+  <script src="src/cloud.js?v=247"></script>
+  <script src="src/drive.js?v=247"></script>
+  <script src="src/drive-ui.js?v=247"></script>
+  <script src="src/rtl-fixer.js?v=247"></script>
+  <script src="src/rtl-page.js?v=247"></script>
+  <script src="src/profile.js?v=247"></script>
+  <script src="src/admin.js?v=247"></script>
+  <script src="src/roster.js?v=247"></script>
+  <script src="src/registry.js?v=247"></script>
+  <script src="src/watch.js?v=247"></script>
+  <script src="src/charts.js?v=247"></script>
+  <script src="src/ai-assist.js?v=247"></script>
+  <script src="src/meetings.js?v=247"></script>
+  <script src="src/report.js?v=247"></script>
+  <script src="src/screen.js?v=247"></script>
+  <script src="src/reports.js?v=247"></script>
+  <script src="src/letters.js?v=247"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=246"></script>
-  <script src="src/converter-store.js?v=246"></script>
-  <script src="src/converter.js?v=246"></script>
+  <script src="src/converter-core.js?v=247"></script>
+  <script src="src/converter-store.js?v=247"></script>
+  <script src="src/converter.js?v=247"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=246"></script>
-  <script src="src/sheets.js?v=246"></script>
-  <script src="src/history.js?v=246"></script>
-  <script src="src/roster-audit.js?v=246"></script>
-  <script src="src/notify.js?v=246"></script>
-  <script src="src/search.js?v=246"></script>
-  <script src="src/realtime.js?v=246"></script>
-  <script src="src/app.js?v=246"></script>
+  <script src="src/hospitality.js?v=247"></script>
+  <script src="src/sheets.js?v=247"></script>
+  <script src="src/history.js?v=247"></script>
+  <script src="src/roster-audit.js?v=247"></script>
+  <script src="src/notify.js?v=247"></script>
+  <script src="src/search.js?v=247"></script>
+  <script src="src/realtime.js?v=247"></script>
+  <script src="src/app.js?v=247"></script>
 </body>
 </html>

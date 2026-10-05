@@ -332,7 +332,19 @@
 
   function renderBadges() {
     const u = user();
-    document.querySelectorAll("[data-profile]").forEach((b) => { b.textContent = u ? `👤 ${u.name}${u.admin ? " (مدير)" : ""}` : "👤 حسابي"; });
+    const name = u ? u.name : "حسابي";
+    const role = u ? (u.admin ? "مدير النظام" : "مستخدم معتمد") : "غير مسجَّل";
+    document.querySelectorAll("[data-profile]").forEach((b) => {
+      // زر الترويسة فيه اسم وصفة وصورة؛ نملأ خاناته ولا نمسح بنيته
+      const slot = b.querySelector(".tt-user-copy b");
+      if (slot) {
+        slot.textContent = name;
+        const sub = b.querySelector(".tt-user-copy small");
+        if (sub) sub.textContent = role;
+      } else {
+        b.textContent = u ? `👤 ${u.name}${u.admin ? " (مدير)" : ""}` : "👤 حسابي";
+      }
+    });
     const out = $("tt-logout");
     if (out) out.hidden = !u;
   }
