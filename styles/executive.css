@@ -1,0 +1,427 @@
+/* ============================================================
+   هوية «تمكين التنفيذية» — Tamkeen Executive RTL
+   طبقة واحدة فوق theme.css تعيد صبغ النظام كله:
+   أرضية أوبسيديان داكنة + ذهب شمبانيا سيادي + زمرّد للحالات السليمة.
+   لا تمسّ بنية الصفحات؛ تعيد تعريف الرموز اللونية والمكوّنات المشتركة
+   فتتبعها الصفحات الست عشرة جميعها.
+   تُكتب المحدِّدات مسبوقة بـ html لتعلو على الوضعين الفاتح والليلي معاً.
+   ============================================================ */
+
+/* ===== ١. الرموز اللونية ===== */
+html:root,
+html:root[data-theme="light"],
+html:root[data-theme="dark"] {
+  /* الطبقات */
+  --bg: #0b0f19;              /* الأرضية: سكون تنفيذي */
+  --surface: #111827;         /* البطاقات والألواح */
+  --surface-2: #1e293b;       /* التمرير والقوائم المنسدلة والجداول المتداخلة */
+  --surface-3: #27344a;
+
+  /* الذهب الإمبراطوري: اللون الأساسي للإجراءات والمؤشرات القيادية */
+  --gold: #d4af37;
+  --gold-bright: #f2ca50;
+  --gold-deep: #b8972e;
+  --on-gold: #241a00;
+  --teal-600: #d4af37;        /* يُعاد توجيه رمزَي القالب القديم إلى الذهب */
+  --teal-500: #f2ca50;
+  --teal-100: rgba(212, 175, 55, .12);
+
+  /* الزمرّد السيادي: الاعتماد والاكتمال */
+  --ok: #4edea3;
+  --ok-bg: rgba(78, 222, 163, .12);
+
+  --danger: #ffb4ab;
+  --danger-bg: rgba(255, 110, 95, .14);
+  --warn: #f5c864;
+  --warn-bg: rgba(245, 200, 100, .14);
+
+  /* النصوص: ثلاث درجات تباين */
+  --text: #f1f4fb;
+  --muted: #a8b2c4;
+  --faint: #67748c;
+  --navy-900: #0a0e18;        /* خلفية الشريط الجانبي */
+  --navy-800: #f1f4fb;        /* لون عناوين البطاقات (نص لا خلفية) */
+  --navy-700: #d7dceb;
+  --navy-100: #1e293b;        /* خلفية رؤوس الجداول والمسارات */
+
+  /* الحدود: شعرة ذهبية للبنية، ورمادية للتقسيم الثانوي */
+  --border: rgba(212, 175, 55, .14);
+  --border-soft: rgba(255, 255, 255, .07);
+
+  --radius: 12px;
+  --shadow: inset 0 1px 0 0 rgba(255, 255, 255, .03), 0 8px 24px -12px rgba(0, 0, 0, .8);
+  --font: "IBM Plex Sans Arabic", "IBM Plex Sans", "Cairo", "Segoe UI", Tahoma, "Noto Sans Arabic", Arial, sans-serif;
+}
+
+/* ===== ٢. الأرضية والهالة المحيطة ===== */
+html:root body {
+  background: var(--bg);
+  color: var(--text);
+}
+/* هالة ذهبية خفيفة أعلى يمين الشاشة: عمق دون ضجيج */
+html:root body::before {
+  content: "";
+  position: fixed;
+  inset-inline-end: -180px;
+  top: -220px;
+  width: 620px;
+  height: 620px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 175, 55, .10), transparent 68%);
+  pointer-events: none;
+  z-index: 0;
+}
+html:root .app { position: relative; z-index: 1; }
+
+/* الأرقام والنسب بأرقام جدولية حتى تستقيم الأعمدة رأسياً */
+html:root .stat .value,
+html:root .dash-number,
+html:root td,
+html:root .progress-cell .pct,
+html:root kbd { font-variant-numeric: tabular-nums; }
+
+/* ===== ٣. الشريط الجانبي ===== */
+html:root .sidebar {
+  background: linear-gradient(180deg, #0a0e18 0%, #0d1322 100%);
+  box-shadow: 1px 0 0 0 rgba(212, 175, 55, .10), 0 0 30px rgba(0, 0, 0, .55);
+}
+html:root .brand { border-bottom: 1px solid rgba(212, 175, 55, .12); }
+html:root .brand h1 { color: #f1f4fb; font-weight: 700; letter-spacing: -.2px; }
+html:root .brand .accent { color: var(--gold-bright); }
+html:root .brand small { color: var(--faint); }
+
+html:root .nav button { color: #b9c2d4; font-weight: 500; border-radius: 10px; }
+html:root .nav button:hover { background: rgba(255, 255, 255, .05); color: #fff; }
+html:root .nav button.active {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
+  color: var(--on-gold);
+  font-weight: 700;
+  box-shadow: 0 0 14px rgba(212, 175, 55, .26);
+}
+/* عناوين الأقسام: حروف خافتة متباعدة كما في لوحات الإدارة */
+html:root .nav .nav-head {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+}
+html:root .nav .nav-head:hover { background: transparent; color: var(--gold); }
+
+html:root .sidebar-foot { border-top: 1px solid rgba(212, 175, 55, .10); color: var(--faint); }
+html:root .sidebar-foot button { background: rgba(255, 255, 255, .06); color: #cdd5e4; }
+html:root .sidebar-foot button:hover { background: rgba(212, 175, 55, .18); color: #fff; }
+
+html:root .side-user { border-bottom: 1px solid rgba(255, 255, 255, .06); }
+html:root .side-avatar { background: rgba(212, 175, 55, .16); color: var(--gold-bright); }
+
+/* ===== ٤. ترويسة الصفحة والشريط العلوي ===== */
+html:root .page-head { border-bottom: 1px solid var(--border); }
+html:root .page-head h2 { color: #fff; font-weight: 600; }
+
+html:root .top-tools { position: relative; z-index: 2; }
+html:root .tt-search,
+html:root .tt-btn {
+  background: rgba(30, 41, 59, .55);
+  border-color: var(--border-soft);
+  backdrop-filter: blur(10px);
+}
+html:root .tt-search:hover,
+html:root .tt-btn:hover { border-color: rgba(212, 175, 55, .45); color: var(--gold-bright); }
+html:root .tt-search kbd { border-color: var(--border-soft); color: var(--faint); }
+
+/* ===== ٥. البطاقات والألواح التحليلية ===== */
+html:root .card {
+  background: linear-gradient(180deg, rgba(17, 24, 39, .92), rgba(13, 19, 32, .92));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+html:root .card h3 { color: #fff; font-weight: 600; }
+
+/* بطاقات المؤشرات: حافة علوية لامعة ورقم كبير */
+html:root .stat {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(212, 175, 55, .08) 0%, rgba(17, 24, 39, .6) 60%);
+  border: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 0 0 rgba(226, 183, 85, .35), var(--shadow);
+}
+html:root .stat::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -40px;
+  top: -40px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 175, 55, .14), transparent 70%);
+  pointer-events: none;
+}
+html:root .stat .label { color: var(--faint); font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+html:root .stat .value { color: #fff; font-weight: 700; letter-spacing: -.5px; }
+html:root .stat .sub { color: var(--muted); }
+html:root .stat-icon { background: rgba(212, 175, 55, .12); }
+
+/* ===== ٦. الأزرار ===== */
+html:root .btn {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
+  color: var(--on-gold);
+  border-color: transparent;
+  font-weight: 600;
+}
+html:root .btn:hover {
+  background: linear-gradient(135deg, var(--gold-bright) 0%, var(--gold) 100%);
+  color: var(--on-gold);
+  box-shadow: 0 0 20px rgba(212, 175, 55, .35);
+}
+html:root .btn.secondary {
+  background: rgba(30, 41, 59, .5);
+  color: #e3c15f;
+  border-color: rgba(212, 175, 55, .3);
+}
+html:root .btn.secondary:hover { background: rgba(30, 41, 59, .9); color: var(--gold-bright); box-shadow: none; }
+html:root .btn.navy { background: var(--surface-2); color: var(--text); border-color: var(--border-soft); }
+html:root .btn.navy:hover { background: var(--surface-3); color: #fff; box-shadow: none; }
+html:root .btn.danger { background: none; color: var(--danger); }
+html:root .btn.danger:hover { background: var(--danger-bg); color: var(--danger); box-shadow: none; }
+html:root .btn:disabled { opacity: .45; box-shadow: none; }
+
+/* ===== ٧. الحقول ===== */
+html:root label.field > span,
+html:root .conv-label { color: var(--muted); font-weight: 600; }
+html:root input[type=text], html:root input[type=number], html:root input[type=date],
+html:root input[type=password], html:root input[type=email], html:root input[type=url],
+html:root input[type=search], html:root select, html:root textarea {
+  background: #0d1322;
+  color: var(--text);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
+html:root input::placeholder, html:root textarea::placeholder { color: var(--faint); }
+html:root input:focus, html:root select:focus, html:root textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, .15);
+}
+html:root input[type=checkbox], html:root input[type=radio] { accent-color: var(--gold); }
+html:root input[type=file] { color: var(--muted); }
+
+/* ===== ٨. الجداول التنفيذية ===== */
+html:root th {
+  background: #0d1322;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--border);
+}
+html:root td { border-bottom: 1px solid var(--border-soft); color: var(--text); }
+html:root tbody tr:hover { background: rgba(212, 175, 55, .045); }
+html:root .table-wrap { border-radius: 10px; }
+
+/* ===== ٩. الشارات ورقائق الحالة ===== */
+html:root .badge { border: 1px solid transparent; font-weight: 600; }
+html:root .badge.good,
+html:root .approval-status.approved,
+html:root .approval-status.issued {
+  background: var(--ok-bg); color: var(--ok); border-color: rgba(78, 222, 163, .3);
+}
+html:root .badge.digital { background: var(--teal-100); color: var(--gold-bright); border-color: rgba(212, 175, 55, .3); }
+html:root .badge.craft { background: rgba(255, 255, 255, .06); color: var(--muted); border-color: rgba(255, 255, 255, .12); }
+html:root .badge.low { background: var(--danger-bg); color: var(--danger); border-color: rgba(255, 110, 95, .3); }
+html:root .approval-status { background: rgba(255, 255, 255, .06); color: var(--muted); }
+html:root .approval-status.pending { background: var(--warn-bg); color: var(--warn); }
+html:root .approval-status.rejected { background: var(--danger-bg); color: var(--danger); }
+html:root .approval-item { background: rgba(30, 41, 59, .4); border-color: var(--border-soft); }
+
+/* ===== ١٠. المؤشرات والتنبيهات ===== */
+html:root .progress { background: var(--surface-3); }
+html:root .progress > i { background: linear-gradient(90deg, var(--gold), var(--gold-bright)); }
+html:root .alerts li.ok { background: var(--ok-bg); border-color: var(--ok); }
+html:root .alerts li.warn { background: var(--warn-bg); border-color: var(--warn); }
+html:root .alerts li.danger { background: var(--danger-bg); border-color: var(--danger); }
+html:root .empty, html:root .conv-empty { color: var(--faint); border-color: var(--border-soft); }
+
+/* ===== ١١. النوافذ والتنبيهات المنبثقة وشاشة الدخول ===== */
+html:root .modal {
+  background: var(--surface);
+  border: 1px solid rgba(212, 175, 55, .18);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, .9), 0 0 1px 1px rgba(212, 175, 55, .2);
+}
+html:root .modal h3 { color: #fff; }
+html:root .modal-backdrop { background: rgba(5, 8, 14, .78); backdrop-filter: blur(6px); }
+html:root .login-screen { background: var(--bg); }
+html:root .login-card {
+  background: var(--surface);
+  border: 1px solid rgba(212, 175, 55, .18);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, .85);
+}
+html:root .toast { background: var(--surface-3); color: var(--text); border: 1px solid var(--border); }
+
+/* ===== ١٢. التبويبات والأقسام الثانوية ===== */
+html:root .conv-tabs { background: rgba(13, 19, 32, .8); }
+html:root .conv-tabs button { background: transparent; color: var(--muted); border: 0; }
+html:root .conv-tabs button.active {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
+  color: var(--on-gold);
+  box-shadow: 0 0 12px rgba(212, 175, 55, .25);
+}
+html:root .conv-link, html:root .dash-text-link, html:root .dash-section-kicker { color: var(--gold-bright); }
+html:root .conv-boxed, html:root .cv-files > div,
+html:root .cv-files > #conv-saved-box, html:root .cv-files > #conv-upload-box,
+html:root .cv-action-row { background: rgba(13, 19, 32, .6); border-color: var(--border-soft); }
+html:root .cv-trust span { background: rgba(30, 41, 59, .5); border-color: var(--border-soft); color: var(--muted); }
+html:root .cv-steps li { background: rgba(30, 41, 59, .4); border-color: var(--border-soft); }
+html:root #view-converter .cv-intro {
+  background: linear-gradient(115deg, rgba(17, 24, 39, .9), rgba(212, 175, 55, .10));
+  border-color: var(--border);
+}
+html:root .cv-intro-mark { background: linear-gradient(135deg, var(--gold), var(--gold-deep)); color: var(--on-gold); }
+html:root .cv-eyebrow, html:root .cv-step-tag { color: var(--gold-bright); }
+html:root .cv-step-tag { background: var(--teal-100); }
+html:root .cv-intro-copy h2 { color: #fff; }
+html:root .cv-required { background: rgba(13, 19, 32, .7); color: var(--faint); }
+html:root .task-item { background: rgba(30, 41, 59, .35); border-color: var(--border-soft); }
+html:root .task-item.done { background: rgba(30, 41, 59, .18); }
+html:root .ai-box { background: var(--teal-100); border-color: rgba(212, 175, 55, .35); }
+html:root .ai-box .ai-head { color: var(--gold-bright); }
+
+/* لوحة الترحيب في الصفحة الرئيسية: تدرّج ليلي بدل الأزرق التركوازي */
+html:root .dash-hero {
+  background: linear-gradient(115deg, #0a0e18 0%, #141c2e 55%, #2a2210 100%);
+  border-color: rgba(212, 175, 55, .18);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .45);
+}
+html:root .dash-eyebrow { color: var(--gold-bright); }
+html:root .dash-action-primary { background: linear-gradient(135deg, var(--gold), var(--gold-deep)); border-color: transparent; color: var(--on-gold); }
+html:root .dash-action-primary:hover { background: linear-gradient(135deg, var(--gold-bright), var(--gold)); color: var(--on-gold); }
+html:root .dash-table th { background: #0d1322; }
+html:root .dash-person i { background: var(--teal-100); color: var(--gold-bright); }
+html:root .dash-number { background: rgba(255, 255, 255, .06); }
+html:root .dash-number.is-zero { background: var(--ok-bg); color: var(--ok); }
+html:root .dash-number.is-late { background: var(--danger-bg); color: var(--danger); }
+html:root .dash-alert-count.is-clear { background: var(--ok-bg); color: var(--ok); }
+
+/* ===== ١٣. ما يجب أن يبقى أبيض: الخطابات والطباعة ===== */
+html:root .lh-page, html:root .lh-body { color: #111; }
+@media print {
+  html:root, html:root[data-theme="dark"], html:root[data-theme="light"] {
+    --bg: #fff; --surface: #fff; --text: #111; --muted: #444; --faint: #666;
+    --border: #ddd; --border-soft: #e5e5e5; --navy-800: #111; --navy-100: #f1f1f1;
+  }
+  html:root body::before { display: none; }
+}
+
+/* ===== ١٤. رموز قالب Gentelella: تُعاد إلى اللوحة التنفيذية ===== */
+html:root,
+html:root[data-theme="light"],
+html:root[data-theme="dark"] {
+  --sidebar-bg: #0a0e18;
+  --sidebar-active: rgba(212, 175, 55, .12);
+  --sidebar-text: #8795ab;
+  --sidebar-text-hover: #d7dceb;
+  --primary: #d4af37;
+  --primary-lt: rgba(212, 175, 55, .12);
+  --primary-dk: #b8972e;
+  --body-bg: #0b0f19;
+  --bg-surface: #111827;
+  --bg-surface-secondary: #0d1322;
+  --border-color: rgba(212, 175, 55, .14);
+  --border-color-light: rgba(255, 255, 255, .07);
+  --border-translucent: rgba(212, 175, 55, .12);
+  --text-secondary: #a8b2c4;
+  --text-muted: #67748c;
+  --text-disabled: #4a5468;
+  --blue: #7aa2d8;      --blue-lt: rgba(122, 162, 216, .12);
+  --azure: #7aa2d8;     --azure-lt: rgba(122, 162, 216, .12);
+  --green: #4edea3;     --green-lt: rgba(78, 222, 163, .12);
+  --yellow: #f5c864;    --yellow-lt: rgba(245, 200, 100, .14);
+  --red: #ff8a7d;       --red-lt: rgba(255, 110, 95, .14);
+  --purple: #c3a0e8;    --purple-lt: rgba(195, 160, 232, .12);
+  --cyan: #4edea3;      --cyan-lt: rgba(78, 222, 163, .12);
+  --shadow-card: 0 0 0 1px var(--border-translucent), 0 8px 24px -14px rgba(0, 0, 0, .8);
+}
+
+/* بطاقات مؤشرات اللوحة الرئيسية: الشريط الجانبي الملوّن يصبح ذهبياً أو زمرّدياً */
+html:root #view-dashboard .stat { --stat-accent: var(--gold); background: linear-gradient(135deg, rgba(212, 175, 55, .08) 0%, rgba(17, 24, 39, .6) 60%); }
+html:root #view-dashboard .stat-beneficiaries { --stat-accent: #7aa2d8; }
+html:root #view-dashboard .stat-completion { --stat-accent: #4edea3; }
+html:root #view-dashboard .stat-attendance { --stat-accent: #4edea3; }
+html:root #view-dashboard .stat-tasks { --stat-accent: #f5c864; }
+html:root #view-dashboard .stat-tasks.has-overdue { --stat-accent: #ff8a7d; }
+html:root .stat-icon { background: color-mix(in srgb, var(--stat-accent) 16%, #0d1322); }
+
+/* ترويسة القالب وبطاقاته الداخلية */
+html:root .page-header { border-color: var(--border); }
+html:root .card-header, html:root .card-footer { border-color: var(--border-soft); background: transparent; }
+html:root .card-title { color: #fff; }
+html:root .card-subtitle { color: var(--muted); }
+
+/* ===== ١٥. الأسطح الفاتحة المتبقية: رقائق الحالة والصناديق الصغيرة =====
+   ما بقي في theme.css بألوان باستيل ثابتة يُستبدل بنظيره الشفاف على الداكن.
+   (أوراق الطباعة — الخطابات وكشف الضيافة والمعاينات — تبقى بيضاء عمداً) */
+html:root,
+html:root[data-theme="light"],
+html:root[data-theme="dark"] {
+  --card-bg: #0d1322;
+  --surface-soft: rgba(255, 255, 255, .05);
+}
+
+/* الأخضر: المعتمد والمكتمل */
+html:root .drv-status.ok, html:root .drv-tag.ok, html:root .due-badge.ok,
+html:root .conv-share.ok, html:root .ros-sel.done, html:root .hist-tag.add {
+  background: var(--ok-bg); color: var(--ok); border-color: rgba(78, 222, 163, .3);
+}
+/* الكهرماني: بانتظار الإجراء */
+html:root .drv-tag, html:root .reg-pending, html:root .due-badge.soon,
+html:root .hist-tag.rev, html:root .ros-table tr.ros-new td {
+  background: var(--warn-bg); color: var(--warn);
+}
+html:root .conv-missing { background: rgba(245, 200, 100, .08); border-color: rgba(245, 200, 100, .35); }
+html:root .conv-missing > summary { color: var(--warn); }
+/* الأحمر */
+html:root .hist-tag.del { background: var(--danger-bg); color: var(--danger); }
+html:root .act-btn.del { border-color: rgba(255, 110, 95, .35); }
+/* المحايد */
+html:root .hist-tag { background: rgba(255, 255, 255, .06); color: var(--muted); }
+html:root .hist-tag.edit { background: rgba(122, 162, 216, .14); color: #9dbbe6; }
+html:root .reply-note, html:root .act-btn.reply {
+  background: rgba(122, 162, 216, .12); color: #bcd0ec; border-color: rgba(122, 162, 216, .3);
+}
+html:root .act-btn.reply:hover { background: rgba(122, 162, 216, .28); color: #fff; }
+html:root .act-btn.ai, html:root .ai-chip { background: rgba(195, 160, 232, .12); color: #cdb3ef; border-color: rgba(195, 160, 232, .3); }
+html:root .act-btn.ai:hover { background: rgba(195, 160, 232, .3); color: #fff; }
+html:root .reg-summary { background: rgba(195, 160, 232, .08); }
+html:root .act-btn.dl { background: linear-gradient(135deg, var(--gold), var(--gold-deep)); color: var(--on-gold); }
+html:root .act-btn.edit { background: rgba(30, 41, 59, .6); color: var(--text); border-color: var(--border-soft); }
+html:root .act-btn.edit:hover { background: rgba(212, 175, 55, .16); color: var(--gold-bright); }
+html:root .user-form, html:root .mg-file { background: rgba(13, 19, 32, .7); border-color: var(--border-soft); }
+html:root .acc-avatar { background: rgba(212, 175, 55, .14); }
+html:root .cloud-box { background: rgba(212, 175, 55, .07); border-color: rgba(212, 175, 55, .35); }
+html:root .reg-table tr.selected td { background: rgba(212, 175, 55, .09); }
+html:root .reg-content-status { background: var(--surface); color: var(--gold-bright); }
+html:root .reg-group-count { background: rgba(212, 175, 55, .14); color: var(--gold-bright); }
+html:root .mv-progress, html:root .sc-bar-track { background: var(--surface-3); }
+html:root .rep-chip.on { border-color: var(--gold); color: var(--gold-bright); background: rgba(212, 175, 55, .12); }
+html:root .rep-table tbody tr:nth-child(even) { background: rgba(255, 255, 255, .025); }
+html:root .rep-model, html:root .rep-staged { background: rgba(13, 19, 32, .7); }
+html:root .sc-kpi { background: rgba(17, 24, 39, .8); border-top-color: var(--gold); }
+html:root .sc-kpi.good { border-top-color: var(--ok); }
+html:root .sc-kpi.warn { border-top-color: var(--danger); }
+html:root .sc-name { background: rgba(212, 175, 55, .14); color: var(--gold-bright); }
+
+/* ===== ١٦. شاشة إحصاءات المركز: رموزها الخاصة تتبع اللوحة نفسها ===== */
+html:root #view-screen.gt {
+  --gt-bg: #0b0f19;
+  --gt-surface: #111827;
+  --gt-border: rgba(212, 175, 55, .14);
+  --gt-text: #f1f4fb;
+  --gt-muted: #67748c;
+  --gt-second: #a8b2c4;
+  --gt-translucent: rgba(255, 255, 255, .07);
+  --gt-shadow: 0 0 0 1px rgba(212, 175, 55, .12), 0 8px 24px -14px rgba(0, 0, 0, .8);
+}
+html:root #view-screen.gt .sc-bar-track { background: var(--surface-3); }

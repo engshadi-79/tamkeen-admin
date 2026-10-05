@@ -99,7 +99,7 @@
     const btn = document.getElementById("theme-toggle");
     if (btn) { btn.textContent = mode === "dark" ? "☀" : "🌙"; btn.title = mode === "dark" ? "الوضع النهاري" : "الوضع الليلي"; }
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", mode === "dark" ? "#0f1623" : "#1a2332");
+    if (meta) meta.setAttribute("content", "#0b0f19");
   }
   function initTheme() {
     let mode = "";
