@@ -828,46 +828,60 @@
     const without = list.filter((r) => !String(r.cert || "").trim());
     const fromSystem = list.filter((r) => r.certFrom === "system").length;
     const sample = list[0] ? (certPrefix || list[0]["crs:رمز الدورة"] || list[0].course || "CERT") + "-001" : "";
+    const sheet = (certAll ? students() : list).filter((r) => String(r.cert || "").trim());
+    const sheetTracks = new Set(sheet.map((r) => r.track || "—")).size;
     return `<h4>أرقام الشهادات</h4>
       <p class="conv-hint">أرقام نظام المركز (صفحة الشهادات) تُقرأ تلقائياً وهي الأصل؛ والتوليد هنا لمن لم يصدر له النظام رقماً بعد.</p>
       ${fromSystem ? "" : `<p class="conv-hint rep-warn">لم يصل أي رقم من نظام المركز في هذه اللقطة. أعد تشغيل سكربت القراءة (النسخة الجديدة تقرأ صفحة الشهادات)، وراجع «🩺 تشخيص البيانات» ← سطر «الشهادات».</p>`}
       <div class="rep-man-bar">
         <label class="sc-f"><span>البادئة (فارغة = رمز الدورة)</span><input type="text" id="rep-cert-prefix" value="${esc(certPrefix)}" placeholder="رمز الدورة"></label>
         <span class="conv-hint">${ui.fmt(fromSystem)} من النظام · ${ui.fmt(list.length - fromSystem - without.length)} مولَّدة هنا · ${countOf(without.length, "طلاب", "طالباً", "طالب", "طالبان")} بلا رقم من ${ui.fmt(list.length)} معروض${sample ? ` · مثال: <b dir="ltr">${esc(sample)}</b>` : ""}</span>
+        <span class="conv-hint">سيضمّ الكشف ${countOf(sheet.length, "شهادات", "شهادة", "شهادة واحدة", "شهادتين")} من ${countOf(sheetTracks, "مسارات", "مساراً", "مسار واحد", "مسارين")}</span>
         <button type="button" class="btn" id="rep-cert-make" ${without.length ? "" : "disabled"}>🎓 ولّد للمعروضين</button>
-        <button type="button" class="btn secondary" id="rep-cert-excel">⬇ كشف الشهادات (اسم · هوية · رقم)</button>
+        <label class="rep-chip ${certAll ? "on" : ""}"><input type="checkbox" id="rep-cert-all" ${certAll ? "checked" : ""}> كل المسارات (تجاهل الفلاتر)</label>
+        <button type="button" class="btn secondary" id="rep-cert-excel">⬇ كشف الشهادات</button>
         ${given.size ? `<button type="button" class="conv-link danger" id="rep-cert-clear">حذف الأرقام المولَّدة هنا (${ui.fmt(given.size)})</button>` : ""}
       </div>`;
   }
 
-  /* الكشف الذي يُطلب كثيراً: الاسم ورقم الهوية ورقم الشهادة لا غير */
+  /* كشف الشهادات: كل من صدرت له شهادة في كل المسارات، لا ما تعرضه الفلاتر وحده.
+     ومن أراد مساراً بعينه يزيل علامة «كل المسارات». */
+  let certAll = true;
+
   async function certExcel() {
-    const given = certGiven();
-    const list = rows().map((r) => ({
+    const source = certAll ? students() : rows();
+    const list = source.map((r) => ({
+      track: r.track || "— بلا مسار —",
+      course: r.course || "",
       name: r.name || "",
       nid: r.nid || "",
       cert: String(r.cert || "").trim(),
-    }));
-    const withCert = list.filter((r) => r.cert);
-    if (!withCert.length) { ui.toast("لا توجد أرقام شهادات بعد — اقرأ من النظام أو ولّدها"); return; }
+    })).filter((r) => r.cert);
+    if (!list.length) { ui.toast("لا توجد أرقام شهادات بعد — اقرأ من النظام أو ولّدها"); return; }
     if (typeof ExcelJS === "undefined") { ui.toast("تعذّر تحميل مكتبة Excel"); return; }
+    // مرتّبة بالمسار ثم المرحلة ثم الاسم، فتُقرأ ككشف واحد لكل المركز
+    list.sort((a, b) => a.track.localeCompare(b.track, "ar") || a.course.localeCompare(b.course, "ar") || a.name.localeCompare(b.name, "ar"));
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("الشهادات", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
     ws.columns = [
+      { header: "المسار", key: "track", width: 30 },
+      { header: "المرحلة", key: "course", width: 18 },
       { header: "اسم الطالب", key: "name", width: 34 },
       { header: "رقم الهوية", key: "nid", width: 18 },
       { header: "رقم الشهادة", key: "cert", width: 24 },
     ];
-    withCert.forEach((r) => ws.addRow(r));
+    list.forEach((r) => ws.addRow(r));
     ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1A2332" } };
-    ws.getColumn(2).alignment = { horizontal: "left" };
-    ws.getColumn(3).alignment = { horizontal: "left" };
+    ws.getColumn(4).alignment = { horizontal: "left" };
+    ws.getColumn(5).alignment = { horizontal: "left" };
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: ws.rowCount, column: 5 } };
     const buf = await wb.xlsx.writeBuffer();
-    const tag = filters.course ? ` - ${filters.course}` : "";
+    const tag = certAll ? "" : filters.course ? ` - ${filters.course}` : " - المعروضون";
     ui.download(`كشف الشهادات${tag}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-    const missing = list.length - withCert.length;
-    ui.toast(`صُدّر ${ui.fmt(withCert.length)} شهادة${missing ? ` · ${ui.fmt(missing)} بلا رقم لم تُدرج` : ""}`);
+    const tracks = new Set(list.map((r) => r.track)).size;
+    const missing = source.length - list.length;
+    ui.toast(`صُدّر ${countOf(list.length, "شهادات", "شهادة", "شهادة واحدة", "شهادتان")} من ${countOf(tracks, "مسارات", "مساراً", "مسار واحد", "مسارين")}${missing ? ` · ${ui.fmt(missing)} بلا رقم لم تُدرج` : ""}`);
   }
 
   /* من ولّد أرقاماً ثم وصلته أرقام المركز: يمسح المولَّدة فتبقى الرسمية وحدها */
@@ -1279,6 +1293,7 @@
         return;
       }
       if (t.id === "rep-preset") { applyPreset(t.value); return; }
+      if (t.id === "rep-cert-all") { certAll = t.checked; renderSources(); return; }
       if (t.id === "rep-man-field") { manField = t.value; try { localStorage.setItem(MAN_KEY, manField); } catch (e) { /* ممتلئ */ } renderSources(); return; }
       if (t.id === "rep-man-phase") { manPhase = t.value; renderSources(); return; }
       if (t.id === "rep-avg-from") { avgFrom = t.value; avgOutOf = 0; merged = null; saveAvg(); render(); return; }
