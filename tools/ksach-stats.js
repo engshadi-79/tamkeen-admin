@@ -681,7 +681,7 @@
         trainer: s.trainer || "", status: s.status || "",
         gender: "", governorate: "", health: "", marital: "", income: "",
         practical: "", theory: "", activities: "", total: "", gradeStatus: "", approval: "",
-        pledged: "", missingSurveys: "", attendance: "",
+        pledged: "", missingSurveys: "", attendance: "", cert: "",
       };
       // أعمدة صفحة الطلاب كما سمّاها النظام: تصير حقولاً في منشئ التقارير بلا تسمية مسبقة
       Object.entries(s.sys || {}).forEach(([k, v]) => { r["sys:" + k] = v; });
@@ -746,7 +746,23 @@
       });
     } catch (e) { console.warn("درجات التقارير:", e.message); }
 
-    // ٣) الالتزام: التعهد والاستبيانات غير المعبّأة ونسبة حضور المجموعة
+    // ٣) أرقام الشهادات كما يصدرها النظام
+    try {
+      await eachPage("/admin/certificates", "الشهادات", [/الطالب|الاسم/, /شهاد/], (t) => {
+        debug("الشهادات", t);
+        t.rows.forEach((r) => {
+          const raw = cell(r, t.head, /الطالب|الاسم/);
+          const row = find(nidOf(cell(r, t.head, /الهوية/)) || nidOf(raw), nameOf(raw));
+          if (!row) return;
+          // لا تقبل «رقم» وحدها: «رقم الهوية» تسبقها في الجدول فتُلتقط خطأً
+          const no = clean(cell(r, t.head, /شهاد/));
+          if (no && !/^\d{1,3}$/.test(no)) row.cert = no;   // عمود «#» ليس رقم شهادة
+          Object.entries(sysOf(t.head, r)).forEach(([k, v]) => { if (row["sys:" + k] === undefined) row["sys:" + k] = v; });
+        });
+      });
+    } catch (e) { console.warn("الشهادات:", e.message); }
+
+    // ٤) الالتزام: التعهد والاستبيانات غير المعبّأة ونسبة حضور المجموعة
     const signed = followUps && followUps.signedSet;
     rows.forEach((r) => {
       if (signed) r.pledged = (r.nid && signed.has(r.nid)) || signed.has("n:" + r.name) ? "نعم" : "لا";

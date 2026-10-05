@@ -21,6 +21,7 @@
         { key: "trainer", label: "المدرب" },
         { key: "status", label: "حالة الطالب" },
         { key: "stu", label: "رقم الطالب" },
+        { key: "cert", label: "رقم الشهادة" },
       ],
     },
     {
@@ -815,15 +816,47 @@
     if (!students().length) return "";
     const given = certGiven();
     const list = rows();
-    const without = list.filter((r) => !given.has(idOf(r.nid) || "n:" + norm(r.name)));
+    const without = list.filter((r) => !given.has(idOf(r.nid) || "n:" + norm(r.name)) && !String(r.cert || "").trim());
+    const fromSystem = list.filter((r) => String(r.cert || "").trim()).length;
     const sample = list[0] ? (certPrefix || list[0]["crs:رمز الدورة"] || list[0].course || "CERT") + "-001" : "";
     return `<h4>أرقام الشهادات</h4>
-      <p class="conv-hint">رقم ثابت لكل خريج يُحفظ فلا يتغيّر. يُولَّد لمن يظهر في التقرير الآن، فاضبط المرحلة والفلاتر أولاً.</p>
+      <p class="conv-hint">إن كان النظام يصدر أرقام الشهادات فهي تُقرأ تلقائياً وتُستعمل أولاً؛ وهذا التوليد لمن ليس له رقم في النظام. الرقم يُحفظ فلا يتغيّر، ويُولَّد لمن يظهر في التقرير الآن.</p>
       <div class="rep-man-bar">
         <label class="sc-f"><span>البادئة (فارغة = رمز الدورة)</span><input type="text" id="rep-cert-prefix" value="${esc(certPrefix)}" placeholder="رمز الدورة"></label>
-        <span class="conv-hint">${ui.fmt(given.size)} لهم أرقام · ${countOf(without.length, "طلاب", "طالباً", "طالب", "طالبان")} بلا رقم من ${ui.fmt(list.length)} معروض${sample ? ` · مثال: <b dir="ltr">${esc(sample)}</b>` : ""}</span>
+        <span class="conv-hint">${ui.fmt(fromSystem)} من النظام · ${ui.fmt(given.size)} مولَّدة هنا · ${countOf(without.length, "طلاب", "طالباً", "طالب", "طالبان")} بلا رقم من ${ui.fmt(list.length)} معروض${sample ? ` · مثال: <b dir="ltr">${esc(sample)}</b>` : ""}</span>
         <button type="button" class="btn" id="rep-cert-make" ${without.length ? "" : "disabled"}>🎓 ولّد للمعروضين</button>
+        <button type="button" class="btn secondary" id="rep-cert-excel">⬇ كشف الشهادات (اسم · هوية · رقم)</button>
       </div>`;
+  }
+
+  /* الكشف الذي يُطلب كثيراً: الاسم ورقم الهوية ورقم الشهادة لا غير */
+  async function certExcel() {
+    const given = certGiven();
+    const list = rows().map((r) => ({
+      name: r.name || "",
+      nid: r.nid || "",
+      cert: String(r.cert || "").trim() || given.get(idOf(r.nid) || "n:" + norm(r.name)) || "",
+    }));
+    const withCert = list.filter((r) => r.cert);
+    if (!withCert.length) { ui.toast("لا توجد أرقام شهادات بعد — اقرأ من النظام أو ولّدها"); return; }
+    if (typeof ExcelJS === "undefined") { ui.toast("تعذّر تحميل مكتبة Excel"); return; }
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("الشهادات", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+    ws.columns = [
+      { header: "اسم الطالب", key: "name", width: 34 },
+      { header: "رقم الهوية", key: "nid", width: 18 },
+      { header: "رقم الشهادة", key: "cert", width: 24 },
+    ];
+    withCert.forEach((r) => ws.addRow(r));
+    ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1A2332" } };
+    ws.getColumn(2).alignment = { horizontal: "left" };
+    ws.getColumn(3).alignment = { horizontal: "left" };
+    const buf = await wb.xlsx.writeBuffer();
+    const tag = filters.course ? ` - ${filters.course}` : "";
+    ui.download(`كشف الشهادات${tag}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const missing = list.length - withCert.length;
+    ui.toast(`صُدّر ${ui.fmt(withCert.length)} شهادة${missing ? ` · ${ui.fmt(missing)} بلا رقم لم تُدرج` : ""}`);
   }
 
   function makeCerts() {
@@ -837,7 +870,7 @@
     let made = 0;
     list.forEach((r) => {
       const id = idOf(r.nid) || "n:" + norm(r.name);
-      if (given.has(id)) return;
+      if (given.has(id) || String(r.cert || "").trim()) return;   // للنظام الأولوية
       const base = String(certPrefix || r[CRS + "رمز الدورة"] || r.course || "CERT").trim();
       const n = (seq.get(base) || 0) + 1;
       seq.set(base, n);
@@ -1258,6 +1291,7 @@
       if (e.target.closest("#rep-show-blank")) { hideBlank = false; save(); render(); return; }
       if (e.target.closest("#rep-hide-blank")) { hideBlank = true; save(); render(); return; }
       if (e.target.closest("#rep-cert-make")) return void makeCerts();
+      if (e.target.closest("#rep-cert-excel")) return void certExcel();
       if (e.target.closest("#rep-man-save")) return void saveMan();
       if (e.target.closest("#rep-preset-save")) return void savePreset();
       if (e.target.closest("#rep-preset-del")) return void dropPreset();
