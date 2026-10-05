@@ -345,12 +345,34 @@
 
     // مؤشرات التعليم
     const list = filtered();
+    // بطاقة مؤشر لكل خانة تعليم: أيقونة حالتها، ومقياس إنجاز، ونسبة ملوّنة
     $("ros-stats").innerHTML = checkColumns().map((c) => {
       const done = rows().filter((r) => isDone(r, c)).length;
+      const left = rows().length - done;
       const pctAll = rows().length ? Math.round((done / rows().length) * 100) : 0;
-      return `<div class="stat"><div class="label">${esc(c.label)}</div><div class="value">${ui.fmt(done)} / ${ui.fmt(rows().length)}</div>
-        <div class="sub">${ui.fmt(pctAll)}% · المتبقي ${ui.fmt(rows().length - done)}</div></div>`;
-    }).join("") || `<div class="stat"><div class="label">السجلات</div><div class="value">${ui.fmt(rows().length)}</div><div class="sub">لا توجد خانات تعليم</div></div>`;
+      const tone = pctAll >= 100 ? "is-ok" : pctAll >= 80 ? "" : "is-warn";
+      const mark = pctAll >= 100 ? "task_alt" : pctAll >= 80 ? "pending_actions" : "priority_high";
+      return `<div class="stat">
+        <div class="stat-row">
+          <div>
+            <div class="label">${esc(c.label)}</div>
+            <div class="value">${ui.fmt(done)} <span class="stat-of">/ ${ui.fmt(rows().length)}</span></div>
+          </div>
+          <span class="stat-mark ${tone} material-symbols-outlined">${mark}</span>
+        </div>
+        <div class="stat-meter ${tone}"><i style="width:${pctAll}%"></i></div>
+        <div class="stat-foot">
+          <span>المتبقي ${ui.fmt(left)}</span>
+          <span class="stat-pct ${tone}">${ui.fmt(pctAll)}%</span>
+        </div>
+      </div>`;
+    }).join("") || `<div class="stat">
+      <div class="stat-row">
+        <div><div class="label">السجلات</div><div class="value">${ui.fmt(rows().length)}</div></div>
+        <span class="stat-mark material-symbols-outlined">groups_3</span>
+      </div>
+      <div class="stat-foot"><span>لا توجد خانات تعليم</span></div>
+    </div>`;
 
     $("ros-count").textContent = list.length === rows().length ? `${ui.fmt(list.length)} سجل` : `${ui.fmt(list.length)} من ${ui.fmt(rows().length)}`;
 
