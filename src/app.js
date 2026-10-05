@@ -3,6 +3,28 @@
   const { store, ui } = App;
   const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "hospitality", "sheets", "screen", "reports", "tasks", "history", "admin"];
 
+  /* مسار التنقّل: يُشتق من القائمة الجانبية، فيكفي بناؤه مرة واحدة لكل صفحة */
+  function paintCrumb(view) {
+    const sec = document.getElementById("view-" + view);
+    if (!sec || sec.querySelector(".crumb")) return;
+    const btn = document.querySelector(`.nav button[data-view="${view}"]`);
+    if (!btn) return;
+    const label = (btn.querySelector(".nav-text") || btn).textContent.trim();
+    const group = btn.closest(".nav-group");
+    const headBtn = group && group.querySelector(".nav-head");
+    const section = headBtn ? headBtn.textContent.trim() : "الرئيسية والمتابعة";
+    const title = sec.querySelector(".page-head h2, .page-header .page-title, .cv-intro-copy h2");
+    if (!title) return;
+    const host = title.closest("div");
+    if (!host) return;
+    const nav = document.createElement("nav");
+    nav.className = "crumb";
+    nav.setAttribute("aria-label", "مسار التنقّل");
+    const sep = () => `<span class="material-symbols-outlined crumb-sep">chevron_left</span>`;
+    nav.innerHTML = `<span>تمكين</span>${sep()}<span>${ui.esc(section)}</span>${sep()}<b>${ui.esc(label)}</b>`;
+    host.insertBefore(nav, host.firstChild);
+  }
+
   function show(view) {
     if (!VIEWS.includes(view)) view = "dashboard";
     // صفحة ممنوعة على هذا المستخدم: يُنقل إلى أول صفحة مسموحة
@@ -21,6 +43,7 @@
       document.querySelector(`[data-view="${v}"]`).classList.toggle("active", v === view);
     });
     openGroupOf(view);
+    paintCrumb(view);
     if (view === "dashboard") App.dashboard.render();
     if (view === "tracks") App.tracks.render();
     if (view === "letters") App.letters.render();
@@ -97,14 +120,18 @@
   function applyTheme(mode) {
     document.documentElement.setAttribute("data-theme", mode);
     const btn = document.getElementById("theme-toggle");
-    if (btn) { btn.textContent = mode === "dark" ? "☀" : "🌙"; btn.title = mode === "dark" ? "الوضع النهاري" : "الوضع الليلي"; }
+    if (btn) {
+      btn.innerHTML = `<span class="material-symbols-outlined">${mode === "light" ? "dark_mode" : "light_mode"}</span>`;
+      btn.title = mode === "light" ? "التحويل إلى الوضع الليلي" : "التحويل إلى الوضع النهاري";
+      btn.setAttribute("aria-label", btn.title);
+    }
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", "#0b0f19");
+    if (meta) meta.setAttribute("content", mode === "light" ? "#f6f4ef" : "#0b0f19");
   }
   function initTheme() {
     let mode = "";
     try { mode = localStorage.getItem(THEME_KEY) || ""; } catch (e) { /* تخزين غير متاح */ }
-    if (!mode) mode = "light";   // الافتراضي نهاري؛ الوضع الليلي باختيار المستخدم من زر 🌙
+    if (mode !== "light" && mode !== "dark") mode = "dark";   // الهوية التنفيذية ليلية؛ والنهاري باختيار المستخدم
     applyTheme(mode);
     const btn = document.getElementById("theme-toggle");
     if (!btn) return;
