@@ -30,7 +30,7 @@
   }
 
   function defaultState() {
-    return { tracks: defaultTracks(), trackCodes: App.trackCatalog ? [...App.trackCatalog.paths, ...App.trackCatalog.codes] : [], tasks: [], customTemplates: [], signer: "", registry: [], meetings: [], letterApprovals: [] };
+    return { tracks: defaultTracks(), trackCodes: App.trackCatalog ? [...App.trackCatalog.paths, ...App.trackCatalog.codes] : [], tasks: [], customTemplates: [], signer: "", registry: [], meetings: [], letterApprovals: [], reportPresets: [] };
   }
 
   let state;

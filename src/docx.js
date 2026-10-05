@@ -182,9 +182,34 @@
 
   let cachedParts;
 
+  /* ملف الترويسة ١٫٢ ميغا ولا يلزم إلا عند تصدير Word، فلا يُحمَّل مع الصفحة بل بعد
+     أن تصير جاهزة للعمل. ومن ضغط «تصدير» في أول ثانيتين يُطلب منه إعادة المحاولة
+     بدل أن يرى خطأً غامضاً. */
+  let loading = null;
+  function load() {
+    if (App.letterheadDocx) return Promise.resolve(true);
+    if (!loading) {
+      loading = new Promise((done) => {
+        const mine = document.querySelector('script[src*="src/docx.js"]');
+        const v = (String(mine && mine.src).match(/[?&]v=(\d+)/) || [])[1];
+        const el = document.createElement("script");
+        el.src = `src/letterhead-docx.js${v ? `?v=${v}` : ""}`;
+        el.addEventListener("load", () => done(true));
+        el.addEventListener("error", () => { loading = null; done(false); });
+        document.head.appendChild(el);
+      });
+    }
+    return loading;
+  }
+  // بعد أن تهدأ الصفحة: يكون جاهزاً قبل أن يحتاجه أحد غالباً
+  if (typeof window !== "undefined") {
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1200));
+    window.addEventListener("load", () => idle(() => load()), { once: true });
+  }
+
   function build(blocks) {
     const tpl = App.letterheadDocx;
-    if (!tpl) throw new Error("ملف الترويسة غير محمّل");
+    if (!tpl) { load(); throw new Error("ملف الترويسة قيد التحميل — أعد المحاولة بعد لحظة"); }
     if (!cachedParts) {
       cachedParts = Object.entries(tpl.parts).map(([name, b64]) => ({ name, data: base64ToBytes(b64) }));
     }
@@ -210,5 +235,5 @@
     return zip([...types, { name: "word/document.xml", data: enc.encode(documentXml) }, ...others]);
   }
 
-  App.docx = { build, crc32 };
+  App.docx = { build, crc32, load };
 })(window.App = window.App || {});

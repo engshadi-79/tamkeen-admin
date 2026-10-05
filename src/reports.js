@@ -315,6 +315,78 @@
     return hideBlank && picked.length && !groupBy ? list.filter(filled) : list;
   };
 
+  /* ===== تقارير محفوظة =====
+     اختيار الحقول والفلاتر والتجميع ومصدر المعدل يُحفظ باسم في قسم مُزامَن،
+     فيفتحه بقية المستخدمين من أجهزتهم كما حفظته. */
+  const presets = () => { const v = (App.store && App.store.get().reportPresets) || []; return Array.isArray(v) ? v : []; };
+  let presetId = "";
+
+  function renderPresets() {
+    const sel = $("rep-preset");
+    if (!sel) return;
+    const list = presets().filter((p) => p && p.id && !p.deletedAt).sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"));
+    sel.innerHTML = `<option value="">— تقرير جديد —</option>`
+      + list.map((p) => `<option value="${esc(p.id)}" ${presetId === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+    const cur = list.find((p) => p.id === presetId);
+    $("rep-preset-del").hidden = !cur;
+    const note = $("rep-preset-note");
+    if (note) note.textContent = cur ? `حفظه ${cur.owner || "—"}${cur.updatedAt ? ` · ${new Date(cur.updatedAt).toLocaleDateString("ar-EG")}` : ""}` : "";
+    const name = $("rep-preset-name");
+    if (name && cur && !name.value) name.value = cur.name;
+  }
+
+  function applyPreset(id) {
+    presetId = id;
+    const p = presets().find((x) => x.id === id);
+    if (p) {
+      picked = Array.isArray(p.picked) ? [...p.picked] : picked;
+      filters = { ...(p.filters || {}) };
+      groupBy = p.groupBy || "";
+      hideBlank = p.hideBlank !== false;
+      if (p.avgFrom !== undefined) { avgFrom = p.avgFrom; avgOutOf = Number(p.avgOutOf) || 0; merged = null; saveAvg(); }
+      search = "";
+      order();
+      save();
+      const name = $("rep-preset-name");
+      if (name) name.value = p.name;
+    }
+    render();
+  }
+
+  function savePreset() {
+    const field = $("rep-preset-name");
+    const name = String(field.value || "").trim();
+    if (!name) { ui.toast("اكتب اسماً للتقرير"); field.focus(); return; }
+    if (!picked.length) { ui.toast("اختر حقلاً واحداً على الأقل قبل الحفظ"); return; }
+    const list = presets();
+    const me = (App.cloud && App.cloud.user && App.cloud.user()) || {};
+    const now = new Date().toISOString();
+    const same = list.find((p) => p && !p.deletedAt && norm(p.name) === norm(name));
+    const rec = {
+      id: (same && same.id) || (App.store.uid ? App.store.uid() : String(Date.now())),
+      name, picked: [...picked], filters: { ...filters }, groupBy, hideBlank, avgFrom, avgOutOf,
+      owner: (same && same.owner) || me.name || "", createdAt: (same && same.createdAt) || now, updatedAt: now,
+    };
+    const next = same ? list.map((p) => (p.id === rec.id ? rec : p)) : [...list, rec];
+    App.store.get().reportPresets = next;
+    App.store.save();
+    presetId = rec.id;
+    render();
+    ui.toast(same ? "حُدِّث التقرير المحفوظ" : "حُفظ التقرير");
+  }
+
+  function dropPreset() {
+    const p = presets().find((x) => x.id === presetId);
+    if (!p) return;
+    if (!confirm(`حذف التقرير المحفوظ «${p.name}»؟`)) return;
+    App.store.get().reportPresets = presets().map((x) => (x.id === p.id ? { ...x, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } : x));
+    App.store.save();
+    presetId = "";
+    $("rep-preset-name").value = "";
+    render();
+    ui.toast("حُذف التقرير المحفوظ");
+  }
+
   /* ===== الواجهة ===== */
   function renderFields() {
     $("rep-fields").innerHTML = groups().map((g) => `<div class="rep-group">
@@ -445,6 +517,7 @@
       : "لا توجد بيانات بعد — شغّل سكربت القراءة من صفحة «شاشة إحصاءات المركز»";
     renderFields();
     renderCalc();
+    renderPresets();
     renderFilters();
     renderForm();
     renderSources();
@@ -989,6 +1062,7 @@
         order(); save(); render();
         return;
       }
+      if (t.id === "rep-preset") { applyPreset(t.value); return; }
       if (t.id === "rep-avg-from") { avgFrom = t.value; avgOutOf = 0; merged = null; saveAvg(); render(); return; }
       if (t.id === "rep-avg-out") { avgOutOf = Math.max(1, Number(t.value) || 100); merged = null; saveAvg(); render(); return; }
       if (t.closest("[data-filter]")) { filters[t.dataset.filter] = t.value; save(); render(); return; }
@@ -1027,6 +1101,8 @@
       if (e.target.closest("#rep-diag-close")) { diagOpen = false; render(); return; }
       if (e.target.closest("#rep-show-blank")) { hideBlank = false; save(); render(); return; }
       if (e.target.closest("#rep-hide-blank")) { hideBlank = true; save(); render(); return; }
+      if (e.target.closest("#rep-preset-save")) return void savePreset();
+      if (e.target.closest("#rep-preset-del")) return void dropPreset();
       if (e.target.closest("#rep-clear")) { filters = {}; search = ""; groupBy = ""; hideBlank = true; save(); render(); return; }
       if (e.target.closest("#rep-excel")) return void toExcel();
       if (e.target.closest("#rep-print")) return void print();
@@ -1046,6 +1122,7 @@
         staged.map[Number(e.target.dataset.const)].value = e.target.value;
         return;
       }
+      if (e.target.id === "rep-preset-name") return;
       if (e.target.id !== "rep-search") return;
       const v = e.target.value;
       clearTimeout(typing);
