@@ -425,3 +425,162 @@ html:root #view-screen.gt {
   --gt-shadow: 0 0 0 1px rgba(212, 175, 55, .12), 0 8px 24px -14px rgba(0, 0, 0, .8);
 }
 html:root #view-screen.gt .sc-bar-track { background: var(--surface-3); }
+
+/* ============================================================
+   ١٧. الهيكل التنفيذي: شريط جانبي ثابت + ترويسة علوية + شريط حالة
+   ============================================================ */
+html:root {
+  --sidebar-w: 274px;
+  --rail: 274px;        /* يُلغي سلوك الشريط المضموم القديم */
+  --sidebar-open: 274px;
+  --topbar-h: 76px;
+}
+
+/* ===== الشريط الجانبي: مفتوح دائماً كما في لوحات الإدارة ===== */
+html:root .sidebar { width: var(--sidebar-w); overflow-y: auto; overflow-x: hidden; }
+html:root .sidebar:hover, html:root .sidebar:focus-within { width: var(--sidebar-w); }
+/* إبطال قواعد الضمّ: النص والشعار والذيل تظهر دائماً */
+html:root .sidebar:not(:hover):not(:focus-within) .brand { padding: 18px 16px; text-align: start; }
+html:root .sidebar:not(:hover):not(:focus-within) .brand h1 { font-size: 17px; }
+html:root .sidebar:not(:hover):not(:focus-within) .brand-logo { width: 38px; margin: 0; }
+html:root .sidebar:not(:hover):not(:focus-within) .brand small { display: block; }
+html:root .sidebar:not(:hover):not(:focus-within) .nav button { font-size: 13.5px; justify-content: flex-start; }
+html:root .sidebar:not(:hover):not(:focus-within) .sidebar-foot { display: block; }
+
+html:root .brand { display: flex; align-items: center; gap: 11px; padding: 18px 16px; }
+html:root .brand-logo { width: 38px; height: 38px; margin: 0; object-fit: contain; border-radius: 10px; }
+html:root .brand-copy { display: grid; min-width: 0; }
+html:root .brand h1 { font-size: 17px; line-height: 1.3; }
+html:root .brand small { margin: 0; font-size: 11px; }
+
+html:root .nav { padding: 10px 10px 16px; }
+html:root .nav button {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; font-size: 13.5px; line-height: 1.5;
+}
+html:root .nav .ico.material-symbols-outlined {
+  width: 20px; font-size: 20px; font-variation-settings: "wght" 300, "opsz" 20;
+}
+html:root .nav .nav-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html:root .nav .nav-head {
+  display: block; width: 100%; padding: 14px 11px 5px;
+  text-align: start; background: none; border: 0; cursor: pointer;
+}
+html:root .nav-group > ul { list-style: none; margin: 0; padding: 0; }
+
+html:root .sidebar-foot { padding: 12px 14px 16px; white-space: normal; }
+html:root .sf-note { display: block; margin-bottom: 8px; font-size: 11px; line-height: 1.6; }
+html:root .sf-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+html:root .sf-actions button { margin: 0; }
+html:root .sf-badge {
+  display: flex; align-items: center; gap: 7px;
+  margin-top: 12px; padding: 9px 11px; border-radius: 10px;
+  background: rgba(13, 19, 32, .8); font-size: 11px; color: var(--faint);
+}
+html:root .sf-badge b { margin-inline-start: auto; color: var(--gold-bright); font-size: 11px; }
+html:root .sf-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px rgba(78, 222, 163, .6); }
+
+/* ===== غلاف المحتوى: ترويسة ثم الصفحة ثم شريط الحالة ===== */
+html:root .shell {
+  display: flex; flex-direction: column; min-height: 100vh; min-width: 0; flex: 1;
+  margin-inline-start: var(--sidebar-w);
+}
+html:root .main { margin-inline-start: 0; padding: 22px 28px 34px; flex: 1; }
+
+html:root .topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  min-height: var(--topbar-h); padding: 0 28px;
+  background: rgba(10, 14, 24, .82);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--border);
+}
+html:root .tb-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+html:root .tb-menu { display: none; }
+html:root .tb-copy { min-width: 0; }
+html:root .tb-title-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+html:root .tb-title { margin: 0; font-size: 19px; font-weight: 700; color: var(--gold-bright); letter-spacing: -.2px; }
+html:root .tb-chip {
+  padding: 2px 9px; border-radius: 999px;
+  background: rgba(212, 175, 55, .12); color: var(--gold-bright);
+  font-size: 10.5px; font-weight: 600; white-space: nowrap;
+}
+html:root .tb-meta { display: flex; align-items: center; gap: 7px; margin-top: 2px; color: var(--faint); font-size: 11px; }
+html:root .tb-live { display: inline-flex; align-items: center; gap: 5px; color: var(--ok); }
+html:root .tb-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); animation: tb-pulse 2s ease-in-out infinite; }
+@keyframes tb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+html:root .tb-sep { color: #4a5468; }
+
+html:root .top-tools { margin: 0; gap: 7px; }
+html:root .tt-search { max-width: 330px; }
+html:root .tt-btn, html:root .tt-search { display: inline-flex; align-items: center; min-height: 38px; }
+html:root .tt-btn .material-symbols-outlined,
+html:root .tt-search .material-symbols-outlined { font-size: 19px; font-variation-settings: "wght" 300; }
+html:root .tt-divider { width: 1px; height: 26px; background: var(--border-soft); }
+html:root .tt-user {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 5px 7px 5px 11px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--text); font: inherit; cursor: pointer;
+}
+html:root .tt-user:hover { background: rgba(255, 255, 255, .05); }
+html:root .tt-user-copy { display: grid; text-align: start; line-height: 1.35; }
+html:root .tt-user-copy b { font-size: 12.5px; font-weight: 600; }
+html:root .tt-user-copy small { color: var(--gold); font-size: 10px; }
+html:root .tt-avatar {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), var(--gold-deep));
+  color: var(--on-gold); font-size: 20px;
+  box-shadow: 0 0 10px rgba(212, 175, 55, .3);
+}
+
+/* ===== شريط الحالة السفلي ===== */
+html:root .statusbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+  margin: 0; padding: 11px 28px; border-top: 1px solid var(--border-soft);
+  background: rgba(10, 14, 24, .7);
+  color: var(--faint); font-size: 11px;
+}
+html:root .sb-side { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+html:root .sb-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--ok); }
+html:root .sb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+html:root .sb-sep { color: #39414f; }
+html:root .sb-code { color: var(--gold); font-weight: 600; }
+html:root .statusbar .conv-link { font-size: 11px; }
+
+/* ===== ترويسة الصفحة: شريط ذهبي قبل العنوان ===== */
+html:root .page-head, html:root .page-header { position: relative; padding-inline-start: 14px; }
+html:root .page-head::before, html:root .page-header::before {
+  content: ""; position: absolute; inset-inline-start: 0; top: 2px;
+  width: 3px; height: 26px; border-radius: 3px;
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold-deep));
+}
+html:root .page-head h2, html:root .page-title { font-size: 22px; letter-spacing: -.3px; }
+html:root .page-pretitle {
+  color: var(--faint); font-size: 10.5px; font-weight: 600; letter-spacing: .05em;
+}
+
+/* ===== الجوّال: الشريط يعود شريطاً علوياً قابلاً للطيّ ===== */
+@media (max-width: 760px) {
+  html:root .shell { margin-inline-start: 0; }
+  html:root .sidebar { position: static; width: 100%; height: auto; overflow: visible; }
+  html:root .sidebar:hover, html:root .sidebar:focus-within { width: 100%; }
+  html:root .sidebar:not(:hover):not(:focus-within) .sidebar-foot { display: none; }
+  html:root .sidebar.nav-open .sidebar-foot,
+  html:root .sidebar.nav-open:not(:hover):not(:focus-within) .sidebar-foot { display: block; }
+  html:root .brand { padding: 12px 14px; }
+  html:root #mobile-menu-toggle {
+    position: static; margin-inline-start: auto; min-height: 40px;
+    padding: 7px 9px; display: inline-grid; place-items: center;
+  }
+  html:root .topbar { padding: 10px 16px; min-height: 0; flex-wrap: wrap; }
+  html:root .tb-title { font-size: 16px; }
+  html:root .top-tools { width: 100%; }
+  html:root .tt-search { max-width: none; flex: 1; }
+  html:root .tt-user-copy { display: none; }
+  html:root .main { padding: 16px 16px 26px; }
+  html:root .statusbar { padding: 10px 16px; }
+}
+
+/* عدّاد التنبيهات: نص داكن على الرقاقة الفاتحة */
+html:root .notif-count { background: var(--danger); color: #4a0b05; font-weight: 700; }
