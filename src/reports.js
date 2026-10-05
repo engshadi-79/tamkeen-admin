@@ -176,6 +176,21 @@
     sysFields = [...seen.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
   }
 
+  /* ===== بيانات تكميلية تُكتب داخل تمكين =====
+     نظام المركز لا يعرض تاريخ الميلاد ولا المستوى التعليمي ولا التخصص، وكشف الإكسل
+     يحتاج تحديثاً يدوياً كل مرة. فتُكتب هنا مرة لكل طالب وتبقى، وتندمج مع كل لقطة جديدة. */
+  const MAN = "man:";
+  const MAN_FIELDS = ["تاريخ الميلاد", "المستوى التعليمي", "التخصص", "التجمع السكاني", "الجوال", "الجنس", "المحافظة"];
+  const extraRows = () => { const v = (App.store && App.store.get().studentExtra) || []; return Array.isArray(v) ? v : []; };
+  const manFields = () => {
+    const seen = new Set();
+    extraRows().forEach((r) => Object.keys((r && r.values) || {}).forEach((k) => { if (String(r.values[k] || "").trim()) seen.add(k); }));
+    return [...seen];
+  };
+  const manGroup = () => (manFields().length
+    ? [{ name: "بيانات تكميلية (مكتوبة في تمكين)", fields: manFields().map((k) => ({ key: MAN + k, label: k })) }]
+    : []);
+
   /* الجداول المستوردة: كل جدول يصير مجموعة حقول باسمه، ومفتاح الحقل «x:الجدول:العمود» */
   let extras = [];              // [{ name, fields, rows, count, by, at }]
   const EX = "x:";
@@ -187,9 +202,9 @@
   const sysGroup = () => (sysFields.length
     ? [{ name: "من نظام المركز", fields: sysFields.map((k) => ({ key: k, label: k.slice(SYS.length) })) }]
     : []);
-  const groups = () => GROUPS.concat(sysGroup(), crsGroup(), calcGroup(), exGroups());
+  const groups = () => GROUPS.concat(sysGroup(), crsGroup(), calcGroup(), manGroup(), exGroups());
   const all = () => groups().flatMap((g) => g.fields);
-  const labelOf = (k) => (all().find((f) => f.key === k) || {}).label || String(k).replace(/^x:[^:]*:/, "").replace(/^(sys|crs|calc|trk):/, "");
+  const labelOf = (k) => (all().find((f) => f.key === k) || {}).label || String(k).replace(/^x:[^:]*:/, "").replace(/^(sys|crs|calc|trk|man):/, "");
 
   const ALL = GROUPS.flatMap((g) => g.fields);
 
@@ -210,6 +225,7 @@
     };
     sysFields.forEach((k) => { if (few(k)) out.push(k); });
     CRS_FIELDS.concat(TRK_FIELDS).forEach((f) => { if (few(f.key)) out.push(f.key); });
+    manFields().forEach((k) => { if (few(MAN + k)) out.push(MAN + k); });
     extras.forEach((t) => (t.fields || []).forEach((c) => {
       const k = exKey(t.name, c);
       const seen = new Set();
@@ -231,7 +247,7 @@
   try {
     const saved = JSON.parse(localStorage.getItem(PICK_KEY) || "null");
     if (saved && saved.picked && saved.picked.length) {
-      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k) || /^(x|sys|crs|calc|trk):/.test(String(k)));
+      picked = saved.picked.filter((k) => ALL.some((f) => f.key === k) || /^(x|sys|crs|calc|trk|man):/.test(String(k)));
       filters = saved.filters || {};
       groupBy = saved.groupBy || "";
       if (saved.hideBlank === false) hideBlank = false;
@@ -261,8 +277,9 @@
     readSysFields(list);
     const codes = (App.store && App.store.get().trackCodes) || [];
     const trk = ((App.store && App.store.get().tracks) || []).map((t) => `${t.name}${t.trainer1}${t.trainer2}`).join("|");
-    if (!extras.length && !codes.length && !trk) { const copy = list.map((r) => ({ ...r })); withGrades(copy); return copy; }
-    const stamp = `${list.length}|${extras.map((t) => t.name + ":" + t.count).join(",")}|${codes.length}:${codes.map((c) => c.start + c.end + c.type).join("").length}|${avgFrom}:${avgOutOf}|${trk.length}`;
+    const man = extraRows().length + ":" + extraRows().reduce((a, r) => a + Object.keys(r.values || {}).length, 0);
+    if (!extras.length && !codes.length && !trk && !extraRows().length) { const copy = list.map((r) => ({ ...r })); withGrades(copy); return copy; }
+    const stamp = `${list.length}|${extras.map((t) => t.name + ":" + t.count).join(",")}|${codes.length}:${codes.map((c) => c.start + c.end + c.type).join("").length}|${avgFrom}:${avgOutOf}|${trk.length}|${man}`;
     if (merged && mergedFor === stamp) return merged;
     const out = list.map((r) => ({ ...r }));
     const byId = new Map(), byName = new Map();
@@ -278,6 +295,14 @@
       if (c) CRS_FIELDS.forEach((f) => { const v = f.pick(c); if (v) r[f.key] = v; });
       const t = trackOf(r);
       if (t) TRK_FIELDS.forEach((f) => { const v = f.pick(t); if (v) r[f.key] = v; });
+    });
+    // البيانات التكميلية المكتوبة هنا
+    const byKey = new Map();
+    extraRows().forEach((r) => { if (r && r.id) byKey.set(String(r.id), r); });
+    out.forEach((r) => {
+      const rec = byKey.get(idOf(r.nid)) || byKey.get("n:" + norm(r.name));
+      if (!rec) return;
+      Object.entries(rec.values || {}).forEach(([k, v]) => { if (String(v || "").trim()) r[MAN + k] = v; });
     });
     extras.forEach((t) => {
       (t.rows || []).forEach((row) => {
@@ -449,7 +474,7 @@
       + `<label class="sc-f"><span>بحث</span><input type="search" id="rep-search" placeholder="اسم أو رقم…" value="${esc(search)}"></label>`
       + `<label class="sc-f"><span>تجميع حسب</span><select id="rep-group-by"><option value="">بلا تجميع (كل السجلات)</option>
         ${["track", "course", "group", "gender", "governorate", "health", "status", "pledged", "approval", "trainer"]
-          .concat(filterFields(list).filter((k) => k.startsWith(EX) || k.startsWith(SYS) || k.startsWith(CRS) || k.startsWith(TRK)))
+          .concat(filterFields(list).filter((k) => k.startsWith(EX) || k.startsWith(SYS) || k.startsWith(CRS) || k.startsWith(TRK) || k.startsWith(MAN)))
           .map((k) => `<option value="${k}" ${groupBy === k ? "selected" : ""}>${esc(labelOf(k))}</option>`).join("")}</select></label>`;
   }
 
@@ -705,6 +730,75 @@
       <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
     </div>`;
 
+  /* محرّر البيانات التكميلية: يعرض الناقص وحده، لا تسعمئة صف ليس فيها شيء */
+  const MAN_KEY = "tamkeen-admin:man-field";
+  let manField = "";
+  let manPhase = "";
+  let manSearch = "";
+  const MAN_PAGE = 40;
+  try { manField = localStorage.getItem(MAN_KEY) || ""; } catch (e) { /* تخزين غير متاح */ }
+
+  function manMissing() {
+    const field = manField || MAN_FIELDS[0];
+    const list = students().filter((r) => !manPhase || norm(r.course) === norm(manPhase));
+    const q = norm(manSearch);
+    const alt = fullestFor(field, list);   // أي مصدر آخر يحمل هذا الحقل؟
+    return list.filter((r) => {
+      const has = String(r[MAN + field] || "").trim() || (alt && String(r[alt] || "").trim());
+      if (has) return false;
+      return !q || norm(r.name).includes(q) || idOf(r.nid).includes(q.replace(/\D/g, ""));
+    });
+  }
+
+  function manCard() {
+    if (!students().length) return "";
+    const field = manField || MAN_FIELDS[0];
+    const missing = manMissing();
+    const phases = [...new Set(students().map((r) => String(r.course || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
+    const shown = missing.slice(0, MAN_PAGE);
+    return `<h4>بيانات تكميلية — ما لا يعرضه نظام المركز</h4>
+      <p class="conv-hint">اكتبها مرة لكل طالب فتبقى محفوظة، وتندمج مع كل لقطة جديدة بلا رفع ملف.</p>
+      <div class="rep-man-bar">
+        <label class="sc-f"><span>الحقل</span><select id="rep-man-field">
+          ${MAN_FIELDS.concat(manFields().filter((k) => !MAN_FIELDS.includes(k))).map((k) => `<option ${k === field ? "selected" : ""}>${esc(k)}</option>`).join("")}
+        </select></label>
+        <label class="sc-f"><span>المرحلة</span><select id="rep-man-phase"><option value="">الكل</option>
+          ${phases.map((p) => `<option ${manPhase === p ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
+        <label class="sc-f"><span>بحث</span><input type="search" id="rep-man-search" value="${esc(manSearch)}" placeholder="اسم أو هوية"></label>
+        <span class="conv-hint">${missing.length ? `ينقص «${esc(field)}» لـ ${countOf(missing.length, "طلاب", "طالباً", "طالب", "طالبان")}` : `لا ينقص «${esc(field)}» أحداً`}</span>
+      </div>
+      ${shown.length ? `<table class="rep-map rep-man-table"><thead><tr><th>الطالب</th><th>الهوية</th><th>المرحلة</th><th>${esc(field)}</th></tr></thead>
+        <tbody>${shown.map((r) => `<tr>
+          <td>${esc(r.name)}</td><td dir="ltr">${esc(r.nid || "")}</td><td>${esc(r.course || "")}</td>
+          <td><input type="${/تاريخ/.test(field) ? "date" : "text"}" data-man="${esc(idOf(r.nid) || "n:" + norm(r.name))}" data-man-name="${esc(r.name)}" value=""></td>
+        </tr>`).join("")}</tbody></table>
+        ${missing.length > shown.length ? `<p class="conv-hint">يُعرض ${ui.fmt(shown.length)} من ${ui.fmt(missing.length)} — املأ هؤلاء واحفظ، فيظهر التالون.</p>` : ""}
+        <div class="btn-row"><button type="button" class="btn" id="rep-man-save">💾 احفظ المكتوب</button></div>`
+        : `<p class="conv-hint">لا شيء ناقص هنا.</p>`}`;
+  }
+
+  function saveMan() {
+    const field = manField || MAN_FIELDS[0];
+    const inputs = [...document.querySelectorAll("[data-man]")].filter((i) => String(i.value || "").trim());
+    if (!inputs.length) { ui.toast("لم تكتب شيئاً"); return; }
+    const list = extraRows();
+    const now = new Date().toISOString();
+    const me = (App.cloud && App.cloud.user && App.cloud.user()) || {};
+    inputs.forEach((i) => {
+      const id = i.dataset.man;
+      let rec = list.find((r) => r && String(r.id) === id);
+      if (!rec) { rec = { id, name: i.dataset.manName || "", values: {}, createdAt: now }; list.push(rec); }
+      rec.values = { ...(rec.values || {}), [field]: String(i.value).trim() };
+      rec.by = me.name || rec.by || "";
+      rec.updatedAt = now;
+    });
+    App.store.get().studentExtra = list;
+    App.store.save();
+    merged = null;
+    render();
+    ui.toast(`حُفظ «${field}» لـ ${ui.fmt(inputs.length)}`);
+  }
+
   function renderSources() {
     const box = $("rep-sources");
     if (!box) return;
@@ -718,7 +812,8 @@
         <button type="button" class="btn secondary" id="rep-diag">🩺 تشخيص البيانات</button></div></div>
       <h4>جداول إكسل مضافة</h4>
       ${staged && staged.mode !== "fill" ? stagedImportCard() : uploadRow("كشف فيه بيانات الطلاب؛ أعمدته تصير حقولاً تُستعمل في التقارير والنماذج.")}
-      ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}`;
+      ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}
+      ${manCard()}`;
   }
 
   /* ===== تعبئة نموذج رسمي من بيانات النظام =====
@@ -922,7 +1017,7 @@
     </div>`;
   }
 
-  const source = (k) => k.startsWith(SYS) ? " (من النظام)" : k.startsWith(CRS) || k.startsWith(TRK) ? " (من المسارات والرموز)"
+  const source = (k) => k.startsWith(SYS) ? " (من النظام)" : k.startsWith(MAN) ? " (مكتوب في تمكين)" : k.startsWith(CRS) || k.startsWith(TRK) ? " (من المسارات والرموز)"
     : k.startsWith(CALC) ? " (محسوب)" : k.startsWith(EX) ? ` (من ملف: ${String(k).slice(EX.length).split(":")[0]})` : "";
 
   /* التشخيص يُرسم داخل الصفحة نفسها لا في نافذة منبثقة: لا حاجب يحجبه */
@@ -1063,6 +1158,8 @@
         return;
       }
       if (t.id === "rep-preset") { applyPreset(t.value); return; }
+      if (t.id === "rep-man-field") { manField = t.value; try { localStorage.setItem(MAN_KEY, manField); } catch (e) { /* ممتلئ */ } renderSources(); return; }
+      if (t.id === "rep-man-phase") { manPhase = t.value; renderSources(); return; }
       if (t.id === "rep-avg-from") { avgFrom = t.value; avgOutOf = 0; merged = null; saveAvg(); render(); return; }
       if (t.id === "rep-avg-out") { avgOutOf = Math.max(1, Number(t.value) || 100); merged = null; saveAvg(); render(); return; }
       if (t.closest("[data-filter]")) { filters[t.dataset.filter] = t.value; save(); render(); return; }
@@ -1101,6 +1198,7 @@
       if (e.target.closest("#rep-diag-close")) { diagOpen = false; render(); return; }
       if (e.target.closest("#rep-show-blank")) { hideBlank = false; save(); render(); return; }
       if (e.target.closest("#rep-hide-blank")) { hideBlank = true; save(); render(); return; }
+      if (e.target.closest("#rep-man-save")) return void saveMan();
       if (e.target.closest("#rep-preset-save")) return void savePreset();
       if (e.target.closest("#rep-preset-del")) return void dropPreset();
       if (e.target.closest("#rep-clear")) { filters = {}; search = ""; groupBy = ""; hideBlank = true; save(); render(); return; }
@@ -1122,7 +1220,13 @@
         staged.map[Number(e.target.dataset.const)].value = e.target.value;
         return;
       }
-      if (e.target.id === "rep-preset-name") return;
+      if (e.target.id === "rep-preset-name" || e.target.dataset.man !== undefined) return;
+      if (e.target.id === "rep-man-search") {
+        const v = e.target.value;
+        clearTimeout(typing);
+        typing = setTimeout(() => { manSearch = v; renderSources(); const q = $("rep-man-search"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 300);
+        return;
+      }
       if (e.target.id !== "rep-search") return;
       const v = e.target.value;
       clearTimeout(typing);
