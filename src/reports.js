@@ -186,6 +186,7 @@
   const manFields = () => {
     const seen = new Set();
     extraRows().forEach((r) => Object.keys((r && r.values) || {}).forEach((k) => { if (String(r.values[k] || "").trim()) seen.add(k); }));
+    seen.delete("رقم الشهادة");   // تُدمج في حقل «رقم الشهادة» الواحد
     return [...seen];
   };
   const manGroup = () => (manFields().length
@@ -297,6 +298,8 @@
       const t = trackOf(r);
       if (t) TRK_FIELDS.forEach((f) => { const v = f.pick(t); if (v) r[f.key] = v; });
     });
+    // رقم الشهادة حقل واحد لا حقلان: ما يصدره المركز هو الأصل، والمولَّد هنا بديلٌ
+    // لمن لم يصدر له بعد. فلا يطغى مولَّدٌ على رسميٍّ لأنه أكثر عدداً.
     // البيانات التكميلية المكتوبة هنا
     const byKey = new Map();
     extraRows().forEach((r) => { if (r && r.id) byKey.set(String(r.id), r); });
@@ -304,6 +307,10 @@
       const rec = byKey.get(idOf(r.nid)) || byKey.get("n:" + norm(r.name));
       if (!rec) return;
       Object.entries(rec.values || {}).forEach(([k, v]) => { if (String(v || "").trim()) r[MAN + k] = v; });
+    });
+    out.forEach((r) => {
+      if (String(r.cert || "").trim()) { r.certFrom = "system"; return; }
+      if (r[MAN + CERT]) { r.cert = r[MAN + CERT]; r.certFrom = "tamkeen"; }
     });
     extras.forEach((t) => {
       (t.rows || []).forEach((row) => {
@@ -698,6 +705,8 @@
       merged = null;
       // عمود اختفى من ملف أُعيد رفعه لا يبقى عموداً فارغاً في التقرير
       const live = new Set(all().map((f) => f.key));
+      // «رقم الشهادة» صار حقلاً واحداً (cert)، فاختيارٌ قديم للحقل المنفصل يُستبدل به
+      if (picked.includes(MAN + CERT)) picked = [...new Set(picked.filter((k) => k !== MAN + CERT).concat("cert"))];
       const kept = picked.filter((k) => !k.startsWith(EX) || live.has(k));
       if (kept.length !== picked.length) { picked = kept; save(); }
     } catch (e) { if (!quiet) ui.toast(e.message); }
@@ -816,16 +825,18 @@
     if (!students().length) return "";
     const given = certGiven();
     const list = rows();
-    const without = list.filter((r) => !given.has(idOf(r.nid) || "n:" + norm(r.name)) && !String(r.cert || "").trim());
-    const fromSystem = list.filter((r) => String(r.cert || "").trim()).length;
+    const without = list.filter((r) => !String(r.cert || "").trim());
+    const fromSystem = list.filter((r) => r.certFrom === "system").length;
     const sample = list[0] ? (certPrefix || list[0]["crs:رمز الدورة"] || list[0].course || "CERT") + "-001" : "";
     return `<h4>أرقام الشهادات</h4>
-      <p class="conv-hint">إن كان النظام يصدر أرقام الشهادات فهي تُقرأ تلقائياً وتُستعمل أولاً؛ وهذا التوليد لمن ليس له رقم في النظام. الرقم يُحفظ فلا يتغيّر، ويُولَّد لمن يظهر في التقرير الآن.</p>
+      <p class="conv-hint">أرقام نظام المركز (صفحة الشهادات) تُقرأ تلقائياً وهي الأصل؛ والتوليد هنا لمن لم يصدر له النظام رقماً بعد.</p>
+      ${fromSystem ? "" : `<p class="conv-hint rep-warn">لم يصل أي رقم من نظام المركز في هذه اللقطة. أعد تشغيل سكربت القراءة (النسخة الجديدة تقرأ صفحة الشهادات)، وراجع «🩺 تشخيص البيانات» ← سطر «الشهادات».</p>`}
       <div class="rep-man-bar">
         <label class="sc-f"><span>البادئة (فارغة = رمز الدورة)</span><input type="text" id="rep-cert-prefix" value="${esc(certPrefix)}" placeholder="رمز الدورة"></label>
-        <span class="conv-hint">${ui.fmt(fromSystem)} من النظام · ${ui.fmt(given.size)} مولَّدة هنا · ${countOf(without.length, "طلاب", "طالباً", "طالب", "طالبان")} بلا رقم من ${ui.fmt(list.length)} معروض${sample ? ` · مثال: <b dir="ltr">${esc(sample)}</b>` : ""}</span>
+        <span class="conv-hint">${ui.fmt(fromSystem)} من النظام · ${ui.fmt(list.length - fromSystem - without.length)} مولَّدة هنا · ${countOf(without.length, "طلاب", "طالباً", "طالب", "طالبان")} بلا رقم من ${ui.fmt(list.length)} معروض${sample ? ` · مثال: <b dir="ltr">${esc(sample)}</b>` : ""}</span>
         <button type="button" class="btn" id="rep-cert-make" ${without.length ? "" : "disabled"}>🎓 ولّد للمعروضين</button>
         <button type="button" class="btn secondary" id="rep-cert-excel">⬇ كشف الشهادات (اسم · هوية · رقم)</button>
+        ${given.size ? `<button type="button" class="conv-link danger" id="rep-cert-clear">حذف الأرقام المولَّدة هنا (${ui.fmt(given.size)})</button>` : ""}
       </div>`;
   }
 
@@ -835,7 +846,7 @@
     const list = rows().map((r) => ({
       name: r.name || "",
       nid: r.nid || "",
-      cert: String(r.cert || "").trim() || given.get(idOf(r.nid) || "n:" + norm(r.name)) || "",
+      cert: String(r.cert || "").trim(),
     }));
     const withCert = list.filter((r) => r.cert);
     if (!withCert.length) { ui.toast("لا توجد أرقام شهادات بعد — اقرأ من النظام أو ولّدها"); return; }
@@ -859,6 +870,24 @@
     ui.toast(`صُدّر ${ui.fmt(withCert.length)} شهادة${missing ? ` · ${ui.fmt(missing)} بلا رقم لم تُدرج` : ""}`);
   }
 
+  /* من ولّد أرقاماً ثم وصلته أرقام المركز: يمسح المولَّدة فتبقى الرسمية وحدها */
+  function clearCerts() {
+    const given = certGiven();
+    if (!given.size) return;
+    if (!confirm(`حذف ${given.size} رقم شهادة مولَّداً في تمكين؟ أرقام نظام المركز لا تُمسّ.`)) return;
+    const recs = extraRows().map((r) => {
+      if (!r || !r.values || !r.values[CERT]) return r;
+      const values = { ...r.values };
+      delete values[CERT];
+      return { ...r, values, updatedAt: new Date().toISOString() };
+    });
+    App.store.get().studentExtra = recs;
+    App.store.save();
+    merged = null;
+    render();
+    ui.toast("حُذفت الأرقام المولَّدة");
+  }
+
   function makeCerts() {
     const list = rows();
     const given = certGiven();
@@ -870,7 +899,7 @@
     let made = 0;
     list.forEach((r) => {
       const id = idOf(r.nid) || "n:" + norm(r.name);
-      if (given.has(id) || String(r.cert || "").trim()) return;   // للنظام الأولوية
+      if (String(r.cert || "").trim()) return;   // له رقم من النظام أو مولَّد سابقاً
       const base = String(certPrefix || r[CRS + "رمز الدورة"] || r.course || "CERT").trim();
       const n = (seq.get(base) || 0) + 1;
       seq.set(base, n);
@@ -931,7 +960,7 @@
     [/بداية (الدورة|التدريب)|تاريخ البدء|من تاريخ/, CRS + "بداية الدورة"],
     [/نهاية (الدورة|التدريب)|تاريخ الانتهاء|إلى تاريخ|الى تاريخ/, CRS + "نهاية الدورة"],
     [/نوع التدريب|^النوع$/, CRS + "نوع التدريب"],
-    [/رقم الشهاده|رقم الشهادة|الشهادة/, MAN + "رقم الشهادة"],
+    [/شهاد/, "cert"],
     [/مدرب.*(2|٢|الثاني|الثانية)|الثاني.*مدرب/, TRK + "المدرب الثاني"],
     [/مدرب.*(1|١|الأول|الاول)|الأول.*مدرب/, TRK + "المدرب الأول"],
     [/مدرب/, "trainer"],
@@ -1292,6 +1321,7 @@
       if (e.target.closest("#rep-hide-blank")) { hideBlank = true; save(); render(); return; }
       if (e.target.closest("#rep-cert-make")) return void makeCerts();
       if (e.target.closest("#rep-cert-excel")) return void certExcel();
+      if (e.target.closest("#rep-cert-clear")) return void clearCerts();
       if (e.target.closest("#rep-man-save")) return void saveMan();
       if (e.target.closest("#rep-preset-save")) return void savePreset();
       if (e.target.closest("#rep-preset-del")) return void dropPreset();
