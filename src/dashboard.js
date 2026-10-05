@@ -50,6 +50,19 @@
   // «غير معتمد» تحتوي كلمة «معتمد»، فالاحتواء وحده يعدّها معتمدة: نشترط أن تبدأ بها
   const notApproved = (r) => String(r.total || "").trim() !== "" && !/^معتمد/.test(String(r.approval || "").trim());
 
+  /* لقطة قديمة تُقرأ كأنها اليوم: نقول عمرها، ونحذّر بعد يوم كامل */
+  function snapAge() {
+    const s = snapshot();
+    const at = s && s.at ? new Date(s.at).getTime() : 0;
+    if (!at) return "";
+    const hours = (Date.now() - at) / 3600000;
+    const text = hours < 1 ? "قبل أقل من ساعة"
+      : hours < 24 ? `قبل ${ui.fmt(Math.round(hours))} ساعة`
+      : `قبل ${ui.fmt(Math.round(hours / 24))} يوم`;
+    const stale = hours >= 24;
+    return `<span class="dash-snap-age ${stale ? "stale" : ""}" title="وقت آخر قراءة من نظام المركز">${stale ? "⚠ " : ""}آخر قراءة ${text}</span>`;
+  }
+
   function centreStats() {
     const rows = centreRows();
     if (!rows.length) return null;
@@ -107,7 +120,7 @@
         <div class="dash-section-head">
           <div><span class="dash-section-kicker">من نظام المركز</span><h3>المسارات</h3>
             <p>${ui.fmt(c.students)} طالباً في ${ui.fmt(c.phases.length)} مراحل</p></div>
-          <a class="dash-text-link" href="#screen">الشاشة <span aria-hidden="true">←</span></a>
+          <span class="dash-head-side">${snapAge()}<a class="dash-text-link" href="#screen">الشاشة <span aria-hidden="true">←</span></a></span>
         </div>
         <div class="table-wrap dash-table-wrap">
           <table class="dash-table dash-centre-table">
