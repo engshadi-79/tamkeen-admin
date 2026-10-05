@@ -799,6 +799,63 @@
     ui.toast(`حُفظ «${field}» لـ ${ui.fmt(inputs.length)}`);
   }
 
+  /* ===== أرقام الشهادات =====
+     رقم ثابت لكل خريج: رمز دورته ثم تسلسل. يُحفظ مرة فلا يتغيّر بين كشف وآخر،
+     ويملأ عمود «رقم الشهادة» في النماذج الرسمية كأي حقل. */
+  const CERT = "رقم الشهادة";
+  let certPrefix = "";
+
+  const certGiven = () => {
+    const m = new Map();
+    extraRows().forEach((r) => { const v = ((r && r.values) || {})[CERT]; if (v) m.set(String(r.id), String(v)); });
+    return m;
+  };
+
+  function certCard() {
+    if (!students().length) return "";
+    const given = certGiven();
+    const list = rows();
+    const without = list.filter((r) => !given.has(idOf(r.nid) || "n:" + norm(r.name)));
+    const sample = list[0] ? (certPrefix || list[0]["crs:رمز الدورة"] || list[0].course || "CERT") + "-001" : "";
+    return `<h4>أرقام الشهادات</h4>
+      <p class="conv-hint">رقم ثابت لكل خريج يُحفظ فلا يتغيّر. يُولَّد لمن يظهر في التقرير الآن، فاضبط المرحلة والفلاتر أولاً.</p>
+      <div class="rep-man-bar">
+        <label class="sc-f"><span>البادئة (فارغة = رمز الدورة)</span><input type="text" id="rep-cert-prefix" value="${esc(certPrefix)}" placeholder="رمز الدورة"></label>
+        <span class="conv-hint">${ui.fmt(given.size)} لهم أرقام · ${countOf(without.length, "طلاب", "طالباً", "طالب", "طالبان")} بلا رقم من ${ui.fmt(list.length)} معروض${sample ? ` · مثال: <b dir="ltr">${esc(sample)}</b>` : ""}</span>
+        <button type="button" class="btn" id="rep-cert-make" ${without.length ? "" : "disabled"}>🎓 ولّد للمعروضين</button>
+      </div>`;
+  }
+
+  function makeCerts() {
+    const list = rows();
+    const given = certGiven();
+    const seq = new Map();
+    given.forEach((v) => { const m = String(v).match(/^(.*)-(\d+)$/); if (m) seq.set(m[1], Math.max(seq.get(m[1]) || 0, Number(m[2]))); });
+    const recs = extraRows();
+    const now = new Date().toISOString();
+    const me = (App.cloud && App.cloud.user && App.cloud.user()) || {};
+    let made = 0;
+    list.forEach((r) => {
+      const id = idOf(r.nid) || "n:" + norm(r.name);
+      if (given.has(id)) return;
+      const base = String(certPrefix || r[CRS + "رمز الدورة"] || r.course || "CERT").trim();
+      const n = (seq.get(base) || 0) + 1;
+      seq.set(base, n);
+      let rec = recs.find((x) => x && String(x.id) === id);
+      if (!rec) { rec = { id, name: r.name || "", values: {}, createdAt: now }; recs.push(rec); }
+      rec.values = { ...(rec.values || {}), [CERT]: `${base}-${String(n).padStart(3, "0")}` };
+      rec.by = me.name || rec.by || "";
+      rec.updatedAt = now;
+      made++;
+    });
+    if (!made) { ui.toast("كل المعروضين لهم أرقام"); return; }
+    App.store.get().studentExtra = recs;
+    App.store.save();
+    merged = null;
+    render();
+    ui.toast(`وُلِّد ${ui.fmt(made)} رقم شهادة`);
+  }
+
   function renderSources() {
     const box = $("rep-sources");
     if (!box) return;
@@ -813,7 +870,8 @@
       <h4>جداول إكسل مضافة</h4>
       ${staged && staged.mode !== "fill" ? stagedImportCard() : uploadRow("كشف فيه بيانات الطلاب؛ أعمدته تصير حقولاً تُستعمل في التقارير والنماذج.")}
       ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}
-      ${manCard()}`;
+      ${manCard()}
+      ${certCard()}`;
   }
 
   /* ===== تعبئة نموذج رسمي من بيانات النظام =====
@@ -840,6 +898,7 @@
     [/بداية (الدورة|التدريب)|تاريخ البدء|من تاريخ/, CRS + "بداية الدورة"],
     [/نهاية (الدورة|التدريب)|تاريخ الانتهاء|إلى تاريخ|الى تاريخ/, CRS + "نهاية الدورة"],
     [/نوع التدريب|^النوع$/, CRS + "نوع التدريب"],
+    [/رقم الشهاده|رقم الشهادة|الشهادة/, MAN + "رقم الشهادة"],
     [/مدرب.*(2|٢|الثاني|الثانية)|الثاني.*مدرب/, TRK + "المدرب الثاني"],
     [/مدرب.*(1|١|الأول|الاول)|الأول.*مدرب/, TRK + "المدرب الأول"],
     [/مدرب/, "trainer"],
@@ -1198,6 +1257,7 @@
       if (e.target.closest("#rep-diag-close")) { diagOpen = false; render(); return; }
       if (e.target.closest("#rep-show-blank")) { hideBlank = false; save(); render(); return; }
       if (e.target.closest("#rep-hide-blank")) { hideBlank = true; save(); render(); return; }
+      if (e.target.closest("#rep-cert-make")) return void makeCerts();
       if (e.target.closest("#rep-man-save")) return void saveMan();
       if (e.target.closest("#rep-preset-save")) return void savePreset();
       if (e.target.closest("#rep-preset-del")) return void dropPreset();
@@ -1220,6 +1280,7 @@
         staged.map[Number(e.target.dataset.const)].value = e.target.value;
         return;
       }
+      if (e.target.id === "rep-cert-prefix") { certPrefix = e.target.value; return; }
       if (e.target.id === "rep-preset-name" || e.target.dataset.man !== undefined) return;
       if (e.target.id === "rep-man-search") {
         const v = e.target.value;
