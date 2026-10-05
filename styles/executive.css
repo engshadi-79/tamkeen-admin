@@ -762,3 +762,81 @@ html:root[data-theme="light"] .nav button.active {
   background: linear-gradient(135deg, #d4af37 0%, #b8972e 100%);
   box-shadow: 0 0 14px rgba(212,175,55,.26);
 }
+
+/* ============================================================
+   ٢٠. أشرطة التصفية: لوح واحد يجمع البحث والقوائم في كل الصفحات
+   (الوارد والصادر · المستفيدون · الشاشة · التقارير · السجل · الجداول · المسارات)
+   ============================================================ */
+html:root .reg-toolbar,
+html:root .sc-filters,
+html:root #rep-filters,
+html:root .hist-bar,
+html:root .sh-bar,
+html:root .track-bulk {
+  padding: 11px 13px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: rgba(13, 19, 32, .55);
+}
+html:root[data-theme="light"] .reg-toolbar,
+html:root[data-theme="light"] .sc-filters,
+html:root[data-theme="light"] #rep-filters,
+html:root[data-theme="light"] .hist-bar,
+html:root[data-theme="light"] .sh-bar,
+html:root[data-theme="light"] .track-bulk {
+  background: #faf8f4;
+  border-color: rgba(20, 26, 36, .09);
+}
+/* الحقول داخل الشريط أصغر وأهدأ من حقول النماذج */
+html:root .reg-toolbar select, html:root .reg-toolbar input,
+html:root .hist-bar select, html:root .hist-bar input,
+html:root .sh-bar select, html:root .sh-bar input,
+html:root #rep-filters select, html:root #rep-filters input {
+  min-height: 36px;
+  padding: 6px 11px;
+  font-size: 13px;
+}
+html:root .reg-search-box { position: relative; }
+html:root .reg-search-box input { padding-inline-start: 34px; }
+html:root .reg-search-box::before {
+  content: "search";
+  position: absolute; inset-inline-start: 10px; top: 50%;
+  transform: translateY(-50%);
+  font-family: "Material Symbols Outlined";
+  font-size: 18px; color: var(--faint); pointer-events: none;
+  font-variation-settings: "wght" 300;
+}
+
+/* ============================================================
+   ٢١. بطاقات المؤشرات في الصفحات الداخلية: أيقونة ومقياس إنجاز
+   ============================================================ */
+html:root .stat-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+html:root .stat-mark {
+  display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px;
+  border-radius: 10px; background: rgba(212, 175, 55, .12); color: var(--gold-bright);
+  font-size: 19px; font-variation-settings: "wght" 300;
+}
+html:root .stat-mark.is-ok { background: var(--ok-bg); color: var(--ok); }
+html:root .stat-mark.is-warn { background: var(--warn-bg); color: var(--warn); }
+html:root[data-theme="light"] .stat-mark { background: rgba(184, 151, 46, .14); color: #7a5f0f; }
+
+html:root .stat-meter {
+  height: 5px; margin-top: 9px; border-radius: 99px; overflow: hidden;
+  background: var(--surface-3);
+}
+html:root .stat-meter > i {
+  display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, var(--gold), var(--gold-bright));
+  transition: width .4s ease;
+}
+html:root .stat-meter.is-ok > i { background: linear-gradient(90deg, #0f9d6b, var(--ok)); }
+html:root .stat-meter.is-warn > i { background: linear-gradient(90deg, #c9952a, var(--warn)); }
+html:root .stat-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 6px; color: var(--faint); font-size: 11px;
+}
+html:root .stat-pct { font-weight: 700; color: var(--gold-bright); }
+html:root .stat-pct.is-ok { color: var(--ok); }
+html:root .stat-pct.is-warn { color: var(--warn); }
+
+html:root .stat .stat-of { color: var(--faint); font-size: 15px; font-weight: 500; }
