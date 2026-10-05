@@ -4,19 +4,21 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon-192.png" sizes="192x192" type="image/png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <meta name="theme-color" content="#0b1f3a">
+  <meta name="theme-color" content="#0b0f19">
   <meta name="mobile-web-app-capable" content="yes">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>مساعد تمكين الإداري</title>
   <meta name="description" content="أداة إدارية لمتابعة المسارات والمراسلات والمهام في مشروع تمكين (PP-003)">
-  <!-- خط Cairo: يُحمَّل عند توفر الإنترنت، وتعمل الأداة بخطوط النظام البديلة دون اتصال -->
+  <!-- خط IBM Plex Sans Arabic (ويليه Cairo): يُحمَّل عند توفر الإنترنت، وتعمل الأداة بخطوط النظام البديلة دون اتصال -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <!-- قالب Gentelella v4 كاملاً (مجمَّع من مصدره)، ثم تنسيقنا فوقه للغة والتخطيط -->
-  <link rel="stylesheet" href="styles/gentelella.css?v=244">
-  <link rel="stylesheet" href="styles/theme.css?v=244">
+  <link rel="stylesheet" href="styles/gentelella.css?v=246">
+  <link rel="stylesheet" href="styles/theme.css?v=246">
+  <!-- هوية «تمكين التنفيذية»: طبقة الصبغ النهائية فوق كل ما سبق -->
+  <link rel="stylesheet" href="styles/executive.css?v=246">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -116,7 +118,6 @@
       <div class="top-tools no-print">
         <button type="button" class="tt-search" id="gs-open" title="بحث شامل (Ctrl+K)">🔍 <span>بحث في كل الأقسام…</span><kbd>Ctrl K</kbd></button>
         <button type="button" class="tt-btn" id="pwa-install" hidden title="تثبيت النظام تطبيقاً على هذا الجهاز">⤓ <span>تثبيت التطبيق</span></button>
-        <button type="button" class="tt-btn tt-theme" id="theme-toggle" title="تبديل الوضع الليلي" aria-label="تبديل الوضع الليلي">🌙</button>
         <button type="button" class="tt-btn tt-account" data-profile title="حسابي: كلمة المرور والجلسات">👤 حسابي</button>
         <button type="button" class="tt-btn tt-logout" id="tt-logout" hidden title="تسجيل الخروج من هذا الجهاز">⎋ <span>خروج</span></button>
         <div class="tt-bell-wrap">
@@ -1394,49 +1395,49 @@
   <div class="toast" id="toast" role="status"></div>
   <div id="print-root" aria-hidden="true"></div>
 
-  <script src="src/track-catalog.js?v=244"></script>
-  <script src="src/storage.js?v=244"></script>
-  <script src="src/ui.js?v=244"></script>
-  <script src="src/templates.js?v=244"></script>
-  <script src="src/tracks.js?v=244"></script>
-  <script src="src/tasks.js?v=244"></script>
-  <script src="src/dashboard.js?v=244"></script>
-  <script src="src/docx.js?v=244"></script>
-  <script src="src/ai.js?v=244"></script>
-  <script src="src/doc-render.js?v=244"></script>
-  <script src="src/files-store.js?v=244"></script>
-  <script src="src/shared.js?v=244"></script>
-  <script src="src/cloud.js?v=244"></script>
-  <script src="src/drive.js?v=244"></script>
-  <script src="src/drive-ui.js?v=244"></script>
-  <script src="src/rtl-fixer.js?v=244"></script>
-  <script src="src/rtl-page.js?v=244"></script>
-  <script src="src/profile.js?v=244"></script>
-  <script src="src/admin.js?v=244"></script>
-  <script src="src/roster.js?v=244"></script>
-  <script src="src/registry.js?v=244"></script>
-  <script src="src/watch.js?v=244"></script>
-  <script src="src/charts.js?v=244"></script>
-  <script src="src/ai-assist.js?v=244"></script>
-  <script src="src/meetings.js?v=244"></script>
-  <script src="src/report.js?v=244"></script>
-  <script src="src/screen.js?v=244"></script>
-  <script src="src/reports.js?v=244"></script>
-  <script src="src/letters.js?v=244"></script>
+  <script src="src/track-catalog.js?v=246"></script>
+  <script src="src/storage.js?v=246"></script>
+  <script src="src/ui.js?v=246"></script>
+  <script src="src/templates.js?v=246"></script>
+  <script src="src/tracks.js?v=246"></script>
+  <script src="src/tasks.js?v=246"></script>
+  <script src="src/dashboard.js?v=246"></script>
+  <script src="src/docx.js?v=246"></script>
+  <script src="src/ai.js?v=246"></script>
+  <script src="src/doc-render.js?v=246"></script>
+  <script src="src/files-store.js?v=246"></script>
+  <script src="src/shared.js?v=246"></script>
+  <script src="src/cloud.js?v=246"></script>
+  <script src="src/drive.js?v=246"></script>
+  <script src="src/drive-ui.js?v=246"></script>
+  <script src="src/rtl-fixer.js?v=246"></script>
+  <script src="src/rtl-page.js?v=246"></script>
+  <script src="src/profile.js?v=246"></script>
+  <script src="src/admin.js?v=246"></script>
+  <script src="src/roster.js?v=246"></script>
+  <script src="src/registry.js?v=246"></script>
+  <script src="src/watch.js?v=246"></script>
+  <script src="src/charts.js?v=246"></script>
+  <script src="src/ai-assist.js?v=246"></script>
+  <script src="src/meetings.js?v=246"></script>
+  <script src="src/report.js?v=246"></script>
+  <script src="src/screen.js?v=246"></script>
+  <script src="src/reports.js?v=246"></script>
+  <script src="src/letters.js?v=246"></script>
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="vendor/exceljs.min.js"></script>
-  <script src="src/converter-core.js?v=244"></script>
-  <script src="src/converter-store.js?v=244"></script>
-  <script src="src/converter.js?v=244"></script>
+  <script src="src/converter-core.js?v=246"></script>
+  <script src="src/converter-store.js?v=246"></script>
+  <script src="src/converter.js?v=246"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script src="src/hospitality.js?v=244"></script>
-  <script src="src/sheets.js?v=244"></script>
-  <script src="src/history.js?v=244"></script>
-  <script src="src/roster-audit.js?v=244"></script>
-  <script src="src/notify.js?v=244"></script>
-  <script src="src/search.js?v=244"></script>
-  <script src="src/realtime.js?v=244"></script>
-  <script src="src/app.js?v=244"></script>
+  <script src="src/hospitality.js?v=246"></script>
+  <script src="src/sheets.js?v=246"></script>
+  <script src="src/history.js?v=246"></script>
+  <script src="src/roster-audit.js?v=246"></script>
+  <script src="src/notify.js?v=246"></script>
+  <script src="src/search.js?v=246"></script>
+  <script src="src/realtime.js?v=246"></script>
+  <script src="src/app.js?v=246"></script>
 </body>
 </html>
