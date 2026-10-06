@@ -638,32 +638,61 @@
     .replace(/[\u064B-\u0652]/g, "").replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
     .replace(/^ال/, "").replace(/[\s_\d().:\-\/]/g, "");
   const HEADER_ROW = /^(اسم|الاسم|صنف|الصنف|اسم الصنف|اسم الاداه|اسم الأداة|اسم الجهاز|البند|البيان|الماده|المادة|الوصف|م|#|الرقم|التسلسل|العدد|الكميه|الكمية|نوع|النوع|الوحده|الوحدة|ملاحظات|الاجمالي|الإجمالي|المجموع)$/;
+  /* لكل حقل قائمة تعبيرات مرتّبة: يُجرَّب الأدقّ أولاً.
+     المهم هنا أن «الكمية الكلية» تسبق «الكمية الفعلية» و«عدد المكن»،
+     وأن «اسم الأداة» يسبق أي عمود فيه كلمة «اسم». */
   const COLS = {
-    name: /صنف|اسم|بند|ماده|اداه|جهاز|عده|مسمى/,
-    unit: /وحده|قياس/,
-    qty: /كميه|عدد|رصيد|متوفر|متبقي|موجود|اجمالي|مجموع/,
-    min: /^حد|ادنى|اعادهالطلب/,
-    cat: /نوع|تصنيف|فئه/,
-    group: /مكنه|ماكينه|مجموعه|تابع|قسم/,
-    desc: /وصف|ملاحظ|بيان/,
+    name: [/^اسمالاداه$|^اسمالصنف$|^اسمالجهاز$|^الصنف$|^البند$/, /^اسم/, /صنف|بند|ماده|اداه|جهاز|مسمى/],
+    unit: [/^وحده$/, /وحده|قياس/],
+    qty: [/^كميهكليه$|^كميه$/, /كميهكليه|رصيد|متوفر|موجود/, /^عدد$|اجمالي|مجموع/],
+    min: [/^حدادنى$|^حد$/, /^حد|ادنى|اعادهالطلب/],
+    cat: [/^نوع$|^تصنيف$/, /نوع|تصنيف|فئه/],
+    group: [/^المكن$|^مكن/, /مكن|ماكين|مجموعه|تابع/],
+    desc: [/^وصف$|^ملاحظات$/, /وصف|ملاحظ|بيان/],
   };
-
-  /* صفّ العناوين: أكثر الصفوف الأولى احتواءً على نصوص مميّزة */
-  function headerRowOf(sheet, cols) {
-    let best = 1, bestScore = -1;
-    for (let r = 1; r <= Math.min(sheet.rowCount, 8); r++) {
-      const vals = [];
-      for (let c = 1; c <= cols; c++) {
-        const v = sheet.getRow(r).getCell(c).value;
-        const t = v == null ? "" : String(typeof v === "object" && v.text ? v.text : v).trim();
-        if (t) vals.push(t);
-      }
-      const uniq = new Set(vals).size;
-      const score = uniq + (vals.some((t) => COLS.name.test(normHead(t))) ? 3 : 0)
-        + (vals.some((t) => COLS.qty.test(normHead(t))) ? 2 : 0) - (vals.length === 1 ? 2 : 0);
-      if (score > bestScore) { bestScore = score; best = r; }
+  /* أعمدة الجدول اليومي لا تصلح حقولاً للصنف */
+  const DAY_COL = /^صباحي$|^مسائي$|^كميهفعليه$|^اليوم$|^التاريخ$|^م$|^#$/;
+  function pickCol(headers, key) {
+    for (const re of COLS[key]) {
+      const hit = headers.find((h) => !DAY_COL.test(normHead(h)) && re.test(normHead(h)));
+      if (hit) return hit;
     }
-    return best;
+    return "";
+  }
+
+  /* شريط العناوين: قد يكون أكثر من صفّ فوق بعضه (اليوم/التاريخ/صباحي-مسائي).
+     يُلتقط الصفّ الأول الذي فيه عمود اسم الصنف، ثم يُمدّ ما دامت الصفوف
+     التالية تحمل عنواناً أيضاً، وتُدمج: لكل عمود أول قيمة غير فارغة. */
+  const looksHeader = (vals) => vals.some((t) => COLS.name[0].test(normHead(t)) || COLS.name[1].test(normHead(t)))
+    || vals.some((t) => DAY_COL.test(normHead(t)));
+  function headerBandOf(sheet, cols, read) {
+    const rowVals = (r) => { const v = []; for (let c = 1; c <= cols; c++) v.push(read(sheet.getRow(r).getCell(c))); return v; };
+    let from = 0;
+    const max = Math.min(sheet.rowCount, 12);
+    for (let r = 1; r <= max; r++) {
+      const vals = rowVals(r).filter((t) => t);
+      if (!vals.length) continue;
+      if (new Set(vals).size === 1) continue;            // عنوان الورقة الممدود
+      if (vals.some((t) => COLS.name[0].test(normHead(t)) || COLS.name[1].test(normHead(t)))) { from = r; break; }
+    }
+    if (!from) {                                          // لا عمود اسم صريح: أكثر الصفوف تمايزاً
+      let best = 1, bestScore = -1;
+      for (let r = 1; r <= max; r++) {
+        const vals = rowVals(r).filter((t) => t);
+        const score = new Set(vals).size - (vals.length && new Set(vals).size === 1 ? 5 : 0);
+        if (score > bestScore) { bestScore = score; best = r; }
+      }
+      from = best;
+    }
+    let to = from;
+    while (to + 1 <= max && looksHeader(rowVals(to + 1).filter((t) => t))) to++;
+    const headers = [];
+    for (let c = 1; c <= cols; c++) {
+      let v = "";
+      for (let r = from; r <= to && !v; r++) v = read(sheet.getRow(r).getCell(c));
+      headers.push(v || `عمود ${c}`);
+    }
+    return { from, to, headers };
   }
 
   const cellText = (cell) => {
@@ -728,17 +757,13 @@
     const sheets = [];
     wb.eachSheet((sheet) => {
       const cols = Math.max(sheet.columnCount || 0, 1);
-      const hr = headerRowOf(sheet, cols);
-      const headers = [];
-      for (let c = 1; c <= cols; c++) headers.push(cellText(sheet.getRow(hr).getCell(c)) || `عمود ${c}`);
+      const band = headerBandOf(sheet, cols, cellText);
+      const headers = band.headers;
       const map = {};
-      Object.keys(COLS).forEach((k) => {
-        const hit = headers.find((h) => COLS[k].test(normHead(h)));
-        map[k] = hit || "";
-      });
+      Object.keys(COLS).forEach((k) => { map[k] = pickCol(headers, k); });
       const rows = [];
       sheet.eachRow((row, n) => {
-        if (n <= hr || rows.length >= 2000) return;
+        if (n <= band.to || rows.length >= 2000) return;
         const rec = {};
         let has = false;
         for (let c = 1; c <= cols; c++) {
@@ -764,17 +789,13 @@
 
   /* يحوّل شبكة نصوص (من CSV) إلى الشكل نفسه الذي تنتجه أوراق Excel */
   function gridToSheet(grid, sheetName) {
-    let best = 0, bestScore = -1;
-    grid.slice(0, 8).forEach((row, r) => {
-      const vals = row.filter((t) => t);
-      const score = new Set(vals).size + (vals.some((t) => COLS.name.test(normHead(t))) ? 3 : 0)
-        + (vals.some((t) => COLS.qty.test(normHead(t))) ? 2 : 0) - (vals.length === 1 ? 2 : 0);
-      if (score > bestScore) { bestScore = score; best = r; }
-    });
-    const headers = grid[best].map((h, i) => h || `عمود ${i + 1}`);
+    const fake = { rowCount: Math.min(grid.length, 12), getRow: (r) => ({ getCell: (c) => (grid[r - 1] || [])[c - 1] || "" }) };
+    const cols = Math.max(...grid.slice(0, 12).map((r) => r.length), 1);
+    const band = headerBandOf(fake, cols, (v) => String(v || "").trim());
+    const headers = band.headers;
     const map = {};
-    Object.keys(COLS).forEach((k) => { const hit = headers.find((h) => COLS[k].test(normHead(h))); map[k] = hit || ""; });
-    const rows = grid.slice(best + 1).filter((r) => r.some((t) => t)).map((r) => {
+    Object.keys(COLS).forEach((k) => { map[k] = pickCol(headers, k); });
+    const rows = grid.slice(band.to).filter((r) => r.some((t) => t)).map((r) => {
       const rec = {};
       headers.forEach((h, i) => { rec[h] = r[i] == null ? "" : r[i]; });
       return rec;
@@ -796,7 +817,9 @@
 
   function importDlg(sheets) {
     imp = sheets.map((sh) => {
-      const hit = locs().find((l) => normName(l.name) === normName(sh.name));
+      const bare = (v) => normName(String(v || "").replace(/^مسار\s+/, ""));
+      const hit = locs().find((l) => bare(l.name) === bare(sh.name))
+        || locs().find((l) => bare(l.name) && (bare(sh.name).includes(bare(l.name)) || bare(l.name).includes(bare(sh.name))));
       return Object.assign({}, sh, { locId: hit ? hit.id : "__new__" });
     });
     const total = imp.reduce((a, s) => a + s.valid, 0);
@@ -833,10 +856,12 @@
         const cat = /مكن|ماكين/.test(catText) ? "machine"
           : /ماده|مستهلك|خام/.test(catText) ? "material"
           : /اثاث|تجهيز|كرسي|طاوله/.test(catText) ? "furniture" : "tool";
-        const old = items().find((x) => x.loc === locId && normName(x.name) === name);
+        // الصنف يتميّز بموقعه واسمه ومكنته: «النمر 1+3» لماكنتين مختلفتين صنفان
+        const grp = normName(g(r, "group"));
+        const old = items().find((x) => x.loc === locId && normName(x.name) === name && normName(x.group || "") === grp);
         const qty = num(g(r, "qty"));
         const min = num(g(r, "min")) || 0;
-        const unit = g(r, "unit"), group = normName(g(r, "group")), desc = normName(g(r, "desc"));
+        const unit = g(r, "unit"), group = grp, desc = normName(g(r, "desc"));
         if (old) {
           if (unit) old.unit = unit;
           old.qty = qty;
