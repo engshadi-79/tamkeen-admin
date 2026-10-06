@@ -1,7 +1,7 @@
 /* نقطة التشغيل: التنقل بين الأقسام، النسخ الاحتياطي، وربط الوحدات */
 (function (App) {
   const { store, ui } = App;
-  const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "hospitality", "sheets", "screen", "reports", "tasks", "history", "admin"];
+  const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "hospitality", "sheets", "screen", "reports", "tasks", "history", "admin", "inventory"];
 
   /* مسار التنقّل: يُشتق من القائمة الجانبية، فيكفي بناؤه مرة واحدة لكل صفحة */
   function paintCrumb(view) {
@@ -51,6 +51,7 @@
     if (view === "meetings") App.meetings.render();
     if (view === "registry") App.registry.render();
     if (view === "roster") App.roster.render();
+    if (view === "inventory" && App.inventory) App.inventory.render();
     if (view === "rtl") App.rtlPage.render();
     if (view === "converter") App.converter.render();
     if (view === "hospitality") App.hospitality.render();
@@ -202,6 +203,7 @@
     showVersion();
     if (App.watch) App.watch.init();
     App.roster.init();
+    if (App.inventory) App.inventory.init();
     App.admin.init();
     App.rtlPage.init();
     App.meetings.init();

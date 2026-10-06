@@ -9,6 +9,7 @@
   const VIEWS = [
     { id: "dashboard", label: "اللوحة الرئيسية" },
     { id: "tracks", label: "المسارات" },
+    { id: "inventory", label: "جرد المسارات" },
     { id: "letters", label: "المراسلات" },
     { id: "report", label: "التقارير" },
     { id: "meetings", label: "محاضر الاجتماعات" },
