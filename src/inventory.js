@@ -678,11 +678,53 @@
     return String(v).trim();
   };
 
-  /* يقرأ المصنّف ورقةً ورقة */
+  /* تحليل صفّ CSV يحترم علامات الاقتباس */
+  function csvRow(line, sep) {
+    const out = []; let cur = "", q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (ch === '"') q = false;
+        else cur += ch;
+      } else if (ch === '"') q = true;
+      else if (ch === sep) { out.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    out.push(cur);
+    return out.map((v) => v.trim());
+  }
+
+  /* ملف CSV: ورقة واحدة باسم الملف */
+  async function readCsv(file) {
+    let text = await file.text();
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (!lines.length) throw new Error("الملف فارغ");
+    const head = lines[0];
+    const sep = [",", ";", "\t"].sort((a, b) => head.split(b).length - head.split(a).length)[0];
+    const grid = lines.map((l) => csvRow(l, sep));
+    return [{ grid, name: file.name.replace(/\.[^.]+$/, "") }];
+  }
+
+  /* يقرأ المصنّف ورقةً ورقة، ويشرح الصيغ غير المدعومة بالعربية */
   async function readWorkbook(file) {
-    if (typeof ExcelJS === "undefined") throw new Error("تعذّر تحميل مكتبة Excel");
+    const name = String(file.name || "").toLowerCase();
+    const buf = await file.arrayBuffer();
+    const sig = new Uint8Array(buf.slice(0, 8));
+    // D0 CF 11 E0: صيغة Excel 97‑2003 القديمة، ولا تقرؤها المكتبة
+    if (sig[0] === 0xD0 && sig[1] === 0xCF && sig[2] === 0x11 && sig[3] === 0xE0) {
+      throw new Error("هذا ملف بصيغة ‎.xls‎ القديمة ولا يمكن قراءتها. افتحه في Excel ثم «حفظ باسم» واختر ‎Excel Workbook (.xlsx)‎ وأعد رفعه.");
+    }
+    if (name.endsWith(".csv") || (sig[0] !== 0x50 && sig[1] !== 0x4B)) {
+      // ليس ملف zip (أي ليس xlsx): يُعامَل نصّاً مفصولاً بفواصل
+      const sheets = await readCsv(file);
+      return sheets.map((sh) => gridToSheet(sh.grid, sh.name));
+    }
+    if (typeof ExcelJS === "undefined") throw new Error("تعذّر تحميل مكتبة Excel — تحقّق من الاتصال وأعد المحاولة");
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(await file.arrayBuffer());
+    try { await wb.xlsx.load(buf); }
+    catch (e) { throw new Error("تعذّرت قراءة الملف. تأكّد أنه مصنّف Excel بصيغة ‎.xlsx‎ غير محمي بكلمة مرور."); }
     const sheets = [];
     wb.eachSheet((sheet) => {
       const cols = Math.max(sheet.columnCount || 0, 1);
@@ -713,10 +755,44 @@
       });
       sheets.push({ name: sheet.name.trim(), headers, map, rows, valid: valid.length, nameCol });
     });
+    if (!sheets.length) throw new Error("لا توجد أوراق في هذا المصنّف");
+    if (!sheets.some((sh) => sh.valid)) {
+      throw new Error("قُرئت الأوراق لكن لم يُعثر على صفوف أصناف. تأكّد أن في كل ورقة عموداً لاسم الصنف وصفوفاً تحته.");
+    }
     return sheets;
   }
 
+  /* يحوّل شبكة نصوص (من CSV) إلى الشكل نفسه الذي تنتجه أوراق Excel */
+  function gridToSheet(grid, sheetName) {
+    let best = 0, bestScore = -1;
+    grid.slice(0, 8).forEach((row, r) => {
+      const vals = row.filter((t) => t);
+      const score = new Set(vals).size + (vals.some((t) => COLS.name.test(normHead(t))) ? 3 : 0)
+        + (vals.some((t) => COLS.qty.test(normHead(t))) ? 2 : 0) - (vals.length === 1 ? 2 : 0);
+      if (score > bestScore) { bestScore = score; best = r; }
+    });
+    const headers = grid[best].map((h, i) => h || `عمود ${i + 1}`);
+    const map = {};
+    Object.keys(COLS).forEach((k) => { const hit = headers.find((h) => COLS[k].test(normHead(h))); map[k] = hit || ""; });
+    const rows = grid.slice(best + 1).filter((r) => r.some((t) => t)).map((r) => {
+      const rec = {};
+      headers.forEach((h, i) => { rec[h] = r[i] == null ? "" : r[i]; });
+      return rec;
+    });
+    const nameCol = map.name || headers[0];
+    const valid = rows.filter((r) => { const nm = normName(r[nameCol]); return nm && !HEADER_ROW.test(nm); });
+    return { name: sheetName, headers, map, rows, valid: valid.length, nameCol };
+  }
+
   let imp = null;   // [{name, map, rows, valid, nameCol, locId}]
+
+  /* خطأ الاستيراد يُعرض في نافذة: التنبيه الخاطف يمرّ دون أن يُقرأ */
+  function importError(err) {
+    openModal("تعذّر استيراد الملف",
+      `<p style="margin:0 0 10px">${esc(err && err.message ? err.message : "خطأ غير معروف")}</p>
+       <div class="note-box">الصيغة المدعومة: ‎.xlsx‎ (ومعها ‎.csv‎ لورقة واحدة). كل ورقة في المصنّف تُستورد موقعاً باسمها، ويلزم في كل ورقة عمود لاسم الصنف.</div>`,
+      `<button class="btn" type="button" data-modal-close>حسناً</button>`);
+  }
 
   function importDlg(sheets) {
     imp = sheets.map((sh) => {
@@ -864,7 +940,7 @@
       if (set) { const k = set.dataset.set; return go(null, { [k]: set.value }); }
       if (t.id === "inv-file") {
         const f = t.files && t.files[0]; t.value = "";
-        if (f) readWorkbook(f).then(importDlg).catch((err) => toast(err.message || "تعذّرت قراءة الملف"));
+        if (f) readWorkbook(f).then(importDlg).catch((err) => importError(err));
         return;
       }
       const sh = t.closest("[data-sheet]");
