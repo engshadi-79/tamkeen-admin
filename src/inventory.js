@@ -630,57 +630,153 @@
     ui.download(`أصناف الجرد ${today()}.xlsx`, new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
 
-  /* الاستيراد: يطابق الأعمدة بالمرادفات ويدمج بالموقع والاسم */
+  /* ===== الاستيراد: مصنّف فيه ورقة لكل مسار =====
+     كل ورقة = موقع باسمها، وصفوفها = أصنافه. تُكتشف صفوف العناوين داخل كل
+     ورقة (فقد يسبقها عنوان)، وتُطابَق الأعمدة بالمرادفات، وتُعرض معاينة
+     بورقة/موقع/عدد قبل التنفيذ. الرفع المتكرر يُحدِّث ولا يكرّر. */
   const normHead = (v) => String(v || "").trim().toLowerCase()
-    .replace(/[ً-ْ]/g, "").replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/[\u064B-\u0652]/g, "").replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
     .replace(/^ال/, "").replace(/[\s_\d().:\-\/]/g, "");
-  const HEADER_ROW = /^(اسم|الاسم|صنف|الصنف|اسم الصنف|اسم الاداه|اسم الأداة|البند|البيان|الماده|المادة|الوصف|م|#|الرقم|التسلسل|العدد|الكميه|الكمية|نوع|النوع|الوحده|الوحدة|ملاحظات)$/;
-  async function importFile(file) {
-    const data = await App.converterCore.readDataFile(await file.arrayBuffer());
-    const find = (re) => data.headers.find((h) => re.test(normHead(h))) || "";
-    const col = {
-      name: find(/صنف|اسم|بند|ماده|اداه|جهاز|وصف/),
-      loc: find(/مسار|موقع|قسم|قاعه|ورشه|معمل|مكان/),
-      unit: find(/وحده|قياس/),
-      qty: find(/كميه|عدد|رصيد|متوفر|متبقي|موجود/),
-      min: find(/^حد|ادنى|اعادهالطلب/),
-      cat: find(/نوع|تصنيف|فئه/),
-      group: find(/مكنه|ماكينه|مجموعه|تابع/),
-      desc: find(/وصف|ملاحظ|بيان/),
-    };
-    const g = (r, k) => col[k] ? String(r[col[k]] == null ? "" : r[col[k]]).trim() : "";
-    const fallbackLoc = u.iLoc !== "all" ? u.iLoc : (locs()[0] || {}).id;
-    let added = 0, updated = 0, skipped = 0;
-    data.rows.forEach((r) => {
-      const name = normName(g(r, "name"));
-      if (!name || HEADER_ROW.test(name)) { skipped++; return; }
-      const locName = normName(g(r, "loc"));
-      let loc = fallbackLoc;
-      if (locName) {
-        let hit = locs().find((l) => normName(l.name) === locName);
-        if (!hit) { hit = { id: uid("l"), name: locName, type: "track" }; locs().push(hit); }
-        loc = hit.id;
+  const HEADER_ROW = /^(اسم|الاسم|صنف|الصنف|اسم الصنف|اسم الاداه|اسم الأداة|اسم الجهاز|البند|البيان|الماده|المادة|الوصف|م|#|الرقم|التسلسل|العدد|الكميه|الكمية|نوع|النوع|الوحده|الوحدة|ملاحظات|الاجمالي|الإجمالي|المجموع)$/;
+  const COLS = {
+    name: /صنف|اسم|بند|ماده|اداه|جهاز|عده|مسمى/,
+    unit: /وحده|قياس/,
+    qty: /كميه|عدد|رصيد|متوفر|متبقي|موجود|اجمالي|مجموع/,
+    min: /^حد|ادنى|اعادهالطلب/,
+    cat: /نوع|تصنيف|فئه/,
+    group: /مكنه|ماكينه|مجموعه|تابع|قسم/,
+    desc: /وصف|ملاحظ|بيان/,
+  };
+
+  /* صفّ العناوين: أكثر الصفوف الأولى احتواءً على نصوص مميّزة */
+  function headerRowOf(sheet, cols) {
+    let best = 1, bestScore = -1;
+    for (let r = 1; r <= Math.min(sheet.rowCount, 8); r++) {
+      const vals = [];
+      for (let c = 1; c <= cols; c++) {
+        const v = sheet.getRow(r).getCell(c).value;
+        const t = v == null ? "" : String(typeof v === "object" && v.text ? v.text : v).trim();
+        if (t) vals.push(t);
       }
-      const catText = normHead(g(r, "cat"));
-      const cat = /مكن|ماكين/.test(catText) ? "machine" : /ماده|مستهلك|خام/.test(catText) ? "material"
-        : /اثاث|تجهيز/.test(catText) ? "furniture" : "tool";
-      const old = items().find((x) => x.loc === loc && normName(x.name) === name);
-      const qty = num(g(r, "qty"));
-      if (old) {
-        old.unit = g(r, "unit") || old.unit;
-        old.qty = qty;
-        old.min = num(g(r, "min")) || old.min || 0;
-        old.group = normName(g(r, "group")) || old.group;
-        old.desc = normName(g(r, "desc")) || old.desc;
-        old.active = true;
-        updated++;
-      } else {
-        items().push({ id: uid("i"), loc, name, unit: g(r, "unit"), qty, min: num(g(r, "min")) || 0, cat, group: normName(g(r, "group")), desc: normName(g(r, "desc")), note: "", active: true });
-        added++;
-      }
+      const uniq = new Set(vals).size;
+      const score = uniq + (vals.some((t) => COLS.name.test(normHead(t))) ? 3 : 0)
+        + (vals.some((t) => COLS.qty.test(normHead(t))) ? 2 : 0) - (vals.length === 1 ? 2 : 0);
+      if (score > bestScore) { bestScore = score; best = r; }
+    }
+    return best;
+  }
+
+  const cellText = (cell) => {
+    const v = cell.value;
+    if (v == null) return "";
+    if (typeof v === "object") {
+      if (v.text != null) return String(v.text).trim();
+      if (v.result != null) return String(v.result).trim();
+      if (v.richText) return v.richText.map((p) => p.text).join("").trim();
+      return "";
+    }
+    return String(v).trim();
+  };
+
+  /* يقرأ المصنّف ورقةً ورقة */
+  async function readWorkbook(file) {
+    if (typeof ExcelJS === "undefined") throw new Error("تعذّر تحميل مكتبة Excel");
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await file.arrayBuffer());
+    const sheets = [];
+    wb.eachSheet((sheet) => {
+      const cols = Math.max(sheet.columnCount || 0, 1);
+      const hr = headerRowOf(sheet, cols);
+      const headers = [];
+      for (let c = 1; c <= cols; c++) headers.push(cellText(sheet.getRow(hr).getCell(c)) || `عمود ${c}`);
+      const map = {};
+      Object.keys(COLS).forEach((k) => {
+        const hit = headers.find((h) => COLS[k].test(normHead(h)));
+        map[k] = hit || "";
+      });
+      const rows = [];
+      sheet.eachRow((row, n) => {
+        if (n <= hr || rows.length >= 2000) return;
+        const rec = {};
+        let has = false;
+        for (let c = 1; c <= cols; c++) {
+          const t = cellText(row.getCell(c));
+          if (t) has = true;
+          rec[headers[c - 1]] = t;
+        }
+        if (has) rows.push(rec);
+      });
+      const nameCol = map.name || headers[0];
+      const valid = rows.filter((r) => {
+        const nm = normName(r[nameCol]);
+        return nm && !HEADER_ROW.test(nm);
+      });
+      sheets.push({ name: sheet.name.trim(), headers, map, rows, valid: valid.length, nameCol });
     });
-    save(); render();
-    toast(`الاستيراد: ${added} صنفاً جديداً و${updated} محدَّثاً${skipped ? ` و${skipped} صفاً متجاوَزاً` : ""}`);
+    return sheets;
+  }
+
+  let imp = null;   // [{name, map, rows, valid, nameCol, locId}]
+
+  function importDlg(sheets) {
+    imp = sheets.map((sh) => {
+      const hit = locs().find((l) => normName(l.name) === normName(sh.name));
+      return Object.assign({}, sh, { locId: hit ? hit.id : "__new__" });
+    });
+    const total = imp.reduce((a, s) => a + s.valid, 0);
+    const rows = imp.map((sh, k) => `<tr>
+        <td><b>${esc(sh.name)}</b><div class="sub">عمود الاسم: ${esc(sh.nameCol)}</div></td>
+        <td class="n">${sh.valid}</td>
+        <td><select data-sheet="${k}">
+          <option value="__new__" ${sh.locId === "__new__" ? "selected" : ""}>موقع جديد باسم الورقة</option>
+          <option value="__skip__">تجاهل هذه الورقة</option>
+          ${locs().map((l) => `<option value="${l.id}" ${sh.locId === l.id ? "selected" : ""}>${esc(l.name)}</option>`).join("")}
+        </select></td>
+      </tr>`).join("");
+    openModal("استيراد أصناف من مصنّف Excel",
+      `<p class="sub">وُجدت <b>${imp.length}</b> ورقة و<b>${total}</b> صنفاً. كل ورقة تُستورد موقعاً باسمها ما لم تختر غير ذلك. الرفع المتكرر يُحدِّث الأصناف ولا يكرّرها.</p>
+       <div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>الورقة</th><th class="n">أصناف</th><th>الموقع</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+      `<button class="btn secondary" type="button" data-modal-close>إلغاء</button><button class="btn" type="button" data-act="do-import">استيراد ${total} صنفاً</button>`);
+  }
+
+  function runImport() {
+    let added = 0, updated = 0, newLocs = 0, skipped = 0;
+    imp.forEach((sh) => {
+      if (sh.locId === "__skip__") return;
+      let locId = sh.locId;
+      if (locId === "__new__") {
+        const hit = locs().find((l) => normName(l.name) === normName(sh.name));
+        if (hit) locId = hit.id;
+        else { const l = { id: uid("l"), name: sh.name, type: "track" }; locs().push(l); locId = l.id; newLocs++; }
+      }
+      const g = (r, k) => sh.map[k] ? String(r[sh.map[k]] == null ? "" : r[sh.map[k]]).trim() : "";
+      sh.rows.forEach((r) => {
+        const name = normName(r[sh.nameCol]);
+        if (!name || HEADER_ROW.test(name)) { skipped++; return; }
+        const catText = normHead(g(r, "cat"));
+        const cat = /مكن|ماكين/.test(catText) ? "machine"
+          : /ماده|مستهلك|خام/.test(catText) ? "material"
+          : /اثاث|تجهيز|كرسي|طاوله/.test(catText) ? "furniture" : "tool";
+        const old = items().find((x) => x.loc === locId && normName(x.name) === name);
+        const qty = num(g(r, "qty"));
+        const min = num(g(r, "min")) || 0;
+        const unit = g(r, "unit"), group = normName(g(r, "group")), desc = normName(g(r, "desc"));
+        if (old) {
+          if (unit) old.unit = unit;
+          old.qty = qty;
+          if (min) old.min = min;
+          if (group) old.group = group;
+          if (desc) old.desc = desc;
+          old.active = true;
+          updated++;
+        } else {
+          items().push({ id: uid("i"), loc: locId, name, unit, qty, min, cat, group, desc, note: "", active: true });
+          added++;
+        }
+      });
+    });
+    save(); closeModal(); render();
+    toast(`الاستيراد: ${added} صنفاً جديداً و${updated} محدَّثاً${newLocs ? ` و${newLocs} موقعاً جديداً` : ""}${skipped ? ` و${skipped} صفاً متجاوَزاً` : ""}`);
   }
 
   /* ===== الرسم والأحداث ===== */
@@ -753,6 +849,7 @@
       if (a === "new-move") return moveDlg();
       if (a === "save-move") return saveMove();
       if (a === "import") return document.getElementById("inv-file").click();
+      if (a === "do-import") return runImport();
       if (a === "add-loc") {
         const v = normName(document.getElementById("inv-newloc").value);
         if (!v) return toast("اكتب اسم الموقع");
@@ -767,9 +864,11 @@
       if (set) { const k = set.dataset.set; return go(null, { [k]: set.value }); }
       if (t.id === "inv-file") {
         const f = t.files && t.files[0]; t.value = "";
-        if (f) importFile(f).catch((err) => toast(err.message || "تعذّرت قراءة الملف"));
+        if (f) readWorkbook(f).then(importDlg).catch((err) => toast(err.message || "تعذّرت قراءة الملف"));
         return;
       }
+      const sh = t.closest("[data-sheet]");
+      if (sh && imp) { imp[+sh.dataset.sheet].locId = sh.value; return; }
       const row = t.closest(".row[data-id]");
       if (row && t.matches("[data-val]")) return setVal(row.dataset.id, t.value);
       const tr = t.closest("tr[data-id]");
