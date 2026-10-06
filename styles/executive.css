@@ -1111,3 +1111,63 @@ html:root .hd-tick.on,
 html:root .sh-tick.on,
 html:root .hos-in td, html:root .hos-in th { color: #141a24; }
 html:root .hd-tick.on b { color: #fff; }
+
+/* ============================================================
+   ٢٩. جرد المسارات
+   ============================================================ */
+html:root #view-inventory .stats { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+
+html:root .inv-form { padding: 16px 18px; }
+html:root .inv-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 14px;
+  margin-bottom: 12px;
+}
+html:root .inv-form-grid .field { margin: 0; }
+
+html:root .inv-table th { white-space: nowrap; }
+html:root .inv-table td { vertical-align: middle; }
+html:root .inv-unit { display: block; margin-top: 1px; color: var(--faint); font-size: 10.5px; }
+html:root .inv-dim { color: var(--muted); font-size: 12.5px; }
+
+/* المتبقي: رقم بارز، ويصطبغ بالتحذير عند بلوغ الحدّ الأدنى */
+html:root .inv-qty {
+  display: inline-grid; place-items: center;
+  min-width: 46px; padding: 3px 9px; border-radius: 8px;
+  background: rgba(255, 255, 255, .06);
+  font-weight: 700; font-variant-numeric: tabular-nums;
+}
+html:root .inv-qty.is-low { background: var(--warn-bg); color: var(--warn); }
+html:root[data-theme="light"] .inv-qty { background: rgba(20, 26, 36, .06); }
+html:root tr.inv-low td { background: rgba(245, 200, 100, .05); }
+
+html:root input.inv-use { width: 84px; padding: 6px 9px; text-align: center; }
+html:root select.inv-state { width: auto; min-width: 96px; padding: 5px 9px; font-size: 12.5px; }
+
+/* سجل الحركة */
+html:root .inv-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+html:root .inv-move {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 11px; border-radius: 10px;
+  background: rgba(30, 41, 59, .35);
+  border: 1px solid var(--border-soft);
+}
+html:root[data-theme="light"] .inv-move { background: #faf8f4; border-color: rgba(20, 26, 36, .09); }
+html:root .inv-move-ico {
+  display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px;
+  border-radius: 9px; font-size: 17px;
+  background: rgba(212, 175, 55, .12); color: var(--gold-bright);
+}
+html:root .inv-use .inv-move-ico { background: var(--info-bg); color: var(--info); }
+html:root .inv-move.inv-fault .inv-move-ico { background: var(--danger-bg); color: var(--danger); }
+html:root .inv-move.inv-adjust .inv-move-ico { background: var(--ok-bg); color: var(--ok); }
+html:root .inv-move-copy { display: grid; min-width: 0; flex: 1; line-height: 1.45; }
+html:root .inv-move-copy b { font-size: 13px; font-weight: 600; }
+html:root .inv-move-copy small { color: var(--muted); font-size: 11px; }
+html:root .inv-move-meta { color: var(--faint); font-size: 11px; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  html:root .inv-move-meta { display: none; }
+  html:root input.inv-use { width: 64px; }
+}

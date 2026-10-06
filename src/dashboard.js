@@ -157,6 +157,10 @@
     if (overdue.length) out.push({ n: overdue.length, tone: "danger", text: "مهمة متأخرة عن موعدها", href: "#tasks", action: "المهام" });
     const late = (App.registry ? App.registry.followUps() : []).filter((x) => x.days < 0).length;
     if (late) out.push({ n: late, tone: "warn", text: "وارداً تجاوز موعد معالجته", href: "#registry", action: "السجل" });
+    // الجرد: الأصناف التي بلغت حدّها الأدنى والأجهزة المعطلة أو المفقودة
+    const inv = App.inventory ? App.inventory.alerts() : { low: [], bad: [] };
+    if (inv.low.length) out.push({ n: inv.low.length, tone: "warn", text: `صنفاً بلغ حدّه الأدنى في الجرد (${ui.esc(inv.low.map((x) => x.name).slice(0, 2).join("، "))}${inv.low.length > 2 ? "…" : ""})`, href: "#inventory", action: "الجرد" });
+    if (inv.bad.length) out.push({ n: inv.bad.length, tone: "danger", text: "جهازاً معطلاً أو مفقوداً في المسارات", href: "#inventory", action: "الجرد" });
     return out.sort((a, b) => (a.tone === b.tone ? b.n - a.n : a.tone === "danger" ? -1 : 1));
   }
 
