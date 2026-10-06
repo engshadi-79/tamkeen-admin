@@ -208,6 +208,157 @@
     return cards.join("");
   }
 
+
+  /* ===== لوحة على هيئة «منجز»: بطل + بلاطات + توزيع + منحنى + قوائم =====
+     الأشكال مقتبسة من نظام منجز، والألوان تبقى على هوية تمكين الخمسة. */
+  const DAY = 86400000;
+  const dayISO = (d) => new Date(d).toISOString().slice(0, 10);
+
+  /* قيود الوارد والصادر في آخر n يوماً، يوماً بيوم */
+  function registryTrend(days) {
+    const recs = store.get().registry || [];
+    const out = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const iso = dayISO(Date.now() - i * DAY);
+      out.push({ iso, n: recs.filter((r) => String(r.date || "").slice(0, 10) === iso).length });
+    }
+    return out;
+  }
+  const countBetween = (fromIso, toIso) =>
+    (store.get().registry || []).filter((r) => {
+      const d = String(r.date || "").slice(0, 10);
+      return d && d >= fromIso && d <= toIso;
+    }).length;
+
+  const pctDelta = (now, before) => (before === 0 ? (now > 0 ? 100 : 0) : Math.round(((now - before) / before) * 100));
+  const clampPct = (v) => Math.max(0, Math.min(100, Number(v) || 0));
+
+  function heroCard() {
+    const today = dayISO(Date.now());
+    const weekAgo = dayISO(Date.now() - 6 * DAY);
+    const prevFrom = dayISO(Date.now() - 13 * DAY);
+    const prevTo = dayISO(Date.now() - 7 * DAY);
+    const week = countBetween(weekAgo, today);
+    const prev = countBetween(prevFrom, prevTo);
+    const d = pctDelta(week, prev);
+    const { tasks } = store.get();
+    const done = tasks.filter((t) => t.done).length;
+    const open = tasks.length - done;
+    return `<section class="mj-hero">
+        <h2>نشاط هذا الأسبوع</h2>
+        <div class="mj-hero-n">${ui.fmt(week)} معاملة</div>
+        <div class="mj-hero-delta">${d >= 0 ? "▲" : "▼"} ${ui.fmt(Math.abs(d))}٪ مقارنة بالأسبوع الماضي</div>
+        <div class="mj-hero-split">
+          <div><span>المهام المنجزة</span><b>${ui.fmt(done)} منجزة</b></div>
+          <div><span>المهام المفتوحة</span><b>${ui.fmt(open)} قيد التنفيذ</b></div>
+        </div>
+        <a class="mj-hero-cta" href="#report">عرض التقرير الدوري</a>
+      </section>`;
+  }
+
+  const kpiTile = (tone, title, value, progress, foot) => `<section class="mj-kpi mj-${tone}">
+      <h3>${title}</h3>
+      <div class="mj-kpi-n">${value}</div>
+      <div class="mj-kpi-bar"><i style="width:${clampPct(progress)}%"></i></div>
+      <div class="mj-kpi-foot">${foot}</div>
+    </section>`;
+
+  function kpiTiles() {
+    const c = centreStats();
+    const { tasks } = store.get();
+    const done = tasks.filter((t) => t.done).length;
+    const taskPct = tasks.length ? (done / tasks.length) * 100 : 0;
+    if (!c) {
+      const trackList = App.tracks.ordered();
+      const sum = App.tracks.summary(trackList);
+      return [
+        kpiTile("gold", "المستفيدون", ui.fmt(sum.beneficiaries), 100, `موزعون على ${ui.fmt(trackList.length)} مسارات`),
+        kpiTile("green", "نسبة الحضور", `${ui.fmt(sum.attendancePct)}٪`, sum.attendancePct, `المعيار ${ATTENDANCE_THRESHOLD}٪`),
+        kpiTile("amber", "إنجاز الساعات", `${ui.fmt(sum.completionPct)}٪`, sum.completionPct, `من ${store.TOTAL_HOURS} ساعة لكل مسار`),
+        kpiTile("info", "المهام المنجزة", ui.fmt(done), taskPct, `من ${ui.fmt(tasks.length)} مهمة`),
+      ].join("");
+    }
+    const pledged = c.students - c.noPledge;
+    const surveyed = c.students - c.noSurvey;
+    return [
+      kpiTile("gold", "طلاب المركز", ui.fmt(c.students), 100, `في ${ui.fmt(c.phases.length)} مراحل`),
+      kpiTile("green", "الحضور التراكمي", c.attendance == null ? "—" : `${ui.fmt(c.attendance, 1)}٪`, c.attendance || 0, `المعيار ${ATTENDANCE_THRESHOLD}٪`),
+      kpiTile("amber", "التعهدات الموقّعة", ui.fmt(pledged), c.students ? (pledged / c.students) * 100 : 0, `المتبقي ${ui.fmt(c.noPledge)} طالباً`),
+      kpiTile("info", "الاستبيانات المكتملة", ui.fmt(surveyed), c.students ? (surveyed / c.students) * 100 : 0, `الناقص ${ui.fmt(c.noSurvey)} استبياناً`),
+    ].join("");
+  }
+
+  /* شريط مقسوم بنسب المسارات مع مفتاح ألوان، كلوحة التوزيع في منجز */
+  function distributionPanel() {
+    const rows = centreByTrack().slice(0, 6);
+    const total = rows.reduce((a, r) => a + r.n, 0);
+    const body = !total
+      ? `<p class="mj-empty">لا توجد بيانات كافية بعد</p>`
+      : `<div class="mj-seg">${rows.map((r, i) => `<i class="mj-c${i % 5}" style="width:${(r.n / total) * 100}%" title="${ui.esc(r.track)}"></i>`).join("")}</div>
+         <div class="mj-legend">${rows.map((r, i) => `<div>
+             <span><i class="mj-c${i % 5}"></i>${ui.esc(r.track)}</span>
+             <b>${ui.fmt((r.n / total) * 100, 0)}٪</b>
+           </div>`).join("")}</div>`;
+    return `<section class="card mj-panel">
+        <div class="mj-panel-head"><h4>توزيع الطلاب</h4><small>حسب المسار التدريبي</small></div>
+        ${body}
+      </section>`;
+  }
+
+  /* منحنى آخر سبعة أيام: خط ومساحة ونقطة على آخر يوم */
+  function trendPanel() {
+    const data = registryTrend(7);
+    const max = Math.max(...data.map((d) => d.n), 1);
+    const W = 320, H = 130, step = W / Math.max(data.length - 1, 1);
+    const pts = data.map((d, i) => `${(i * step).toFixed(1)},${(H - (d.n / max) * (H - 20) - 10).toFixed(1)}`);
+    const last = pts[pts.length - 1].split(",");
+    return `<section class="card mj-panel">
+        <div class="mj-panel-head"><h4>حركة المراسلات</h4><small>القيود المسجّلة آخر ٧ أيام</small></div>
+        <svg class="mj-trend" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="منحنى القيود آخر سبعة أيام">
+          <polyline points="${pts.join(" ")} ${W},${H} 0,${H}" fill="var(--gold)" opacity=".14" stroke="none"></polyline>
+          <polyline points="${pts.join(" ")}" fill="none" stroke="var(--gold-bright)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
+          <circle cx="${last[0]}" cy="${last[1]}" r="5" fill="var(--gold-bright)"></circle>
+        </svg>
+        <div class="mj-trend-foot"><span>${ui.formatDate(data[0].iso)}</span><span>${ui.formatDate(data[data.length - 1].iso)}</span></div>
+      </section>`;
+  }
+
+  const miniPanel = (title, caption, href, rows, empty) => `<section class="card mj-panel">
+      <div class="mj-panel-head">
+        <div><h4>${title}</h4><small>${caption}</small></div>
+        <a class="mj-all" href="${href}">عرض الكل</a>
+      </div>
+      ${rows.length ? `<div class="mj-rows">${rows.map((r) => `<div><span>${r.label}</span><b>${r.value}</b></div>`).join("")}</div>`
+        : `<p class="mj-empty">${empty}</p>`}
+    </section>`;
+
+  function miniPanels() {
+    const byTrack = centreByTrack();
+    const top = byTrack.filter((t) => t.attendance != null).sort((a, b) => b.attendance - a.attendance).slice(0, 5)
+      .map((t) => ({ label: ui.esc(t.track), value: `${ui.fmt(t.attendance, 0)}٪` }));
+
+    const recs = (store.get().registry || []).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).slice(0, 5)
+      .map((r) => ({ label: ui.esc(r.subject || r.party || r.number || "قيد"), value: ui.formatDate(String(r.date || "").slice(0, 10)) }));
+
+    const inv = App.inventory ? App.inventory.alerts() : { low: [], bad: [] };
+    const low = inv.low.slice(0, 5).map((it) => ({ label: `${ui.esc(it.name)} <small>${ui.esc(it.track)}</small>`, value: `${ui.fmt(it.qty)} / ${ui.fmt(it.min)}` }));
+
+    return [
+      miniPanel("أعلى المسارات حضوراً", "ترتيب تنازلي بنسبة الحضور", "#screen", top, "لا توجد لقطة من نظام المركز بعد"),
+      miniPanel("آخر المعاملات", "أحدث قيود الوارد والصادر", "#registry", recs, "لا قيود مسجّلة بعد"),
+      miniPanel("أصناف تحتاج توريداً", "بلغت حدّها الأدنى في الجرد", "#inventory", low, "لا صنف تحت الحدّ"),
+    ].join("");
+  }
+
+  function munjaz() {
+    const box = document.getElementById("dash-munjaz");
+    if (!box) return;
+    box.innerHTML = `
+      <div class="mj-top">${heroCard()}${kpiTiles()}</div>
+      <div class="mj-mid">${distributionPanel()}${trendPanel()}</div>
+      <div class="mj-mini">${miniPanels()}</div>`;
+  }
+
   function render() {
     const { tasks } = store.get();
     const trackList = App.tracks.ordered();
@@ -217,6 +368,7 @@
     const dateEl = document.getElementById("dash-date");
     if (dateEl) dateEl.textContent = new Intl.DateTimeFormat("ar-PS", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date());
 
+    munjaz();
     document.getElementById("stats").innerHTML = statCards(trackList, s, pending, overdue);
     centreCards(pending, overdue);
 

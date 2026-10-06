@@ -1176,3 +1176,120 @@ html:root .inv-move-meta { color: var(--faint); font-size: 11px; white-space: no
 html:root .inv-imp-file { color: var(--faint); font-size: 11.5px; }
 html:root .inv-imp-sum { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 12px; }
 html:root .inv-import .inv-form-grid { margin-bottom: 12px; }
+
+/* ============================================================
+   ٣٠. لوحة على هيئة «منجز»
+   الأشكال من نظام منجز: بطاقة بطل كبيرة، وبلاطات مؤشرات متدرّجة
+   بشريط تقدّم، ولوحة توزيع بشريط مقسوم، ومنحنى سبعة أيام، وقوائم
+   مصغّرة بعنوان ورابط «عرض الكل». والألوان على هوية تمكين الخمسة.
+   ============================================================ */
+html:root #dash-munjaz { display: grid; gap: 14px; margin-bottom: 16px; }
+
+html:root .mj-top {
+  display: grid;
+  grid-template-columns: 1.65fr 1fr 1fr;
+  gap: 14px;
+}
+html:root .mj-mid { display: grid; grid-template-columns: 1.1fr 1.3fr; gap: 14px; }
+html:root .mj-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+
+/* ===== بطاقة البطل ===== */
+html:root .mj-hero {
+  position: relative;
+  grid-row: span 2;
+  display: flex; flex-direction: column;
+  min-height: 258px; padding: 26px 28px;
+  border-radius: 20px; overflow: hidden;
+  background: linear-gradient(135deg, #1b2434 0%, #2a2a16 55%, #3a2f0c 100%);
+  border: 1px solid rgba(212, 175, 55, .3);
+  color: #fff;
+}
+html:root .mj-hero::before {
+  content: ""; position: absolute; inset-inline-start: -70px; bottom: -90px;
+  width: 230px; height: 230px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 175, 55, .22), transparent 70%);
+  pointer-events: none;
+}
+html:root .mj-hero h2 { position: relative; margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--gold-bright); }
+html:root .mj-hero-n { position: relative; font-size: 32px; font-weight: 700; letter-spacing: -.5px; line-height: 1.2; }
+html:root .mj-hero-delta { position: relative; margin-top: 4px; color: rgba(255, 255, 255, .75); font-size: 12.5px; }
+html:root .mj-hero-split { position: relative; display: flex; gap: 32px; margin: 20px 0 auto; }
+html:root .mj-hero-split span { display: block; color: rgba(255, 255, 255, .7); font-size: 11.5px; }
+html:root .mj-hero-split b { font-size: 15px; font-weight: 700; }
+html:root .mj-hero-cta {
+  position: relative; align-self: flex-start; margin-top: 18px;
+  padding: 9px 18px; border-radius: 9px;
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold));
+  color: var(--on-gold); font-size: 12.5px; font-weight: 700; text-decoration: none;
+  box-shadow: 0 0 18px rgba(212, 175, 55, .3);
+}
+html:root .mj-hero-cta:hover { filter: brightness(1.06); }
+
+/* ===== بلاطات المؤشرات ===== */
+html:root .mj-kpi {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between;
+  min-height: 122px; padding: 18px 20px; border-radius: 18px; color: #fff;
+}
+html:root .mj-kpi::before {
+  content: ""; position: absolute; inset-inline-start: -22px; bottom: -22px;
+  width: 92px; height: 92px; border-radius: 50%; background: rgba(255, 255, 255, .12);
+}
+html:root .mj-kpi h3 { position: relative; margin: 0; font-size: 12.5px; font-weight: 600; opacity: .95; }
+html:root .mj-kpi-n { position: relative; margin: 6px 0; font-size: 25px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+html:root .mj-kpi-bar { position: relative; height: 5px; border-radius: 99px; background: rgba(255, 255, 255, .3); }
+html:root .mj-kpi-bar > i { display: block; height: 100%; border-radius: inherit; background: #fff; transition: width .5s ease; }
+html:root .mj-kpi-foot { position: relative; margin-top: 8px; font-size: 11px; opacity: .9; }
+
+html:root .mj-gold  { background: linear-gradient(135deg, #d4af37, #a8841f); color: #241a00; }
+html:root .mj-gold .mj-kpi-bar { background: rgba(36, 26, 0, .22); }
+html:root .mj-gold .mj-kpi-bar > i { background: #241a00; }
+html:root .mj-gold::before { background: rgba(36, 26, 0, .10); }
+html:root .mj-green { background: linear-gradient(135deg, #2fb98a, #16805e); }
+html:root .mj-amber { background: linear-gradient(135deg, #d99f2b, #9d6f14); }
+html:root .mj-info  { background: linear-gradient(135deg, #5d85bd, #3a5c8a); }
+
+/* ===== الألواح ===== */
+html:root .mj-panel { margin: 0; padding: 20px 22px; }
+html:root .mj-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+html:root .mj-panel-head h4 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text); }
+html:root .mj-panel-head small { display: block; margin-top: 2px; color: var(--faint); font-size: 11.5px; }
+html:root .mj-all { color: var(--gold-bright); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+html:root .mj-all:hover { text-decoration: underline; }
+html:root .mj-empty { margin: 0; color: var(--faint); font-size: 12.5px; }
+
+/* شريط التوزيع ومفتاحه */
+html:root .mj-seg { display: flex; height: 9px; border-radius: 6px; overflow: hidden; margin-bottom: 14px; }
+html:root .mj-seg > i { display: block; height: 100%; }
+html:root .mj-legend { display: grid; gap: 9px; }
+html:root .mj-legend > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+html:root .mj-legend span { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-weight: 500; }
+html:root .mj-legend span > i { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; }
+html:root .mj-legend b { font-weight: 700; font-variant-numeric: tabular-nums; }
+html:root .mj-c0 { background: var(--gold); }
+html:root .mj-c1 { background: var(--ok); }
+html:root .mj-c2 { background: var(--warn); }
+html:root .mj-c3 { background: var(--info); }
+html:root .mj-c4 { background: var(--danger); }
+
+/* المنحنى */
+html:root .mj-trend { display: block; width: 100%; height: 130px; }
+html:root .mj-trend-foot { display: flex; justify-content: space-between; margin-top: 6px; color: var(--faint); font-size: 11px; }
+
+/* صفوف القوائم المصغّرة */
+html:root .mj-rows { display: grid; gap: 10px; }
+html:root .mj-rows > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+html:root .mj-rows span { overflow: hidden; color: var(--muted); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+html:root .mj-rows span small { color: var(--faint); font-size: 10.5px; }
+html:root .mj-rows b { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 1100px) {
+  html:root .mj-top { grid-template-columns: 1fr 1fr; }
+  html:root .mj-hero { grid-column: span 2; grid-row: auto; min-height: 0; }
+  html:root .mj-mid, html:root .mj-mini { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  html:root .mj-top { grid-template-columns: 1fr; }
+  html:root .mj-hero { grid-column: auto; }
+  html:root .mj-hero-split { gap: 20px; }
+}
