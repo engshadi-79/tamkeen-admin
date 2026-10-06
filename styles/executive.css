@@ -1065,3 +1065,23 @@ html:root .nav-group > .nav-head::after {
 }
 html:root .nav-group.open > .nav-head::after { transform: rotate(180deg); }
 html:root .nav-group + .nav-group { margin-top: 2px; }
+
+/* ============================================================
+   ٢٦. عناوين الأقسام: حالة الطيّ تُقرأ من بعيد
+   كان السهم وحده هو الفارق بين قسم مفتوح وآخر مطويّ، بحجم ١٧px
+   وشفافية ٥٥٪ — فلا يكاد يُرى، فيبدو قسمٌ بنوده ظاهرة وكأنه مطويّ.
+   الآن: العنوان المفتوح ذهبي وسهمه صريح، والمطويّ خافت.
+   وعنوان القسم يحاذي عمود نصوص البنود لا حافة القائمة.
+   ============================================================ */
+html:root .nav-group > .nav-head {
+  padding-inline-start: 41px;   /* يحاذي نصّ البنود بعد عمود الأيقونات */
+  padding-inline-end: 11px;
+  transition: color .15s ease;
+}
+html:root .nav-group > .nav-head::after { opacity: .45; font-size: 18px; }
+html:root .nav-group.open > .nav-head { color: var(--gold-bright); }
+html:root .nav-group.open > .nav-head::after { opacity: .95; }
+html:root[data-theme="light"] .nav-group.open > .nav-head { color: #f2ca50; }
+
+/* القسم المفتوح: مسافة أسفل بنوده تفصله عن القسم التالي */
+html:root .nav-group.open > ul { padding-bottom: 6px; }
