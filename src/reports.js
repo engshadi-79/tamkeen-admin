@@ -562,7 +562,7 @@
       ? `<section class="card sc-empty"><h3>لا توجد بيانات طلاب بعد</h3>
           <p>هذه الصفحة تعرض بيانات نظام المركز التي يجلبها سكربت القراءة. افتح «شاشة إحصاءات المركز» واضغط «▶ تشغيل القراءة في النظام»، وبعد «أُرسلت ✔» عُد إلى هنا.</p>
           <p class="conv-hint">${s && s.at ? `آخر لقطة وصلت ${esc(new Date(s.at).toLocaleString("ar-EG"))} وليس فيها جدول طلاب — هذا يعني أن السكربت المُشغَّل نسخة قديمة. أعد تشغيله من زر «▶ تشغيل القراءة في النظام» ليأخذ النسخة الجديدة.` : "لم تصل أي لقطة إلى الخادم بعد."}</p>
-          <div class="btn-row"><button type="button" class="btn" id="rep-pull">🔄 اسحب آخر لقطة</button></div></section>`
+          <div class="btn-row"><button type="button" class="btn" id="rep-pull"><span class="material-symbols-outlined btn-ico">refresh</span>اسحب آخر لقطة</button></div></section>`
       : `<section class="card">${groupBy ? summary(list) : table(list)}</section>`;
   }
 
@@ -715,7 +715,7 @@
   /* الصفحة ثلاث وظائف: تقرير تبنيه، ونموذج رسمي تعبّئه، ومصادر تغذّيهما.
      فُصلت كلٌّ في تبويبها حتى لا تزدحم الشاشة بما لا يلزم الآن. */
   const uploadRow = (hint) => `<div class="rep-import-row">
-      <label class="btn secondary" for="rep-file">⬆ اختر ملف إكسل</label>
+      <label class="btn secondary" for="rep-file"><span class="material-symbols-outlined btn-ico">upload</span>اختر ملف إكسل</label>
       <input type="file" id="rep-file" accept=".xlsx,.xlsm" hidden>
       <span class="conv-hint">${hint}</span>
     </div>`;
@@ -783,7 +783,7 @@
           <td><input type="${/تاريخ/.test(field) ? "date" : "text"}" data-man="${esc(idOf(r.nid) || "n:" + norm(r.name))}" data-man-name="${esc(r.name)}" value=""></td>
         </tr>`).join("")}</tbody></table>
         ${missing.length > shown.length ? `<p class="conv-hint">يُعرض ${ui.fmt(shown.length)} من ${ui.fmt(missing.length)} — املأ هؤلاء واحفظ، فيظهر التالون.</p>` : ""}
-        <div class="btn-row"><button type="button" class="btn" id="rep-man-save">💾 احفظ المكتوب</button></div>`
+        <div class="btn-row"><button type="button" class="btn" id="rep-man-save"><span class="material-symbols-outlined btn-ico">save</span>احفظ المكتوب</button></div>`
         : `<p class="conv-hint">لا شيء ناقص هنا.</p>`}`;
   }
 
@@ -837,9 +837,9 @@
         <label class="sc-f"><span>البادئة (فارغة = رمز الدورة)</span><input type="text" id="rep-cert-prefix" value="${esc(certPrefix)}" placeholder="رمز الدورة"></label>
         <span class="conv-hint">${ui.fmt(fromSystem)} من النظام · ${ui.fmt(list.length - fromSystem - without.length)} مولَّدة هنا · ${countOf(without.length, "طلاب", "طالباً", "طالب", "طالبان")} بلا رقم من ${ui.fmt(list.length)} معروض${sample ? ` · مثال: <b dir="ltr">${esc(sample)}</b>` : ""}</span>
         <span class="conv-hint">سيضمّ الكشف ${countOf(sheet.length, "شهادات", "شهادة", "شهادة واحدة", "شهادتين")} من ${countOf(sheetTracks, "مسارات", "مساراً", "مسار واحد", "مسارين")}</span>
-        <button type="button" class="btn" id="rep-cert-make" ${without.length ? "" : "disabled"}>🎓 ولّد للمعروضين</button>
+        <button type="button" class="btn" id="rep-cert-make" ${without.length ? "" : "disabled"}><span class="material-symbols-outlined btn-ico">school</span>ولّد للمعروضين</button>
         <label class="rep-chip ${certAll ? "on" : ""}"><input type="checkbox" id="rep-cert-all" ${certAll ? "checked" : ""}> كل المسارات (تجاهل الفلاتر)</label>
-        <button type="button" class="btn secondary" id="rep-cert-excel">⬇ كشف الشهادات</button>
+        <button type="button" class="btn secondary" id="rep-cert-excel"><span class="material-symbols-outlined btn-ico">download</span>كشف الشهادات</button>
         ${given.size ? `<button type="button" class="conv-link danger" id="rep-cert-clear">حذف الأرقام المولَّدة هنا (${ui.fmt(given.size)})</button>` : ""}
       </div>`;
   }
@@ -941,8 +941,8 @@
         <button type="button" class="conv-link" data-drop="${esc(t.name)}">حذف</button></li>`).join("");
     box.innerHTML = `<div class="page-head"><div><h3>مصادر البيانات</h3>
         <p class="conv-hint">${s && s.at ? `لقطة نظام المركز: ${esc(new Date(s.at).toLocaleString("ar-EG"))}` : "لم تصل لقطة من نظام المركز بعد"}</p></div>
-        <div class="btn-row"><button type="button" class="btn secondary" id="rep-pull-src">🔄 اسحب آخر لقطة</button>
-        <button type="button" class="btn secondary" id="rep-diag">🩺 تشخيص البيانات</button></div></div>
+        <div class="btn-row"><button type="button" class="btn secondary" id="rep-pull-src"><span class="material-symbols-outlined btn-ico">refresh</span>اسحب آخر لقطة</button>
+        <button type="button" class="btn secondary" id="rep-diag"><span class="material-symbols-outlined btn-ico">monitor_heart</span>تشخيص البيانات</button></div></div>
       <h4>جداول إكسل مضافة</h4>
       ${staged && staged.mode !== "fill" ? stagedImportCard() : uploadRow("كشف فيه بيانات الطلاب؛ أعمدته تصير حقولاً تُستعمل في التقارير والنماذج.")}
       ${list ? `<ul class="rep-import-list">${list}</ul>` : `<p class="conv-hint">لا توجد جداول مستوردة بعد.</p>`}
@@ -1139,7 +1139,7 @@
       }).join("")}
       </tbody></table>
       ${phasePick}
-      <div class="btn-row"><button type="button" class="btn" id="rep-fill">⬇ نزّل النموذج معبّأً (${countOf(list.length, "صفوف", "صفاً", "صف واحد", "صفان")})</button>
+      <div class="btn-row"><button type="button" class="btn" id="rep-fill"><span class="material-symbols-outlined btn-ico">download</span>نزّل النموذج معبّأً (${countOf(list.length, "صفوف", "صفاً", "صف واحد", "صفان")})</button>
       <button type="button" class="btn secondary" id="rep-cancel-import">إلغاء</button></div>
       ${(() => {
         const empty = staged.map.filter((m) => m.key && m.key !== INDEX && m.key !== CONST
@@ -1165,8 +1165,8 @@
     return `<section class="card" id="rep-diag-card">
       <div class="page-head"><div><h3>🩺 تشخيص البيانات</h3>
         <p class="conv-hint">${ui.fmt(list.length)} طالباً في اللقطة. الحقول الفارغة أعلى القائمة.</p></div>
-        <div class="btn-row"><button type="button" class="btn" id="rep-diag-copy">⧉ نسخ التشخيص</button>
-        <button type="button" class="btn secondary" id="rep-diag-close">✕ إغلاق التشخيص</button></div></div>
+        <div class="btn-row"><button type="button" class="btn" id="rep-diag-copy"><span class="material-symbols-outlined btn-ico">content_copy</span>نسخ التشخيص</button>
+        <button type="button" class="btn secondary" id="rep-diag-close"><span class="material-symbols-outlined btn-ico">close</span>إغلاق التشخيص</button></div></div>
       <h4>ما قرأه سكربت القراءة من نظام المركز</h4>
       ${readLogCard()}
       <h4>امتلاء الحقول</h4>
@@ -1266,7 +1266,7 @@
     const back = document.createElement("div");
     back.className = "modal-backdrop open sc-sheet";
     back.innerHTML = `<div class="modal sc-sheet-box"><div class="modal-head"><b>تقرير المركز</b>
-        <span class="btn-row"><button type="button" class="btn small" data-print>🖨 طباعة</button>
+        <span class="btn-row"><button type="button" class="btn small" data-print><span class="material-symbols-outlined btn-ico">print</span>طباعة</button>
         <button type="button" class="btn small secondary" data-close>إغلاق</button></span></div>
       <iframe class="sc-sheet-frame" title="تقرير"></iframe></div>`;
     document.body.append(back);

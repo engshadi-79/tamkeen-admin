@@ -168,7 +168,7 @@
           <option ${d.vote === "بالتصويت" ? "selected" : ""}>بالتصويت</option>
         </select>
         ${status}
-        <button type="button" class="conv-link danger" data-del title="حذف القرار">✕</button>
+        <button type="button" class="conv-link danger" data-del title="حذف القرار"><span class="material-symbols-outlined btn-ico">close</span></button>
       </div>`;
     }).join("") : `<p class="conv-hint">لا توجد قرارات بعد.</p>`;
     if (App.aiAssist) App.aiAssist.attach($("m-decisions"));

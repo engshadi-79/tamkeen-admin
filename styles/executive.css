@@ -1085,3 +1085,29 @@ html:root[data-theme="light"] .nav-group.open > .nav-head { color: #f2ca50; }
 
 /* القسم المفتوح: مسافة أسفل بنوده تفصله عن القسم التالي */
 html:root .nav-group.open > ul { padding-bottom: 6px; }
+
+/* ============================================================
+   ٢٧. أيقونات أزرار الصفحات: رموز Material كالقائمة الجانبية
+   كانت الأزرار في الصفحات تستعمل محارف تعبيرية (🖨 ⬇ 🗑 ☁ …) بينما
+   القائمة تستعمل رموز Material، فاختلف وزن الأيقونات وحجمها ولونها
+   بين جزأي الواجهة. وُحِّدت كلها.
+   ============================================================ */
+html:root .btn-ico {
+  font-size: 18px;
+  line-height: 1;
+  font-variation-settings: "wght" 300, "opsz" 20;
+  flex: 0 0 auto;
+}
+html:root .btn.small .btn-ico, html:root .act-btn .btn-ico { font-size: 16px; }
+html:root .act-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+html:root summary .btn-ico, html:root .conv-link .btn-ico { vertical-align: -4px; }
+
+/* ============================================================
+   ٢٨. صفحة الضيافة: الخانات ذات الخلفيات الورقية الفاتحة
+   تُبقى بألوانها لأنها تُطبع، لكن نصّها يجب أن يكون داكناً لا فاتحاً.
+   ============================================================ */
+html:root .hd-total,
+html:root .hd-tick.on,
+html:root .sh-tick.on,
+html:root .hos-in td, html:root .hos-in th { color: #141a24; }
+html:root .hd-tick.on b { color: #fff; }

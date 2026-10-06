@@ -291,7 +291,7 @@
 
     $("sh-head").innerHTML = `<tr><th class="sh-n">#</th>${s.columns.map((c) => `<th><button type="button" class="sh-col" data-edit-col="${esc(c.key)}" title="تعديل اسم العمود أو حذفه">${esc(c.label)}</button><small>${TYPES[c.type] || c.type}</small></th>`).join("")}<th></th></tr>`;
     $("sh-body").innerHTML = rows.length
-      ? rows.map((r, i) => `<tr data-id="${esc(r.id)}"><td class="sh-n">${ui.fmt(i + 1)}</td>${s.columns.map((c) => cellHtml(r, c)).join("")}<td><button type="button" class="act-btn del" data-del-row="${esc(r.id)}">🗑</button></td></tr>`).join("")
+      ? rows.map((r, i) => `<tr data-id="${esc(r.id)}"><td class="sh-n">${ui.fmt(i + 1)}</td>${s.columns.map((c) => cellHtml(r, c)).join("")}<td><button type="button" class="act-btn del" data-del-row="${esc(r.id)}"><span class="material-symbols-outlined btn-ico">delete</span></button></td></tr>`).join("")
       : `<tr><td colspan="${s.columns.length + 2}" class="empty">${rowsOf(s.id).length ? "لا صفوف مطابقة للبحث" : "لا صفوف بعد — ارفع ملف Excel أو أضف صفاً"}</td></tr>`;
     $("sh-title").textContent = s.name;
   }

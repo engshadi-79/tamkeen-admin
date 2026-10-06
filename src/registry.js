@@ -565,7 +565,7 @@
         <td class="reg-num">${esc(r.number)}</td>
         <td class="nowrap">${esc(ui.formatDate(r.date))}</td>
         <td>${esc(r.party || "")}</td>
-        <td>${esc(r.subject || "")}<div class="reg-kind">${esc(categoryOf(r))}${r.kind && r.kind !== categoryOf(r) ? ` · ${esc(r.kind)}` : ""}${r.track ? ` · 🎓 ${esc(r.track)}` : ""}${r.assignee ? ` · ↪ ${esc(r.assignee)}` : ""}</div>${r.type === "in" ? dueBadge(r) : ""}${r.summary ? `<details class="reg-summary"><summary>✨ الملخص</summary>${esc(r.summary)}</details>` : ""}${filter.content && inContent(r) && !textMatch(r, filter.content.q) ? `<span class="due-badge">📄 في المحتوى</span>` : ""}</td>
+        <td>${esc(r.subject || "")}<div class="reg-kind">${esc(categoryOf(r))}${r.kind && r.kind !== categoryOf(r) ? ` · ${esc(r.kind)}` : ""}${r.track ? ` · 🎓 ${esc(r.track)}` : ""}${r.assignee ? ` · ↪ ${esc(r.assignee)}` : ""}</div>${r.type === "in" ? dueBadge(r) : ""}${r.summary ? `<details class="reg-summary"><summary><span class="material-symbols-outlined btn-ico">auto_awesome</span>الملخص</summary>${esc(r.summary)}</details>` : ""}${filter.content && inContent(r) && !textMatch(r, filter.content.q) ? `<span class="due-badge">📄 في المحتوى</span>` : ""}</td>
         <td class="reg-file">${fileCell(r)}</td>
         <td class="nowrap">${r.fileId && r.fileDate ? esc(ui.formatDate(r.fileDate)) : "—"}</td>
         <td>${folderCell(r)}</td>
@@ -577,16 +577,16 @@
     const mod = canModify(r);
     if (r.deletedAt) {
       return `<span class="reg-kind">حُذف ${esc(ui.formatDate(r.deletedAt.slice(0, 10)))}${r.deletedBy ? ` · ${esc(r.deletedBy)}` : ""}</span><br>`
-        + (mod ? `<button class="act-btn edit" data-restore>↺ استرجاع</button>` : "")
-        + (App.profile && App.profile.isAdmin() ? ` <button class="act-btn del" data-purge>✖ حذف نهائي</button>` : "");
+        + (mod ? `<button class="act-btn edit" data-restore><span class="material-symbols-outlined btn-ico">restart_alt</span>استرجاع</button>` : "")
+        + (App.profile && App.profile.isAdmin() ? ` <button class="act-btn del" data-purge><span class="material-symbols-outlined btn-ico">close</span>حذف نهائي</button>` : "");
     }
     const mayDelete = !App.profile.can || App.profile.can("delete");
-    return (r.fileId ? `<button class="act-btn dl" data-download title="تحميل الملف إلى الجهاز">⬇ تحميل</button>` : "")
-      + (r.type === "in" ? ` <button class="act-btn reply" data-reply title="إنشاء خطاب رد في المراسلات">↩ رد</button>` : "")
-      + (r.type === "in" && App.ai && App.ai.hasKey() && (!App.profile.can || App.profile.can("ai")) ? ` <button class="act-btn ai" data-summarize title="تلخيص الخطاب بالذكاء الاصطناعي">✨ تلخيص</button>` : "")
+    return (r.fileId ? `<button class="act-btn dl" data-download title="تحميل الملف إلى الجهاز"><span class="material-symbols-outlined btn-ico">download</span>تحميل</button>` : "")
+      + (r.type === "in" ? ` <button class="act-btn reply" data-reply title="إنشاء خطاب رد في المراسلات"><span class="material-symbols-outlined btn-ico">undo</span>رد</button>` : "")
+      + (r.type === "in" && App.ai && App.ai.hasKey() && (!App.profile.can || App.profile.can("ai")) ? ` <button class="act-btn ai" data-summarize title="تلخيص الخطاب بالذكاء الاصطناعي"><span class="material-symbols-outlined btn-ico">auto_awesome</span>تلخيص</button>` : "")
       + (!mod && r.type === "in" && r.assignee && r.assignee === me()
         ? ` <button class="act-btn edit" data-done title="${r.done ? "إلغاء «تمت المعالجة»" : "تعليم الوارد المحال إليك منجزاً"}">${r.done ? "↺ لم تُعالج" : "✓ تمت المعالجة"}</button>` : "")
-      + (mod ? ` <button class="act-btn edit" data-edit title="تعديل القيد">✎ تعديل</button>${mayDelete ? ` <button class="act-btn del" data-del title="نقل إلى المحذوفات">🗑 حذف</button>` : ""}`
+      + (mod ? ` <button class="act-btn edit" data-edit title="تعديل القيد"><span class="material-symbols-outlined btn-ico">edit</span>تعديل</button>${mayDelete ? ` <button class="act-btn del" data-del title="نقل إلى المحذوفات"><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>` : ""}`
         : ` <span class="reg-kind" title="التعديل لصاحب القيد أو المدير">🔒</span>`);
   }
 
@@ -611,7 +611,7 @@
       const path = r.drivePath || [DIR_FOLDER[r.type], String(r.date).slice(0, 4), String(r.date).slice(5, 7)]; // أرشفة سابقة بالترتيب القديم
       const text = esc(pathText(path));
       // معرّف مجلد Drive وحده يُفتح في Drive؛ الملفات على خادم آخر تُعرض بمسارها فقط
-      return /^[\w-]{20,}$/.test(r.driveFolderId || "") ? `<a class="conv-link reg-path" href="${esc(App.drive.folderLink(r.driveFolderId))}" target="_blank" rel="noopener" title="فتح المجلد في Google Drive">📁 ${text}</a>` : `<span class="reg-path">📁 ${text}</span>`;
+      return /^[\w-]{20,}$/.test(r.driveFolderId || "") ? `<a class="conv-link reg-path" href="${esc(App.drive.folderLink(r.driveFolderId))}" target="_blank" rel="noopener" title="فتح المجلد في Google Drive"><span class="material-symbols-outlined btn-ico">folder</span>${text}</a>` : `<span class="reg-path">📁 ${text}</span>`;
     }
     return `<span class="reg-path pending" title="لم يُرفع بعد إلى Drive">📁 ${esc(pathText(archivePath(r)))}</span>`;
   }
@@ -630,15 +630,15 @@
   function fileCell(r) {
     if (!r.fileId) return "—";
     const drive = r.driveLink
-      ? (/^https?:/.test(r.driveLink) ? `<a class="conv-link" href="${esc(r.driveLink)}" target="_blank" rel="noopener" title="فتح في Google Drive">☁ Drive</a>` : "")
+      ? (/^https?:/.test(r.driveLink) ? `<a class="conv-link" href="${esc(r.driveLink)}" target="_blank" rel="noopener" title="فتح في Google Drive"><span class="material-symbols-outlined btn-ico">cloud</span>Drive</a>` : "")
       : App.cloud && App.cloud.ready() ? `<span class="reg-pending" title="الملف على جهاز من رفعه ولم يصل إلى أرشيف المركز بعد">⏳ بانتظار الرفع</span>`
       : App.drive && App.drive.isConfigured() ? `<button class="conv-link" data-archive title="${r.drivePending ? "بانتظار الأرشفة" : "أرشفة في Google Drive"}">${r.drivePending ? "⏳" : "☁"} أرشفة</button>` : "";
     // النسخة الاحتياطية على Drive: تظهر بعد نسخة الليلة التالية للرفع
     const backup = r.driveId && !/^https?:/.test(r.driveLink || "")
-      ? ` <a class="conv-link" href="${esc(driveSearchUrl(r))}" target="_blank" rel="noopener" title="فتح نسخة Drive الاحتياطية (بحث برقم القيد في حساب النسخ)">🔍 في Drive</a>`
+      ? ` <a class="conv-link" href="${esc(driveSearchUrl(r))}" target="_blank" rel="noopener" title="فتح نسخة Drive الاحتياطية (بحث برقم القيد في حساب النسخ)"><span class="material-symbols-outlined btn-ico">search</span>في Drive</a>`
       : "";
     return `<div class="reg-fname" title="${esc(r.fileName || "")}">${nameHtml(r.fileName)}</div>${r.owner ? `<div class="reg-owner">👤 ${esc(r.owner)}</div>` : ""}
-      <div class="reg-file-btns"><button class="conv-link" data-open title="عرض الملف">📎 عرض</button> ${drive}${backup}</div>`;
+      <div class="reg-file-btns"><button class="conv-link" data-open title="عرض الملف"><span class="material-symbols-outlined btn-ico">attach_file</span>عرض</button> ${drive}${backup}</div>`;
   }
 
   function render() {
@@ -653,7 +653,7 @@
       + owners.filter((o) => o !== mine).map((o) => `<option value="${esc(o)}" ${filter.owner === o ? "selected" : ""}>${esc(o)}</option>`).join("");
     $("reg-track-filter").innerHTML = trackOptions(filter.track, "كل المسارات");
     const trashCount = all.filter((r) => r.deletedAt).length;
-    $("reg-trash").textContent = filter.trash ? "↩ العودة إلى السجل" : `🗑 المحذوفات${trashCount ? ` (${ui.fmt(trashCount)})` : ""}`;
+    $("reg-trash").innerHTML = filter.trash ? `<span class="material-symbols-outlined btn-ico">undo</span> العودة إلى السجل` : `<span class="material-symbols-outlined btn-ico">delete</span> المحذوفات${trashCount ? ` (${ui.fmt(trashCount)})` : ""}`;
     $("reg-trash").classList.toggle("active", filter.trash);
     $("reg-trash-note").hidden = !filter.trash;
     document.querySelectorAll("[data-reg-type]").forEach((b) => b.classList.toggle("active", b.dataset.regType === filter.type));
@@ -663,7 +663,7 @@
     $("reg-prefix").value = settings().prefix;
     const pending = all.filter((r) => r.drivePending && r.fileId && !r.driveLink);
     $("reg-archive-pending").hidden = !pending.length;
-    $("reg-archive-pending").textContent = `☁ أرشفة المعلّق (${ui.fmt(pending.length)})`;
+    $("reg-archive-pending").innerHTML = `<span class="material-symbols-outlined btn-ico">cloud</span> أرشفة المعلّق (${ui.fmt(pending.length)})`;
 
     $("reg-sort").value = view.sort;
     $("reg-group").value = view.group;
@@ -1074,7 +1074,7 @@
       <td><input type="text" data-k="party" value="${esc(it.party)}"></td>
       <td><input type="text" data-k="subject" value="${esc(it.subject)}"></td>
       <td class="bulk-path">📁 ${esc(pathText(archivePath(it)))}</td>
-      <td><button class="conv-link danger" data-remove title="إزالة من القائمة">✕</button></td>
+      <td><button class="conv-link danger" data-remove title="إزالة من القائمة"><span class="material-symbols-outlined btn-ico">close</span></button></td>
     </tr>`;
   }
 

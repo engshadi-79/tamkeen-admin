@@ -257,7 +257,7 @@
     $("r-model-view").hidden = !has;
     $("r-model-del").hidden = !has;
     $("r-model-use-wrap").hidden = !has;
-    $("r-model-pick").textContent = has ? "⬆ استبدال النموذج" : "⬆ رفع نموذج";
+    $("r-model-pick").innerHTML = has ? `<span class="material-symbols-outlined btn-ico">upload</span> استبدال النموذج` : `<span class="material-symbols-outlined btn-ico">upload</span> رفع نموذج`;
   }
 
   async function addModel(file) {
@@ -305,7 +305,7 @@
     const total = aiFiles.reduce((n, f) => n + f.chars, 0);
     $("r-ai-list").innerHTML = aiFiles.length
       ? aiFiles.map((f, i) => `<li><b>${ui.esc(f.name)}</b> <span class="reg-kind">${ui.fmt(f.chars)} حرف</span>
-          <button type="button" class="conv-link danger" data-ai-del="${i}">✕</button></li>`).join("")
+          <button type="button" class="conv-link danger" data-ai-del="${i}"><span class="material-symbols-outlined btn-ico">close</span></button></li>`).join("")
       : `<li class="conv-hint">لم تُضف ملفات بعد.</li>`;
     $("r-ai-total").textContent = aiFiles.length ? `${ui.fmt(aiFiles.length)} ملف · ${ui.fmt(total)} حرف${total > MAX_CHARS ? ` (سيُرسل أول ${ui.fmt(MAX_CHARS)} حرف)` : ""}` : "";
     $("r-ai-run").disabled = !aiFiles.length;

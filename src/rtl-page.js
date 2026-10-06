@@ -19,7 +19,7 @@
           <span class="conv-hint">${ui.fmt(r.stats.paragraphs)} فقرة، ${ui.fmt(r.stats.runs)} نص عربي، ${ui.fmt(r.stats.tables)} جدول${r.stats.align ? `، ${ui.fmt(r.stats.align)} محاذاة` : ""}${r.stats.parts ? "" : " — الملف سليم أصلاً، لم يلزم تعديل"}</span>
           <span class="rtl-btns">
             <button class="btn small" data-dl>تنزيل</button>
-            ${r.driveLink ? `<a class="conv-link" href="${esc(r.driveLink)}" target="_blank" rel="noopener">☁ فتح في Drive</a>` : `<button class="btn secondary small" data-drive>☁ أرشفة في Drive</button>`}
+            ${r.driveLink ? `<a class="conv-link" href="${esc(r.driveLink)}" target="_blank" rel="noopener"><span class="material-symbols-outlined btn-ico">cloud</span>فتح في Drive</a>` : `<button class="btn secondary small" data-drive><span class="material-symbols-outlined btn-ico">cloud</span>أرشفة في Drive</button>`}
           </span>
         </li>`).join("");
   }

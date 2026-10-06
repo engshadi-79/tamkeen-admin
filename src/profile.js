@@ -251,7 +251,7 @@
           <td dir="ltr" style="text-align:right">${esc(u.username)}</td>
           <td>${u.admin ? "مدير" : "مستخدم"}${u.active ? "" : " · موقوف"}</td>
           <td class="reg-kind">${u.lastLogin ? esc(ui.formatDate(u.lastLogin.slice(0, 10))) : "لم يدخل بعد"}</td>
-          <td class="reg-actions"><button class="act-btn edit" data-uedit>✎ تعديل</button>${u.username === (user() || {}).username ? "" : ` <button class="act-btn del" data-udel>🗑 حذف</button>`}</td>
+          <td class="reg-actions"><button class="act-btn edit" data-uedit><span class="material-symbols-outlined btn-ico">edit</span>تعديل</button>${u.username === (user() || {}).username ? "" : ` <button class="act-btn del" data-udel><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>`}</td>
         </tr>`).join("");
     } catch (err) {
       $("users-list").innerHTML = `<tr><td colspan="5" class="empty">${esc(err.message)}</td></tr>`;
@@ -342,7 +342,8 @@
         const sub = b.querySelector(".tt-user-copy small");
         if (sub) sub.textContent = role;
       } else {
-        b.textContent = u ? `👤 ${u.name}${u.admin ? " (مدير)" : ""}` : "👤 حسابي";
+        b.innerHTML = `<span class="material-symbols-outlined btn-ico">person</span>`;
+        b.appendChild(document.createTextNode(u ? `${u.name}${u.admin ? " (مدير)" : ""}` : "حسابي"));
       }
     });
     const out = $("tt-logout");

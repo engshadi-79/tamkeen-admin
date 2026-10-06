@@ -31,7 +31,7 @@
     const me = App.drive.settings().email;
     $("drv-users").innerHTML = list.length
       ? list.map((u) => `<li><bdi dir="ltr">${ui.esc(u.email)}</bdi>${u.email === me ? ` <span class="drv-tag ok">المتصل الآن</span>` : ""}${u.inGoogle ? "" : ` <span class="drv-tag">لم يُضف في Google بعد</span>`}
-          <button type="button" class="conv-link danger" data-user-del="${ui.esc(u.email)}" title="إزالة">✕</button></li>`).join("")
+          <button type="button" class="conv-link danger" data-user-del="${ui.esc(u.email)}" title="إزالة"><span class="material-symbols-outlined btn-ico">close</span></button></li>`).join("")
       : `<li class="conv-hint">لا توجد قيود: أي حساب مضاف في Google Cloud يستطيع الاتصال.</li>`;
     const pending = list.filter((u) => !u.inGoogle).length;
     $("drv-users-google").textContent = pending ? `إضافتهم في Google (${ui.fmt(pending)})` : "فتح قائمة المستخدمين في Google";

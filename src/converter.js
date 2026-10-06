@@ -146,7 +146,7 @@
       ? `<span class="warn">لم نجد عمود تاريخ ميلاد في بياناتك؛ اختره من القائمة ليُحسب العمر.</span>`
       : `حُسب العمر لـ <b>${ui.fmt(a.ok)}</b> صفاً${a.bad ? `، <span class="warn">وتعذّر في ${ui.fmt(a.bad)} صفاً لأن التاريخ فيها غير مفهوم</span>` : ""}.`;
     return `<div class="conv-grade-note">
-      <label>ⓘ «${esc(col || core().AGE_COLUMN)}» يُحسب من عمود
+      <label><span class="material-symbols-outlined btn-ico">info</span>«${esc(col || core().AGE_COLUMN)}» يُحسب من عمود
         <select data-age-from>${opt("", "— لا تحسبه —", !a.from)}${choices.map((h) => opt(h, h, h === a.from)).join("")}</select></label>
       <div>${status}</div>
       <small>العمر بالسنوات الكاملة حتى تاريخ اليوم. يقبل 1998-05-20 و20/05/1998 وتواريخ Excel.</small>
@@ -164,7 +164,7 @@
       ? `<span class="warn">لم نجد عموداً اسمه «المعدل» في بياناتك؛ اختره من القائمة ليُحسب التقدير.</span>`
       : `حُسب التقدير لـ <b>${ui.fmt(g.ok)}</b> صفاً${g.bad ? `، <span class="warn">وتعذّر في ${ui.fmt(g.bad)} صفاً لأن المعدل فيها ليس رقماً (مثل «-» أو «غائب»)</span>` : ""}.${g.fraction ? " المعدل مكتوب كنسبة (0.86) فعومل كـ 86." : ""}${g.ok === 0 && !g.bad ? ` <span class="warn">العمود المختار فارغ.</span>` : ""}`;
     return `<div class="conv-grade-note">
-      <label>ⓘ «${esc(col)}» يُحسب من عمود
+      <label><span class="material-symbols-outlined btn-ico">info</span>«${esc(col)}» يُحسب من عمود
         <select data-grade-from>${opt("", "— لا تحسبه —", !g.from)}${choices.map((h) => opt(h, h, h === g.from)).join("")}</select></label>
       <div>${status}</div>
       <small>السلّم: 90 فأكثر ممتاز، 80–89 جيد جداً، 75–79 جيد، أقل من 75 راسب.</small>
@@ -247,7 +247,7 @@
     box.innerHTML = fixedFields().map((f, i) => `<div class="fx-row">
         <input type="text" data-fx-name="${i}" value="${esc(f.name || "")}" placeholder="اسم الحقل كما في القالب">
         <input type="text" data-fx-value="${i}" value="${esc(f.value || "")}" placeholder="القيمة">
-        <button type="button" class="act-btn del" data-fx-del="${i}" title="حذف الحقل">🗑</button>
+        <button type="button" class="act-btn del" data-fx-del="${i}" title="حذف الحقل"><span class="material-symbols-outlined btn-ico">delete</span></button>
       </div>`).join("") || `<p class="conv-hint">لا توجد بيانات ثابتة بعد.</p>`;
   }
 
@@ -284,7 +284,7 @@
           <div><button type="button" class="conv-link" data-filter-all>تحديد الكل</button> · <button type="button" class="conv-link" data-filter-none>إلغاء الكل</button> — <b id="conv-filter-count">${filterCountText()}</b></div>`;
     }
     return `<div class="conv-grade-note conv-filter">
-      <label>🎯 المسارات التي تظهر في الكشف — حسب عمود
+      <label><span class="material-symbols-outlined btn-ico">adjust</span>المسارات التي تظهر في الكشف — حسب عمود
         <select data-filter-col>${opt("", "— كل الصفوف، بلا تصفية —", !state.filterCol)}${cols.map((h) => opt(h, h, h === state.filterCol)).join("")}</select></label>
       ${body}
     </div>`;
@@ -420,7 +420,7 @@
       if (r.unmatched && r.unmatched.length) status += ` <span class="warn">مسارات في بياناتك ليست في صفحة المسارات: ${r.unmatched.map(esc).join("، ")}.</span>`;
     }
     return `<div class="conv-grade-note">
-      <label>👨‍🏫 المدربون من صفحة المسارات <select data-trainer-from>${options}</select></label>
+      <label><span class="material-symbols-outlined btn-ico">person</span>‍🏫 المدربون من صفحة المسارات <select data-trainer-from>${options}</select></label>
       <div>${status}</div>
       <small>«المدرب الأول» و«المدرب الثاني» يأخذ كلٌّ مدرّبه، و«اسم المدرب» يأخذ الاثنين — في الجدول وفي حقول الترويسة مثل {{اسم المدرب}}.</small>
     </div>`;
@@ -443,7 +443,7 @@
     const status = current
       ? `تُملأ الحقول المرتبطة بالمسار تلقائياً لـ <b>${ui.fmt(r.filled || 0)}</b> صفاً${r.unmatched && r.unmatched.length ? ` <span class="warn">— لم تُطابق هذه القيم: ${r.unmatched.map(esc).join("، ")}</span>` : ""}`
       : `<span class="warn">اختر عمود المسار من ملف البيانات أو مساراً واحداً إذا كان الكشف خاصاً بمسار واحد.</span>`;
-    return `<div class="conv-grade-note"><label>🧭 استكمال البيانات من صفحة المسارات <select data-track-data-from>${options}</select></label><div>${status}</div><small>تُستخدم بيانات المسار للحقول غير المربوطة، مثل الاسم والرمز والنوع وعدد المستفيدين والحضور والساعات. بيانات الأفراد الموجودة في الملف تبقى كما هي.</small></div>`;
+    return `<div class="conv-grade-note"><label><span class="material-symbols-outlined btn-ico">explore</span>استكمال البيانات من صفحة المسارات <select data-track-data-from>${options}</select></label><div>${status}</div><small>تُستخدم بيانات المسار للحقول غير المربوطة، مثل الاسم والرمز والنوع وعدد المستفيدين والحضور والساعات. بيانات الأفراد الموجودة في الملف تبقى كما هي.</small></div>`;
   }
 
   function setTrainerSource(value) {
@@ -599,7 +599,7 @@
       </div>`).join("");
     let html = `<p class="conv-hint">اختر في كل ملف العمود الذي يحدّد الشخص (رقم الهوية عادةً)، ولو اختلف اسمه بين الملفات.</p>
       <div class="mg-files">${files}</div>
-      <button type="button" class="btn" id="mg-run">🔗 دمج الملفات</button>`;
+      <button type="button" class="btn" id="mg-run"><span class="material-symbols-outlined btn-ico">link</span>دمج الملفات</button>`;
     const m = mg.merged;
     if (m) {
       const st = m.stats;
@@ -615,7 +615,7 @@
         ${mgFieldPicker()}
         <div id="mg-preview-box">${mgPreview()}</div>
         <div class="btn-row">
-          <button type="button" class="btn secondary" id="mg-download">⬇ تنزيل الملف المدموج</button>
+          <button type="button" class="btn secondary" id="mg-download"><span class="material-symbols-outlined btn-ico">download</span>تنزيل الملف المدموج</button>
           <button type="button" class="btn navy" id="mg-use">➜ استخدامه في المقارنة مع القالب</button>
         </div>
       </div>`;
@@ -923,7 +923,7 @@
     const shown = (f) => (f.value ? ` <b>← ${esc(f.value)}</b>` : "");
     const filled = list.filter((f) => f.value).length;
     return `<details class="conv-section conv-fields" open>
-      <summary>✎ اليوم والتاريخ وبيانات الترويسة (${ui.fmt(list.length)})${filled ? ` — عُبِّئ ${ui.fmt(filled)}` : ""}</summary>
+      <summary><span class="material-symbols-outlined btn-ico">edit</span>اليوم والتاريخ وبيانات الترويسة (${ui.fmt(list.length)})${filled ? ` — عُبِّئ ${ui.fmt(filled)}` : ""}</summary>
       <p class="conv-hint">هذه نصوص مكتوبة في القالب نفسه. حدّد البديل ليظهر في الكشف، واتركه فارغاً ليبقى كما هو. واختيار التاريخ يملأ اسم اليوم تلقائياً.</p>
       <div class="conv-mapping">${list.map((f, i) => `
         <div class="conv-map-row">
@@ -963,21 +963,21 @@
     const hidden = state.pickHidden || new Set();
     const n = all.filter((h) => !hidden.has(h)).length;
     return `<details class="conv-section conv-export" ${state.exportOpen ? "open" : ""}>
-      <summary>⬇ تصدير Excel بالأعمدة التي تختارها (${ui.fmt(n)} من ${ui.fmt(all.length)})</summary>
+      <summary><span class="material-symbols-outlined btn-ico">download</span>تصدير Excel بالأعمدة التي تختارها (${ui.fmt(n)} من ${ui.fmt(all.length)})</summary>
       <p class="conv-hint">ملف Excel فيه الصفوف نفسها التي في الكشف (بعد تصفية المسارات والترتيب)، وبالأعمدة المحدَّدة فقط.</p>
       <p class="conv-hint">الترتيب هنا هو ترتيب الأعمدة في الملف. اسحب الحقل إلى موضعه، أو استعمل السهمين.</p>
       <ol class="conv-order">${all.map((h, i) => `<li class="conv-order-row${hidden.has(h) ? " off" : ""}" draggable="true" data-col="${esc(h)}">
         <span class="conv-grip" title="اسحب لتغيير الترتيب">⠿</span>
         <label class="conv-check"><input type="checkbox" data-pick="${esc(h)}" ${hidden.has(h) ? "" : "checked"}> ${esc(h)}</label>
         <span class="conv-order-btns">
-          <button type="button" class="conv-link" data-col-up="${esc(h)}" ${i === 0 ? "disabled" : ""} title="أعلى">▲</button>
-          <button type="button" class="conv-link" data-col-down="${esc(h)}" ${i === all.length - 1 ? "disabled" : ""} title="أسفل">▼</button>
+          <button type="button" class="conv-link" data-col-up="${esc(h)}" ${i === 0 ? "disabled" : ""} title="أعلى"><span class="material-symbols-outlined btn-ico">arrow_drop_up</span></button>
+          <button type="button" class="conv-link" data-col-down="${esc(h)}" ${i === all.length - 1 ? "disabled" : ""} title="أسفل"><span class="material-symbols-outlined btn-ico">arrow_drop_down</span></button>
         </span>
       </li>`).join("")}</ol>
       <div class="btn-row">
         <button type="button" class="conv-link" data-pick-all>تحديد الكل</button>
         <button type="button" class="conv-link" data-pick-none>إلغاء الكل</button>
-        <button type="button" class="btn small" id="conv-export-xlsx">⬇ تنزيل Excel</button>
+        <button type="button" class="btn small" id="conv-export-xlsx"><span class="material-symbols-outlined btn-ico">download</span>تنزيل Excel</button>
       </div>
     </details>`;
   }
@@ -1090,7 +1090,7 @@
       };
       const filledCount = missing.concat(extra).filter((f) => state.constants[f]).length;
       html += `<details class="conv-section conv-missing" id="conv-missing" ${state.missingOpen ? "open" : ""}>
-        <summary>⚠ حقول تُكتب يدوياً: ساعة الحضور والانصراف وغيرها (${ui.fmt(missing.length + extra.length)})${filledCount ? ` — عُبِّئ ${ui.fmt(filledCount)}` : ""}</summary>
+        <summary><span class="material-symbols-outlined btn-ico">warning</span>حقول تُكتب يدوياً: ساعة الحضور والانصراف وغيرها (${ui.fmt(missing.length + extra.length)})${filledCount ? ` — عُبِّئ ${ui.fmt(filledCount)}` : ""}</summary>
         <p class="conv-hint">اكتب قيمة كل حقل هنا، فتُوضع كما هي في كل صفوف القالب. أو اتركه فارغاً ليبقى فارغاً، أو اربطه بعمود من ملف البيانات في القائمة أدناه. وأعمدة التسلسل مثل «م» تُملأ من خيار «ترقيم تلقائي لعمود» أسفل الصفحة.</p>
         <div class="conv-mapping">
           ${missing.map((h) => field(h, "عمود في جدول القالب")).join("")}
@@ -1183,8 +1183,8 @@
     }
 
     html += `<div class="btn-row conv-final">
-      <button type="button" class="btn" id="conv-generate">⬇ توليد الملف وتنزيله</button>
-      <button type="button" class="btn secondary" id="conv-profile-save" title="الربط والتجميع والترقيم والترتيب ومصدر التقدير والمدربين — تُطبَّق تلقائياً مع هذا القالب">💾 اعتماد هذه الإعدادات كافتراضية لهذا القالب</button>
+      <button type="button" class="btn" id="conv-generate"><span class="material-symbols-outlined btn-ico">download</span>توليد الملف وتنزيله</button>
+      <button type="button" class="btn secondary" id="conv-profile-save" title="الربط والتجميع والترقيم والترتيب ومصدر التقدير والمدربين — تُطبَّق تلقائياً مع هذا القالب"><span class="material-symbols-outlined btn-ico">save</span>اعتماد هذه الإعدادات كافتراضية لهذا القالب</button>
     </div>`;
     box.innerHTML = html;
     lastDistinctGroups = distinctGroups();

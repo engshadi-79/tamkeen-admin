@@ -115,8 +115,8 @@
         <td class="reg-kind">${esc(pages)}</td>
         <td class="reg-kind nowrap">${u.lastLogin ? esc(ui.formatDate(u.lastLogin.slice(0, 10))) : "لم يدخل"}</td>
         <td class="reg-actions nowrap">
-          <button class="act-btn edit" data-edit>✎ تعديل</button>
-          ${u.username === (App.cloud.user() || {}).username ? "" : `<button class="act-btn del" data-del>🗑 حذف</button>`}
+          <button class="act-btn edit" data-edit><span class="material-symbols-outlined btn-ico">edit</span>تعديل</button>
+          ${u.username === (App.cloud.user() || {}).username ? "" : `<button class="act-btn del" data-del><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>`}
         </td>
       </tr>`;
     }).join("") || `<tr><td colspan="6" class="empty">لا يوجد مستخدمون.</td></tr>`;

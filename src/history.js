@@ -117,7 +117,7 @@
       <td class="hist-title"><button type="button" class="conv-link" data-rec="${esc(r.rec_id)}" data-col="${esc(r.col)}" title="كل تعديلات هذا القيد من كل المستخدمين">${esc(titleOf(r.col, data, r.rec_id))}</button></td>
       <td><span class="hist-tag ${cls}">${label}</span></td>
       <td class="hist-detail">${detail}</td>
-      <td><button type="button" class="btn small secondary" data-revert="${r.id}" title="إرجاع القيد إلى ما كان عليه قبل هذا التعديل">↶ تراجع</button></td>
+      <td><button type="button" class="btn small secondary" data-revert="${r.id}" title="إرجاع القيد إلى ما كان عليه قبل هذا التعديل"><span class="material-symbols-outlined btn-ico">undo</span>تراجع</button></td>
     </tr>`;
   }
 
@@ -142,7 +142,7 @@
       rows = more ? rows.concat(list) : list;
       lastId = list.length === 100 ? list[list.length - 1].id : null;
       $("hist-status").innerHTML = recFilter
-        ? `سجل «${esc(recFilter.title)}» من كل المستخدمين — ${ui.fmt(rows.length)} تعديلاً · <button type="button" class="conv-link" data-rec-clear>↩ كل التعديلات</button>`
+        ? `سجل «${esc(recFilter.title)}» من كل المستخدمين — ${ui.fmt(rows.length)} تعديلاً · <button type="button" class="conv-link" data-rec-clear><span class="material-symbols-outlined btn-ico">undo</span>كل التعديلات</button>`
         : esc(`${ui.fmt(rows.length)} تعديلاً${App.profile.isAdmin() ? "" : " (تعديلاتك أنت)"}`);
       paint();
     } catch (e) {
