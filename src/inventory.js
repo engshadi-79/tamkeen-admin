@@ -263,6 +263,171 @@
     ui.download(name, new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
 
+
+  /* ===== استيراد ملف جرد (Excel أو CSV) =====
+     الملف يأتي بأعمدة مختلفة من مركز لآخر، فتُطابَق بالمرادفات ثم يصحّحها
+     المستخدم من قوائم المطابقة. الرفع المتكرر يُحدِّث ولا يُكرِّر. */
+  const FIELDS = [
+    { key: "track", label: "المسار", re: /مسار|قسم|قاعه|قاعة|ورشه|ورشة|برنامج|معمل/ },
+    { key: "name", label: "اسم الصنف", re: /صنف|اسم|بند|ماده|مادة|اداه|أداة|جهاز|مستهلك|وصف/ },
+    { key: "kind", label: "النوع (ثابت/مستهلك)", re: /نوع|تصنيف|فئه|فئة/ },
+    { key: "unit", label: "الوحدة", re: /وحده|وحدة|قياس/ },
+    { key: "qty", label: "الكمية الحالية", re: /كميه|كمية|عدد|رصيد|متوفر|متبقي|موجود/ },
+    { key: "min", label: "الحدّ الأدنى", re: /^حد|ادنى|اعادهالطلب|نقطهالطلب/ },
+    { key: "state", label: "الحالة", re: /حاله|حالة|وضع/ },
+  ];
+  const FIXED_WORDS = /ثابت|جهاز|اداه|أداة|عهده|عهدة|اصل|أصل|معدات|اثاث|أثاث/;
+  const CONSUME_WORDS = /مستهلك|استهلاك|خامه|خامة|مواد/;
+  const normHead = (v) => String(v || "").trim().toLowerCase()
+    .replace(/[\u064B-\u0652]/g, "").replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/^ال/, "").replace(/[\s_\d().:\-\/]/g, "");
+  const normName = (v) => String(v || "").trim().replace(/\s+/g, " ")
+    .replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").toLowerCase();
+
+  let imp = null;   // { headers, rows, map, fileName }
+
+  function guessMap(headers) {
+    const map = {};
+    const taken = [];
+    // عمود واحد لا يُربط بحقلين: أول حقل يأخذه يحجزه
+    FIELDS.forEach((f) => {
+      const hit = headers.find((h) => !taken.includes(h) && f.re.test(normHead(h)));
+      map[f.key] = hit || "";
+      if (hit) taken.push(hit);
+    });
+    return map;
+  }
+
+  const kindOf = (v) => {
+    const t = normHead(v);
+    if (!t) return "";
+    if (CONSUME_WORDS.test(t)) return "consumable";
+    if (FIXED_WORDS.test(t)) return "fixed";
+    return "";
+  };
+  const stateOf = (v) => {
+    const t = normHead(v);
+    if (!t) return "";
+    if (/مفقود|ضائع|ناقص/.test(t)) return "lost";
+    if (/معطل|تالف|خارج|لايعمل|صيانه/.test(t)) return "broken";
+    if (/سليم|جيد|صالح|يعمل|جاهز/.test(t)) return "ok";
+    return "";
+  };
+
+  /* صفوف الملف بعد تطبيق المطابقة الحالية */
+  function mapped() {
+    if (!imp) return [];
+    const g = (r, key) => (imp.map[key] ? String(r[imp.map[key]] == null ? "" : r[imp.map[key]]).trim() : "");
+    const fallbackTrack = $("inv-imp-track") ? $("inv-imp-track").value : "";
+    return imp.rows.map((r) => {
+      const name = g(r, "name");
+      const kind = kindOf(g(r, "kind")) || (num(g(r, "min")) > 0 ? "consumable" : "consumable");
+      return {
+        track: g(r, "track") || fallbackTrack,
+        name, kind,
+        unit: g(r, "unit"),
+        qty: num(g(r, "qty")),
+        min: num(g(r, "min")),
+        state: kind === "fixed" ? (stateOf(g(r, "state")) || "ok") : "",
+      };
+    }).filter((x) => x.name && x.track);
+  }
+
+  const itemKey = (track, name) => `${normName(track)}|${normName(name)}`;
+
+  function importPreview() {
+    const rows = mapped();
+    const current = new Map(items().map((it) => [itemKey(it.track, it.name), it]));
+    const add = rows.filter((r) => !current.has(itemKey(r.track, r.name)));
+    const upd = rows.filter((r) => current.has(itemKey(r.track, r.name)));
+    const skipped = imp ? imp.rows.length - rows.length : 0;
+    $("inv-imp-sum").innerHTML = `
+      <span class="badge good">${ui.fmt(add.length)} صنفاً جديداً</span>
+      <span class="badge digital">${ui.fmt(upd.length)} سيُحدَّث</span>
+      ${skipped ? `<span class="badge low">${ui.fmt(skipped)} صفاً بلا اسم أو مسار (يُتجاوَز)</span>` : ""}`;
+    $("inv-imp-rows").innerHTML = rows.slice(0, 6).map((r) => `<tr>
+        <td>${esc(r.track)}</td><td><b>${esc(r.name)}</b></td><td>${KIND[r.kind]}</td>
+        <td>${esc(r.unit || "—")}</td><td>${ui.fmt(r.qty)}</td><td>${r.min ? ui.fmt(r.min) : "—"}</td>
+        <td>${r.kind === "fixed" ? STATE[r.state] || "" : "—"}</td>
+      </tr>`).join("") || `<tr><td colspan="7" class="empty">لا صفوف صالحة بعد — راجع مطابقة الأعمدة.</td></tr>`;
+    $("inv-imp-go").disabled = !rows.length;
+  }
+
+  function renderMapping() {
+    const opts = (sel) => `<option value="">— لا يوجد —</option>` +
+      imp.headers.map((h) => `<option ${h === sel ? "selected" : ""}>${esc(h)}</option>`).join("");
+    $("inv-imp-map").innerHTML = FIELDS.map((f) => `<label class="field">
+        <span>${f.label}</span>
+        <select data-imp-field="${f.key}">${opts(imp.map[f.key])}</select>
+      </label>`).join("") + `<label class="field">
+        <span>المسار الافتراضي (لو لم يكن في الملف)</span>
+        <select id="inv-imp-track">${trackNames().map((n) => `<option ${n === filter.track ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+      </label>`;
+    $("inv-imp-name").textContent = imp.fileName;
+    importPreview();
+  }
+
+  async function readInventoryFile(file) {
+    const data = await App.converterCore.readDataFile(await file.arrayBuffer());
+    imp = { headers: data.headers, rows: data.rows, map: guessMap(data.headers), fileName: file.name };
+    $("inv-import-card").hidden = false;
+    $("inv-form").hidden = true;
+    renderMapping();
+  }
+
+  function runImport() {
+    const rows = mapped();
+    if (!rows.length) return;
+    const current = new Map(items().map((it) => [itemKey(it.track, it.name), it]));
+    let added = 0, updated = 0;
+    rows.forEach((r) => {
+      const old = current.get(itemKey(r.track, r.name));
+      if (old) {
+        const before = num(old.qty);
+        old.kind = r.kind;
+        if (r.unit) old.unit = r.unit;
+        old.qty = r.qty;
+        if (r.min) old.min = r.min;
+        if (r.kind === "fixed" && r.state) old.state = r.state;
+        old.updatedAt = now();
+        logMove(old, "adjust", old.qty - before, `استيراد: ${imp.fileName}`);
+        updated += 1;
+      } else {
+        const it = {
+          id: store.uid(), track: r.track, name: r.name, kind: r.kind,
+          unit: r.unit, qty: r.qty, min: r.min,
+          state: r.kind === "fixed" ? r.state || "ok" : "", note: "", updatedAt: now(),
+        };
+        items().push(it);
+        current.set(itemKey(it.track, it.name), it);
+        logMove(it, "adjust", it.qty, `استيراد: ${imp.fileName}`);
+        added += 1;
+      }
+    });
+    store.save();
+    $("inv-import-card").hidden = true;
+    imp = null;
+    render();
+    ui.toast(`تم الاستيراد: ${ui.fmt(added)} صنفاً جديداً و${ui.fmt(updated)} محدَّثاً`);
+  }
+
+  function initImport() {
+    $("inv-import").addEventListener("click", () => $("inv-import-input").click());
+    $("inv-import-input").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      readInventoryFile(file).catch((err) => ui.toast(err.message || "تعذّرت قراءة الملف"));
+    });
+    $("inv-imp-cancel").addEventListener("click", () => { $("inv-import-card").hidden = true; imp = null; });
+    $("inv-imp-go").addEventListener("click", runImport);
+    $("inv-imp-map").addEventListener("change", (e) => {
+      const sel = e.target.closest("[data-imp-field]");
+      if (sel && imp) { imp.map[sel.dataset.impField] = sel.value; importPreview(); return; }
+      if (e.target.id === "inv-imp-track") importPreview();
+    });
+  }
+
   function init() {
     try { filter.track = localStorage.getItem(TRACK_KEY) || ""; } catch (e) { /* تخزين غير متاح */ }
 
@@ -323,6 +488,8 @@
       const row = sel.closest("tr[data-id]");
       if (row) setState(row.dataset.id, sel.value);
     });
+    initImport();
+
     // Enter داخل خانة الاستهلاك يسجّل مباشرة
     document.getElementById("view-inventory").addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || !e.target.closest("[data-use]")) return;

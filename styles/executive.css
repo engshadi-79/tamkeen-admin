@@ -1171,3 +1171,8 @@ html:root .inv-move-meta { color: var(--faint); font-size: 11px; white-space: no
   html:root .inv-move-meta { display: none; }
   html:root input.inv-use { width: 64px; }
 }
+
+/* استيراد ملف الجرد */
+html:root .inv-imp-file { color: var(--faint); font-size: 11.5px; }
+html:root .inv-imp-sum { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 12px; }
+html:root .inv-import .inv-form-grid { margin-bottom: 12px; }
