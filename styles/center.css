@@ -1,0 +1,421 @@
+/* ============================================================
+   هوية «نظام جرد مركز التدريب» منقولة كما هي
+   المصدر: نظام_جرد_مركز_التدريب.html — كتلة :root وقواعد المكوّنات.
+   كحلي #14284B وفيروزي #0F8B8D على أرضية #F2F5F8، وحالات أربع:
+   مطابق وناقص وزائد وبلا أساس، بخلفيات ناعمة ونصوص غامقة.
+   تُحمَّل بعد executive.css فتأخذ منها البنية وتستبدل الصبغة كلها.
+   ============================================================ */
+
+/* ===== ١. الرموز اللونية (:root في الملف الأصل) ===== */
+html:root:root:root,
+html:root:root:root[data-theme="light"] {
+  --navy: #14284B;
+  --navy-2: #1D3866;
+  --navy-3: #2A4B80;
+  --teal: #0F8B8D;
+  --teal-2: #0B6F71;
+  --teal-soft: #E2F2F2;
+  --card: #FFFFFF;
+  --ink: #18202D;
+  --line: #DAE1E9;
+  --line-2: #EBF0F4;
+  --c-ok: #23804F;      --ok-soft: #E3F3EA;
+  --short: #B93A2E;     --short-soft: #FBE8E5;
+  --over: #A8680F;      --over-soft: #FCF1DD;
+  --nobase: #5B6B85;    --nobase-soft: #ECEFF5;
+  --r: 10px;
+  --r-sm: 7px;
+
+  /* جسر إلى رموز تمكين: كل ما في الصفحات يتبع هذه */
+  --bg: #F2F5F8;
+  --background: var(--bg);
+  --surface: var(--card);
+  --surface-2: var(--line-2);
+  --surface-3: var(--line);
+  --foreground: var(--ink);
+  --text: var(--ink);
+  --muted: #5B687A;
+  --faint: #7C8899;
+  --border: var(--line);
+  --border-soft: var(--line-2);
+  --hair: var(--line);
+  --navy-900: var(--navy);
+  --navy-800: var(--ink);
+  --navy-700: var(--navy-3);
+  --navy-100: var(--line-2);
+
+  --gold: var(--teal);
+  --gold-bright: var(--teal);
+  --gold-deep: var(--teal-2);
+  --on-gold: #ffffff;
+  --teal-600: var(--teal);
+  --teal-500: var(--teal);
+  --teal-100: var(--teal-soft);
+  --accent-500: var(--teal);
+  --accent-600: var(--teal);
+  --accent-700: var(--teal-2);
+  --accent-50: var(--teal-soft);
+
+  --ok: var(--c-ok);          --ok-bg: var(--ok-soft);
+  --warn: var(--over);        --warn-bg: var(--over-soft);
+  --danger: var(--short);     --danger-bg: var(--short-soft);
+  --info: var(--nobase);      --info-bg: var(--nobase-soft);  --info-line: #CFD7E6;
+  --green-500: var(--c-ok);   --green-600: var(--c-ok);   --green-50: var(--ok-soft);
+  --orange-500: var(--over);  --orange-600: var(--over);  --orange-50: var(--over-soft);
+  --red-500: var(--short);    --red-600: var(--short);    --red-50: var(--short-soft);
+  --blue-500: var(--navy-3);  --blue-600: var(--navy-3);  --blue-50: var(--nobase-soft);
+  --purple-500: var(--navy-2);
+
+  --sidebar: var(--navy);
+  --sidebar-fg: #DCE6F5;
+  --sidebar-muted: #9FB3D3;
+  --card-bg: var(--card);
+  --surface-soft: var(--line-2);
+  --nav-text: #C6D4EA;
+  --nav-faint: #9FB3D3;
+
+  --radius: 10px;
+  --shadow: none;
+  --font: "Cairo", "Segoe UI", Tahoma, "Noto Sans Arabic", Arial, sans-serif;
+  color-scheme: light;
+}
+
+/* ===== ٢. الوضع الليلي (كتلة [data-theme="dark"] في الأصل) ===== */
+html:root:root:root[data-theme="dark"] {
+  --bg: #0E1522;
+  --card: #162133;
+  --ink: #E5EBF2;
+  --muted: #93A0B3;
+  --faint: #7E8DA3;
+  --line: #263449;
+  --line-2: #1D2A3D;
+  --teal-soft: #123638;
+  --ok-soft: #14301F;
+  --short-soft: #3A1A17;
+  --over-soft: #36280F;
+  --nobase-soft: #202B3D;
+  --c-ok: #4CC383;
+  --short: #EE7A6E;
+  --over: #E3A646;
+  --nobase: #9DAAC2;
+  --teal: #2BB3B5;
+  --teal-2: #1E9698;
+  --navy: #0B1322;
+  --navy-2: #16233A;
+  --navy-3: #BFD0EA;
+  --sidebar: #0B1322;
+  --on-gold: #06201F;
+  color-scheme: dark;
+}
+
+/* ===== ٣. الأرضية والخط ===== */
+html:root:root:root body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
+}
+html:root:root:root body::before { display: none; }
+html:root:root:root :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+/* ===== ٤. الشريط الجانبي (.side) ===== */
+html:root:root:root .sidebar {
+  background: var(--navy);
+  color: #DCE6F5;
+  border-inline-end: 0;
+  box-shadow: none;
+}
+html:root:root:root .brand { height: auto; padding: 20px 14px 16px; gap: 10px; border-bottom: 0; }
+html:root:root:root .brand-logo { width: 38px; height: 38px; border-radius: 9px; box-shadow: none; }
+html:root:root:root .brand h1 { color: #fff; font-size: 15px; font-weight: 800; line-height: 1.3; }
+html:root:root:root .brand .accent { color: #fff; }
+html:root:root:root .brand small { color: #9FB3D3; font-size: 12px; }
+
+html:root:root:root .nav { padding: 0 14px 18px; }
+html:root:root:root .nav button {
+  gap: 10px; padding: 9px 12px; margin-bottom: 2px;
+  border-radius: 8px; font-size: 14px; font-weight: 600;
+  color: #C6D4EA; background: none;
+}
+html:root:root:root .nav button:hover { background: var(--navy-2); color: #fff; }
+html:root:root:root .nav button.active {
+  background: var(--teal); color: #fff; box-shadow: none;
+}
+html:root:root:root .nav .ico { opacity: .85; }
+html:root:root:root .nav button.active .ico { opacity: 1; }
+html:root:root:root .nav .nav-head {
+  height: auto; padding: 14px 12px 4px; margin: 0;
+  color: #9FB3D3; font-size: 12px; font-weight: 700; letter-spacing: 0;
+}
+html:root:root:root .nav-group.open > .nav-head { color: #DCE6F5; }
+html:root:root:root .side-user { border-bottom-color: rgba(255, 255, 255, .08); }
+html:root:root:root .side-avatar { background: var(--teal); color: #fff; }
+html:root:root:root .sidebar-foot {
+  border-top: 0; padding: 0 14px 18px; color: #9FB3D3; font-size: 12px;
+}
+html:root:root:root .sidebar-foot button {
+  background: rgba(255, 255, 255, .08); color: #C6D4EA; border-radius: var(--r-sm);
+}
+html:root:root:root .sidebar-foot button:hover { background: var(--navy-2); color: #fff; }
+html:root:root:root .sf-badge { background: rgba(255, 255, 255, .05); color: #9FB3D3; border-radius: var(--r-sm); }
+html:root:root:root .sf-badge b { color: #BFD0EA; }
+html:root:root:root .sf-dot { background: #4CC383; box-shadow: none; }
+
+/* ===== ٥. الترويسة العلوية وشريط الحالة ===== */
+html:root:root:root .topbar {
+  height: auto; min-height: 64px; padding: 12px 30px;
+  background: var(--card); border-bottom: 1px solid var(--line);
+  backdrop-filter: none;
+}
+html:root:root:root .tb-title { color: var(--ink); font-size: 17px; font-weight: 800; }
+html:root:root:root .tb-chip {
+  background: var(--teal-soft); color: var(--teal);
+  border-radius: 999px; font-size: 12.5px; font-weight: 700;
+}
+html:root:root:root .tb-meta { color: var(--muted); font-size: 12.5px; }
+html:root:root:root .tb-live { color: var(--c-ok); }
+html:root:root:root .tb-live i { background: #4CC383; }
+html:root:root:root .tb-sep { color: var(--line); }
+html:root:root:root .tt-search, html:root:root:root .tt-btn {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-sm);
+  color: var(--muted); min-height: 38px; backdrop-filter: none;
+}
+html:root:root:root .tt-btn { width: auto; height: auto; padding: 7px 11px; }
+html:root:root:root .tt-search:hover, html:root:root:root .tt-btn:hover {
+  border-color: var(--teal); color: var(--teal);
+}
+html:root:root:root .tt-divider { background: var(--line); }
+html:root:root:root .tt-user-copy b { color: var(--ink); font-size: 13.5px; font-weight: 700; }
+html:root:root:root .tt-user-copy small { color: var(--muted); }
+html:root:root:root .tt-avatar { background: var(--teal); color: #fff; box-shadow: none; }
+html:root:root:root .tt-logout { color: var(--short); }
+
+html:root:root:root .statusbar {
+  background: var(--card); border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 12.5px; padding: 12px 30px;
+}
+html:root:root:root .sb-ok { color: var(--c-ok); }
+html:root:root:root .sb-dot { background: #4CC383; }
+html:root:root:root .sb-sep { color: var(--line); }
+html:root:root:root .sb-code { color: var(--teal); font-weight: 700; }
+
+/* ===== ٦. الألواح والبطاقات (.panel) ===== */
+html:root:root:root .card,
+html:root:root:root .mj-panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 18px;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+html:root:root:root .card h3 { color: var(--ink); font-size: 15px; font-weight: 700; }
+html:root:root:root .mj-panel-head h4 { font-size: 15px; font-weight: 700; color: var(--ink); }
+html:root:root:root .mj-panel-head small { color: var(--muted); font-size: 12.5px; font-weight: 400; }
+html:root:root:root .mj-all { color: var(--teal); font-weight: 700; }
+html:root:root:root .page-head h2, html:root:root:root .page-title {
+  color: var(--ink); font-size: 24px; font-weight: 800;
+}
+html:root:root:root .page-head p { color: var(--muted); font-size: 14px; }
+html:root:root:root .crumb { color: var(--muted); font-size: 12.5px; }
+html:root:root:root .crumb b { color: var(--teal); font-weight: 700; }
+
+/* ===== ٧. بطاقات الأرقام (.stats في الأصل) ===== */
+html:root:root:root .stat,
+html:root:root:root #view-dashboard .card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r); box-shadow: none; backdrop-filter: none;
+}
+html:root:root:root .stat::after { content: none; }
+html:root:root:root .stat::before,
+html:root:root:root #view-dashboard .stat::before {
+  content: ""; position: absolute; inset-inline: 0; top: 0;
+  width: auto; height: 4px; border-radius: 0;
+  background: var(--stat-accent, var(--teal)); box-shadow: none;
+}
+html:root:root:root .stat .value, html:root:root:root #view-dashboard .stat-value {
+  color: var(--ink); font-size: 22px; font-weight: 800; line-height: 1.2;
+}
+html:root:root:root .stat .label, html:root:root:root #view-dashboard .stat-label {
+  color: var(--muted); font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: 0;
+}
+html:root:root:root .stat-icon, html:root:root:root #view-dashboard .stat-icon {
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--stat-accent, var(--teal)) 14%, var(--card));
+  color: var(--stat-accent, var(--teal));
+}
+html:root:root:root .stat-mark { background: var(--teal-soft); color: var(--teal); }
+html:root:root:root .stat-mark.is-ok { background: var(--ok-soft); color: var(--c-ok); }
+html:root:root:root .stat-mark.is-warn { background: var(--over-soft); color: var(--over); }
+html:root:root:root #view-dashboard .stat { --stat-accent: var(--teal); }
+html:root:root:root #view-dashboard .stat:has(.stat-icon.green) { --stat-accent: var(--c-ok); }
+html:root:root:root #view-dashboard .stat:has(.stat-icon.yellow) { --stat-accent: var(--over); }
+html:root:root:root #view-dashboard .stat:has(.stat-icon.red) { --stat-accent: var(--short); }
+html:root:root:root #view-dashboard .stat:has(.stat-icon.blue),
+html:root:root:root #view-dashboard .stat:has(.stat-icon.purple) { --stat-accent: var(--nobase); }
+
+/* ===== ٨. البطل والبلاطات: كحلي وفيروزي بدل التدرّجات الملوّنة ===== */
+html:root:root:root .mj-hero {
+  border: 0; border-radius: var(--r);
+  background-image: linear-gradient(135deg, var(--navy) 0%, var(--navy-3) 60%, var(--teal) 100%);
+  color: #fff;
+}
+html:root:root:root .mj-hero::before { background: rgba(255, 255, 255, .08); }
+html:root:root:root .mj-hero h2 { color: #fff; font-size: 17px; font-weight: 700; }
+html:root:root:root .mj-hero-n { font-size: 30px; font-weight: 800; }
+html:root:root:root .mj-hero-cta {
+  background: var(--teal); color: #fff; border-radius: var(--r-sm);
+  font-weight: 700; box-shadow: none;
+}
+html:root:root:root .mj-hero-cta:hover { background: var(--teal-2); }
+html:root:root:root .mj-kpi { border-radius: var(--r); color: #fff; }
+html:root:root:root .mj-kpi::before { background: rgba(255, 255, 255, .1); }
+html:root:root:root .mj-kpi-n { font-size: 24px; font-weight: 800; }
+html:root:root:root .mj-gold  { background: var(--teal); }
+html:root:root:root .mj-green { background: var(--c-ok); }
+html:root:root:root .mj-amber { background: var(--over); }
+html:root:root:root .mj-info  { background: var(--navy-2); }
+html:root:root:root[data-theme="dark"] .mj-gold,
+html:root:root:root[data-theme="dark"] .mj-green,
+html:root:root:root[data-theme="dark"] .mj-amber { color: #0E1522; }
+html:root:root:root[data-theme="dark"] .mj-gold .mj-kpi-bar > i,
+html:root:root:root[data-theme="dark"] .mj-green .mj-kpi-bar > i,
+html:root:root:root[data-theme="dark"] .mj-amber .mj-kpi-bar > i { background: #0E1522; }
+html:root:root:root .mj-c0 { background: var(--teal); }
+html:root:root:root .mj-c1 { background: var(--c-ok); }
+html:root:root:root .mj-c2 { background: var(--over); }
+html:root:root:root .mj-c3 { background: var(--nobase); }
+html:root:root:root .mj-c4 { background: var(--short); }
+html:root:root:root .mj-trend polyline[stroke] { stroke: var(--teal); }
+html:root:root:root .mj-trend circle { fill: var(--teal); }
+
+/* ===== ٩. الأزرار (.btn / .btn.pri / .btn.navy) ===== */
+html:root:root:root .btn {
+  border: 1px solid var(--teal); background: var(--teal); color: #fff;
+  border-radius: var(--r-sm); padding: 7px 14px;
+  font-size: 14px; font-weight: 600; box-shadow: none;
+}
+html:root:root:root .btn:hover { background: var(--teal-2); border-color: var(--teal-2); color: #fff; }
+html:root:root:root .btn.secondary {
+  background: var(--card); border-color: var(--line); color: var(--ink);
+}
+html:root:root:root .btn.secondary:hover { border-color: var(--teal); color: var(--teal); background: var(--card); }
+html:root:root:root .btn.navy { background: var(--navy); border-color: var(--navy); color: #fff; }
+html:root:root:root .btn.navy:hover { background: var(--navy-2); border-color: var(--navy-2); color: #fff; }
+html:root:root:root .btn.danger {
+  background: var(--card); color: var(--short);
+  border-color: color-mix(in srgb, var(--short) 35%, var(--line));
+}
+html:root:root:root .btn.danger:hover { background: var(--short-soft); color: var(--short); }
+html:root:root:root .btn.small { padding: 4px 10px; font-size: 13px; }
+html:root:root:root .btn:disabled { opacity: .45; }
+
+/* ===== ١٠. الحقول ===== */
+html:root:root:root input[type=text], html:root:root:root input[type=number],
+html:root:root:root input[type=date], html:root:root:root input[type=password],
+html:root:root:root input[type=email], html:root:root:root input[type=url],
+html:root:root:root input[type=search], html:root:root:root select, html:root:root:root textarea {
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: var(--r-sm); padding: 7px 10px; min-height: 38px; font-size: 14px;
+}
+html:root:root:root input:focus, html:root:root:root select:focus, html:root:root:root textarea:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 18%, transparent);
+}
+html:root:root:root label.field > span, html:root:root:root .conv-label {
+  color: var(--muted); font-size: 13px; font-weight: 600;
+}
+html:root:root:root input[type=checkbox], html:root:root:root input[type=radio] { accent-color: var(--teal); }
+
+/* ===== ١١. الجداول ===== */
+html:root:root:root .table-wrap, html:root:root:root .tw {
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--card); overflow-x: auto;
+}
+html:root:root:root th {
+  background: var(--line-2); color: var(--muted);
+  font-size: 13px; font-weight: 700; letter-spacing: 0;
+  border-bottom: 1px solid var(--line-2); padding: 9px 12px;
+}
+html:root:root:root td { border-bottom: 1px solid var(--line-2); color: var(--ink); padding: 9px 12px; }
+html:root:root:root tbody tr:last-child td { border-bottom: none; }
+html:root:root:root tbody tr:hover { background: color-mix(in srgb, var(--teal-soft) 40%, transparent); }
+
+/* ===== ١٢. الرقائق والشارات (.pill) ===== */
+html:root:root:root .badge, html:root:root:root .approval-status, html:root:root:root .pill {
+  border-radius: 999px; padding: 2px 10px;
+  font-size: 12.5px; font-weight: 700; border: 0; white-space: nowrap;
+}
+html:root:root:root .badge.good, html:root:root:root .approval-status.approved,
+html:root:root:root .approval-status.issued { background: var(--ok-soft); color: var(--c-ok); }
+html:root:root:root .badge.low, html:root:root:root .approval-status.rejected { background: var(--short-soft); color: var(--short); }
+html:root:root:root .approval-status.pending { background: var(--over-soft); color: var(--over); }
+html:root:root:root .badge.digital { background: var(--teal-soft); color: var(--teal); }
+html:root:root:root .badge.craft, html:root:root:root .approval-status { background: var(--line-2); color: var(--muted); }
+html:root:root:root .progress, html:root:root:root .mv-progress, html:root:root:root .sc-bar-track { background: var(--line-2); }
+html:root:root:root .progress > i { background: var(--teal); }
+
+/* ===== ١٣. التبويبات (.seg) والنوافذ والتنبيه ===== */
+html:root:root:root .conv-tabs {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: 0; overflow: hidden;
+}
+html:root:root:root .conv-tabs button {
+  border-radius: 0; padding: 7px 16px; color: var(--ink);
+  font-size: 14px; font-weight: 700; background: none;
+}
+html:root:root:root .conv-tabs button.active { background: var(--navy); color: #fff; box-shadow: none; }
+html:root:root:root[data-theme="dark"] .conv-tabs button.active { background: var(--teal); color: #06201F; }
+
+html:root:root:root .modal {
+  background: var(--card); color: var(--ink);
+  border: 0; border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(10, 20, 40, .35);
+}
+html:root:root:root .modal-backdrop { background: rgba(12, 22, 40, .5); backdrop-filter: none; }
+html:root:root:root .login-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+html:root:root:root .toast { background: var(--navy); color: #fff; border: 0; border-radius: 9px; font-weight: 600; }
+
+/* ===== ١٤. الصناديق الثانوية ===== */
+html:root:root:root .reg-toolbar, html:root:root:root .sc-filters, html:root:root:root #rep-filters,
+html:root:root:root .hist-bar, html:root:root:root .sh-bar, html:root:root:root .track-bulk {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+}
+html:root:root:root .inv-move, html:root:root:root .task-item, html:root:root:root .approval-item,
+html:root:root:root .cv-steps li, html:root:root:root .cv-trust span {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+html:root:root:root .conv-boxed, html:root:root:root .cv-files > div, html:root:root:root .cv-action-row,
+html:root:root:root .user-form, html:root:root:root .mg-file, html:root:root:root .rep-model,
+html:root:root:root .rep-staged, html:root:root:root .cv-required, html:root:root:root .note-box {
+  background: var(--line-2); border-color: var(--line); border-radius: var(--r-sm);
+}
+html:root:root:root .inv-move-ico { background: var(--teal-soft); color: var(--teal); }
+html:root:root:root .inv-move.inv-fault .inv-move-ico { background: var(--short-soft); color: var(--short); }
+html:root:root:root .inv-move.inv-adjust .inv-move-ico { background: var(--ok-soft); color: var(--c-ok); }
+html:root:root:root input.inv-cell { background: var(--line-2); border-color: transparent; }
+html:root:root:root input.inv-qty-in.is-low { background: var(--short-soft); color: var(--short); }
+html:root:root:root .inv-qty { background: var(--line-2); }
+html:root:root:root tr.inv-low td { background: color-mix(in srgb, var(--short-soft) 55%, transparent); }
+html:root:root:root .conv-link, html:root:root:root .dash-text-link,
+html:root:root:root .dash-section-kicker { color: var(--teal); }
+html:root:root:root .ai-box { background: var(--teal-soft); border-color: var(--teal); }
+html:root:root:root .ai-box .ai-head { color: var(--teal); }
+html:root:root:root .dash-hero {
+  background-image: linear-gradient(135deg, var(--navy) 0%, var(--navy-3) 60%, var(--teal) 100%);
+  border: 0; box-shadow: none;
+}
+html:root:root:root .dash-eyebrow { color: #9FD6D7; }
+html:root:root:root .dash-action-primary { background: var(--teal); color: #fff; border-color: var(--teal); }
+html:root:root:root .dash-action-primary:hover { background: var(--teal-2); color: #fff; }
+html:root:root:root .card .hos-title, html:root:root:root .hos-title { background: var(--navy); color: #fff; }
+html:root:root:root #view-screen.gt {
+  --gt-bg: var(--bg); --gt-surface: var(--card); --gt-border: var(--line);
+  --gt-text: var(--ink); --gt-muted: var(--muted); --gt-second: var(--muted);
+  --gt-primary: var(--teal); --gt-primary-lt: var(--teal-soft);
+  --gt-translucent: var(--line); --gt-shadow: none;
+}
+
+/* ===== ١٥. رقائق كانت تَرث لوناً داكناً على داكن في الوضع الليلي ===== */
+html:root:root:root .track-code-pill { background: var(--line-2); color: var(--ink); }
+html:root:root:root .reg-sel-bar { background: var(--teal-soft); color: var(--teal); }
