@@ -1293,3 +1293,14 @@ html:root .mj-rows b { flex: 0 0 auto; font-weight: 700; font-variant-numeric: t
   html:root .mj-hero { grid-column: auto; }
   html:root .mj-hero-split { gap: 20px; }
 }
+
+/* خلايا الجرد القابلة للتحرير: تبدو رقماً لا حقلاً حتى يُلمس */
+html:root input.inv-cell {
+  width: 74px; padding: 5px 8px; text-align: center;
+  background: rgba(255, 255, 255, .05); border-color: transparent;
+  font-weight: 700; font-variant-numeric: tabular-nums;
+}
+html:root input.inv-cell:hover { border-color: var(--border-soft); }
+html:root input.inv-qty-in.is-low { background: var(--warn-bg); color: var(--warn); }
+html:root[data-theme="light"] input.inv-cell { background: rgba(20, 26, 36, .05); }
+html:root input.inv-min-in { font-weight: 500; color: var(--muted); }

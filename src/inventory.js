@@ -137,8 +137,8 @@
     $("inv-con").innerHTML = list.length ? list.map((it) => `<tr data-id="${it.id}" class="${isLow(it) ? "inv-low" : ""}">
         <td><b>${esc(it.name)}</b>${it.unit ? `<small class="inv-unit">${esc(it.unit)}</small>` : ""}</td>
         ${filter.track ? "" : `<td class="inv-dim">${esc(it.track)}</td>`}
-        <td><span class="inv-qty ${isLow(it) ? "is-low" : ""}">${ui.fmt(it.qty)}</span></td>
-        <td class="inv-dim">${it.min ? ui.fmt(it.min) : "—"}</td>
+        <td><input type="number" min="0" step="1" class="inv-cell inv-qty-in ${isLow(it) ? "is-low" : ""}" data-field="qty" value="${num(it.qty)}" aria-label="المتبقي من ${esc(it.name)}"></td>
+        <td><input type="number" min="0" step="1" class="inv-cell inv-min-in" data-field="min" value="${num(it.min)}" aria-label="الحدّ الأدنى من ${esc(it.name)}" placeholder="0"></td>
         <td><input type="number" min="0" step="1" class="inv-use" data-use placeholder="0" aria-label="الكمية المستخدمة من ${esc(it.name)}"></td>
         <td class="reg-actions nowrap">
           <button class="btn small" data-log title="تسجيل الاستهلاك">سجّل</button>
@@ -157,7 +157,7 @@
       return `<tr data-id="${it.id}">
         <td><b>${esc(it.name)}</b></td>
         ${filter.track ? "" : `<td class="inv-dim">${esc(it.track)}</td>`}
-        <td>${ui.fmt(it.qty)}</td>
+        <td><input type="number" min="0" step="1" class="inv-cell" data-field="qty" value="${num(it.qty)}" aria-label="عدد ${esc(it.name)}"></td>
         <td><span class="badge ${st === "ok" ? "good" : "low"}">${STATE[st]}</span></td>
         <td class="reg-actions nowrap">
           <select class="inv-state" data-state aria-label="حالة ${esc(it.name)}">
@@ -330,10 +330,15 @@
         min: num(g(r, "min")),
         state: kind === "fixed" ? (stateOf(g(r, "state")) || "ok") : "",
       };
-    }).filter((x) => x.name && x.track);
+    }).filter((x) => x.name && x.track && !isHeaderRow(x.name));
   }
 
   const itemKey = (track, name) => `${normName(track)}|${normName(name)}`;
+
+  /* صفّ ترويسة تسلّل إلى البيانات: اسمه هو عنوان العمود نفسه («اسم الأداة»،
+     «الصنف»، «البيان»…). يُستبعَد حتى لا يصير صنفاً في الجرد. */
+  const HEADER_ROW = /^(اسم|الاسم|صنف|الصنف|اسم الصنف|اسم الاداه|اسم الأداة|البند|البيان|الماده|المادة|الوصف|م|#|الرقم|التسلسل|العدد|الكميه|الكمية|نوع|النوع|الوحده|الوحدة|ملاحظات)$/;
+  const isHeaderRow = (name) => HEADER_ROW.test(String(name || "").trim().replace(/\s+/g, " "));
 
   function importPreview() {
     const rows = mapped();
@@ -341,10 +346,12 @@
     const add = rows.filter((r) => !current.has(itemKey(r.track, r.name)));
     const upd = rows.filter((r) => current.has(itemKey(r.track, r.name)));
     const skipped = imp ? imp.rows.length - rows.length : 0;
+    const allZero = rows.length > 0 && rows.every((r) => !r.qty);
     $("inv-imp-sum").innerHTML = `
       <span class="badge good">${ui.fmt(add.length)} صنفاً جديداً</span>
       <span class="badge digital">${ui.fmt(upd.length)} سيُحدَّث</span>
-      ${skipped ? `<span class="badge low">${ui.fmt(skipped)} صفاً بلا اسم أو مسار (يُتجاوَز)</span>` : ""}`;
+      ${skipped ? `<span class="badge low">${ui.fmt(skipped)} صفاً متجاوَزاً (ترويسة أو بلا اسم)</span>` : ""}
+      ${allZero ? `<span class="badge low">تنبيه: كل الكميات صفر — راجع عمود «الكمية الحالية» أعلاه</span>` : ""}`;
     $("inv-imp-rows").innerHTML = rows.slice(0, 6).map((r) => `<tr>
         <td>${esc(r.track)}</td><td><b>${esc(r.name)}</b></td><td>${KIND[r.kind]}</td>
         <td>${esc(r.unit || "—")}</td><td>${ui.fmt(r.qty)}</td><td>${r.min ? ui.fmt(r.min) : "—"}</td>
@@ -476,13 +483,31 @@
         use(id, n);
       } else if (e.target.closest("[data-edit]")) {
         const it = items().find((x) => x.id === id);
-        const next = prompt(`الكمية الحالية من «${it.name}»: ${it.qty}\nاكتب الكمية الجديدة (بعد التوريد أو التصحيح):`, it.qty);
-        if (next !== null && String(next).trim() !== "") setQty(id, next, "تعديل يدوي");
+        const next = prompt(`اسم الصنف ووحدته، مفصولين بفاصلة:\nمثال: قماش قطني، متر`, `${it.name}${it.unit ? `، ${it.unit}` : ""}`);
+        if (next === null) return;
+        const [nm, un] = String(next).split(/[،,]/);
+        if (nm && nm.trim()) { it.name = nm.trim(); it.unit = (un || "").trim(); it.updatedAt = now(); store.save(); render(); }
       } else if (e.target.closest("[data-del]")) {
         removeItem(id);
       }
     });
     document.getElementById("view-inventory").addEventListener("change", (e) => {
+      const cell = e.target.closest("[data-field]");
+      if (cell) {
+        const row = cell.closest("tr[data-id]");
+        if (!row) return;
+        const it = items().find((x) => x.id === row.dataset.id);
+        if (!it) return;
+        if (cell.dataset.field === "min") {
+          it.min = num(cell.value);
+          it.updatedAt = now();
+          store.save();
+          render();
+        } else {
+          setQty(it.id, cell.value, "تعديل من الجدول");
+        }
+        return;
+      }
       const sel = e.target.closest("[data-state]");
       if (!sel) return;
       const row = sel.closest("tr[data-id]");
