@@ -132,7 +132,7 @@
   function initTheme() {
     let mode = "";
     try { mode = localStorage.getItem(THEME_KEY) || ""; } catch (e) { /* تخزين غير متاح */ }
-    if (mode !== "light" && mode !== "dark") mode = "dark";   // الهوية التنفيذية ليلية؛ والنهاري باختيار المستخدم
+    if (mode !== "light" && mode !== "dark") mode = "light";   // هوية منجز نهارية؛ والليلي باختيار المستخدم
     applyTheme(mode);
     const btn = document.getElementById("theme-toggle");
     if (!btn) return;
