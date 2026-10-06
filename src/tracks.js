@@ -50,7 +50,7 @@
         <td><input type="number" min="0" max="100" data-f="attendancePct" value="${t.attendancePct}" aria-label="نسبة الحضور"></td>
         <td><input type="number" min="0" max="${store.TOTAL_HOURS}" data-f="hoursCompleted" value="${t.hoursCompleted}" aria-label="الساعات المكتملة"></td>
         <td style="min-width:150px" data-progress>${ui.progressBar(hoursPct(t))}</td>
-        <td class="reg-actions">${!App.profile.can || App.profile.can("delete") ? `<button class="act-btn del" data-del title="حذف المسار">🗑</button>` : ""}</td>
+        <td class="reg-actions">${!App.profile.can || App.profile.can("delete") ? `<button class="act-btn del" data-del title="حذف المسار"><span class="material-symbols-outlined btn-ico">delete</span></button>` : ""}</td>
       </tr>`).join("") || `<tr><td colspan="9" class="empty">لا توجد مسارات. اضغط «+ مسار جديد».</td></tr>`;
 
     renderFoot();

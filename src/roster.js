@@ -391,8 +391,8 @@
           </select></td>`;
         }).join("")}
         <td class="reg-actions nowrap">
-          <button class="act-btn edit" data-notes title="ملاحظات المتابعة">📝${(r.notes || []).length ? ` ${ui.fmt(r.notes.length)}` : ""}</button>
-          ${!App.profile.can || App.profile.can("delete") ? `<button class="act-btn del" data-del title="حذف السجل">🗑</button>` : ""}
+          <button class="act-btn edit" data-notes title="ملاحظات المتابعة"><span class="material-symbols-outlined btn-ico">edit_note</span>${(r.notes || []).length ? ` ${ui.fmt(r.notes.length)}` : ""}</button>
+          ${!App.profile.can || App.profile.can("delete") ? `<button class="act-btn del" data-del title="حذف السجل"><span class="material-symbols-outlined btn-ico">delete</span></button>` : ""}
         </td>
       </tr>`).join("")
       : `<tr><td colspan="${m.columns.length + 2}" class="empty">لا توجد سجلات مطابقة.</td></tr>`;
@@ -409,9 +409,9 @@
         </select>
         ${c.type === "select" ? `<input type="text" data-col-options value="${esc((c.options || []).join("، "))}" title="الخيارات مفصولة بفاصلة" placeholder="تم، لم يتم">
           <select data-col-done title="القيمة التي تعني الإنجاز">${(c.options || []).map((o) => `<option ${o === (c.doneValue || DONE) ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>` : ""}
-        ${c.key === m.keyColumn ? `<span class="reg-kind">عمود المطابقة</span>` : `<button type="button" class="conv-link" data-col-key title="اجعله عمود المطابقة">🔑</button>`}
-        <button type="button" class="conv-link" data-col-up ${i === 0 ? "disabled" : ""} title="تحريك لأعلى">▲</button>
-        <button type="button" class="conv-link danger" data-col-del title="حذف العمود من النظام">✕</button>
+        ${c.key === m.keyColumn ? `<span class="reg-kind">عمود المطابقة</span>` : `<button type="button" class="conv-link" data-col-key title="اجعله عمود المطابقة"><span class="material-symbols-outlined btn-ico">key</span></button>`}
+        <button type="button" class="conv-link" data-col-up ${i === 0 ? "disabled" : ""} title="تحريك لأعلى"><span class="material-symbols-outlined btn-ico">arrow_drop_up</span></button>
+        <button type="button" class="conv-link danger" data-col-del title="حذف العمود من النظام"><span class="material-symbols-outlined btn-ico">close</span></button>
       </li>`).join("") || `<li class="conv-hint">لا توجد أعمدة بعد.</li>`;
   }
 
@@ -487,7 +487,7 @@
     $("ros-notes-list").innerHTML = list.length ? list.map((n) => `<li>
         <span class="act-when">${esc(ui.formatDate(String(n.at).slice(0, 10)))}${n.by ? ` · ${esc(n.by)}` : ""}</span>
         <span>${esc(n.text)}</span>
-        <button type="button" class="conv-link danger" data-note-del="${esc(n.id)}" title="حذف الملاحظة">✕</button>
+        <button type="button" class="conv-link danger" data-note-del="${esc(n.id)}" title="حذف الملاحظة"><span class="material-symbols-outlined btn-ico">close</span></button>
       </li>`).join("") : `<li class="conv-hint">لا توجد ملاحظات بعد.</li>`;
   }
 

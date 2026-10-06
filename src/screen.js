@@ -146,7 +146,7 @@
     };
     bar.innerHTML = FIELDS.map(box).join("")
       + `<label class="sc-f"><span>بحث</span><input type="search" id="sc-q" placeholder="اسم مجموعة أو مدرب…" value="${esc(filters.q)}"></label>`
-      + (anyFilter() ? `<button type="button" class="btn small secondary" id="sc-clear">✕ مسح الفلاتر</button>` : "");
+      + (anyFilter() ? `<button type="button" class="btn small secondary" id="sc-clear"><span class="material-symbols-outlined btn-ico">close</span>مسح الفلاتر</button>` : "");
   }
   const pct = (part, whole) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
   const sum = (list, key) => (list || []).reduce((a, r) => a + num(r[key]), 0);
@@ -345,7 +345,7 @@
     const total = withNames.reduce((a, r) => a + (r.names || []).length, 0);
     return `<section class="card sc-card sc-names wide">
       <div class="sc-names-head"><h3>${esc(title)} <span class="conv-hint">(${ui.fmt(total)})</span></h3>
-        <button type="button" class="btn small" data-export="${kind}">⬇ تصدير Excel</button></div>
+        <button type="button" class="btn small" data-export="${kind}"><span class="material-symbols-outlined btn-ico">download</span>تصدير Excel</button></div>
       <p class="conv-hint">تظهر للمدير فقط، وتختفي في وضع ملء الشاشة. التصدير يتبع الفلاتر المختارة.</p>${blocks}</section>`;
   }
 
@@ -581,7 +581,7 @@
     back.className = "modal-backdrop open sc-sheet";
     back.innerHTML = `<div class="modal sc-sheet-box">
         <div class="modal-head"><b>${esc(title)}</b>
-          <span class="btn-row">${printIt ? `<button type="button" class="btn small" data-print>🖨 طباعة</button>` : ""}
+          <span class="btn-row">${printIt ? `<button type="button" class="btn small" data-print><span class="material-symbols-outlined btn-ico">print</span>طباعة</button>` : ""}
           <button type="button" class="btn small secondary" data-close>إغلاق</button></span></div>
         <iframe class="sc-sheet-frame" title="${esc(title)}"></iframe>
       </div>`;
@@ -668,10 +668,10 @@
       </style></head><body>
       <h1>كيف تعمل شاشة إحصاءات المركز؟</h1>
       <p class="mark"><b>أسرع طريقة (مرة واحدة):</b> اسحب هذا الزر إلى شريط المفضلة في متصفحك:
-        <a class="bm" id="bm" href="${bookmarklet().replace(/"/g, "&quot;")}">▶ تشغيل إحصاءات تمكين</a>
+        <a class="bm" id="bm" href="${bookmarklet().replace(/"/g, "&quot;")}"><span class="material-symbols-outlined btn-ico">play_arrow</span>تشغيل إحصاءات تمكين</a>
         ثم افتح نظام المركز واضغط عليه — يعمل السكربت بنقرة واحدة بلا Console.</p>
       <p class="mark"><b>لا تستطيع السحب؟</b> انسخ الرابط والصقه يدوياً:
-        <button id="cp" style="background:#0f8b8d;color:#fff;border:0;border-radius:8px;padding:6px 14px;cursor:pointer;font:inherit">⧉ نسخ رابط العلامة</button>
+        <button id="cp" style="background:#0f8b8d;color:#fff;border:0;border-radius:8px;padding:6px 14px;cursor:pointer;font:inherit"><span class="material-symbols-outlined btn-ico">content_copy</span>نسخ رابط العلامة</button>
         <br>ثم في كروم: اضغط <code>Ctrl+Shift+O</code> ← ⋮ ← <b>Add new bookmark</b> ← الصق الرابط في خانة URL واكتب اسماً.</p>
       <script>document.getElementById("cp").addEventListener("click", async () => {
         try { await navigator.clipboard.writeText(document.getElementById("bm").getAttribute("href")); document.getElementById("cp").textContent = "✔ نُسخ الرابط"; }

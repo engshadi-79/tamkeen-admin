@@ -66,7 +66,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "ai-chip";
-      btn.textContent = "✨ صياغة رسمية";
+      btn.innerHTML = `<span class="material-symbols-outlined btn-ico">auto_awesome</span> صياغة رسمية`;
       btn.title = "إعادة صياغة ما كتبته بأسلوب رسمي، مع إمكانية التراجع";
       const holder = document.createElement("span");
       holder.className = "ai-chip-row";
