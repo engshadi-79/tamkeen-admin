@@ -5,9 +5,9 @@
   const { store, ui } = App;
   const SNAP_KEY = "tamkeen-admin:sync2";
   const SETTINGS_KEYS = ["registrySettings", "reportSettings", "rosterMeta", "aiSettings", "signer", "signerTitle", "fixedFields", "convDefaults", "hospitalityRows", "reportModel"];
-  const COLS = ["tracks", "trackCodes", "tasks", "meetings", "customTemplates", "roster", "settings", "convTemplates", "hospitality", "sheets", "sheetRows", "letterApprovals", "reportPresets", "studentExtra", "invItems", "invMoves"];
+  const COLS = ["tracks", "trackCodes", "tasks", "meetings", "customTemplates", "roster", "settings", "convTemplates", "hospitality", "sheets", "sheetRows", "letterApprovals", "reportPresets", "studentExtra", "invItems", "invMoves", "invLocs", "invCounts"];
   let syncing = false, again = false, timer = null, people = [];
-  const LABELS = { tracks: "المسارات", trackCodes: "دليل ترميز المسارات والمراحل", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات", convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة", sheets: "جداول البيانات", sheetRows: "صفوف الجداول", letterApprovals: "طلبات اعتماد المراسلات", reportPresets: "التقارير المحفوظة", studentExtra: "بيانات الطلاب التكميلية", invItems: "أصناف الجرد", invMoves: "حركة الجرد" };
+  const LABELS = { tracks: "المسارات", trackCodes: "دليل ترميز المسارات والمراحل", tasks: "المهام", meetings: "المحاضر", customTemplates: "القوالب", roster: "قائمة المستفيدين", settings: "الإعدادات", convTemplates: "قوالب التحويل", hospitality: "كشف الضيافة", sheets: "جداول البيانات", sheetRows: "صفوف الجداول", letterApprovals: "طلبات اعتماد المراسلات", reportPresets: "التقارير المحفوظة", studentExtra: "بيانات الطلاب التكميلية", invItems: "أصناف الجرد", invMoves: "حركة الجرد", invLocs: "مواقع الجرد", invCounts: "عدّ الجرد اليومي" };
   const confirmedWipe = {}; // أقسام وافق المستخدم على حذفها الجماعي من هذا الجهاز
   const blocked = {};
 
