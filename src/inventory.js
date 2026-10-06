@@ -422,7 +422,6 @@
         <div class="bar noprint">
           <button class="btn" data-act="new-item">صنف جديد</button>
           <label class="btn secondary" for="inv-file" style="cursor:pointer">رفع ملف Excel</label>
-          <input type="file" id="inv-file" accept=".xlsx,.xls,.csv" hidden>
           <button class="btn secondary" data-act="export-items">تصدير الأصناف</button>
         </div></div>
       <label class="inv-drop" for="inv-file" id="inv-drop">
@@ -886,6 +885,9 @@
 
   /* ===== الرسم والأحداث ===== */
   function render() {
+    // إعادة الرسم تُؤجَّل ما دامت نافذة مفتوحة (معاينة استيراد أو إغلاق جلسة)
+    const back = document.getElementById("inv-modal");
+    if (back && back.classList.contains("open")) return;
     ensureLocs();
     const nav = document.getElementById("inv-nav");
     if (!nav) return;
