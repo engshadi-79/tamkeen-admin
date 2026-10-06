@@ -184,10 +184,10 @@
       cards.push(statCard("teal", SVG.people, "المستفيدون", ui.fmt(s.beneficiaries), "",
         `موزعون على ${ui.fmt(trackList.length)} مسارات`, spark(trackList.map((t) => t.beneficiaries), names)));
       cards.push(statCard("blue", SVG.clock, "إنجاز الساعات", pct(s.completionPct), "",
-        `من ${store.TOTAL_HOURS} ساعة لكل مسار`, spark(trackList.map((t) => App.tracks.hoursPct(t)), names, "blue")));
+        `من ${store.TOTAL_HOURS} ساعة لكل مسار`, spark(trackList.map((t) => App.tracks.hoursPct(t)), names)));
       cards.push(statCard(Number(s.attendancePct) >= ATTENDANCE_THRESHOLD ? "green" : "yellow", SVG.check,
         "متوسط الحضور", pct(s.attendancePct), "", `المستهدف ${ATTENDANCE_THRESHOLD}%`,
-        spark(trackList.map((t) => t.attendancePct), names, "green")));
+        spark(trackList.map((t) => t.attendancePct), names)));
       cards.push(statCard("blue", SVG.clock, "المسارات", ui.fmt(trackList.length), "", "في صفحة متابعة المسارات", ""));
     }
 

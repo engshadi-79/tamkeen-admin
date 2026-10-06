@@ -840,3 +840,191 @@ html:root .stat-pct.is-ok { color: var(--ok); }
 html:root .stat-pct.is-warn { color: var(--warn); }
 
 html:root .stat .stat-of { color: var(--faint); font-size: 15px; font-weight: 500; }
+
+/* ============================================================
+   ٢٢. تصحيح بطاقات مؤشرات اللوحة الرئيسية
+   كانت البطاقة ‎.card‎ تحمل تدرّجاً، وبداخلها ‎.stat‎ بتدرّج ثانٍ وهالة ذهبية،
+   فتراكمت الطبقات ولطّخت الأرقام. الآن: البطاقة سطح واحد نظيف،
+   والمؤشر داخلها شفاف، واللون يأتي من شريط جانبي وأيقونة فقط.
+   ============================================================ */
+html:root #view-dashboard .card {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, .03) inset, 0 6px 18px -14px rgba(0, 0, 0, .9);
+  backdrop-filter: none;
+}
+html:root #view-dashboard .card:hover { border-color: rgba(212, 175, 55, .3); }
+
+html:root #view-dashboard .stat,
+html:root #view-dashboard .stat:hover {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 15px 17px 14px;
+}
+html:root #view-dashboard .stat::after { content: none; }
+/* الشريط الملوّن على جهة البداية (يمين الشاشة العربية) */
+html:root #view-dashboard .stat::before {
+  inset-inline-start: 0;
+  width: 3px;
+  background: var(--stat-accent);
+  box-shadow: 0 0 12px -2px var(--stat-accent);
+}
+
+/* الأيقونة تتبع لون المؤشر نفسه بدل ألوان القالب الستة */
+html:root #view-dashboard .stat-icon,
+html:root #view-dashboard .stat-icon.teal,
+html:root #view-dashboard .stat-icon.blue,
+html:root #view-dashboard .stat-icon.green,
+html:root #view-dashboard .stat-icon.yellow,
+html:root #view-dashboard .stat-icon.red,
+html:root #view-dashboard .stat-icon.purple {
+  background: color-mix(in srgb, var(--stat-accent) 15%, transparent);
+  color: var(--stat-accent);
+}
+
+/* الأرقام أوضح، والعناوين أهدأ */
+html:root #view-dashboard .stat-value,
+html:root #view-dashboard .stat .value { color: #ffffff; }
+html:root[data-theme="light"] #view-dashboard .stat-value,
+html:root[data-theme="light"] #view-dashboard .stat .value { color: #10161f; }
+html:root #view-dashboard .stat-label,
+html:root #view-dashboard .stat .label { color: var(--faint); letter-spacing: .03em; }
+html:root #view-dashboard .stat-subtext,
+html:root #view-dashboard .stat .sub { color: var(--muted); }
+
+/* ألوان المؤشرات: ذهب للحيادي، وزمرّد للسليم، وكهرمان للتنبيه، ومرجان للمتأخر */
+html:root #view-dashboard .stat { --stat-accent: var(--gold); }
+html:root #view-dashboard .stat-beneficiaries { --stat-accent: var(--gold); }
+html:root #view-dashboard .stat-completion { --stat-accent: #4edea3; }
+html:root #view-dashboard .stat-attendance { --stat-accent: #4edea3; }
+html:root #view-dashboard .stat-tasks { --stat-accent: #f5c864; }
+html:root #view-dashboard .stat-tasks.has-overdue { --stat-accent: #ff8a7d; }
+html:root[data-theme="light"] #view-dashboard .stat { --stat-accent: #b8972e; }
+html:root[data-theme="light"] #view-dashboard .stat-beneficiaries { --stat-accent: #b8972e; }
+html:root[data-theme="light"] #view-dashboard .stat-completion,
+html:root[data-theme="light"] #view-dashboard .stat-attendance { --stat-accent: #0b7a52; }
+html:root[data-theme="light"] #view-dashboard .stat-tasks { --stat-accent: #a97c12; }
+html:root[data-theme="light"] #view-dashboard .stat-tasks.has-overdue { --stat-accent: #b3261e; }
+html:root[data-theme="light"] #view-dashboard .card { background: #fff; border-color: rgba(20, 26, 36, .09); }
+
+/* أعمدة المخطط المصغّر داخل البطاقة تتبع اللون نفسه */
+html:root #view-dashboard .stat-spark .bar { background: color-mix(in srgb, var(--stat-accent) 55%, transparent); }
+
+/* ============================================================
+   ٢٣. توحيد اللوحة: خمسة ألوان لا أكثر، في الوضعين معاً
+   كان في الواجهة ثلاثة ذهبيات مختلفة، وبنفسجي للذكاء، وأزرقان،
+   وتركوازي متبقٍّ من القالب القديم في صفحة الشاشة وبطاقة المستخدم.
+   هنا تُجمع كلها في أدوار محدّدة:
+     الذهب = الإجراء والمؤشر الحيادي
+     الزمرّد = مُنجَز ومعتمد
+     الكهرمان = بانتظار إجراء
+     المرجان = متأخر أو مرفوض
+     الأزرق الرمادي = معلومة محايدة (الردّ، المساعد الذكي)
+   ============================================================ */
+html:root,
+html:root[data-theme="light"],
+html:root[data-theme="dark"] {
+  --info: #7aa2d8;
+  --info-bg: rgba(122, 162, 216, .12);
+  --info-line: rgba(122, 162, 216, .3);
+  --nav-text: #b9c2d4;
+  --nav-faint: #8691a3;
+  --hair: rgba(255, 255, 255, .12);
+}
+html:root[data-theme="light"] {
+  --info: #2563a8;
+  --info-bg: rgba(37, 99, 168, .10);
+  --info-line: rgba(37, 99, 168, .28);
+}
+
+/* ===== ١. ذهب واحد للنصوص ===== */
+html:root .btn.secondary { color: var(--gold-bright); }
+html:root[data-theme="light"] .btn.secondary,
+html:root[data-theme="light"] .tb-chip,
+html:root[data-theme="light"] .tb-title { color: var(--gold-bright); }
+
+/* ===== ٢. البنفسجي يُدمج في الأزرق المعلوماتي ===== */
+html:root .act-btn.ai,
+html:root .ai-chip,
+html:root .hist-tag.edit,
+html:root .reply-note,
+html:root .act-btn.reply {
+  background: var(--info-bg);
+  color: var(--info);
+  border-color: var(--info-line);
+}
+html:root .act-btn.ai:hover,
+html:root .act-btn.reply:hover { background: var(--info); color: #06101d; }
+html:root .reg-summary { background: var(--info-bg); }
+html:root[data-theme="light"] .act-btn.ai:hover,
+html:root[data-theme="light"] .act-btn.reply:hover { background: var(--info); color: #fff; }
+
+/* ===== ٣. صفحة الشاشة: رموزها الخاصة تتبع الأدوار نفسها ===== */
+html:root #view-screen.gt {
+  --gt-primary: var(--gold);
+  --gt-primary-lt: rgba(212, 175, 55, .10);
+  --gt-blue: var(--info);
+  --gt-azure: var(--info);
+  --gt-green: var(--ok);
+  --gt-yellow: var(--warn);
+  --gt-red: var(--danger);
+  --gt-purple: var(--info);
+}
+html:root #view-screen.gt .btn.navy {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
+  border-color: transparent;
+  color: var(--on-gold);
+}
+
+/* ===== ٤. بطاقة المستخدم في الشريط الجانبي: ذهب لا تركواز ===== */
+html:root .side-avatar,
+html:root[data-theme="light"] .side-avatar {
+  background: rgba(212, 175, 55, .16);
+  color: #f2ca50;
+}
+
+/* ===== ٥. رماديات القائمة تُجمع في رمزين ===== */
+html:root .nav button { color: var(--nav-text); }
+html:root .sidebar-foot button { color: var(--nav-text); }
+html:root .nav .nav-head,
+html:root .sidebar-foot,
+html:root .sf-badge,
+html:root .brand small { color: var(--nav-faint); }
+html:root[data-theme="light"] .nav button { color: var(--nav-text); }
+html:root[data-theme="light"] .brand small,
+html:root[data-theme="light"] .nav .nav-head,
+html:root[data-theme="light"] .sidebar-foot,
+html:root[data-theme="light"] .sf-badge { color: var(--nav-faint); }
+html:root .tb-sep, html:root .sb-sep { color: var(--hair); }
+html:root[data-theme="light"] .tb-sep,
+html:root[data-theme="light"] .sb-sep { color: rgba(20, 26, 36, .22); }
+
+/* ===== ٦. أعمدة المخططات المصغّرة: لون المؤشر نفسه ===== */
+html:root #view-dashboard .stat-spark .bar,
+html:root #view-dashboard .stat-spark .bar[style] {
+  background: color-mix(in srgb, var(--stat-accent) 55%, transparent) !important;
+}
+
+/* ============================================================
+   ٢٤. ألوان بطاقات اللوحة: ستّ درجات القالب تُردّ إلى الأدوار الخمسة
+   فتبقى الدلالة (أحمر = ناقص، أخضر = مكتمل) دون خروج عن اللوحة،
+   والشريط الجانبي للبطاقة يتبع لون أيقونتها فيتّحد المؤشر لوناً واحداً.
+   ============================================================ */
+html:root #view-dashboard .stat-icon.teal { background: rgba(212,175,55,.15); color: var(--gold); }
+html:root #view-dashboard .stat-icon.green { background: var(--ok-bg); color: var(--ok); }
+html:root #view-dashboard .stat-icon.yellow { background: var(--warn-bg); color: var(--warn); }
+html:root #view-dashboard .stat-icon.red { background: var(--danger-bg); color: var(--danger); }
+html:root #view-dashboard .stat-icon.blue,
+html:root #view-dashboard .stat-icon.purple { background: var(--info-bg); color: var(--info); }
+
+html:root #view-dashboard .stat:has(.stat-icon.teal) { --stat-accent: var(--gold); }
+html:root #view-dashboard .stat:has(.stat-icon.green) { --stat-accent: var(--ok); }
+html:root #view-dashboard .stat:has(.stat-icon.yellow) { --stat-accent: var(--warn); }
+html:root #view-dashboard .stat:has(.stat-icon.red) { --stat-accent: var(--danger); }
+html:root #view-dashboard .stat:has(.stat-icon.blue),
+html:root #view-dashboard .stat:has(.stat-icon.purple) { --stat-accent: var(--info); }
