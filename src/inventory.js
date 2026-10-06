@@ -810,6 +810,45 @@
 
   let imp = null;   // [{name, map, rows, valid, nameCol, locId}]
 
+  /* سجلّ خطوات الرفع: يُرى في الصفحة، فلا يبقى أي فشل صامتاً */
+  function step(msg, bad) {
+    const box = document.getElementById("inv-steps");
+    if (!box) return;
+    box.hidden = false;
+    const t = new Date().toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const li = document.createElement("div");
+    li.className = bad ? "bad" : "";
+    li.textContent = `${t} — ${msg}`;
+    box.appendChild(li);
+    while (box.children.length > 12) box.removeChild(box.firstChild);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  let lastPick = 0;
+  /* يلتقط الملف من الحقل مرة واحدة ولو وصل الحدث من مسارين */
+  function pickFrom(input, how) {
+    const f = input.files && input.files[0];
+    if (!f) { step("لم يصل أي ملف من المنتقي", true); return; }
+    const now = Date.now();
+    if (now - lastPick < 400) return;
+    lastPick = now;
+    handleFile(f, how);
+    setTimeout(() => { input.value = ""; }, 0);
+  }
+
+  /* المسار الوحيد لمعالجة ملف مختار، أياً كان مصدره */
+  function handleFile(f, how) {
+    step(`وصل الملف (${how}): ${f.name} — ${Math.round(f.size / 1024)} ك.ب`);
+    openModal("قراءة الملف", `<p style="margin:0">جارٍ قراءة <b>${esc(f.name)}</b>…</p>`, "");
+    readWorkbook(f).then((sheets) => {
+      step(`قُرئت ${sheets.length} ورقة`);
+      importDlg(sheets);
+    }).catch((err) => {
+      step(`فشلت القراءة: ${err && err.message ? err.message : err}`, true);
+      importError(err);
+    });
+  }
+
   /* خطأ الاستيراد يُعرض في نافذة: التنبيه الخاطف يمرّ دون أن يُقرأ */
   function importError(err) {
     openModal("تعذّر استيراد الملف",
@@ -992,14 +1031,7 @@
       const t = e.target;
       const set = t.closest("[data-set]");
       if (set) { const k = set.dataset.set; return go(null, { [k]: set.value }); }
-      if (t.id === "inv-file") {
-        const f = t.files && t.files[0]; t.value = "";
-        if (f) {
-          openModal("قراءة الملف", `<p style="margin:0">جارٍ قراءة <b>${esc(f.name)}</b> (${Math.round(f.size / 1024)} ك.ب)…</p>`, "");
-          readWorkbook(f).then(importDlg).catch((err) => importError(err));
-        }
-        return;
-      }
+      if (t.id === "inv-file") { pickFrom(t, "تفويض"); return; }
       const sh = t.closest("[data-sheet]");
       if (sh && imp) { imp[+sh.dataset.sheet].locId = sh.value; return; }
       const row = t.closest(".row[data-id]");
@@ -1044,6 +1076,17 @@
 
     document.getElementById("inv-modal").addEventListener("click", (e) => { if (e.target.id === "inv-modal") closeModal(); });
 
+    /* ربط مباشر على حقل الملف: لا يعتمد على تفويض الأحداث ولا على بقاء
+       العنصر في شجرة الصفحة، فيعمل حتى لو تعطّل أحدهما */
+    const file = document.getElementById("inv-file");
+    if (file) {
+      file.addEventListener("click", () => step("فُتح منتقي الملفات"));
+      file.addEventListener("change", () => pickFrom(file, "مباشر"));
+      file.addEventListener("cancel", () => step("أُغلق المنتقي بلا اختيار"));
+    } else {
+      step("حقل الملف غير موجود في الصفحة", true);
+    }
+
     // الإفلات: مسار ثانٍ للرفع لا يمرّ بزرّ ولا بمنتقي الملفات
     ["dragenter", "dragover"].forEach((ev) => root.addEventListener(ev, (e) => {
       if (!e.target.closest("#inv-drop")) return;
@@ -1058,9 +1101,8 @@
       if (!z) return;
       e.preventDefault();
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (!f) return;
-      openModal("قراءة الملف", `<p style="margin:0">جارٍ قراءة <b>${esc(f.name)}</b>…</p>`, "");
-      readWorkbook(f).then(importDlg).catch((err) => importError(err));
+      if (!f) { step("أُفلت شيء ليس ملفاً", true); return; }
+      handleFile(f, "إفلات");
     });
   }
 

@@ -594,3 +594,14 @@ html:root:root:root .inv-drop {
 html:root:root:root .inv-drop b { display: block; color: var(--ink); font-size: 14px; }
 html:root:root:root .inv-drop span { font-size: 12.5px; }
 html:root:root:root .inv-drop:hover, html:root:root:root .inv-drop.over { border-color: var(--teal); background: var(--teal-soft); }
+
+/* سجلّ خطوات رفع ملف الجرد */
+html:root:root:root .inv-steps {
+  margin-top: 14px; padding: 10px 12px; max-height: 190px; overflow: auto;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--line-2); color: var(--muted);
+  font-size: 12.5px; line-height: 1.9; direction: rtl;
+}
+html:root:root:root .inv-steps div { border-bottom: 1px solid var(--line); padding: 2px 0; }
+html:root:root:root .inv-steps div:last-child { border-bottom: 0; }
+html:root:root:root .inv-steps .bad { color: var(--short); font-weight: 700; }
