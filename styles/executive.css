@@ -1028,3 +1028,40 @@ html:root #view-dashboard .stat:has(.stat-icon.yellow) { --stat-accent: var(--wa
 html:root #view-dashboard .stat:has(.stat-icon.red) { --stat-accent: var(--danger); }
 html:root #view-dashboard .stat:has(.stat-icon.blue),
 html:root #view-dashboard .stat:has(.stat-icon.purple) { --stat-accent: var(--info); }
+
+/* ============================================================
+   ٢٥. القائمة: شكل واحد لا يتغيّر بمرور الماوس
+   قواعد الشريط المضموم القديمة كانت تُخفي عناوين الأقسام ما لم يكن
+   الماوس فوق القائمة، وتُظهر بنودها كلها، وتُلغي إزاحتها — فتتبدّل
+   هيئة القائمة كلما دخلها المؤشر. أُبطِلت هنا، ووُحِّدت الإزاحة،
+   وصار كل بند تحت عنوان قسم (بما فيها الرئيسية والمتابعة).
+   ============================================================ */
+html:root .sidebar:not(:hover):not(:focus-within) .nav-group > .nav-head { display: flex; }
+html:root .sidebar:not(:hover):not(:focus-within) .nav-group:not(.open) > ul { display: none; }
+html:root .sidebar:not(:hover):not(:focus-within) .nav-group.open > ul { display: block; }
+
+/* إزاحة واحدة لكل البنود: لا فرق بين بند في قسم وبند خارجه */
+html:root .nav-group > ul > li > button,
+html:root .sidebar:not(:hover):not(:focus-within) .nav-group > ul > li > button {
+  padding-inline-start: 11px;
+  padding-inline-end: 11px;
+}
+
+/* عنوان القسم: السهم رمز Material لا محرف نصّي، ومسافاته ثابتة مفتوحاً أو مطويّاً */
+html:root .nav-group > .nav-head {
+  justify-content: space-between;
+  padding: 15px 11px 6px;
+  text-transform: none;
+}
+html:root .nav-group:not(.open) > .nav-head { padding-bottom: 6px; }
+html:root .nav-group > .nav-head::after {
+  content: "expand_more";
+  font-family: "Material Symbols Outlined";
+  font-size: 17px;
+  line-height: 1;
+  opacity: .55;
+  transition: transform .18s ease;
+  font-variation-settings: "wght" 300;
+}
+html:root .nav-group.open > .nav-head::after { transform: rotate(180deg); }
+html:root .nav-group + .nav-group { margin-top: 2px; }
