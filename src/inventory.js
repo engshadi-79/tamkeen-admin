@@ -421,10 +421,14 @@
       <div class="head"><div><h1>الأصناف</h1><p class="lead">${list.length} صنفاً معروضاً من ${items().filter((i) => i.active !== false).length}</p></div>
         <div class="bar noprint">
           <button class="btn" data-act="new-item">صنف جديد</button>
-          <button class="btn secondary" data-act="import">رفع ملف Excel</button>
+          <label class="btn secondary" for="inv-file" style="cursor:pointer">رفع ملف Excel</label>
           <input type="file" id="inv-file" accept=".xlsx,.xls,.csv" hidden>
           <button class="btn secondary" data-act="export-items">تصدير الأصناف</button>
         </div></div>
+      <label class="inv-drop" for="inv-file" id="inv-drop">
+        <b>اسحب ملف الجرد هنا، أو اضغط لاختياره</b>
+        <span>مصنّف Excel ‎.xlsx‎ فيه ورقة لكل مسار (أو ملف ‎.csv‎ لمسار واحد)</span>
+      </label>
       <div class="reg-toolbar">
         <div class="reg-search-box"><input type="search" id="inv-iq" placeholder="بحث باسم الصنف أو المكنة" value="${esc(u.iQ)}"></div>
         <select data-set="iLoc">${locOptions(u.iLoc, true)}</select>
@@ -890,9 +894,32 @@
     if (AFTER[u.view]) AFTER[u.view]();
   }
 
+  /* نسخة الصفحة المخزّنة قد تسبق نسخة الوحدة، فتختفي عناصر الجرد
+     وتبدو الأزرار بلا أثر. يُكتشف ذلك ويُعرض زرّ تحديث صريح. */
+  function staleShell(root) {
+    root.innerHTML = `<div class="card" style="text-align:center;padding:30px">
+        <h3 style="margin:0 0 8px">نسخة الصفحة المحفوظة في متصفحك قديمة</h3>
+        <p class="sub" style="margin:0 0 14px">صفحة الجرد تحدّثت، والنسخة المخزّنة على جهازك سابقة لها، لذلك لا تستجيب الأزرار.</p>
+        <button class="btn" type="button" id="inv-force">↻ تحديث النسخة الآن</button>
+      </div>`;
+    const b = document.getElementById("inv-force");
+    if (b) b.addEventListener("click", async () => {
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch (e) { /* متصفح بلا تخزين مؤقت */ }
+      location.reload(true);
+    });
+  }
+
   function init() {
     const root = document.getElementById("view-inventory");
     if (!root) return;
+    if (!document.getElementById("inv-main") || !document.getElementById("inv-nav")) { staleShell(root); return; }
 
     root.addEventListener("click", (e) => {
       const t = e.target;
@@ -965,7 +992,10 @@
       if (set) { const k = set.dataset.set; return go(null, { [k]: set.value }); }
       if (t.id === "inv-file") {
         const f = t.files && t.files[0]; t.value = "";
-        if (f) readWorkbook(f).then(importDlg).catch((err) => importError(err));
+        if (f) {
+          openModal("قراءة الملف", `<p style="margin:0">جارٍ قراءة <b>${esc(f.name)}</b> (${Math.round(f.size / 1024)} ك.ب)…</p>`, "");
+          readWorkbook(f).then(importDlg).catch((err) => importError(err));
+        }
         return;
       }
       const sh = t.closest("[data-sheet]");
@@ -1011,6 +1041,25 @@
     });
 
     document.getElementById("inv-modal").addEventListener("click", (e) => { if (e.target.id === "inv-modal") closeModal(); });
+
+    // الإفلات: مسار ثانٍ للرفع لا يمرّ بزرّ ولا بمنتقي الملفات
+    ["dragenter", "dragover"].forEach((ev) => root.addEventListener(ev, (e) => {
+      if (!e.target.closest("#inv-drop")) return;
+      e.preventDefault(); e.target.closest("#inv-drop").classList.add("over");
+    }));
+    ["dragleave", "drop"].forEach((ev) => root.addEventListener(ev, (e) => {
+      const z = e.target.closest("#inv-drop");
+      if (z) z.classList.remove("over");
+    }));
+    root.addEventListener("drop", (e) => {
+      const z = e.target.closest("#inv-drop");
+      if (!z) return;
+      e.preventDefault();
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) return;
+      openModal("قراءة الملف", `<p style="margin:0">جارٍ قراءة <b>${esc(f.name)}</b>…</p>`, "");
+      readWorkbook(f).then(importDlg).catch((err) => importError(err));
+    });
   }
 
   /* للوحة الرئيسية: الأصناف تحت الحدّ الأدنى والفروقات المفتوحة اليوم */

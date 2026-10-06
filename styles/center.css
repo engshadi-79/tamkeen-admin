@@ -583,3 +583,14 @@ html:root:root:root .inv-modal-body { max-height: 62vh; overflow: auto; margin-b
 @media print {
   html:root:root:root #view-inventory .noprint, html:root:root:root #view-inventory .inv-tabs { display: none !important; }
 }
+
+/* منطقة إفلات ملف الجرد */
+html:root:root:root .inv-drop {
+  display: block; margin-bottom: 12px; padding: 18px;
+  border: 2px dashed var(--line); border-radius: var(--r);
+  background: var(--line-2); color: var(--muted);
+  text-align: center; cursor: pointer;
+}
+html:root:root:root .inv-drop b { display: block; color: var(--ink); font-size: 14px; }
+html:root:root:root .inv-drop span { font-size: 12.5px; }
+html:root:root:root .inv-drop:hover, html:root:root:root .inv-drop.over { border-color: var(--teal); background: var(--teal-soft); }
