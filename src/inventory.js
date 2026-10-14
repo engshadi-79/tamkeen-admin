@@ -13,6 +13,8 @@
   const CATS = { machine: "مكنة", tool: "أداة", material: "مادة مستهلكة", furniture: "أثاث وتجهيزات" };
   const MOVES = {
     in: { t: "توريد / إدخال", sign: 1, c: "ok" },
+    issue: { t: "إخراج للاستخدام", sign: -1, c: "prog" },
+    back: { t: "إرجاع إلى المخزون", sign: 1, c: "ok" },
     out: { t: "صرف / إخراج", sign: -1, c: "prog" },
     consume: { t: "استهلاك", sign: -1, c: "over" },
     damage: { t: "تالف", sign: -1, c: "short" },
@@ -28,7 +30,7 @@
   /* سطر إرشاد لكل شاشة: من يستخدمها وما الخطوة المطلوبة فيها */
   const HINTS = {
     dash: "متابعة المشرف: أي موقع جرد اليوم وأي جلسة بقيت، ومعها نواقص اليوم والأصناف التي بلغت حدّها الأدنى.",
-    count: "شاشة المدرّب اليومية: اختر موقعك والجلسة، ثم اكتب العدد الموجود أو اضغط «مطابق»، وأغلِق الجلسة في النهاية.",
+    count: "شاشة المدرّب اليومية: الأدوات تُعدّ (اكتب العدد أو اضغط «مطابق»)، والمواد المستهلكة تُخرَج من المخزون ثم يُسجَّل استهلاك اليوم منها. وفي النهاية أغلِق الجلسة.",
     week: "كشف جاهز للطباعة لكل موقع: صباحي ومسائي والكمية الفعلية لكل يوم عمل في الأسبوع.",
     items: "سجلّ الأصناف وكمياتها الكلية وحدودها الدنيا. الرفع المتكرر لملف الجرد يُحدِّث الأصناف ولا يكرّرها.",
     moves: "كل زيادة أو نقص في الكميات: توريد، صرف، استهلاك، تالف، فقد، نقل، تسوية. ولكل حركة تراجُع.",
@@ -45,6 +47,8 @@
   const dayName = (s) => DAYS[pISO(s).getDay()];
   const weekOf = (s) => { const d = pISO(s); d.setDate(d.getDate() - d.getDay()); return isoOf(d); };
   const num = (v) => (v === "" || v == null || isNaN(+v)) ? null : +v;
+  /* الكميات الكسرية (نصف دستة مثلاً) تُقرَّب فلا تتراكم أخطاء الفاصلة العائمة */
+  const r3 = (v) => Math.round((+v + Number.EPSILON) * 1000) / 1000;
   const fmtN = (v) => v == null ? "—" : (Math.round(v * 100) / 100).toLocaleString("en-US");
   const fmtT = (ts) => new Date(ts).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" });
   const normName = (s) => String(s || "").replace(/\s+/g, " ").trim();
@@ -78,10 +82,10 @@
     let c = counts().find((x) => x.id === countKeyOf(date, loc));
     if (!c) {
       if (!create) return null;
-      c = { id: countKeyOf(date, loc), date, loc, m: {}, e: {}, x: { m: {}, e: {} }, n: {}, done: {} };
+      c = { id: countKeyOf(date, loc), date, loc, m: {}, e: {}, x: { m: {}, e: {} }, n: {}, done: {}, use: {} };
       counts().push(c);
     }
-    c.x = c.x || { m: {}, e: {} }; c.n = c.n || {}; c.done = c.done || {};
+    c.x = c.x || { m: {}, e: {} }; c.n = c.n || {}; c.done = c.done || {}; c.use = c.use || {};
     return c;
   }
 
@@ -99,10 +103,26 @@
     const v = c[ses][item.id], x = expOf(c, ses, item);
     return { v, x, ses, s: st(v, x) };
   }
+  /* صنف يُصرف للاستخدام ثم يُستهلك منه يومياً: المواد المستهلكة افتراضاً،
+     ويمكن تشغيله أو إطفاؤه لأي صنف من نافذة الصنف.
+     المخزون (qty) ← إخراج للاستخدام ← قيد الاستخدام (inUse) ← استهلاك اليوم. */
+  const isUse = (i) => (i && i.use != null) ? !!i.use : (i && i.cat === "material");
+  const inUseOf = (i) => (i && i.inUse != null) ? i.inUse : 0;
+  const usedOn = (date, loc, id) => { const c = cnt(date, loc); const v = c && c.use ? c.use[id] : null; return v == null ? null : v; };
+
   function progress(date, loc, ses) {
     const its = itemsOf(loc), c = cnt(date, loc);
-    const r = { total: its.length, n: 0, ok: 0, short: 0, over: 0, nobase: 0, empty: 0, done: (c && c.done[ses]) || null };
-    its.forEach((i) => { const v = c ? c[ses][i.id] : null; if (v != null) { r.n++; r[st(v, expOf(c, ses, i))]++; } });
+    const r = { total: its.length, n: 0, ok: 0, short: 0, over: 0, nobase: 0, empty: 0, used: 0, useTotal: 0, done: (c && c.done[ses]) || null };
+    its.forEach((i) => {
+      // المواد المستهلكة تُسجَّل بالاستهلاك لا بالعدّ، فتُحسب مُنجزة متى سُجّل استهلاك اليوم
+      if (isUse(i)) {
+        r.useTotal++;
+        if (usedOn(date, loc, i.id) != null) { r.n++; r.ok++; r.used++; }
+        return;
+      }
+      const v = c ? c[ses][i.id] : null;
+      if (v != null) { r.n++; r[st(v, expOf(c, ses, i))]++; }
+    });
     return r;
   }
 
@@ -167,7 +187,9 @@
     locs().forEach((l) => itemsOf(l.id).forEach((i) => {
       const a = actualInfo(t, l.id, i);
       if (a && a.s === "short") alerts.push({ c: "var(--short)", h: `<b>${esc(i.name)}</b> ناقص ${fmtN(a.x - a.v)}`, s: `${esc(l.name)} — جلسة ${SES[a.ses]}` });
-      if (i.min && i.qty != null && i.qty <= i.min) alerts.push({ c: "var(--over)", h: `<b>${esc(i.name)}</b> بلغ الحدّ الأدنى`, s: `${esc(l.name)} — المتبقي ${fmtN(i.qty)} والحدّ ${fmtN(i.min)}` });
+      const have = (i.qty == null ? 0 : i.qty) + inUseOf(i);
+      if (i.min && i.qty != null && have <= i.min) alerts.push({ c: "var(--over)", h: `<b>${esc(i.name)}</b> بلغ الحدّ الأدنى`, s: `${esc(l.name)} — المتبقي ${fmtN(have)} والحدّ ${fmtN(i.min)}` });
+      if (isUse(i) && inUseOf(i) === 0 && i.qty != null && i.qty > 0) alerts.push({ c: "var(--nobase)", h: `<b>${esc(i.name)}</b> لا شيء منه قيد الاستخدام`, s: `${esc(l.name)} — في المخزون ${fmtN(i.qty)}، أخرِج كمية ليُسجَّل استهلاكها` });
     }));
     const recent = moves().slice(0, 6);
     const wkGrid = `<div class="wk"><div class="c hd" style="display:grid;grid-template-columns:1fr repeat(${wd.length},auto);gap:6px">
@@ -283,7 +305,33 @@
     return { v, x, m: c ? (c.m[item.id] == null ? null : c.m[item.id]) : null, note: (c && c.n[item.id]) || "", s: st(v, x) };
   }
 
+  /* صفّ المادة المستهلكة: ثلاث خانات متتابعة — المخزون، ثم قيد الاستخدام،
+     ثم استهلاك اليوم الذي يُخصم من قيد الاستخدام لا من المخزون. */
+  function useRowHTML(item) {
+    const c = cnt(u.date, u.loc);
+    const note = (c && c.n[item.id]) || "";
+    const used = usedOn(u.date, u.loc, item.id);
+    const inU = inUseOf(item);
+    const stock = item.qty == null ? null : item.qty;
+    const low = item.min && stock != null && stock + inU <= item.min;
+    return `<div class="row use ${used != null ? "st-ok" : ""} ${low ? "is-low" : ""}" data-id="${item.id}">
+      <div class="nm"><b>${esc(item.name)}</b><span class="uu">${esc(item.unit || "")}${item.group ? `، ${esc(item.group)}` : ""}</span>${item.desc ? `<span class="d" title="${esc(item.desc)}">${esc(item.desc)}</span>` : ""}${note ? `<span class="nt">ملاحظة: ${esc(note)}</span>` : ""}</div>
+      <div class="kv"><small>المخزون</small><b>${fmtN(stock)}</b></div>
+      <div class="kv in-use"><small>قيد الاستخدام</small><b>${fmtN(inU)}</b></div>
+      <button type="button" class="okb issue" data-issue title="إخراج كمية من المخزون إلى قيد الاستخدام">أخرِج</button>
+      <div class="step"><button type="button" data-ubump="-1" aria-label="إنقاص">−</button><input type="number" inputmode="decimal" min="0" step="any" value="${used == null ? "" : used}" placeholder="—" aria-label="استهلاك اليوم من ${esc(item.name)}" data-use><button type="button" data-ubump="1" aria-label="زيادة">+</button></div>
+      <div class="diff">${used == null ? '<span class="sub">استهلاك اليوم</span>'
+        : used === 0 ? '<span class="pill ok">بلا استهلاك</span>'
+        : `<span class="pill over">−${fmtN(used)}</span>`}${low ? '<span class="pill short">بلغ الحدّ</span>' : ""}</div>
+      <div class="row-tools">
+        <button type="button" class="icon-btn ${note ? "has" : ""}" data-note title="ملاحظة على هذا الصنف" aria-label="ملاحظة"><span class="material-symbols-outlined btn-ico">sticky_note_2</span></button>
+        ${inU > 0 ? '<button type="button" class="icon-btn" data-back title="إرجاع ما بقي قيد الاستخدام إلى المخزون" aria-label="إرجاع"><span class="material-symbols-outlined btn-ico">undo</span></button>' : "<span></span>"}
+      </div>
+    </div>`;
+  }
+
   function rowHTML(item) {
+    if (isUse(item)) return useRowHTML(item);
     const r = rowState(item);
     const diff = r.s === "short" || r.s === "over"
       ? `<span class="pill ${r.s}">${r.s === "short" ? "−" : "+"}${fmtN(Math.abs(r.v - r.x))}</span>`
@@ -312,6 +360,7 @@
     const list = all.filter((i) => {
       if (q && !(i.name.includes(q) || String(i.group || "").includes(q))) return false;
       if (u.filter === "all") return true;
+      if (isUse(i)) return u.filter === "todo" ? usedOn(u.date, u.loc, i.id) == null : false;
       const s = rowState(i).s;
       return u.filter === "todo" ? s === "empty" : (s === "short" || s === "over");
     });
@@ -322,8 +371,8 @@
     const secs = new Map();
     list.forEach((i) => { const k = i.group ? i.group : CATS[i.cat] || "أخرى"; if (!secs.has(k)) secs.set(k, []); secs.get(k).push(i); });
     wrap.innerHTML = [...secs].map(([k, its]) => {
-      const n = its.filter((i) => rowState(i).v != null).length;
-      const bad = its.filter((i) => { const s = rowState(i).s; return s === "short" || s === "over"; }).length;
+      const n = its.filter((i) => isUse(i) ? usedOn(u.date, u.loc, i.id) != null : rowState(i).v != null).length;
+      const bad = its.filter((i) => { if (isUse(i)) return false; const s = rowState(i).s; return s === "short" || s === "over"; }).length;
       const shut = folded.has(k);
       const full = n === its.length;
       return `<div class="section-h ${full ? "full" : ""}">
@@ -333,7 +382,7 @@
           <span class="sec-count">${n} من ${its.length}</span>
           ${bad ? `<span class="pill short">${bad} فرق</span>` : full ? '<span class="pill ok">مكتملة</span>' : ""}
           <span class="spacer"></span>
-          ${full ? "" : `<button type="button" class="btn small secondary noprint" data-allok="${esc(k)}">الكل مطابق</button>`}
+          ${full || its.every(isUse) ? "" : `<button type="button" class="btn small secondary noprint" data-allok="${esc(k)}">الكل مطابق</button>`}
         </div>
         <div class="rows" ${shut ? "hidden" : ""}>${shut ? "" : its.map(rowHTML).join("")}</div>`;
     }).join("");
@@ -366,8 +415,95 @@
     const base = r.v == null ? (d > 0 ? (r.x == null ? 0 : r.x) - 1 : (r.x == null ? 1 : r.x)) : r.v;
     setVal(id, Math.max(0, base + d));
   }
+  /* مفتاح الحركة اليومية للصنف: حركة استهلاك واحدة لكل صنف في اليوم،
+     تُحدَّث بدل أن تتكرّر، فيبقى السجلّ مقروءاً وقابلاً للتراجع. */
+  const useKeyOf = (date, loc, id) => `use|${date}|${loc}|${id}`;
+
+  /* استهلاك اليوم: يُخصم من «قيد الاستخدام» وحده، ولا يمسّ المخزون */
+  function setUse(id, raw) {
+    if (sessionClosed()) return;
+    const it = itemById(id);
+    if (!it) return;
+    const c = cnt(u.date, u.loc, true);
+    const prev = c.use[id] == null ? 0 : c.use[id];
+    const avail = r3(inUseOf(it) + prev);      // ما كان قيد الاستخدام قبل تسجيل اليوم
+    let next = num(raw);
+    if (next == null) {                    // مُسح الحقل: يُلغى استهلاك اليوم
+      it.inUse = r3(avail);
+      delete c.use[id];
+      dropUseMove(id);
+      save(); refreshRow(id); drawProgress(); return;
+    }
+    next = Math.max(0, next);
+    if (next > avail) {
+      next = avail;
+      toast(`قيد الاستخدام ${fmtN(avail)} فقط — أخرِج كمية جديدة من المخزون أولاً`);
+    }
+    it.inUse = r3(avail - next);
+    c.use[id] = r3(next);
+    logUseMove(it, next);
+    save(); refreshRow(id); drawProgress();
+  }
+  function bumpUse(id, d) {
+    const cur = usedOn(u.date, u.loc, id);
+    setUse(id, Math.max(0, (cur == null ? 0 : cur) + d));
+  }
+  function dropUseMove(id) {
+    const k = useKeyOf(u.date, u.loc, id);
+    store.get().invMoves = moves().filter((m) => m.dayKey !== k);
+  }
+  function logUseMove(it, qty) {
+    const k = useKeyOf(u.date, u.loc, it.id);
+    const old = moves().find((m) => m.dayKey === k);
+    if (!qty) { dropUseMove(it.id); return; }
+    if (old) { old.qty = qty; old.ts = Date.now(); old.deltas = [{ itemId: it.id, d: -qty, f: "inUse" }]; return; }
+    moves().unshift({
+      id: uid("m"), ts: Date.now(), date: u.date, type: "consume", loc: u.loc, dayKey: k,
+      itemId: it.id, itemName: it.name, unit: it.unit || "", qty, to: "",
+      note: `استهلاك ${dayName(u.date)} من الجرد اليومي`,
+      by: (App.profile && App.profile.name) ? App.profile.name() : "",
+      deltas: [{ itemId: it.id, d: -qty, f: "inUse" }],
+    });
+  }
+
+  /* إخراج من المخزون إلى قيد الاستخدام */
+  function issueDlg(id) {
+    const it = itemById(id);
+    const stock = it.qty == null ? 0 : it.qty;
+    openModal(`إخراج للاستخدام — ${esc(it.name)}`,
+      `<p class="sub" style="margin:0 0 10px">المخزون الآن <b>${fmtN(it.qty)}</b> ${esc(it.unit || "")}، وقيد الاستخدام <b>${fmtN(inUseOf(it))}</b>. ما يُخرَج يُخصم من المخزون ويُضاف إلى قيد الاستخدام.</p>
+       <div class="inv-form"><label class="field"><span>الكمية المُخرَجة</span>
+         <input type="number" id="inv-issue-qty" min="0" step="any" max="${stock}" value="1"></label></div>`,
+      `<button class="btn secondary" type="button" data-modal-close>إلغاء</button>
+       <button class="btn navy" type="button" data-act="do-issue" data-id="${id}">أخرِج</button>`);
+    const b = document.getElementById("inv-issue-qty");
+    if (b) { b.focus(); b.select(); }
+  }
+  function doIssue(id) {
+    const it = itemById(id);
+    const box = document.getElementById("inv-issue-qty");
+    const n = Math.max(0, num(box ? box.value : 0) || 0);
+    if (!n) { toast("اكتب كمية أكبر من صفر"); return; }
+    if (it.qty != null && n > it.qty) { toast(`المخزون ${fmtN(it.qty)} فقط`); return; }
+    addMove({ type: "issue", loc: it.loc, itemId: id, qty: n, date: u.date, note: "إخراج من المخزون إلى قيد الاستخدام" }, true);
+    save(); closeModal(); render();
+    toast(`أُخرج ${fmtN(n)} ${it.unit || ""} للاستخدام`);
+  }
+  function backToStock(id) {
+    const it = itemById(id);
+    const n = inUseOf(it);
+    if (!n) return toast("لا شيء قيد الاستخدام");
+    ask("إرجاع إلى المخزون",
+      `<p style="margin:0 0 10px">إرجاع <b>${fmtN(n)}</b> ${esc(it.unit || "")} من «${esc(it.name)}» إلى المخزون.</p>
+       <div class="note-box">يُستعمل حين يُغلق المسار أو تُعاد الكمية غير المستهلكة إلى مكانها.</div>`,
+      "أرجِعها", () => {
+        addMove({ type: "back", loc: it.loc, itemId: id, qty: n, date: u.date, note: "إرجاع ما بقي قيد الاستخدام" }, true);
+        save(); render(); toast("أُعيدت إلى المخزون");
+      });
+  }
+
   function fillRemaining() {
-    const its = itemsOf(u.loc).filter((i) => rowState(i).v == null && i.qty != null);
+    const its = itemsOf(u.loc).filter((i) => !isUse(i) && rowState(i).v == null && i.qty != null);
     if (!its.length) return toast("لا توجد أصناف متبقية لها كمية متوقعة");
     ask("تعبئة المتبقي بالمتوقع",
       `<p style="margin:0 0 10px">سيُسجَّل <b>${its.length}</b> صنفاً غير معدود بقيمته المتوقعة، أي كأنه مطابق.</p>
@@ -382,7 +518,7 @@
   /* «الكل مطابق» لمجموعة واحدة: أسرع طريق لمدرّب أصنافه سليمة */
   function fillGroup(key) {
     const its = itemsOf(u.loc).filter((i) => (i.group ? i.group : CATS[i.cat] || "أخرى") === key);
-    const todo = its.filter((i) => { const r = rowState(i); return r.v == null && r.x != null; });
+    const todo = its.filter((i) => { if (isUse(i)) return false; const r = rowState(i); return r.v == null && r.x != null; });
     if (!todo.length) return toast("لا صنف متبقٍ في هذه المجموعة");
     const c = cnt(u.date, u.loc, true);
     todo.forEach((i) => { c[u.ses][i.id] = i.qty; c.x[u.ses][i.id] = i.qty; });
@@ -409,7 +545,10 @@
 
   /* إغلاق الجلسة: يعرض النواقص والزيادات ويحوّلها حركات */
   function closeSessionDlg() {
-    const its = itemsOf(u.loc);
+    const its = itemsOf(u.loc).filter((i) => !isUse(i));
+    const mats = itemsOf(u.loc).filter(isUse);
+    const usedToday = mats.map((i) => ({ i, n: usedOn(u.date, u.loc, i.id) })).filter((x) => x.n);
+    const noUse = mats.filter((i) => usedOn(u.date, u.loc, i.id) == null);
     const rs = its.map((i) => Object.assign({ i }, rowState(i)));
     const todo = rs.filter((r) => r.s === "empty"), shorts = rs.filter((r) => r.s === "short"),
       overs = rs.filter((r) => r.s === "over"), nob = rs.filter((r) => r.s === "nobase");
@@ -424,6 +563,9 @@
       <td><label class="conv-check"><input type="checkbox" data-over="${r.i.id}"> تعديل الكمية الكلية</label></td></tr>`).join("");
     openModal(`إغلاق جلسة ${SES[u.ses]} — ${esc(locById(u.loc).name)}`,
       `${todo.length ? `<div class="note-box" style="margin-bottom:14px;color:var(--short)">لم يُجرد <b>${todo.length}</b> صنفاً بعد. يمكنك الإغلاق وستظهر فارغة في الكشف.</div>` : ""}
+       ${usedToday.length ? `<h3>استهلاك اليوم (${usedToday.length})</h3><p class="sub">مخصوم من «قيد الاستخدام»، ومسجَّل في الحركات.</p>
+         <ul class="alerts" style="margin-bottom:16px">${usedToday.map((x) => `<li><span class="pill over">−${fmtN(x.n)}</span><div style="flex:1"><b>${esc(x.i.name)}</b> <span class="muted">${esc(x.i.unit || "")}</span><div class="sub">بقي قيد الاستخدام ${fmtN(inUseOf(x.i))}، وفي المخزون ${fmtN(x.i.qty)}</div></div></li>`).join("")}</ul>` : ""}
+       ${noUse.length ? `<div class="note-box" style="margin-bottom:14px"><b>${noUse.length}</b> مادة لم يُسجَّل استهلاكها اليوم. إن لم يُستهلك منها شيء فاكتب صفراً ليُعرف أنها رُوجعت.</div>` : ""}
        ${shorts.length ? `<h3>أصناف بها نقص (${shorts.length})</h3><p class="sub">اختر سبب النقص لتُخصم الكمية من الكمية الكلية، أو اتركه فرقاً مفتوحاً.</p>${tbl(shortRows, "الإجراء")}` : ""}
        ${overs.length ? `<h3>أصناف بها زيادة (${overs.length})</h3>${tbl(overRows, "الإجراء")}` : ""}
        ${nob.length ? `<label class="conv-check note-box"><input type="checkbox" id="inv-setbase" checked> اعتماد الأرقام المعدودة ككمية كلية لـ <b>${nob.length}</b> صنفاً ليس لها كمية مسجّلة</label>` : ""}
@@ -458,7 +600,21 @@
   VIEWS.week = () => {
     const ws = u.week || weekOf(u.date); u.week = ws;
     if (!locById(u.weekLoc)) u.weekLoc = (u.loc && locById(u.loc)) ? u.loc : (locs()[0] || {}).id;
-    const loc = locById(u.weekLoc), wd = workDates(ws), its = u.weekLoc ? itemsOf(u.weekLoc) : [];
+    const loc = locById(u.weekLoc), wd = workDates(ws), all = u.weekLoc ? itemsOf(u.weekLoc) : [];
+    // المواد المستهلكة لها كشفها: استهلاك كل يوم ومجموع الأسبوع
+    const mats = all.filter(isUse), its = all.filter((i) => !isUse(i));
+    const useBody = mats.map((i, k) => {
+      const per = wd.map((d) => usedOn(d, u.weekLoc, i.id));
+      const sum = per.reduce((a, v) => a + (v || 0), 0);
+      return `<tr><td>${k + 1}</td><td class="nm">${esc(i.name)}</td><td>${esc(i.unit || "")}</td>
+        <td><b>${fmtN(i.qty)}</b></td><td><b>${fmtN(inUseOf(i))}</b></td>
+        ${per.map((v) => `<td class="${v ? "a st-over" : ""}">${v == null ? "" : fmtN(v)}</td>`).join("")}
+        <td><b>${sum ? fmtN(sum) : ""}</b></td></tr>`;
+    }).join("");
+    const useTbl = mats.length ? `<h2 style="margin:4px 0 8px">استهلاك المواد خلال الأسبوع</h2>
+      <div class="table-wrap" style="margin-bottom:22px"><table class="sheet"><thead>
+        <tr><th>م</th><th>المادة</th><th>الوحدة</th><th>المخزون</th><th>قيد الاستخدام</th>${wd.map((d) => `<th class="day">${dayName(d).slice(0, 3)}<br>${fmtD(d).slice(0, 5)}</th>`).join("")}<th>مجموع الأسبوع</th></tr>
+      </thead><tbody>${useBody}</tbody></table></div>` : "";
     let lastGroup = null;
     const body = its.map((i, k) => {
       let g = "";
@@ -482,10 +638,11 @@
       <div class="bar noprint" style="margin-bottom:12px"><span class="sub">الكمية الفعلية = المسائي إن وُجد وإلا الصباحي. العلامة * تعني وجود ملاحظة.</span><span class="spacer"></span>
         <button class="btn secondary" data-act="print">طباعة</button>
         <button class="btn" data-act="export-week">تصدير الأسبوع إلى Excel</button></div>
-      ${its.length ? `<div class="table-wrap"><table class="sheet"><thead>
+      ${useTbl}
+      ${its.length ? `${mats.length ? '<h2 style="margin:4px 0 8px">جرد الأدوات والأجهزة</h2>' : ""}<div class="table-wrap"><table class="sheet"><thead>
         <tr><th rowspan="2">م</th><th rowspan="2">اسم الأداة</th><th rowspan="2">الوحدة</th><th rowspan="2">الكمية الكلية</th>${wd.map((d) => `<th class="day" colspan="3">${dayName(d)} ${fmtD(d)}</th>`).join("")}</tr>
         <tr>${wd.map(() => "<th>صباحي</th><th>مسائي</th><th>الفعلية</th>").join("")}</tr></thead><tbody>${body}</tbody></table></div>`
-        : '<div class="card empty">لا توجد أصناف في هذا الموقع.</div>'}`;
+        : (mats.length ? "" : '<div class="card empty">لا توجد أصناف في هذا الموقع.</div>')}`;
   };
 
   /* --- الأصناف --- */
@@ -501,6 +658,7 @@
       <td class="sub">${CATS[i.cat] || ""}</td>
       <td class="sub">${esc(i.unit || "")}</td>
       <td class="n"><input type="number" class="inv-cell" data-qty value="${i.qty == null ? "" : i.qty}" placeholder="—"></td>
+      <td class="n">${isUse(i) ? `<input type="number" class="inv-cell" data-inuse value="${inUseOf(i)}">` : '<span class="sub">—</span>'}</td>
       <td class="n"><input type="number" class="inv-cell" data-min value="${i.min || 0}"></td>
       <td class="noprint"><button class="btn small secondary" data-edit>تعديل</button> <button class="btn small danger" data-del>حذف</button></td>
     </tr>`).join("");
@@ -520,8 +678,8 @@
         <select data-set="iLoc">${locOptions(u.iLoc, true)}</select>
         <select data-set="iCat"><option value="all">كل الأنواع</option>${catOptions(u.iCat)}</select>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>الصنف</th><th>الموقع</th><th>النوع</th><th>الوحدة</th><th class="n">الكمية الكلية</th><th class="n">الحدّ الأدنى</th><th class="noprint"></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="7" class="empty">لا أصناف مطابقة.</td></tr>'}</tbody></table></div>`;
+      <div class="table-wrap"><table><thead><tr><th>الصنف</th><th>الموقع</th><th>النوع</th><th>الوحدة</th><th class="n">المخزون</th><th class="n">قيد الاستخدام</th><th class="n">الحدّ الأدنى</th><th class="noprint"></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="8" class="empty">لا أصناف مطابقة.</td></tr>'}</tbody></table></div>`;
   };
 
   /* --- الحركات --- */
@@ -581,6 +739,20 @@
       deltas.push({ itemId: it.id, d: after - before });
       it.qty = after;
       m.qty = after;
+    } else if (m.type === "issue" || m.type === "back") {
+      // نقل داخلي بين المخزون وقيد الاستخدام: مجموع الصنف لا يتغيّر
+      const q = Math.abs(num(m.qty) || 0);
+      const sign = m.type === "issue" ? -1 : 1;   // issue: من المخزون، back: إليه
+      deltas.push({ itemId: it.id, d: sign * q, f: "qty" }, { itemId: it.id, d: -sign * q, f: "inUse" });
+      it.qty = r3(Math.max(0, (it.qty == null ? 0 : it.qty) + sign * q));
+      it.inUse = r3(Math.max(0, inUseOf(it) - sign * q));
+      m.qty = q;
+    } else if (m.type === "consume" && isUse(it)) {
+      // استهلاك مادة مُخرَجة: يُخصم من قيد الاستخدام لا من المخزون
+      const q = Math.abs(num(m.qty) || 0);
+      deltas.push({ itemId: it.id, d: -q, f: "inUse" });
+      it.inUse = r3(Math.max(0, inUseOf(it) - q));
+      m.qty = q;
     } else {
       const q = Math.abs(num(m.qty) || 0);
       const sign = MOVES[m.type].sign;
@@ -612,7 +784,14 @@
       `<p style="margin:0 0 10px"><b>${MOVES[m.type].t}</b> — ${esc(m.itemName)} ${moveQtyText(m)}، ${fmtD(m.date)}.</p>
        <div class="note-box">التراجع يعيد الكميات كما كانت قبل هذه الحركة، ويحذفها من السجل.</div>`,
       "تراجَع", () => {
-        (m.deltas || []).forEach((d) => { const it = itemById(d.itemId); if (it) it.qty = Math.max(0, (it.qty == null ? 0 : it.qty) - d.d); });
+        (m.deltas || []).forEach((d) => {
+          const it = itemById(d.itemId);
+          if (!it) return;
+          if (d.f === "inUse") it.inUse = Math.max(0, inUseOf(it) - d.d);
+          else it.qty = Math.max(0, (it.qty == null ? 0 : it.qty) - d.d);
+        });
+        // حركة استهلاك يومي: يُمحى أثرها من سجلّ اليوم أيضاً
+        if (m.dayKey) { const c = counts().find((x) => x.id === `${m.date}|${m.loc}`); if (c && c.use) delete c.use[m.itemId]; }
         store.get().invMoves = moves().filter((x) => x.id !== id);
         save(); render(); toast("تم التراجع عن الحركة");
       }, true);
@@ -647,7 +826,7 @@
 
   /* ===== الأصناف: تحرير وحذف ===== */
   function itemDlg(id) {
-    const i = id ? itemById(id) : { name: "", loc: (locs()[0] || {}).id, cat: "tool", unit: "", qty: "", min: 0, group: "", desc: "", note: "" };
+    const i = id ? itemById(id) : { name: "", loc: (locs()[0] || {}).id, cat: "tool", unit: "", qty: "", min: 0, inUse: 0, group: "", desc: "", note: "" };
     openModal(id ? "تعديل صنف" : "صنف جديد", `
       <div class="inv-form">
         <label class="field" style="grid-column:1/-1"><span>اسم الصنف</span><input type="text" id="it-name" value="${esc(i.name)}"></label>
@@ -655,8 +834,11 @@
         <label class="field"><span>النوع</span><select id="it-cat">${catOptions(i.cat)}</select></label>
         <label class="field"><span>الوحدة</span><input type="text" id="it-unit" value="${esc(i.unit || "")}" placeholder="قطعة، متر"></label>
         <label class="field"><span>المكنة التابع لها</span><input type="text" id="it-group" value="${esc(i.group || "")}" placeholder="اختياري"></label>
-        <label class="field"><span>الكمية الكلية</span><input type="number" id="it-qty" value="${i.qty == null ? "" : i.qty}" placeholder="اتركها فارغة إن لم تُعرف"></label>
+        <label class="field"><span>المخزون (الكمية الكلية)</span><input type="number" id="it-qty" value="${i.qty == null ? "" : i.qty}" placeholder="اتركها فارغة إن لم تُعرف"></label>
+        <label class="field"><span>قيد الاستخدام</span><input type="number" id="it-inuse" value="${inUseOf(i)}" min="0"></label>
         <label class="field"><span>الحدّ الأدنى</span><input type="number" id="it-min" value="${i.min || 0}"></label>
+        <label class="conv-check note-box" style="grid-column:1/-1"><input type="checkbox" id="it-use" ${isUse(i) ? "checked" : ""}>
+          صنف يُصرف للاستخدام ويُستهلك منه يومياً — يظهر في الجرد بثلاث خانات: المخزون، وقيد الاستخدام، واستهلاك اليوم. أطفِئه للأجهزة والأدوات التي تُعدّ ولا تُستهلك.</label>
         <label class="field" style="grid-column:1/-1"><span>الوصف</span><input type="text" id="it-desc" value="${esc(i.desc || "")}"></label>
       </div>`,
       `<button class="btn secondary" type="button" data-modal-close>إلغاء</button><button class="btn" type="button" data-act="save-item" data-id="${id || ""}">حفظ</button>`);
@@ -667,6 +849,7 @@
     const data = {
       name, loc: $("#it-loc").value, cat: $("#it-cat").value, unit: normName($("#it-unit").value),
       group: normName($("#it-group").value), qty: num($("#it-qty").value), min: num($("#it-min").value) || 0,
+      inUse: Math.max(0, num($("#it-inuse").value) || 0), use: $("#it-use").checked,
       desc: normName($("#it-desc").value),
     };
     if (id) Object.assign(itemById(id), data);
@@ -737,7 +920,22 @@
     const ws = u.week || weekOf(u.date), wd = workDates(ws);
     const wb = new ExcelJS.Workbook();
     locs().forEach((l) => {
-      const its = itemsOf(l.id);
+      const all = itemsOf(l.id);
+      if (!all.length) return;
+      const mats = all.filter(isUse), its = all.filter((i) => !isUse(i));
+      // ورقة استهلاك المواد لكل موقع: يوم بيوم ومجموع الأسبوع
+      if (mats.length) {
+        const ms = wb.addWorksheet(`استهلاك ${l.name}`.slice(0, 28));
+        ms.views = [{ rightToLeft: true }];
+        ms.addRow([`استهلاك المواد — ${l.name}`]);
+        ms.addRow(["م", "المادة", "الوحدة", "المخزون", "قيد الاستخدام", ...wd.map((d) => `${dayName(d)} ${fmtD(d)}`), "مجموع الأسبوع"]);
+        mats.forEach((i, k) => {
+          const per = wd.map((d) => usedOn(d, l.id, i.id));
+          ms.addRow([k + 1, i.name, i.unit || "", i.qty == null ? "" : i.qty, inUseOf(i),
+            ...per.map((v) => (v == null ? "" : v)), per.reduce((a, v) => a + (v || 0), 0)]);
+        });
+        ms.columns.forEach((c) => { c.width = 14; });
+      }
       if (!its.length) return;
       const sh = wb.addWorksheet(l.name.slice(0, 28));
       sh.views = [{ rightToLeft: true }];
@@ -1150,6 +1348,9 @@
         const id = row.dataset.id;
         const b = t.closest("[data-bump]"); if (b) return bump(id, +b.dataset.bump);
         const same = t.closest("[data-same]"); if (same) return setVal(id, same.dataset.same);
+        const ub = t.closest("[data-ubump]"); if (ub) return bumpUse(id, +ub.dataset.ubump);
+        if (t.closest("[data-issue]")) return issueDlg(id);
+        if (t.closest("[data-back]")) return backToStock(id);
         if (t.closest("[data-clear]")) return setVal(id, "");
         if (t.closest("[data-note]")) return noteDlg(id);
       }
@@ -1190,6 +1391,7 @@
       if (a === "save-move") return saveMove();
       if (a === "import") return document.getElementById("inv-file").click();
       if (a === "do-import") return runImport();
+      if (a === "do-issue") return doIssue(act.dataset.id);
       if (a === "add-loc") {
         const v = normName(document.getElementById("inv-newloc").value);
         if (!v) return toast("اكتب اسم الموقع");
@@ -1208,10 +1410,12 @@
       if (sh && imp) { imp[+sh.dataset.sheet].locId = sh.value; importTotals(); return; }
       const row = t.closest(".row[data-id]");
       if (row && t.matches("[data-val]")) return setVal(row.dataset.id, t.value);
+      if (row && t.matches("[data-use]")) return setUse(row.dataset.id, t.value);
       const tr = t.closest("tr[data-id]");
       if (tr) {
         const it = itemById(tr.dataset.id);
         if (it && t.matches("[data-qty]")) { it.qty = num(t.value); save(); return; }
+        if (it && t.matches("[data-inuse]")) { it.inUse = Math.max(0, num(t.value) || 0); save(); return; }
         if (it && t.matches("[data-min]")) { it.min = num(t.value) || 0; save(); return; }
       }
       const locRow = t.closest("tr[data-loc]");
@@ -1240,16 +1444,17 @@
     /* الإدخال بلوحة المفاتيح: Enter وسهم لأسفل ينتقلان للصنف التالي،
        وسهم لأعلى للسابق، فيُجرد المسار كلّه دون لمس الفأرة */
     root.addEventListener("keydown", (e) => {
-      if (!e.target.matches("[data-val]")) return;
+      if (!e.target.matches("[data-val],[data-use]")) return;
+      const isU = e.target.matches("[data-use]");
       const step = e.key === "Enter" || e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
       if (!step) return;
       e.preventDefault();
       const row = e.target.closest(".row[data-id]");
       const ids = $$("#inv-rows .row[data-id]").map((r) => r.dataset.id);
       const to = ids[ids.indexOf(row.dataset.id) + step];
-      setVal(row.dataset.id, e.target.value);
+      if (isU) setUse(row.dataset.id, e.target.value); else setVal(row.dataset.id, e.target.value);
       if (!to) { if (step > 0) toast("آخر صنف في القائمة"); return; }
-      const el = document.querySelector(`#inv-rows .row[data-id="${to}"] input[data-val]`);
+      const el = document.querySelector(`#inv-rows .row[data-id="${to}"] input[data-val], #inv-rows .row[data-id="${to}"] input[data-use]`);
       if (el) { el.focus(); el.select(); }
     });
 
@@ -1297,7 +1502,7 @@
 
   /* للوحة الرئيسية: الأصناف تحت الحدّ الأدنى والفروقات المفتوحة اليوم */
   function alerts() {
-    const low = items().filter((i) => i.active !== false && i.min && i.qty != null && i.qty <= i.min);
+    const low = items().filter((i) => i.active !== false && i.min && i.qty != null && (i.qty + inUseOf(i)) <= i.min);
     const t = today();
     const bad = [];
     locs().forEach((l) => itemsOf(l.id).forEach((i) => { const a = actualInfo(t, l.id, i); if (a && a.s === "short") bad.push(i); }));
