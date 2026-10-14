@@ -344,6 +344,7 @@
       <div class="row-tools">
         <button type="button" class="icon-btn ${note ? "has" : ""}" data-note title="ملاحظة على هذا الصنف" aria-label="ملاحظة"><span class="material-symbols-outlined btn-ico">sticky_note_2</span></button>
         ${inU > 0 ? '<button type="button" class="icon-btn" data-back title="إرجاع ما بقي قيد الاستخدام إلى المخزون" aria-label="إرجاع"><span class="material-symbols-outlined btn-ico">undo</span></button>' : "<span></span>"}
+        <button type="button" class="icon-btn on" data-totool title="أعِده أداةً تُعدّ وتُطابَق" aria-label="أعِده أداة"><span class="material-symbols-outlined btn-ico">water_drop</span></button>
       </div>
     </div>`;
   }
@@ -365,6 +366,7 @@
       <div class="row-tools">
         <button type="button" class="icon-btn ${r.note ? "has" : ""}" data-note title="ملاحظة على هذا الصنف" aria-label="ملاحظة"><span class="material-symbols-outlined btn-ico">sticky_note_2</span></button>
         ${r.v != null ? '<button type="button" class="icon-btn" data-clear title="مسح العدد" aria-label="مسح العدد"><span class="material-symbols-outlined btn-ico">backspace</span></button>' : "<span></span>"}
+        <button type="button" class="icon-btn" data-tomat title="حوّله إلى مادة مستهلكة: مخزون، وقيد استخدام، واستهلاك يومي" aria-label="حوّله إلى مادة مستهلكة"><span class="material-symbols-outlined btn-ico">water_drop</span></button>
       </div>
     </div>`;
   }
@@ -552,6 +554,17 @@
         its.forEach((i) => { c[u.ses][i.id] = i.qty; c.x[u.ses][i.id] = i.qty; });
         save(); render(); toast(`سُجّل ${its.length} صنفاً كمطابق`);
       });
+  }
+
+  /* تحويل صنف واحد من مكانه في الجرد: أسرع من الذهاب إلى شاشة الأصناف،
+     وهو أكثر ما يُحتاج لأن الملفات تأتي بلا عمود «النوع». */
+  function switchKind(id, toMat) {
+    const it = itemById(id);
+    if (!it) return;
+    it.cat = toMat ? "material" : "tool";
+    delete it.use;
+    save(); drawRows(); drawProgress();
+    toast(toMat ? `«${it.name}» صار مادة مستهلكة — أخرِج منها للاستخدام` : `«${it.name}» عاد أداةً تُعدّ`);
   }
 
   /* اعتماد الأرقام المعدودة ككميات كلية للأصناف التي لا كمية لها */
@@ -1447,6 +1460,8 @@
         const ub = t.closest("[data-ubump]"); if (ub) return bumpUse(id, +ub.dataset.ubump);
         if (t.closest("[data-issue]")) return issueDlg(id);
         if (t.closest("[data-back]")) return backToStock(id);
+        if (t.closest("[data-tomat]")) return switchKind(id, true);
+        if (t.closest("[data-totool]")) return switchKind(id, false);
         if (t.closest("[data-clear]")) return setVal(id, "");
         if (t.closest("[data-note]")) return noteDlg(id);
       }
