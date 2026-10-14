@@ -770,22 +770,22 @@
      بورقة/موقع/عدد قبل التنفيذ. الرفع المتكرر يُحدِّث ولا يكرّر. */
   const normHead = (v) => String(v || "").trim().toLowerCase()
     .replace(/[\u064B-\u0652]/g, "").replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
-    .replace(/^ال/, "").replace(/[\s_\d().:\-\/]/g, "");
+    .replace(/(^|\s)ال/g, "$1").replace(/[\s_\d().:\-\/]/g, "");
   const HEADER_ROW = /^(اسم|الاسم|صنف|الصنف|اسم الصنف|اسم الاداه|اسم الأداة|اسم الجهاز|البند|البيان|الماده|المادة|الوصف|م|#|الرقم|التسلسل|العدد|الكميه|الكمية|نوع|النوع|الوحده|الوحدة|ملاحظات|الاجمالي|الإجمالي|المجموع)$/;
   /* لكل حقل قائمة تعبيرات مرتّبة: يُجرَّب الأدقّ أولاً.
      المهم هنا أن «الكمية الكلية» تسبق «الكمية الفعلية» و«عدد المكن»،
      وأن «اسم الأداة» يسبق أي عمود فيه كلمة «اسم». */
   const COLS = {
-    name: [/^اسمالاداه$|^اسمالصنف$|^اسمالجهاز$|^الصنف$|^البند$/, /^اسم/, /صنف|بند|ماده|اداه|جهاز|مسمى/],
-    unit: [/^وحده$/, /وحده|قياس/],
-    qty: [/^كميهكليه$|^كميه$/, /كميهكليه|رصيد|متوفر|موجود/, /^عدد$|اجمالي|مجموع/],
-    min: [/^حدادنى$|^حد$/, /^حد|ادنى|اعادهالطلب/],
-    cat: [/^نوع$|^تصنيف$/, /نوع|تصنيف|فئه/],
-    group: [/^المكن$|^مكن/, /مكن|ماكين|مجموعه|تابع/],
-    desc: [/^وصف$|^ملاحظات$/, /وصف|ملاحظ|بيان/],
+    name: [/^اسم(ال)?اداه$|^اسم(ال)?صنف$|^اسم(ال)?جهاز$|^(ال)?صنف$|^(ال)?بند$/, /^اسم/, /صنف|بند|ماده|اداه|جهاز|مسمي/],
+    unit: [/^(ال)?وحده$/, /وحده|قياس/],
+    qty: [/^(ال)?كميه(ال)?كليه$|^(ال)?كميه$/, /كميه(ال)?كليه|رصيد|متوفر|موجود/, /^(ال)?عدد$|اجمالي|مجموع/],
+    min: [/^(ال)?حد(ال)?ادني$|^(ال)?حد$/, /^(ال)?حد|ادني|اعاده(ال)?طلب/],
+    cat: [/^(ال)?نوع$|^(ال)?تصنيف$/, /نوع|تصنيف|فئه/],
+    group: [/^(ال)?مكن/, /مكن|ماكين|مجموعه|تابع/],
+    desc: [/^(ال)?وصف$|^(ال)?ملاحظات$/, /وصف|ملاحظ|بيان/],
   };
   /* أعمدة الجدول اليومي لا تصلح حقولاً للصنف */
-  const DAY_COL = /^صباحي$|^مسائي$|^كميهفعليه$|^اليوم$|^التاريخ$|^م$|^#$/;
+  const DAY_COL = /^صباحي$|^مسائي$|^(ال)?كميه(ال)?فعليه$|^(ال)?يوم$|^(ال)?تاريخ$|^م$|^#$/;
   function pickCol(headers, key) {
     for (const re of COLS[key]) {
       const hit = headers.find((h) => !DAY_COL.test(normHead(h)) && re.test(normHead(h)));
@@ -912,7 +912,9 @@
         const nm = normName(r[nameCol]);
         return nm && !HEADER_ROW.test(nm);
       });
-      sheets.push({ name: sheet.name.trim(), headers, map, rows, valid: valid.length, nameCol });
+      // كم صنفاً بلا كمية كلية: ورقة كلها بلا كميات غالباً نموذج فارغ لم يُعبَّأ
+      const noQty = map.qty ? valid.filter((r) => num(String(r[map.qty] == null ? "" : r[map.qty]).trim()) == null).length : valid.length;
+      sheets.push({ name: sheet.name.trim(), headers, map, rows, valid: valid.length, noQty, nameCol });
     });
     if (!sheets.length) throw new Error("لا توجد أوراق في هذا المصنّف");
     if (!sheets.some((sh) => sh.valid)) {
@@ -991,26 +993,57 @@
   }
 
   function importDlg(sheets) {
+    /* اسم الورقة بلا «مسار» ولا اللاحقة «(2)»: المصنّفات الحقيقية فيها نسخ
+       مكرّرة قديمة من الورقة نفسها، واستيرادها يُنشئ مواقع وهمية */
+    const bare = (v) => normName(String(v || "").replace(/^مسار\s+/, "").replace(/\s*\(\d+\)\s*$/, ""));
+    const seen = [];
     imp = sheets.map((sh) => {
-      const bare = (v) => normName(String(v || "").replace(/^مسار\s+/, ""));
-      const hit = locs().find((l) => bare(l.name) === bare(sh.name))
-        || locs().find((l) => bare(l.name) && (bare(sh.name).includes(bare(l.name)) || bare(l.name).includes(bare(sh.name))));
-      return Object.assign({}, sh, { locId: hit ? hit.id : "__new__" });
+      const key = bare(sh.name);
+      // Excel يقصّ اسم الورقة عند 31 حرفاً، فنسخة «… (2)» تأتي باسم مبتور:
+      // تُعدّ مكرّرة إذا كان اسمها بداية اسم ورقة سابقة أو العكس
+      const dup = !!key && seen.some((p) => p === key || (p.length > 6 && key.length > 6 && (p.startsWith(key) || key.startsWith(p))));
+      seen.push(key);
+      const empty = !sh.valid;
+      // ورقة لم يُعرف فيها عمود اسم الصنف ولا كمية واحدة: بقايا جدول قديم
+      const weak = !sh.map.name && sh.noQty === sh.valid;
+      const hit = locs().find((l) => bare(l.name) === key)
+        || locs().find((l) => bare(l.name) && (key.includes(bare(l.name)) || bare(l.name).includes(key)));
+      return Object.assign({}, sh, {
+        dup, empty, weak,
+        locId: (dup || empty || weak) ? "__skip__" : hit ? hit.id : "__new__",
+      });
     });
-    const total = imp.reduce((a, s) => a + s.valid, 0);
+    const take = () => imp.filter((s) => s.locId !== "__skip__");
+    const total = take().reduce((a, s) => a + s.valid, 0);
+    const noQty = take().reduce((a, s) => a + s.noQty, 0);
     const rows = imp.map((sh, k) => `<tr>
-        <td><b>${esc(sh.name)}</b><div class="sub">عمود الاسم: ${esc(sh.nameCol)}</div></td>
+        <td><b>${esc(sh.name)}</b><div class="sub">عمود الاسم: ${esc(sh.nameCol)}${sh.dup ? " — نسخة مكرّرة" : sh.empty ? " — بلا أصناف" : sh.weak ? " — عمود الاسم غير مؤكّد" : ""}</div></td>
         <td class="n">${sh.valid}</td>
+        <td class="n">${!sh.valid ? '<span class="sub">—</span>'
+          : sh.noQty === sh.valid ? '<span class="pill short">كلها بلا كمية</span>'
+          : sh.noQty ? `<span class="pill over">${sh.noQty}</span>` : '<span class="pill ok">مكتملة</span>'}</td>
         <td><select data-sheet="${k}">
           <option value="__new__" ${sh.locId === "__new__" ? "selected" : ""}>موقع جديد باسم الورقة</option>
-          <option value="__skip__">تجاهل هذه الورقة</option>
+          <option value="__skip__" ${sh.locId === "__skip__" ? "selected" : ""}>تجاهل هذه الورقة</option>
           ${locs().map((l) => `<option value="${l.id}" ${sh.locId === l.id ? "selected" : ""}>${esc(l.name)}</option>`).join("")}
         </select></td>
       </tr>`).join("");
+    const skipped = imp.length - take().length;
     openModal("استيراد أصناف من مصنّف Excel",
-      `<p class="sub">وُجدت <b>${imp.length}</b> ورقة و<b>${total}</b> صنفاً. كل ورقة تُستورد موقعاً باسمها ما لم تختر غير ذلك. الرفع المتكرر يُحدِّث الأصناف ولا يكرّرها.</p>
-       <div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>الورقة</th><th class="n">أصناف</th><th>الموقع</th></tr></thead><tbody>${rows}</tbody></table></div>`,
-      `<button class="btn secondary" type="button" data-modal-close>إلغاء</button><button class="btn" type="button" data-act="do-import">استيراد ${total} صنفاً</button>`);
+      `<p class="sub">وُجدت <b>${imp.length}</b> ورقة، وسيُستورد منها <b>${total}</b> صنفاً${skipped ? ` بعد تجاهل <b>${skipped}</b> ورقة مكرّرة أو فارغة أو غير مفهومة — راجِعها في الجدول إن أردت ضمّها` : ""}. الرفع المتكرر يُحدِّث الأصناف ولا يكرّرها.</p>
+       ${noQty === total && total ? '<div class="note-box" style="color:var(--short);margin-top:10px">تنبيه: لا توجد <b>كمية كلية</b> لأي صنف في هذا المصنّف — غالباً هذا نموذج فارغ لم يُعبَّأ. الاستيراد سينجح لكن الجرد لن يعرف الكمية المتوقعة لأي صنف، فلن تظهر نواقص ولا زيادات.</div>'
+        : noQty ? `<div class="note-box" style="margin-top:10px"><b>${noQty}</b> صنفاً بلا كمية كلية؛ تُستورد وتبقى كميتها فارغة حتى تُكتب يدوياً أو تُعتمد من أول جرد.</div>` : ""}
+       <div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>الورقة</th><th class="n">أصناف</th><th class="n">بلا كمية</th><th>الموقع</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+      `<button class="btn secondary" type="button" data-modal-close>إلغاء</button><button class="btn" type="button" id="inv-do-import" data-act="do-import">استيراد ${total} صنفاً</button>`);
+  }
+
+  /* تغيير وجهة ورقة يُحدِّث العدد على الزرّ فوراً، فلا يضغط المستخدم على رقم قديم */
+  function importTotals() {
+    const b = document.getElementById("inv-do-import");
+    if (!b || !imp) return;
+    const n = imp.filter((s) => s.locId !== "__skip__").reduce((a, s) => a + s.valid, 0);
+    b.textContent = n ? `استيراد ${n} صنفاً` : "لا ورقة مختارة";
+    b.disabled = !n;
   }
 
   function runImport() {
@@ -1172,7 +1205,7 @@
       if (set) { const k = set.dataset.set; return go(null, { [k]: set.value }); }
       if (t.id === "inv-file") { pickFrom(t, "تفويض"); return; }
       const sh = t.closest("[data-sheet]");
-      if (sh && imp) { imp[+sh.dataset.sheet].locId = sh.value; return; }
+      if (sh && imp) { imp[+sh.dataset.sheet].locId = sh.value; importTotals(); return; }
       const row = t.closest(".row[data-id]");
       if (row && t.matches("[data-val]")) return setVal(row.dataset.id, t.value);
       const tr = t.closest("tr[data-id]");
