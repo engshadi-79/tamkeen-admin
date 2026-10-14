@@ -563,10 +563,18 @@ html:root:root:root .sheet td.grp { background: var(--teal-soft); color: var(--t
 html:root:root:root #view-inventory td.n, html:root:root:root #view-inventory th.n { text-align: center; font-variant-numeric: tabular-nums; }
 html:root:root:root .note-box { background: var(--line-2); border-radius: var(--r-sm); padding: 10px 12px; font-size: 13.5px; color: var(--muted); }
 
-/* نافذة الجرد */
-html:root:root:root #inv-modal { display: none; }
+/* نافذة الجرد.
+   ملاحظة مهمة: gentelella.css يضع على كل .modal-backdrop ‏opacity:0 ولا يعيدها
+   إلا مع الصنف ‎.show‎، وهذا النظام يفتح نوافذه بالصنف ‎.open‎، فكانت النافذة
+   تُفتح فعلاً لكنها شفافة تماماً. السطر التالي هو ما يعيدها مرئية. */
+html:root:root:root .modal-backdrop { opacity: 1; }
+html:root:root:root #inv-modal {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  display: none; align-items: center; justify-content: center;
+  padding: 16px; z-index: 300; opacity: 1;
+}
 html:root:root:root #inv-modal.open { display: flex; }
-html:root:root:root #inv-modal .modal { width: min(820px, 96vw); }
+html:root:root:root #inv-modal .modal { width: min(820px, 96vw); flex: 0 1 auto; }
 html:root:root:root .inv-modal-body { max-height: 62vh; overflow: auto; margin-bottom: 14px; }
 
 @media (max-width: 1050px) { html:root:root:root .inv-grid2 { grid-template-columns: 1fr; } }
@@ -605,3 +613,81 @@ html:root:root:root .inv-steps {
 html:root:root:root .inv-steps div { border-bottom: 1px solid var(--line); padding: 2px 0; }
 html:root:root:root .inv-steps div:last-child { border-bottom: 0; }
 html:root:root:root .inv-steps .bad { color: var(--short); font-weight: 700; }
+
+/* نافذة الجرد: فوق كل شيء ومثبّتة بالنافذة لا بالصفحة */
+html:root:root:root #inv-modal {
+  position: fixed; inset: 0; z-index: 300;
+  align-items: center; justify-content: center; padding: 16px;
+}
+
+/* ===== تسهيلات شاشة الجرد ===== */
+/* سطر الإرشاد تحت التبويبات */
+html:root:root:root .inv-hint {
+  display: flex; gap: 8px; align-items: flex-start;
+  margin: 0 0 14px; padding: 9px 12px;
+  border: 1px solid var(--line); border-inline-start: 4px solid var(--teal);
+  border-radius: var(--r-sm); background: var(--teal-soft);
+  color: var(--navy-3); font-size: 13px; line-height: 1.6;
+}
+html:root:root:root .inv-hint .material-symbols-outlined { color: var(--teal); font-size: 19px; }
+
+/* أيقونات التبويبات */
+html:root:root:root #view-inventory .inv-tabs button { display: inline-flex; gap: 6px; align-items: center; }
+html:root:root:root #view-inventory .inv-tabs button .material-symbols-outlined { font-size: 19px; }
+
+/* منتقيات الجرد اليومي: كل حقل باسمه فوقه */
+html:root:root:root .pick-bar { align-items: flex-end; }
+html:root:root:root .pick { display: grid; gap: 3px; }
+html:root:root:root .pick > small { color: var(--muted); font-size: 11.5px; font-weight: 600; }
+
+/* الخطوة التالية: ما يفعله المدرّب الآن، مكتوباً لا مُخمَّناً */
+html:root:root:root .next-step {
+  display: flex; gap: 10px; align-items: center;
+  margin: 10px 0 0; padding: 10px 14px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--card);
+}
+html:root:root:root .next-step > div { flex: 1; font-size: 13.5px; font-weight: 600; }
+html:root:root:root .next-step small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 400; }
+html:root:root:root .next-step > .material-symbols-outlined { color: var(--nobase); font-size: 26px; }
+html:root:root:root .next-step.ready { border-color: var(--c-ok); background: var(--ok-soft); }
+html:root:root:root .next-step.ready > .material-symbols-outlined { color: var(--c-ok); }
+
+/* رؤوس المجموعات: طيّ، وعدّاد، و«الكل مطابق» */
+html:root:root:root .section-h .sec-tog {
+  width: 26px; height: 26px; display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--card);
+  color: var(--muted); cursor: pointer;
+}
+html:root:root:root .section-h .sec-tog:hover { border-color: var(--teal); color: var(--teal); }
+html:root:root:root .section-h .sec-tog .material-symbols-outlined { font-size: 18px; }
+html:root:root:root .section-h { align-items: center; }
+html:root:root:root .section-h .spacer { flex: 1; }
+html:root:root:root .section-h.full h3 { color: var(--muted); }
+
+/* أدوات الصف: ملاحظة ومسح */
+html:root:root:root .row { grid-template-columns: minmax(0, 1fr) 70px auto 134px 84px 92px 68px; }
+html:root:root:root .row.eve { grid-template-columns: minmax(0, 1fr) 70px 70px 134px 84px 92px 68px; }
+html:root:root:root .row-tools { display: flex; gap: 2px; justify-content: flex-end; }
+html:root:root:root .okb.done { border-style: solid; background: var(--ok-soft); }
+
+/* شاشة البداية: ثلاث خطوات مرقَّمة */
+html:root:root:root .start-steps { margin: 0; padding-inline-start: 22px; display: grid; gap: 18px; }
+html:root:root:root .start-steps li { line-height: 1.7; }
+html:root:root:root .start-steps li b { display: block; font-size: 15px; }
+html:root:root:root .start-steps li span { display: block; color: var(--muted); font-size: 13.5px; }
+html:root:root:root .start-steps li .bar { margin-top: 8px; }
+html:root:root:root .start-card { max-width: 760px; }
+
+/* على الهاتف: أهداف لمس أكبر، فالمدرّب يجرد واقفاً */
+@media (max-width: 860px) {
+  html:root:root:root .step { height: 46px; }
+  html:root:root:root .step button { width: 46px; font-size: 22px; }
+  html:root:root:root .step input { font-size: 18px; }
+  html:root:root:root .okb { padding: 11px 14px; }
+  html:root:root:root .icon-btn { width: 40px; height: 40px; }
+  html:root:root:root .next-step { flex-wrap: wrap; }
+  html:root:root:root .next-step .btn { width: 100%; }
+  html:root:root:root .pick, html:root:root:root .pick select, html:root:root:root .pick input { width: 100%; }
+  html:root:root:root #view-inventory .bar.pick-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  html:root:root:root .pick-bar .pick:first-child { grid-column: 1 / -1; }
+}

@@ -24,6 +24,16 @@
   const SES = { m: "صباحي", e: "مسائي" };
   const NAV = [["dash", "لوحة المتابعة"], ["count", "الجرد اليومي"], ["week", "كشف الأسبوع"],
     ["items", "الأصناف"], ["moves", "الحركات"], ["settings", "الإعدادات"]];
+  const NAVI = { dash: "space_dashboard", count: "fact_check", week: "calendar_view_week", items: "inventory_2", moves: "swap_horiz", settings: "settings" };
+  /* سطر إرشاد لكل شاشة: من يستخدمها وما الخطوة المطلوبة فيها */
+  const HINTS = {
+    dash: "متابعة المشرف: أي موقع جرد اليوم وأي جلسة بقيت، ومعها نواقص اليوم والأصناف التي بلغت حدّها الأدنى.",
+    count: "شاشة المدرّب اليومية: اختر موقعك والجلسة، ثم اكتب العدد الموجود أو اضغط «مطابق»، وأغلِق الجلسة في النهاية.",
+    week: "كشف جاهز للطباعة لكل موقع: صباحي ومسائي والكمية الفعلية لكل يوم عمل في الأسبوع.",
+    items: "سجلّ الأصناف وكمياتها الكلية وحدودها الدنيا. الرفع المتكرر لملف الجرد يُحدِّث الأصناف ولا يكرّرها.",
+    moves: "كل زيادة أو نقص في الكميات: توريد، صرف، استهلاك، تالف، فقد، نقل، تسوية. ولكل حركة تراجُع.",
+    settings: "اسم المركز والدورة وأيام العمل والمواقع. حذف موقع يحتاج نقل أصنافه أولاً.",
+  };
 
   /* ===== أدوات ===== */
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -128,6 +138,22 @@
   VIEWS.dash = () => {
     const t = today(), ws = weekOf(t), wd = workDates(ws);
     const isWork = meta().workDays.includes(pISO(t).getDay());
+    /* أول استخدام: ثلاث خطوات مرقَّمة بدل لوحة فارغة لا يُعرف من أين تُبدأ */
+    if (!items().filter((i) => i.active !== false).length) {
+      return `
+      <div class="head"><div><h1>${esc(meta().center)}</h1><p class="lead">جرد العُهد والمواد — لم تُسجَّل أصناف بعد</p></div></div>
+      <div class="card start-card">
+        <h2 style="margin-top:0">ابدأ بثلاث خطوات</h2>
+        <ol class="start-steps">
+          <li><b>أدخِل الأصناف</b><span>ارفع ملف الجرد (مصنّف Excel فيه ورقة لكل مسار) فيُنشأ لكل ورقة موقعٌ بأصنافه، أو أضف الأصناف يدوياً.</span>
+            <div class="bar"><button class="btn" type="button" data-act="import">ارفع ملف الجرد</button>
+              <button class="btn secondary" type="button" data-go="items">إضافة يدوية</button></div></li>
+          <li><b>راجع المواقع وأيام العمل</b><span>المواقع تُنشأ من مسارات تمكين، ومعها غرفة الإدارة والمخزن. عدّل الأسماء وأيام العمل من الإعدادات.</span>
+            <div class="bar"><button class="btn secondary" type="button" data-go="settings">الإعدادات</button></div></li>
+          <li><b>الجرد اليومي</b><span>كل مدرّب يفتح موقعه ويختار الجلسة، فيكتب العدد الموجود أو يضغط «مطابق»، ثم يُغلق الجلسة فتُسجَّل النواقص حركاتٍ تلقائياً.</span></li>
+        </ol>
+      </div>`;
+    }
     const rows = locs().map((l) => {
       const pm = progress(t, l.id, "m"), pe = progress(t, l.id, "e");
       const short = itemsOf(l.id).filter((i) => { const a = actualInfo(t, l.id, i); return a && a.s === "short"; }).length;
@@ -188,13 +214,15 @@
       <div class="count-top">
         <div class="head" style="margin-bottom:10px"><div><h1>الجرد اليومي</h1>
           <p class="lead">${esc((loc || {}).name || "—")}، جلسة ${SES[u.ses]} ليوم ${dayName(u.date)} ${fmtD(u.date)}</p></div>
-          <div class="bar noprint">
-            <select data-set="loc" aria-label="الموقع">${locOptions(u.loc)}</select>
-            <input type="date" value="${u.date}" data-set="date" aria-label="التاريخ">
-            <div class="seg">${Object.keys(SES).map((k) => `<button type="button" class="${u.ses === k ? "on" : ""}" data-ses="${k}">${SES[k]}</button>`).join("")}</div>
+          <div class="bar noprint pick-bar">
+            <label class="pick"><small>الموقع</small><select data-set="loc" aria-label="الموقع">${locOptions(u.loc)}</select></label>
+            <label class="pick"><small>التاريخ</small><input type="date" value="${u.date}" data-set="date" aria-label="التاريخ"></label>
+            <label class="pick"><small>الجلسة</small>
+              <div class="seg">${Object.keys(SES).map((k) => `<button type="button" class="${u.ses === k ? "on" : ""}" data-ses="${k}">${SES[k]}</button>`).join("")}</div></label>
           </div>
         </div>
         <div id="inv-prog"></div>
+        <div class="next-step" id="inv-next" hidden></div>
         <div class="bar noprint" style="margin-top:10px">
           <div class="search"><input type="search" placeholder="ابحث عن صنف" value="${esc(u.q)}" id="inv-q"></div>
           <span id="inv-chips" class="bar"></span>
@@ -206,7 +234,11 @@
         </div>
         ${closed ? `<div class="closed-banner">الجلسة مغلقة منذ ${fmtT(c.done[u.ses])}. لتعديل الأرقام أعد فتحها.</div>` : ""}
       </div>
-      <div id="inv-rows" class="${closed ? "locked" : ""}">${all.length ? "" : `<div class="card empty">لا توجد أصناف في هذا الموقع.<br><button class="btn" style="margin-top:10px" data-go="items">أضف صنفاً</button></div>`}</div>`;
+      <div id="inv-rows" class="${closed ? "locked" : ""}">${all.length ? "" : `<div class="card empty">
+        <p style="margin:0 0 4px">لا توجد أصناف في <b>${esc((loc || {}).name || "هذا الموقع")}</b>، فلا شيء يُجرد بعد.</p>
+        <p class="sub" style="margin:0 0 12px">أضف أصنافه يدوياً، أو ارفع ملف الجرد وفيه ورقة لكل مسار.</p>
+        <button class="btn" data-go="items">أضف أصنافاً</button>
+        <button class="btn secondary" data-act="import">ارفع ملف Excel</button></div>`}</div>`;
   };
   AFTER.count = () => { drawProgress(); drawRows(); };
 
@@ -224,6 +256,24 @@
         ${p.nobase ? `<span>بلا كمية كلية <b>${p.nobase}</b></span>` : ""}</div>`;
     const chips = [["all", "الكل", p.total], ["todo", "لم يُجرد", p.total - p.n], ["diff", "الفروقات", p.short + p.over]];
     $("#inv-chips").innerHTML = chips.map(([k, t, n]) => `<button type="button" class="chip ${u.filter === k ? "on" : ""}" data-chip="${k}">${t}<b>${n}</b></button>`).join("");
+    /* الخطوة التالية مكتوبة صراحة، فلا يحتاج المدرّب أن يخمّن ماذا يفعل بعد العدّ */
+    const nx = $("#inv-next");
+    if (nx) {
+      const closed = !!p.done;
+      nx.hidden = !p.total || closed;
+      if (!nx.hidden) {
+        nx.className = "next-step " + (p.n === p.total ? "ready" : "");
+        nx.innerHTML = p.n === p.total
+          ? `<span class="material-symbols-outlined">task_alt</span>
+             <div>عُدَّت كل الأصناف (${p.total})${p.short + p.over ? ` ومعها ${p.short + p.over} فرقاً` : " وكلها مطابقة"}.
+               <small>الخطوة الأخيرة: إغلاق الجلسة لتثبيت الأرقام وتسجيل النواقص.</small></div>
+             <button class="btn navy noprint" type="button" data-act="close">إغلاق الجلسة</button>`
+          : `<span class="material-symbols-outlined">pending_actions</span>
+             <div>بقي <b>${p.total - p.n}</b> صنفاً لم يُعدّ في جلسة ${SES[u.ses]}.
+               <small>اعرض المتبقي فقط ثم اكتب العدد أو اضغط «مطابق» في كل صف.</small></div>
+             <button class="btn secondary noprint" type="button" data-chip="todo">اعرض المتبقي</button>`;
+      }
+    }
   }
 
   function rowState(item) {
@@ -244,9 +294,12 @@
       <div class="kv"><small>المتوقع</small><b>${fmtN(r.x)}</b></div>
       ${u.ses === "e" ? `<div class="kv"><small>الصباحي</small><b>${fmtN(r.m)}</b></div>` : "<div></div>"}
       <div class="step"><button type="button" data-bump="-1" aria-label="إنقاص">−</button><input type="number" inputmode="decimal" min="0" value="${r.v == null ? "" : r.v}" placeholder="—" aria-label="العدد الفعلي ${esc(item.name)}" data-val><button type="button" data-bump="1" aria-label="زيادة">+</button></div>
-      ${r.x != null ? `<button type="button" class="okb" data-same="${r.x}">مطابق</button>` : "<span></span>"}
+      ${r.x != null ? `<button type="button" class="okb ${r.s === "ok" ? "done" : ""}" data-same="${r.x}" title="تسجيل العدد المتوقع ${fmtN(r.x)}">مطابق</button>` : "<span></span>"}
       <div class="diff">${diff}</div>
-      <button type="button" class="icon-btn ${r.note ? "has" : ""}" data-note title="ملاحظة" aria-label="ملاحظة"><span class="material-symbols-outlined btn-ico">sticky_note_2</span></button>
+      <div class="row-tools">
+        <button type="button" class="icon-btn ${r.note ? "has" : ""}" data-note title="ملاحظة على هذا الصنف" aria-label="ملاحظة"><span class="material-symbols-outlined btn-ico">sticky_note_2</span></button>
+        ${r.v != null ? '<button type="button" class="icon-btn" data-clear title="مسح العدد" aria-label="مسح العدد"><span class="material-symbols-outlined btn-ico">backspace</span></button>' : "<span></span>"}
+      </div>
     </div>`;
   }
 
@@ -268,9 +321,24 @@
     }
     const secs = new Map();
     list.forEach((i) => { const k = i.group ? i.group : CATS[i.cat] || "أخرى"; if (!secs.has(k)) secs.set(k, []); secs.get(k).push(i); });
-    wrap.innerHTML = [...secs].map(([k, its]) =>
-      `<div class="section-h"><h3>${esc(k)}</h3><span>${its.length} صنف</span></div><div class="rows">${its.map(rowHTML).join("")}</div>`).join("");
+    wrap.innerHTML = [...secs].map(([k, its]) => {
+      const n = its.filter((i) => rowState(i).v != null).length;
+      const bad = its.filter((i) => { const s = rowState(i).s; return s === "short" || s === "over"; }).length;
+      const shut = folded.has(k);
+      const full = n === its.length;
+      return `<div class="section-h ${full ? "full" : ""}">
+          <button type="button" class="sec-tog" data-fold="${esc(k)}" aria-expanded="${shut ? "false" : "true"}" title="${shut ? "إظهار" : "إخفاء"}">
+            <span class="material-symbols-outlined">${shut ? "chevron_right" : "expand_more"}</span></button>
+          <h3>${esc(k)}</h3>
+          <span class="sec-count">${n} من ${its.length}</span>
+          ${bad ? `<span class="pill short">${bad} فرق</span>` : full ? '<span class="pill ok">مكتملة</span>' : ""}
+          <span class="spacer"></span>
+          ${full ? "" : `<button type="button" class="btn small secondary noprint" data-allok="${esc(k)}">الكل مطابق</button>`}
+        </div>
+        <div class="rows" ${shut ? "hidden" : ""}>${shut ? "" : its.map(rowHTML).join("")}</div>`;
+    }).join("");
   }
+  const folded = new Set();
 
   function refreshRow(id) {
     const el = document.querySelector(`#inv-rows .row[data-id="${id}"]`);
@@ -301,10 +369,25 @@
   function fillRemaining() {
     const its = itemsOf(u.loc).filter((i) => rowState(i).v == null && i.qty != null);
     if (!its.length) return toast("لا توجد أصناف متبقية لها كمية متوقعة");
-    if (!confirm(`سيُسجَّل ${its.length} صنفاً غير معدود بقيمته المتوقعة (مطابق). استخدمها بعد التأكد الفعلي من وجودها.`)) return;
+    ask("تعبئة المتبقي بالمتوقع",
+      `<p style="margin:0 0 10px">سيُسجَّل <b>${its.length}</b> صنفاً غير معدود بقيمته المتوقعة، أي كأنه مطابق.</p>
+       <div class="note-box">استخدم هذا بعد التأكد الفعلي من وجود الأصناف على الأرض، لا لتسريع الإغلاق.</div>`,
+      `نعم، سجّلها مطابقة`, () => {
+        const c = cnt(u.date, u.loc, true);
+        its.forEach((i) => { c[u.ses][i.id] = i.qty; c.x[u.ses][i.id] = i.qty; });
+        save(); render(); toast(`سُجّل ${its.length} صنفاً كمطابق`);
+      });
+  }
+
+  /* «الكل مطابق» لمجموعة واحدة: أسرع طريق لمدرّب أصنافه سليمة */
+  function fillGroup(key) {
+    const its = itemsOf(u.loc).filter((i) => (i.group ? i.group : CATS[i.cat] || "أخرى") === key);
+    const todo = its.filter((i) => { const r = rowState(i); return r.v == null && r.x != null; });
+    if (!todo.length) return toast("لا صنف متبقٍ في هذه المجموعة");
     const c = cnt(u.date, u.loc, true);
-    its.forEach((i) => { c[u.ses][i.id] = i.qty; c.x[u.ses][i.id] = i.qty; });
-    save(); render(); toast(`سُجّل ${its.length} صنفاً كمطابق`);
+    todo.forEach((i) => { c[u.ses][i.id] = i.qty; c.x[u.ses][i.id] = i.qty; });
+    save(); drawProgress(); drawRows();
+    toast(`${key}: سُجّل ${todo.length} صنفاً كمطابق`);
   }
   function copyMorning() {
     const c = cnt(u.date, u.loc, true);
@@ -314,10 +397,14 @@
     save(); render(); toast(`نُسخت ${its.length} قيمة من الجلسة الصباحية`);
   }
   function reopenSession() {
-    if (!confirm("ستتمكن من تعديل الأرقام. الحركات التي سُجّلت عند الإغلاق تبقى كما هي.")) return;
-    const c = cnt(u.date, u.loc, true);
-    delete c.done[u.ses];
-    save(); render(); toast("أُعيد فتح الجلسة");
+    ask("إعادة فتح الجلسة",
+      `<p style="margin:0 0 10px">ستتمكن من تعديل الأرقام من جديد.</p>
+       <div class="note-box">الحركات التي سُجّلت عند الإغلاق تبقى كما هي؛ إن أردت إلغاءها فمن شاشة «الحركات».</div>`,
+      "أعد فتحها", () => {
+        const c = cnt(u.date, u.loc, true);
+        delete c.done[u.ses];
+        save(); render(); toast("أُعيد فتح الجلسة");
+      });
   }
 
   /* إغلاق الجلسة: يعرض النواقص والزيادات ويحوّلها حركات */
@@ -520,10 +607,15 @@
   }
   function undoMove(id) {
     const m = moves().find((x) => x.id === id);
-    if (!m || !confirm("التراجع يعيد الكميات كما كانت قبل هذه الحركة. متابعة؟")) return;
-    (m.deltas || []).forEach((d) => { const it = itemById(d.itemId); if (it) it.qty = Math.max(0, (it.qty == null ? 0 : it.qty) - d.d); });
-    store.get().invMoves = moves().filter((x) => x.id !== id);
-    save(); render(); toast("تم التراجع عن الحركة");
+    if (!m) return;
+    ask("التراجع عن حركة",
+      `<p style="margin:0 0 10px"><b>${MOVES[m.type].t}</b> — ${esc(m.itemName)} ${moveQtyText(m)}، ${fmtD(m.date)}.</p>
+       <div class="note-box">التراجع يعيد الكميات كما كانت قبل هذه الحركة، ويحذفها من السجل.</div>`,
+      "تراجَع", () => {
+        (m.deltas || []).forEach((d) => { const it = itemById(d.itemId); if (it) it.qty = Math.max(0, (it.qty == null ? 0 : it.qty) - d.d); });
+        store.get().invMoves = moves().filter((x) => x.id !== id);
+        save(); render(); toast("تم التراجع عن الحركة");
+      }, true);
   }
   function moveDlg() {
     const its = items().filter((i) => i.active !== false);
@@ -583,21 +675,60 @@
   }
   function delItem(id) {
     const it = itemById(id);
-    if (!it || !confirm(`حذف «${it.name}»؟ سجل حركته وجرده يبقى محفوظاً.`)) return;
-    it.active = false;
-    save(); render();
+    if (!it) return;
+    ask("حذف صنف",
+      `<p style="margin:0 0 10px">حذف <b>${esc(it.name)}</b> من ${esc((locById(it.loc) || {}).name || "")}؟</p>
+       <div class="note-box">سجلّ حركاته وجرده السابق يبقى محفوظاً، ويختفي الصنف من الجرد القادم فقط.</div>`,
+      "احذفه", () => { it.active = false; save(); render(); toast("حُذف الصنف"); }, true);
   }
 
   /* ===== نافذة بسيطة داخل الصفحة ===== */
   function openModal(title, body, actions) {
     const back = document.getElementById("inv-modal");
+    if (!back) { step("نافذة الجرد غير موجودة في الصفحة", true); return; }
     back.innerHTML = `<div class="modal"><h3>${title}</h3><div class="inv-modal-body">${body}</div><div class="btn-row">${actions}</div></div>`;
+    back.hidden = false;
     back.classList.add("open");
+    step(`فُتحت نافذة: ${title}`);
   }
   function closeModal() {
     const back = document.getElementById("inv-modal");
     back.classList.remove("open");
     back.innerHTML = "";
+    pending = null;
+  }
+
+  /* سؤال تأكيد داخل النظام بدل نافذة المتصفح: نصّه عربي، وأزراره واضحة */
+  let pending = null;
+  function ask(title, html, label, fn, danger) {
+    pending = fn;
+    openModal(title, html,
+      `<button class="btn secondary" type="button" data-modal-close>إلغاء</button>
+       <button class="btn ${danger ? "danger" : "navy"}" type="button" data-act="ask-yes">${label}</button>`);
+  }
+
+  /* ملاحظة الصنف: نافذة بحقل نصّ بدل prompt الذي لا يُقرأ ولا يُنسَّق */
+  function noteDlg(id) {
+    const it = itemById(id), c = cnt(u.date, u.loc);
+    const cur = (c && c.n[id]) || "";
+    openModal(`ملاحظة على «${esc(it.name)}»`,
+      `<p class="sub" style="margin:0 0 8px">تُحفظ مع جرد ${dayName(u.date)} ${fmtD(u.date)} وتظهر في الصف وفي كشف الأسبوع.</p>
+       <textarea id="inv-note-txt" rows="3" style="width:100%" placeholder="مثال: المفتاح مكسور، أُبلغ المشرف">${esc(cur)}</textarea>`,
+      `<button class="btn secondary" type="button" data-modal-close>إلغاء</button>
+       ${cur ? '<button class="btn danger" type="button" data-act="note-del">حذف الملاحظة</button>' : ""}
+       <button class="btn" type="button" data-act="note-save">حفظ</button>`);
+    const box = document.getElementById("inv-note-txt");
+    if (box) { box.focus(); box.setSelectionRange(cur.length, cur.length); }
+    noteFor = id;
+  }
+  let noteFor = null;
+  function noteSave(text) {
+    const id = noteFor, c = cnt(u.date, u.loc, true);
+    if (!id) return closeModal();
+    const v = String(text || "").trim();
+    if (v) c.n[id] = v; else delete c.n[id];
+    save(); closeModal(); refreshRow(id);
+    toast(v ? "حُفظت الملاحظة" : "حُذفت الملاحظة");
   }
 
   /* ===== التصدير ===== */
@@ -814,7 +945,8 @@
   function step(msg, bad) {
     const box = document.getElementById("inv-steps");
     if (!box) return;
-    box.hidden = false;
+    /* يُكتب دائماً، ولا يظهر إلا عند خطأ: في الحالة الطبيعية النافذة تكفي */
+    if (bad) box.hidden = false;
     const t = new Date().toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const li = document.createElement("div");
     li.className = bad ? "bad" : "";
@@ -853,7 +985,8 @@
   function importError(err) {
     openModal("تعذّر استيراد الملف",
       `<p style="margin:0 0 10px">${esc(err && err.message ? err.message : "خطأ غير معروف")}</p>
-       <div class="note-box">الصيغة المدعومة: ‎.xlsx‎ (ومعها ‎.csv‎ لورقة واحدة). كل ورقة في المصنّف تُستورد موقعاً باسمها، ويلزم في كل ورقة عمود لاسم الصنف.</div>`,
+       <div class="note-box">الصيغة المدعومة: ‎.xlsx‎ (ومعها ‎.csv‎ لورقة واحدة). كل ورقة في المصنّف تُستورد موقعاً باسمها، ويلزم في كل ورقة عمود لاسم الصنف.
+       <br>تفاصيل ما جرى تظهر في سجلّ الخطوات أسفل الصفحة.</div>`,
       `<button class="btn" type="button" data-modal-close>حسناً</button>`);
   }
 
@@ -930,7 +1063,12 @@
     ensureLocs();
     const nav = document.getElementById("inv-nav");
     if (!nav) return;
-    nav.innerHTML = NAV.map(([k, t]) => `<button type="button" class="${u.view === k ? "on" : ""}" data-view="${k}">${t}</button>`).join("");
+    nav.innerHTML = NAV.map(([k, t]) => `<button type="button" class="${u.view === k ? "on" : ""}" data-view="${k}"><span class="material-symbols-outlined">${NAVI[k]}</span>${t}</button>`).join("");
+    const hint = document.getElementById("inv-hint");
+    if (hint) {
+      hint.hidden = !HINTS[u.view];
+      hint.innerHTML = HINTS[u.view] ? `<span class="material-symbols-outlined">info</span><span>${HINTS[u.view]}</span>` : "";
+    }
     document.getElementById("inv-main").innerHTML = (VIEWS[u.view] || VIEWS.dash)();
     if (AFTER[u.view]) AFTER[u.view]();
   }
@@ -962,12 +1100,15 @@
     if (!root) return;
     if (!document.getElementById("inv-main") || !document.getElementById("inv-nav")) { staleShell(root); return; }
 
-    root.addEventListener("click", (e) => {
+    const onClick = (e) => {
       const t = e.target;
       const view = t.closest("[data-view]"); if (view) return go(view.dataset.view);
       const goBtn = t.closest("[data-go]"); if (goBtn) return go(goBtn.dataset.go, goBtn.dataset.loc ? { loc: goBtn.dataset.loc } : {});
       const ses = t.closest("[data-ses]"); if (ses) return go(null, { ses: ses.dataset.ses });
       const chip = t.closest("[data-chip]"); if (chip) { u.filter = chip.dataset.chip; drawProgress(); drawRows(); return; }
+      const fold = t.closest("[data-fold]");
+      if (fold) { const k = fold.dataset.fold; folded.has(k) ? folded.delete(k) : folded.add(k); drawRows(); return; }
+      const allok = t.closest("[data-allok]"); if (allok) { if (sessionClosed()) return; return fillGroup(allok.dataset.allok); }
       const wk = t.closest("[data-week]"); if (wk) return go("week", { week: wk.dataset.week === "0" ? weekOf(today()) : addDays(u.week || weekOf(u.date), +wk.dataset.week) });
       if (t.closest("[data-modal-close]")) return closeModal();
 
@@ -976,16 +1117,8 @@
         const id = row.dataset.id;
         const b = t.closest("[data-bump]"); if (b) return bump(id, +b.dataset.bump);
         const same = t.closest("[data-same]"); if (same) return setVal(id, same.dataset.same);
-        if (t.closest("[data-note]")) {
-          const c = cnt(u.date, u.loc);
-          const cur = (c && c.n[id]) || "";
-          const v = prompt(`ملاحظة على «${itemById(id).name}» ليوم ${fmtD(u.date)}:`, cur);
-          if (v === null) return;
-          const cc = cnt(u.date, u.loc, true);
-          if (v.trim()) cc.n[id] = v.trim(); else delete cc.n[id];
-          save(); refreshRow(id); toast("حُفظت الملاحظة");
-          return;
-        }
+        if (t.closest("[data-clear]")) return setVal(id, "");
+        if (t.closest("[data-note]")) return noteDlg(id);
       }
       const tr = t.closest("tr[data-id]");
       if (tr) {
@@ -995,16 +1128,21 @@
       }
       const locRow = t.closest("tr[data-loc]");
       if (locRow && t.closest("[data-delloc]")) {
-        const id = locRow.dataset.loc;
+        const id = locRow.dataset.loc, l = locById(id);
         if (itemsOf(id).length) return toast("انقل أصناف الموقع أو احذفها أولاً");
-        if (!confirm("حذف الموقع؟")) return;
-        store.get().invLocs = locs().filter((l) => l.id !== id);
-        save(); render(); return;
+        ask("حذف موقع", `<p style="margin:0">حذف <b>${esc((l || {}).name || "")}</b>؟ لا أصناف فيه.</p>`, "احذفه", () => {
+          store.get().invLocs = locs().filter((x) => x.id !== id);
+          save(); render(); toast("حُذف الموقع");
+        }, true);
+        return;
       }
 
       const act = t.closest("[data-act]");
       if (!act) return;
       const a = act.dataset.act;
+      if (a === "ask-yes") { const f = pending; pending = null; closeModal(); if (f) f(); return; }
+      if (a === "note-save") { const b = document.getElementById("inv-note-txt"); return noteSave(b ? b.value : ""); }
+      if (a === "note-del") return noteSave("");
       if (a === "fill") return fillRemaining();
       if (a === "copym") return copyMorning();
       if (a === "reopen") return reopenSession();
@@ -1025,9 +1163,10 @@
         locs().push({ id: uid("l"), name: v, type: "track" });
         save(); render(); toast("أُضيف الموقع");
       }
-    });
+    };
+    root.addEventListener("click", onClick);
 
-    root.addEventListener("change", (e) => {
+    const onChange = (e) => {
       const t = e.target;
       const set = t.closest("[data-set]");
       if (set) { const k = set.dataset.set; return go(null, { [k]: set.value }); }
@@ -1057,24 +1196,41 @@
       }
       if (t.id === "inv-center") { meta().center = normName(t.value); save(); return; }
       if (t.id === "inv-course") { meta().course = normName(t.value); save(); return; }
-    });
+    };
+    root.addEventListener("change", onChange);
 
     root.addEventListener("input", (e) => {
       if (e.target.id === "inv-q") { u.q = e.target.value; drawRows(); }
       if (e.target.id === "inv-iq") { u.iQ = e.target.value; render(); const el = document.getElementById("inv-iq"); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
     });
 
+    /* الإدخال بلوحة المفاتيح: Enter وسهم لأسفل ينتقلان للصنف التالي،
+       وسهم لأعلى للسابق، فيُجرد المسار كلّه دون لمس الفأرة */
     root.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" || !e.target.matches("[data-val]")) return;
+      if (!e.target.matches("[data-val]")) return;
+      const step = e.key === "Enter" || e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+      if (!step) return;
       e.preventDefault();
       const row = e.target.closest(".row[data-id]");
       const ids = $$("#inv-rows .row[data-id]").map((r) => r.dataset.id);
-      const next = ids[ids.indexOf(row.dataset.id) + 1];
+      const to = ids[ids.indexOf(row.dataset.id) + step];
       setVal(row.dataset.id, e.target.value);
-      if (next) { const el = document.querySelector(`#inv-rows .row[data-id="${next}"] input[data-val]`); if (el) el.focus(); }
+      if (!to) { if (step > 0) toast("آخر صنف في القائمة"); return; }
+      const el = document.querySelector(`#inv-rows .row[data-id="${to}"] input[data-val]`);
+      if (el) { el.focus(); el.select(); }
     });
 
-    document.getElementById("inv-modal").addEventListener("click", (e) => { if (e.target.id === "inv-modal") closeModal(); });
+    /* النافذة صارت خارج ‎#view-inventory‎ (في جذر الصفحة) حتى لا يحجبها شيء،
+       ولذلك لا تصل أحداثها إلى مستمع الشاشة: تُربط هنا على المستمعين نفسيهما. */
+    const modal = document.getElementById("inv-modal");
+    if (modal) {
+      modal.addEventListener("click", (e) => { if (e.target.id === "inv-modal") return closeModal(); onClick(e); });
+      modal.addEventListener("change", onChange);
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !modal || !modal.classList.contains("open")) return;
+      closeModal();
+    });
 
     /* ربط مباشر على حقل الملف: لا يعتمد على تفويض الأحداث ولا على بقاء
        العنصر في شجرة الصفحة، فيعمل حتى لو تعطّل أحدهما */
