@@ -244,6 +244,7 @@
           </div>
         </div>
         <div id="inv-prog"></div>
+        <div class="next-step base-step" id="inv-base" hidden></div>
         <div class="next-step" id="inv-next" hidden></div>
         <div class="bar noprint" style="margin-top:10px">
           <div class="search"><input type="search" placeholder="ابحث عن صنف" value="${esc(u.q)}" id="inv-q"></div>
@@ -278,6 +279,23 @@
         ${p.nobase ? `<span>بلا كمية كلية <b>${p.nobase}</b></span>` : ""}</div>`;
     const chips = [["all", "الكل", p.total], ["todo", "لم يُجرد", p.total - p.n], ["diff", "الفروقات", p.short + p.over]];
     $("#inv-chips").innerHTML = chips.map(([k, t, n]) => `<button type="button" class="chip ${u.filter === k ? "on" : ""}" data-chip="${k}">${t}<b>${n}</b></button>`).join("");
+    /* أصناف بلا كمية كلية: لا يعرف لها النظام متوقَّعاً فتظهر «جديد» ولا
+       تُحسب نقصاً ولا زيادة. يُعرض الطريق إلى اعتمادها بدل تركه مجهولاً. */
+    const base = $("#inv-base");
+    if (base) {
+      const its = itemsOf(u.loc).filter((i) => !isUse(i));
+      const none = its.filter((i) => i.qty == null);
+      const counted = none.filter((i) => rowState(i).v != null);
+      base.hidden = !none.length || !!p.done;
+      if (!base.hidden) {
+        base.innerHTML = `<span class="material-symbols-outlined">help</span>
+          <div><b>${none.length}</b> صنفاً بلا كمية كلية مسجّلة، فلا يعرف النظام المتوقَّع منها وتظهر «جديد».
+            <small>${counted.length
+              ? `عُدَّ منها ${counted.length}. اعتمد الأرقام المعدودة كمياتٍ كلية الآن، أو اتركها لتُعتمد عند إغلاق الجلسة.`
+              : "عُدَّها اليوم ثم اعتمد أرقامها، أو اكتب كمياتها في شاشة «الأصناف»."}</small></div>
+          ${counted.length ? `<button class="btn secondary noprint" type="button" data-act="set-base">اعتمد ${counted.length} رقماً</button>` : ""}`;
+      }
+    }
     /* الخطوة التالية مكتوبة صراحة، فلا يحتاج المدرّب أن يخمّن ماذا يفعل بعد العدّ */
     const nx = $("#inv-next");
     if (nx) {
@@ -375,14 +393,14 @@
       const bad = its.filter((i) => { if (isUse(i)) return false; const s = rowState(i).s; return s === "short" || s === "over"; }).length;
       const shut = folded.has(k);
       const full = n === its.length;
-      return `<div class="section-h ${full ? "full" : ""}">
+      return `<div class="section-h ${full ? "full" : ""}" data-sec="${esc(k)}">
           <button type="button" class="sec-tog" data-fold="${esc(k)}" aria-expanded="${shut ? "false" : "true"}" title="${shut ? "إظهار" : "إخفاء"}">
             <span class="material-symbols-outlined">${shut ? "chevron_right" : "expand_more"}</span></button>
           <h3>${esc(k)}</h3>
           <span class="sec-count">${n} من ${its.length}</span>
-          ${bad ? `<span class="pill short">${bad} فرق</span>` : full ? '<span class="pill ok">مكتملة</span>' : ""}
+          <span class="sec-state">${bad ? `<span class="pill short">${bad} فرق</span>` : full ? '<span class="pill ok">مكتملة</span>' : ""}</span>
           <span class="spacer"></span>
-          ${full || its.every(isUse) ? "" : `<button type="button" class="btn small secondary noprint" data-allok="${esc(k)}">الكل مطابق</button>`}
+          ${its.every(isUse) ? "" : `<button type="button" class="btn small secondary noprint" data-allok="${esc(k)}" ${full ? "hidden" : ""}>الكل مطابق</button>`}
         </div>
         <div class="rows" ${shut ? "hidden" : ""}>${shut ? "" : its.map(rowHTML).join("")}</div>`;
     }).join("");
@@ -393,7 +411,28 @@
     const el = document.querySelector(`#inv-rows .row[data-id="${id}"]`);
     const it = itemById(id);
     if (el && it) el.outerHTML = rowHTML(it);
+    refreshSections();
     drawProgress();
+  }
+
+  /* عدّادات المجموعات تُحسب عند الرسم، فكانت تبقى قديمة بعد كل إدخال.
+     تُحدَّث هنا وحدها حتى لا تُعاد كتابة الصفوف ويضيع تركيز الحقل. */
+  function refreshSections() {
+    $$("#inv-rows .section-h[data-sec]").forEach((h) => {
+      const k = h.dataset.sec;
+      const its = itemsOf(u.loc).filter((i) => (i.group ? i.group : CATS[i.cat] || "أخرى") === k);
+      if (!its.length) return;
+      const n = its.filter((i) => isUse(i) ? usedOn(u.date, u.loc, i.id) != null : rowState(i).v != null).length;
+      const bad = its.filter((i) => { if (isUse(i)) return false; const st2 = rowState(i).s; return st2 === "short" || st2 === "over"; }).length;
+      const cnt2 = h.querySelector(".sec-count");
+      if (cnt2) cnt2.textContent = `${n} من ${its.length}`;
+      const full = n === its.length;
+      h.classList.toggle("full", full);
+      const state = h.querySelector(".sec-state");
+      if (state) state.innerHTML = bad ? `<span class="pill short">${bad} فرق</span>` : full ? '<span class="pill ok">مكتملة</span>' : "";
+      const allok = h.querySelector("[data-allok]");
+      if (allok) allok.hidden = full;
+    });
   }
   const sessionClosed = () => {
     const c = cnt(u.date, u.loc);
@@ -432,7 +471,7 @@
       it.inUse = r3(avail);
       delete c.use[id];
       dropUseMove(id);
-      save(); refreshRow(id); drawProgress(); return;
+      save(); refreshRow(id); return;
     }
     next = Math.max(0, next);
     if (next > avail) {
@@ -442,7 +481,7 @@
     it.inUse = r3(avail - next);
     c.use[id] = r3(next);
     logUseMove(it, next);
-    save(); refreshRow(id); drawProgress();
+    save(); refreshRow(id);
   }
   function bumpUse(id, d) {
     const cur = usedOn(u.date, u.loc, id);
@@ -512,6 +551,20 @@
         const c = cnt(u.date, u.loc, true);
         its.forEach((i) => { c[u.ses][i.id] = i.qty; c.x[u.ses][i.id] = i.qty; });
         save(); render(); toast(`سُجّل ${its.length} صنفاً كمطابق`);
+      });
+  }
+
+  /* اعتماد الأرقام المعدودة ككميات كلية للأصناف التي لا كمية لها */
+  function setBaseFromCount() {
+    const c = cnt(u.date, u.loc, true);
+    const list = itemsOf(u.loc).filter((i) => !isUse(i) && i.qty == null && rowState(i).v != null);
+    if (!list.length) return toast("لا صنف معدود بلا كمية كلية");
+    ask("اعتماد الأرقام المعدودة",
+      `<p style="margin:0 0 10px">ستصير الأرقام المعدودة اليوم هي <b>الكمية الكلية</b> لـ <b>${list.length}</b> صنفاً.</p>
+       <div class="note-box">بعدها يعرف النظام المتوقَّع من كل صنف، فتظهر النواقص والزيادات في الأيام التالية. تأكّد أن العدّ تمّ على الأرض أولاً.</div>`,
+      `اعتمد ${list.length} رقماً`, () => {
+        list.forEach((i) => { const v = c[u.ses][i.id]; i.qty = v; c.x[u.ses][i.id] = v; });
+        save(); render(); toast(`اعتُمد ${list.length} صنفاً`);
       });
   }
 
@@ -1281,7 +1334,7 @@
   }
 
   function runImport() {
-    let added = 0, updated = 0, newLocs = 0, skipped = 0;
+    let added = 0, updated = 0, newLocs = 0, skipped = 0, keptQty = 0;
     imp.forEach((sh) => {
       if (sh.locId === "__skip__") return;
       let locId = sh.locId;
@@ -1310,7 +1363,10 @@
         const unit = g(r, "unit"), group = grp, desc = normName(g(r, "desc"));
         if (old) {
           if (unit) old.unit = unit;
-          old.qty = qty;
+          // خانة كمية فارغة تعني «لا معلومة» لا «صفر»: رفع نموذج فارغ فوق
+          // بيانات قائمة كان يمحو كل الكميات المسجَّلة
+          if (qty != null) old.qty = qty;
+          else if (old.qty != null) keptQty++;
           if (min) old.min = min;
           if (group) old.group = group;
           if (desc) old.desc = desc;
@@ -1323,7 +1379,7 @@
       });
     });
     save(); closeModal(); render();
-    toast(`الاستيراد: ${added} صنفاً جديداً و${updated} محدَّثاً${newLocs ? ` و${newLocs} موقعاً جديداً` : ""}${skipped ? ` و${skipped} صفاً متجاوَزاً` : ""}`);
+    toast(`الاستيراد: ${added} صنفاً جديداً و${updated} محدَّثاً${newLocs ? ` و${newLocs} موقعاً جديداً` : ""}${skipped ? ` و${skipped} صفاً متجاوَزاً` : ""}${keptQty ? ` — وأُبقيت كمية ${keptQty} صنفاً كما هي لأن الملف جاء بخانة فارغة` : ""}`);
   }
 
   /* ===== الرسم والأحداث ===== */
@@ -1425,6 +1481,7 @@
       if (a === "print") return window.print();
       if (a === "export-week") return exportWeek().catch((err) => toast(err.message));
       if (a === "export-items") return exportItems().catch((err) => toast(err.message));
+      if (a === "set-base") return setBaseFromCount();
       if (a === "bulk-mat" || a === "bulk-tool") return bulkCat(a === "bulk-mat");
       if (a === "new-item") return itemDlg("");
       if (a === "save-item") return saveItem(act.dataset.id || "");
