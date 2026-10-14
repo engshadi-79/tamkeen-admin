@@ -647,15 +647,12 @@
 
   /* --- الأصناف --- */
   VIEWS.items = () => {
-    const q = normName(u.iQ);
-    const list = items().filter((i) => i.active !== false)
-      .filter((i) => u.iLoc === "all" || i.loc === u.iLoc)
-      .filter((i) => u.iCat === "all" || i.cat === u.iCat)
-      .filter((i) => !q || i.name.includes(q) || String(i.group || "").includes(q));
+    const list = shownItems();
     const rows = list.map((i) => `<tr data-id="${i.id}">
       <td><b>${esc(i.name)}</b>${i.group ? `<div class="sub">${esc(i.group)}</div>` : ""}</td>
       <td class="sub">${esc((locById(i.loc) || {}).name || "")}</td>
-      <td class="sub">${CATS[i.cat] || ""}</td>
+      <td><select class="inv-cell cat-cell" data-cat aria-label="نوع ${esc(i.name)}">${catOptions(i.cat)}</select>
+        ${isUse(i) ? '<span class="pill ok" style="margin-top:4px;display:inline-block">يُستهلك</span>' : ""}</td>
       <td class="sub">${esc(i.unit || "")}</td>
       <td class="n"><input type="number" class="inv-cell" data-qty value="${i.qty == null ? "" : i.qty}" placeholder="—"></td>
       <td class="n">${isUse(i) ? `<input type="number" class="inv-cell" data-inuse value="${inUseOf(i)}">` : '<span class="sub">—</span>'}</td>
@@ -669,6 +666,14 @@
           <label class="btn secondary" for="inv-file" style="cursor:pointer">رفع ملف Excel</label>
           <button class="btn secondary" data-act="export-items">تصدير الأصناف</button>
         </div></div>
+      <div class="note-box" style="margin-bottom:12px">
+        <b>نوع الصنف يحدّد شكله في الجرد اليومي:</b> «مادة مستهلكة» تظهر بثلاث خانات (المخزون، قيد الاستخدام، استهلاك اليوم)، وبقية الأنواع تُعدّ وتُطابَق.
+        غيّره من العمود، أو حوّل المعروض كلّه دفعة واحدة:
+        <span class="bar" style="margin-top:8px">
+          <button class="btn small secondary" type="button" data-act="bulk-mat">اجعل المعروض (${list.length}) مواد مستهلكة</button>
+          <button class="btn small secondary" type="button" data-act="bulk-tool">اجعله أدوات تُعدّ</button>
+        </span>
+      </div>
       <label class="inv-drop" for="inv-file" id="inv-drop">
         <b>اسحب ملف الجرد هنا، أو اضغط لاختياره</b>
         <span>مصنّف Excel ‎.xlsx‎ فيه ورقة لكل مسار (أو ملف ‎.csv‎ لمسار واحد)</span>
@@ -822,6 +827,33 @@
     const it = itemById(itemId);
     addMove({ type, loc: it.loc, itemId, qty, newQty: qty, date: $("#mv-date").value || today(), to: $("#mv-to").value, note: $("#mv-note").value.trim() });
     closeModal();
+  }
+
+  /* الأصناف المعروضة الآن في شاشة الأصناف: ما تراه هو ما يتغيّر */
+  function shownItems() {
+    const q = normName(u.iQ);
+    return items().filter((i) => i.active !== false)
+      .filter((i) => u.iLoc === "all" || i.loc === u.iLoc)
+      .filter((i) => u.iCat === "all" || i.cat === u.iCat)
+      .filter((i) => !q || i.name.includes(q) || String(i.group || "").includes(q));
+  }
+  /* تحويل جماعي: الملفات تأتي بلا عمود نوع، فتُستورد كلها «أداة»
+     ويحتاج المركز أن يحوّل المواد دفعة واحدة بعد التصفية */
+  function bulkCat(toMat) {
+    const list = shownItems();
+    if (!list.length) return toast("لا أصناف معروضة");
+    const names = list.slice(0, 6).map((i) => i.name).join("، ");
+    ask(toMat ? "تحويل إلى مواد مستهلكة" : "تحويل إلى أدوات تُعدّ",
+      `<p style="margin:0 0 10px">سيتغيّر نوع <b>${list.length}</b> صنفاً من المعروض الآن.</p>
+       <div class="note-box">${esc(names)}${list.length > 6 ? ` وغيرها (${list.length - 6})` : ""}</div>
+       <p class="sub" style="margin:10px 0 0">${toMat
+        ? "ستظهر في الجرد اليومي بثلاث خانات: المخزون، وقيد الاستخدام، واستهلاك اليوم. الكميات المسجَّلة لا تتأثّر."
+        : "ستظهر في الجرد اليومي للعدّ والمطابقة. ما كان قيد الاستخدام منها يبقى مسجَّلاً كما هو."}</p>
+       <p class="sub" style="margin:8px 0 0">صفِّ القائمة أولاً بالموقع أو بالبحث إن أردت تحويل جزء منها فقط.</p>`,
+      `حوِّل ${list.length} صنفاً`, () => {
+        list.forEach((i) => { i.cat = toMat ? "material" : "tool"; delete i.use; });
+        save(); render(); toast(`حُوّل ${list.length} صنفاً`);
+      });
   }
 
   /* ===== الأصناف: تحرير وحذف ===== */
@@ -984,6 +1016,10 @@
   };
   /* أعمدة الجدول اليومي لا تصلح حقولاً للصنف */
   const DAY_COL = /^صباحي$|^مسائي$|^(ال)?كميه(ال)?فعليه$|^(ال)?يوم$|^(ال)?تاريخ$|^م$|^#$/;
+  /* وحدات تدلّ وحدها على مادة تُستهلك: الملفات الواقعية بلا عمود «النوع»،
+     فكانت كل الأصناف تُستورد «أداة» ويُطلب عدّ الورق بدل تسجيل استهلاكه. */
+  const MAT_UNIT = /^(دسته|لفه|عبوه|علبه|كيس|اكياس|رزمه|باكيت|كرتون|كرتونه|حزمه|ربطه|متر|سم|كيلو|كغم|جرام|غرام|لتر|مل|جالون|طن|ورقه|اوراق|زجاجه|انبوب|تيوب|بكره|رول|شريط|قلم|طقم استهلاكي)$/;
+  const MAT_NAME = /^(ورق|صمغ|غراء|لاصق|شريط لاصق|خيط|خيوط|شمع|كحول|صابون|قطن|حبر|بطاري|قفاز|كمام|منديل|مناديل|اكياس|كيس|دهان|بوي|صبغ|ملون|فوم|قماش|جلد|خرز|اسلاك|مسامير|براغي|غراء)/;
   function pickCol(headers, key) {
     for (const re of COLS[key]) {
       const hit = headers.find((h) => !DAY_COL.test(normHead(h)) && re.test(normHead(h)));
@@ -1259,9 +1295,13 @@
         const name = normName(r[sh.nameCol]);
         if (!name || HEADER_ROW.test(name)) { skipped++; return; }
         const catText = normHead(g(r, "cat"));
+        const unitText = normHead(g(r, "unit"));
+        const nameNorm = normHead(name);
         const cat = /مكن|ماكين/.test(catText) ? "machine"
           : /ماده|مستهلك|خام/.test(catText) ? "material"
-          : /اثاث|تجهيز|كرسي|طاوله/.test(catText) ? "furniture" : "tool";
+          : /اثاث|تجهيز|كرسي|طاوله/.test(catText) ? "furniture"
+          // بلا عمود نوع: الوحدة ثم الاسم يرجّحان أنها مادة تُستهلك
+          : (MAT_UNIT.test(unitText) || MAT_NAME.test(nameNorm)) ? "material" : "tool";
         // الصنف يتميّز بموقعه واسمه ومكنته: «النمر 1+3» لماكنتين مختلفتين صنفان
         const grp = normName(g(r, "group"));
         const old = items().find((x) => x.loc === locId && normName(x.name) === name && normName(x.group || "") === grp);
@@ -1385,6 +1425,7 @@
       if (a === "print") return window.print();
       if (a === "export-week") return exportWeek().catch((err) => toast(err.message));
       if (a === "export-items") return exportItems().catch((err) => toast(err.message));
+      if (a === "bulk-mat" || a === "bulk-tool") return bulkCat(a === "bulk-mat");
       if (a === "new-item") return itemDlg("");
       if (a === "save-item") return saveItem(act.dataset.id || "");
       if (a === "new-move") return moveDlg();
@@ -1415,6 +1456,7 @@
       if (tr) {
         const it = itemById(tr.dataset.id);
         if (it && t.matches("[data-qty]")) { it.qty = num(t.value); save(); return; }
+        if (it && t.matches("[data-cat]")) { it.cat = t.value; delete it.use; save(); render(); return; }
         if (it && t.matches("[data-inuse]")) { it.inUse = Math.max(0, num(t.value) || 0); save(); return; }
         if (it && t.matches("[data-min]")) { it.min = num(t.value) || 0; save(); return; }
       }

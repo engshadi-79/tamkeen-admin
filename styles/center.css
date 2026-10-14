@@ -706,3 +706,4 @@ html:root:root:root .sheet td.a.st-over { background: var(--over-soft); color: v
   html:root:root:root .row.use { display: flex; flex-wrap: wrap; }
   html:root:root:root .row.use .okb.issue { flex: 0 0 auto; padding: 11px 16px; }
 }
+html:root:root:root select.cat-cell { min-width: 120px; width: auto; text-align: start; }
