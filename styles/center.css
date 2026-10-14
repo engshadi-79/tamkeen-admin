@@ -709,3 +709,8 @@ html:root:root:root .sheet td.a.st-over { background: var(--over-soft); color: v
 html:root:root:root select.cat-cell { min-width: 120px; width: auto; text-align: start; }
 html:root:root:root .next-step.base-step { border-color: var(--nobase); background: color-mix(in srgb, var(--line-2) 70%, transparent); }
 html:root:root:root .next-step.base-step > .material-symbols-outlined { color: var(--nobase); }
+/* ثلاث أدوات في آخر الصف: ملاحظة، ومسح/إرجاع، وتبديل نوع الصنف */
+html:root:root:root .row { grid-template-columns: minmax(0, 1fr) 70px auto 134px 84px 92px 104px; }
+html:root:root:root .row.eve { grid-template-columns: minmax(0, 1fr) 70px 70px 134px 84px 92px 104px; }
+html:root:root:root .row.use { grid-template-columns: minmax(0, 1fr) 72px 92px 78px 134px 100px 104px; }
+html:root:root:root .icon-btn.on { color: var(--teal); background: var(--teal-soft); }
