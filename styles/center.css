@@ -691,3 +691,18 @@ html:root:root:root .start-card { max-width: 760px; }
   html:root:root:root #view-inventory .bar.pick-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   html:root:root:root .pick-bar .pick:first-child { grid-column: 1 / -1; }
 }
+
+/* ===== المواد المستهلكة: المخزون ← قيد الاستخدام ← استهلاك اليوم ===== */
+html:root:root:root .row.use { grid-template-columns: minmax(0, 1fr) 72px 92px 78px 134px 104px 68px; }
+html:root:root:root .row.use { border-inline-start-color: var(--teal); }
+html:root:root:root .kv.in-use b { color: var(--teal); }
+html:root:root:root .kv.in-use small { color: var(--teal); opacity: .85; }
+html:root:root:root .okb.issue { border-color: color-mix(in srgb, var(--teal) 55%, transparent); color: var(--teal); }
+html:root:root:root .okb.issue:hover { background: var(--teal-soft); }
+html:root:root:root .row.is-low { background: color-mix(in srgb, var(--short-soft) 45%, transparent); }
+html:root:root:root .row .diff .pill + .pill { margin-inline-start: 4px; }
+html:root:root:root .sheet td.a.st-over { background: var(--over-soft); color: var(--over); font-weight: 700; }
+@media (max-width: 860px) {
+  html:root:root:root .row.use { display: flex; flex-wrap: wrap; }
+  html:root:root:root .row.use .okb.issue { flex: 0 0 auto; padding: 11px 16px; }
+}
