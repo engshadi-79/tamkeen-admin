@@ -22,6 +22,30 @@
     transfer: { t: "نقل إلى موقع آخر", sign: -1, c: "prog" },
     adjust: { t: "تسوية الكمية", sign: 0, c: "idle" },
   };
+  /* نوع القياس يحدّد الوحدات المعقولة للصنف: ما يُعدّ لا يُوزن.
+     والكميات كلها تُخزَّن بالوحدة الأساسية، والعبوة مجرّد معامل تحويل:
+     «دستة = 12 قطعة» تعني أن إخراج دستة يخصم 12 من المخزون. */
+  const MEASURES = { count: "عدد", weight: "وزن", length: "طول", volume: "حجم", area: "مساحة" };
+  const UNIT_HINTS = {
+    count: ["قطعة", "حبة", "زوج", "طقم", "ورقة"],
+    weight: ["كجم", "جم", "طن"],
+    length: ["متر", "سم", "ملم"],
+    volume: ["لتر", "مل", "جالون"],
+    area: ["م²", "سم²"],
+  };
+  const PACK_HINTS = ["دستة", "كرتونة", "علبة", "عبوة", "كيس", "رزمة", "لفة", "بكرة", "ربطة", "طقم"];
+  const measureOf = (i) => (i && MEASURES[i.measure]) ? i.measure : "count";
+  const baseUnit = (i) => normName((i && i.unit) || "") || (measureOf(i) === "count" ? "قطعة" : "");
+  const packOf = (i) => (i && i.pack && +i.packQty > 0) ? { name: i.pack, n: +i.packQty } : null;
+  /* نصّ الكمية بالوحدة الأساسية، ومعه مقابلها بالعبوة إن وُجدت */
+  function qtyText(i, v) {
+    if (v == null) return "—";
+    const b = baseUnit(i), pk = packOf(i);
+    const main = `${fmtN(v)}${b ? ` ${b}` : ""}`;
+    if (!pk || !v) return main;
+    const p = v / pk.n;
+    return `${main} (${fmtN(p)} ${pk.name})`;
+  }
   const DAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
   const SES = { m: "صباحي", e: "مسائي" };
   const NAV = [["dash", "لوحة المتابعة"], ["count", "الجرد اليومي"], ["week", "كشف الأسبوع"],
@@ -331,11 +355,12 @@
     const used = usedOn(u.date, u.loc, item.id);
     const inU = inUseOf(item);
     const stock = item.qty == null ? null : item.qty;
+    const pk = packOf(item);
     const low = item.min && stock != null && stock + inU <= item.min;
     return `<div class="row use ${used != null ? "st-ok" : ""} ${low ? "is-low" : ""}" data-id="${item.id}">
-      <div class="nm"><b>${esc(item.name)}</b><span class="uu">${esc(item.unit || "")}${item.group ? `، ${esc(item.group)}` : ""}</span>${item.desc ? `<span class="d" title="${esc(item.desc)}">${esc(item.desc)}</span>` : ""}${note ? `<span class="nt">ملاحظة: ${esc(note)}</span>` : ""}</div>
-      <div class="kv"><small>المخزون</small><b>${fmtN(stock)}</b></div>
-      <div class="kv in-use"><small>قيد الاستخدام</small><b>${fmtN(inU)}</b></div>
+      <div class="nm"><b>${esc(item.name)}</b><span class="uu">${esc(baseUnit(item))}${pk ? ` — ${esc(pk.name)} = ${fmtN(pk.n)}` : ""}${item.group ? `، ${esc(item.group)}` : ""}</span>${item.desc ? `<span class="d" title="${esc(item.desc)}">${esc(item.desc)}</span>` : ""}${note ? `<span class="nt">ملاحظة: ${esc(note)}</span>` : ""}</div>
+      <div class="kv"><small>المخزون</small><b>${fmtN(stock)}</b>${pk && stock ? `<i>${fmtN(stock / pk.n)} ${esc(pk.name)}</i>` : ""}</div>
+      <div class="kv in-use"><small>قيد الاستخدام</small><b>${fmtN(inU)}</b>${pk && inU ? `<i>${fmtN(inU / pk.n)} ${esc(pk.name)}</i>` : ""}</div>
       <button type="button" class="okb issue" data-issue title="إخراج كمية من المخزون إلى قيد الاستخدام">أخرِج</button>
       <div class="step"><button type="button" data-ubump="-1" aria-label="إنقاص">−</button><input type="number" inputmode="decimal" min="0" step="any" value="${used == null ? "" : used}" placeholder="—" aria-label="استهلاك اليوم من ${esc(item.name)}" data-use><button type="button" data-ubump="1" aria-label="زيادة">+</button></div>
       <div class="diff">${used == null ? '<span class="sub">استهلاك اليوم</span>'
@@ -510,25 +535,51 @@
   /* إخراج من المخزون إلى قيد الاستخدام */
   function issueDlg(id) {
     const it = itemById(id);
-    const stock = it.qty == null ? 0 : it.qty;
+    const b = baseUnit(it), pk = packOf(it);
     openModal(`إخراج للاستخدام — ${esc(it.name)}`,
-      `<p class="sub" style="margin:0 0 10px">المخزون الآن <b>${fmtN(it.qty)}</b> ${esc(it.unit || "")}، وقيد الاستخدام <b>${fmtN(inUseOf(it))}</b>. ما يُخرَج يُخصم من المخزون ويُضاف إلى قيد الاستخدام.</p>
-       <div class="inv-form"><label class="field"><span>الكمية المُخرَجة</span>
-         <input type="number" id="inv-issue-qty" min="0" step="any" max="${stock}" value="1"></label></div>`,
+      `<p class="sub" style="margin:0 0 10px">المخزون الآن <b>${qtyText(it, it.qty)}</b>، وقيد الاستخدام <b>${qtyText(it, inUseOf(it))}</b>. ما يُخرَج يُخصم من المخزون ويُضاف إلى قيد الاستخدام.</p>
+       <div class="inv-form">
+         <label class="field"><span>الكمية المُخرَجة</span>
+           <input type="number" id="inv-issue-qty" min="0" step="any" value="1"></label>
+         ${pk ? `<label class="field"><span>بأي وحدة</span><select id="inv-issue-unit">
+             <option value="pack" selected>${esc(pk.name)} (= ${fmtN(pk.n)} ${esc(b)})</option>
+             <option value="base">${esc(b)}</option></select></label>` : ""}
+       </div>
+       <div class="note-box" style="margin-top:12px" id="inv-issue-pv"></div>`,
       `<button class="btn secondary" type="button" data-modal-close>إلغاء</button>
        <button class="btn navy" type="button" data-act="do-issue" data-id="${id}">أخرِج</button>`);
-    const b = document.getElementById("inv-issue-qty");
-    if (b) { b.focus(); b.select(); }
+    const q = document.getElementById("inv-issue-qty");
+    const sync = () => {
+      const n = issueBase(it);
+      const pv = document.getElementById("inv-issue-pv");
+      const stock = it.qty == null ? 0 : it.qty;
+      pv.innerHTML = !n ? "اكتب كمية أكبر من صفر."
+        : n > stock ? `<span style="color:var(--short)">المخزون ${qtyText(it, stock)} فقط، ولا يكفي لإخراج ${fmtN(n)} ${esc(b)}.</span>`
+        : `يُخصم <b>${fmtN(n)} ${esc(b)}</b> من المخزون فيبقى <b>${qtyText(it, r3(stock - n))}</b>، ويصير قيد الاستخدام <b>${qtyText(it, r3(inUseOf(it) + n))}</b>.`;
+    };
+    ["inv-issue-qty", "inv-issue-unit"].forEach((k) => {
+      const el = document.getElementById(k);
+      if (el) { el.addEventListener("input", sync); el.addEventListener("change", sync); }
+    });
+    sync();
+    if (q) { q.focus(); q.select(); }
+  }
+  /* الكمية المطلوبة محوَّلة إلى الوحدة الأساسية */
+  function issueBase(it) {
+    const box = document.getElementById("inv-issue-qty");
+    const n = Math.max(0, num(box ? box.value : 0) || 0);
+    const sel = document.getElementById("inv-issue-unit");
+    const pk = packOf(it);
+    return r3((pk && (!sel || sel.value === "pack")) ? n * pk.n : n);
   }
   function doIssue(id) {
     const it = itemById(id);
-    const box = document.getElementById("inv-issue-qty");
-    const n = Math.max(0, num(box ? box.value : 0) || 0);
+    const n = issueBase(it);
     if (!n) { toast("اكتب كمية أكبر من صفر"); return; }
-    if (it.qty != null && n > it.qty) { toast(`المخزون ${fmtN(it.qty)} فقط`); return; }
+    if (it.qty != null && n > it.qty) { toast(`المخزون ${qtyText(it, it.qty)} فقط`); return; }
     addMove({ type: "issue", loc: it.loc, itemId: id, qty: n, date: u.date, note: "إخراج من المخزون إلى قيد الاستخدام" }, true);
     save(); closeModal(); render();
-    toast(`أُخرج ${fmtN(n)} ${it.unit || ""} للاستخدام`);
+    toast(`أُخرج ${fmtN(n)} ${baseUnit(it)} للاستخدام`);
   }
   function backToStock(id) {
     const it = itemById(id);
@@ -554,6 +605,72 @@
         its.forEach((i) => { c[u.ses][i.id] = i.qty; c.x[u.ses][i.id] = i.qty; });
         save(); render(); toast(`سُجّل ${its.length} صنفاً كمطابق`);
       });
+  }
+
+  /* ضبط الوحدات: نوع القياس، والوحدة الأساسية، والعبوة ومعاملها.
+     تُفتح لصنف واحد، أو للأصناف المعروضة كلها بعد التصفية. */
+  let unitTarget = null;
+  function unitsDlg(id) {
+    const many = !id;
+    const list = many ? shownItems() : [itemById(id)].filter(Boolean);
+    if (!list.length) return toast("لا أصناف معروضة");
+    unitTarget = many ? "__shown__" : id;
+    const i = list[0];
+    const m = measureOf(i), pk = packOf(i);
+    const hints = (k) => UNIT_HINTS[k].map((x) => `<option value="${x}">`).join("");
+    openModal(many ? `وحدات ${list.length} صنفاً معروضاً` : `وحدات «${esc(i.name)}»`,
+      `${many ? `<div class="note-box" style="margin-bottom:12px">سيُطبَّق على <b>${list.length}</b> صنفاً معروضاً الآن. صفِّ القائمة بالموقع أو بالبحث أولاً إن أردت جزءاً منها.</div>` : ""}
+       <div class="inv-form">
+         <label class="field"><span>نوع القياس</span>
+           <select id="un-measure">${Object.keys(MEASURES).map((k) => `<option value="${k}" ${m === k ? "selected" : ""}>${MEASURES[k]}</option>`).join("")}</select></label>
+         <label class="field"><span>الوحدة الأساسية — بها تُحسب كل الكميات</span>
+           <input type="text" id="un-unit" list="un-unit-list" value="${esc(baseUnit(i))}" placeholder="قطعة">
+           <datalist id="un-unit-list">${hints(m)}</datalist></label>
+       </div>
+       <h3 style="margin:16px 0 4px">العبوة (اختيارية)</h3>
+       <p class="sub" style="margin:0 0 10px">إن كان الصنف يُشترى ويُخرج بعبوة أكبر: اكتب اسمها وكم وحدة أساسية فيها. عندها يسألك زرّ «أخرِج» بأي وحدة تُخرج، ويخصم المقابل من المخزون.</p>
+       <div class="inv-form">
+         <label class="field"><span>اسم العبوة</span>
+           <input type="text" id="un-pack" list="un-pack-list" value="${esc((pk && pk.name) || "")}" placeholder="دستة">
+           <datalist id="un-pack-list">${PACK_HINTS.map((x) => `<option value="${x}">`).join("")}</datalist></label>
+         <label class="field"><span>كم وحدة أساسية في العبوة</span>
+           <input type="number" id="un-packqty" min="0" step="any" value="${pk ? pk.n : ""}" placeholder="12"></label>
+       </div>
+       <div class="note-box" style="margin-top:12px" id="un-preview"></div>`,
+      `<button class="btn secondary" type="button" data-modal-close>إلغاء</button>
+       <button class="btn navy" type="button" data-act="save-units">حفظ</button>`);
+    const sync = () => {
+      const mm = document.getElementById("un-measure").value;
+      const dl = document.getElementById("un-unit-list");
+      if (dl) dl.innerHTML = hints(mm);
+      const un = normName(document.getElementById("un-unit").value) || (mm === "count" ? "قطعة" : "الوحدة");
+      const pn = normName(document.getElementById("un-pack").value);
+      const pq = num(document.getElementById("un-packqty").value);
+      const box = document.getElementById("un-preview");
+      box.innerHTML = (pn && pq > 0)
+        ? `كل <b>${esc(pn)}</b> = <b>${fmtN(pq)}</b> ${esc(un)}. إخراج <b>2 ${esc(pn)}</b> يخصم <b>${fmtN(pq * 2)} ${esc(un)}</b> من المخزون ويضعها قيد الاستخدام.`
+        : `الكميات كلها بوحدة <b>${esc(un)}</b>، والإخراج بها مباشرة بلا تحويل.`;
+    };
+    ["un-measure", "un-unit", "un-pack", "un-packqty"].forEach((k) => {
+      const el = document.getElementById(k);
+      if (el) { el.addEventListener("input", sync); el.addEventListener("change", sync); }
+    });
+    sync();
+  }
+  function saveUnits() {
+    const m = document.getElementById("un-measure").value;
+    const unit = normName(document.getElementById("un-unit").value);
+    const pack = normName(document.getElementById("un-pack").value);
+    const packQty = num(document.getElementById("un-packqty").value);
+    const list = unitTarget === "__shown__" ? shownItems() : [itemById(unitTarget)].filter(Boolean);
+    list.forEach((i) => {
+      i.measure = m;
+      i.unit = unit;
+      if (pack && packQty > 0) { i.pack = pack; i.packQty = packQty; }
+      else { delete i.pack; delete i.packQty; }
+    });
+    save(); closeModal(); render();
+    toast(`ضُبطت وحدات ${list.length} صنفاً`);
   }
 
   /* تحويل صنف واحد من مكانه في الجرد: أسرع من الذهاب إلى شاشة الأصناف،
@@ -719,8 +836,10 @@
       <td class="sub">${esc((locById(i.loc) || {}).name || "")}</td>
       <td><select class="inv-cell cat-cell" data-cat aria-label="نوع ${esc(i.name)}">${catOptions(i.cat)}</select>
         ${isUse(i) ? '<span class="pill ok" style="margin-top:4px;display:inline-block">يُستهلك</span>' : ""}</td>
-      <td class="sub">${esc(i.unit || "")}</td>
-      <td class="n"><input type="number" class="inv-cell" data-qty value="${i.qty == null ? "" : i.qty}" placeholder="—"></td>
+      <td><button class="btn small secondary unit-btn" type="button" data-act="units" data-id="${i.id}" title="ضبط نوع القياس والوحدة والعبوة">
+        ${esc(baseUnit(i)) || "بلا وحدة"}${packOf(i) ? `<small>${esc(packOf(i).name)} = ${fmtN(packOf(i).n)}</small>` : `<small>${MEASURES[measureOf(i)]}</small>`}</button></td>
+      <td class="n"><input type="number" class="inv-cell" data-qty value="${i.qty == null ? "" : i.qty}" placeholder="—">
+        ${packOf(i) && i.qty ? `<div class="sub">${fmtN(i.qty / packOf(i).n)} ${esc(packOf(i).name)}</div>` : ""}</td>
       <td class="n">${isUse(i) ? `<input type="number" class="inv-cell" data-inuse value="${inUseOf(i)}">` : '<span class="sub">—</span>'}</td>
       <td class="n"><input type="number" class="inv-cell" data-min value="${i.min || 0}"></td>
       <td class="noprint"><button class="btn small secondary" data-edit>تعديل</button> <button class="btn small danger" data-del>حذف</button></td>
@@ -740,6 +859,13 @@
           <button class="btn small secondary" type="button" data-act="bulk-tool">اجعله أدوات تُعدّ</button>
         </span>
       </div>
+      <div class="note-box" style="margin-bottom:12px">
+        <b>الوحدة تُحسب بها كل كميات الصنف.</b> واذا كان يُخرَج بعبوة أكبر — دستة أو كرتونة — فاكتب العبوة ومعاملها، فيسألك زرّ «أخرِج» بأي وحدة تُخرج ويخصم المقابل من المخزون.
+        اضغط الوحدة في الجدول لضبط صنف واحد، أو:
+        <span class="bar" style="margin-top:8px">
+          <button class="btn small secondary" type="button" data-act="units">اضبط وحدات المعروض (${list.length})</button>
+        </span>
+      </div>
       <label class="inv-drop" for="inv-file" id="inv-drop">
         <b>اسحب ملف الجرد هنا، أو اضغط لاختياره</b>
         <span>مصنّف Excel ‎.xlsx‎ فيه ورقة لكل مسار (أو ملف ‎.csv‎ لمسار واحد)</span>
@@ -749,7 +875,7 @@
         <select data-set="iLoc">${locOptions(u.iLoc, true)}</select>
         <select data-set="iCat"><option value="all">كل الأنواع</option>${catOptions(u.iCat)}</select>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>الصنف</th><th>الموقع</th><th>النوع</th><th>الوحدة</th><th class="n">المخزون</th><th class="n">قيد الاستخدام</th><th class="n">الحدّ الأدنى</th><th class="noprint"></th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th>الصنف</th><th>الموقع</th><th>النوع</th><th>الوحدة والعبوة</th><th class="n">المخزون</th><th class="n">قيد الاستخدام</th><th class="n">الحدّ الأدنى</th><th class="noprint"></th></tr></thead>
         <tbody>${rows || '<tr><td colspan="8" class="empty">لا أصناف مطابقة.</td></tr>'}</tbody></table></div>`;
   };
 
@@ -930,7 +1056,10 @@
         <label class="field" style="grid-column:1/-1"><span>اسم الصنف</span><input type="text" id="it-name" value="${esc(i.name)}"></label>
         <label class="field"><span>الموقع</span><select id="it-loc">${locOptions(i.loc)}</select></label>
         <label class="field"><span>النوع</span><select id="it-cat">${catOptions(i.cat)}</select></label>
-        <label class="field"><span>الوحدة</span><input type="text" id="it-unit" value="${esc(i.unit || "")}" placeholder="قطعة، متر"></label>
+        <label class="field"><span>الوحدة الأساسية</span><input type="text" id="it-unit" value="${esc(i.unit || "")}" placeholder="قطعة، متر، كجم"></label>
+        <label class="field"><span>نوع القياس</span><select id="it-measure">${Object.keys(MEASURES).map((k) => `<option value="${k}" ${measureOf(i) === k ? "selected" : ""}>${MEASURES[k]}</option>`).join("")}</select></label>
+        <label class="field"><span>اسم العبوة (اختياري)</span><input type="text" id="it-pack" value="${esc(i.pack || "")}" placeholder="دستة"></label>
+        <label class="field"><span>كم وحدة أساسية في العبوة</span><input type="number" id="it-packqty" min="0" step="any" value="${i.packQty || ""}" placeholder="12"></label>
         <label class="field"><span>المكنة التابع لها</span><input type="text" id="it-group" value="${esc(i.group || "")}" placeholder="اختياري"></label>
         <label class="field"><span>المخزون (الكمية الكلية)</span><input type="number" id="it-qty" value="${i.qty == null ? "" : i.qty}" placeholder="اتركها فارغة إن لم تُعرف"></label>
         <label class="field"><span>قيد الاستخدام</span><input type="number" id="it-inuse" value="${inUseOf(i)}" min="0"></label>
@@ -948,6 +1077,8 @@
       name, loc: $("#it-loc").value, cat: $("#it-cat").value, unit: normName($("#it-unit").value),
       group: normName($("#it-group").value), qty: num($("#it-qty").value), min: num($("#it-min").value) || 0,
       inUse: Math.max(0, num($("#it-inuse").value) || 0), use: $("#it-use").checked,
+      measure: $("#it-measure").value,
+      pack: normName($("#it-pack").value), packQty: num($("#it-packqty").value) || 0,
       desc: normName($("#it-desc").value),
     };
     if (id) Object.assign(itemById(id), data);
@@ -1373,9 +1504,19 @@
         const old = items().find((x) => x.loc === locId && normName(x.name) === name && normName(x.group || "") === grp);
         const qty = num(g(r, "qty"));
         const min = num(g(r, "min")) || 0;
-        const unit = g(r, "unit"), group = grp, desc = normName(g(r, "desc"));
+        let unit = g(r, "unit");
+        // «دستة» في عمود الوحدة: تُسجَّل عبوةً لا وحدةً أساسية، ويبقى معاملها
+        // فارغاً حتى يكتبه المستخدم من «الوحدة والعبوة»
+        let pack = "", measure = "count";
+        if (unit && PACK_HINTS.includes(normName(unit))) { pack = normName(unit); unit = ""; }
+        else if (/^(كجم|كغم|كيلو|جم|غرام|جرام|طن)$/.test(normHead(unit))) measure = "weight";
+        else if (/^(متر|سم|ملم)$/.test(normHead(unit))) measure = "length";
+        else if (/^(لتر|مل|جالون)$/.test(normHead(unit))) measure = "volume";
+        const group = grp, desc = normName(g(r, "desc"));
         if (old) {
           if (unit) old.unit = unit;
+          if (pack && !old.pack) old.pack = pack;
+          if (measure !== "count") old.measure = measure;
           // خانة كمية فارغة تعني «لا معلومة» لا «صفر»: رفع نموذج فارغ فوق
           // بيانات قائمة كان يمحو كل الكميات المسجَّلة
           if (qty != null) old.qty = qty;
@@ -1386,7 +1527,7 @@
           old.active = true;
           updated++;
         } else {
-          items().push({ id: uid("i"), loc: locId, name, unit, qty, min, cat, group, desc, note: "", active: true });
+          items().push({ id: uid("i"), loc: locId, name, unit, qty, min, cat, group, desc, measure, pack, packQty: 0, note: "", active: true });
           added++;
         }
       });
@@ -1496,6 +1637,8 @@
       if (a === "print") return window.print();
       if (a === "export-week") return exportWeek().catch((err) => toast(err.message));
       if (a === "export-items") return exportItems().catch((err) => toast(err.message));
+      if (a === "units") return unitsDlg(act.dataset.id || "");
+      if (a === "save-units") return saveUnits();
       if (a === "set-base") return setBaseFromCount();
       if (a === "bulk-mat" || a === "bulk-tool") return bulkCat(a === "bulk-mat");
       if (a === "new-item") return itemDlg("");

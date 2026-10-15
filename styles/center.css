@@ -714,3 +714,8 @@ html:root:root:root .row { grid-template-columns: minmax(0, 1fr) 70px auto 134px
 html:root:root:root .row.eve { grid-template-columns: minmax(0, 1fr) 70px 70px 134px 84px 92px 104px; }
 html:root:root:root .row.use { grid-template-columns: minmax(0, 1fr) 72px 92px 78px 134px 100px 104px; }
 html:root:root:root .icon-btn.on { color: var(--teal); background: var(--teal-soft); }
+
+/* ===== الوحدة والعبوة ===== */
+html:root:root:root .unit-btn { display: grid; gap: 1px; min-width: 104px; line-height: 1.25; text-align: center; }
+html:root:root:root .unit-btn small { color: var(--muted); font-size: 11px; font-weight: 500; }
+html:root:root:root .row .kv i { display: block; color: var(--muted); font-size: 10.5px; font-style: normal; }
