@@ -36,15 +36,60 @@
   const PACK_HINTS = ["دستة", "كرتونة", "علبة", "عبوة", "كيس", "رزمة", "لفة", "بكرة", "ربطة", "طقم"];
   const measureOf = (i) => (i && MEASURES[i.measure]) ? i.measure : "count";
   const baseUnit = (i) => normName((i && i.unit) || "") || (measureOf(i) === "count" ? "قطعة" : "");
-  const packOf = (i) => (i && i.pack && +i.packQty > 0) ? { name: i.pack, n: +i.packQty } : null;
-  /* نصّ الكمية بالوحدة الأساسية، ومعه مقابلها بالعبوة إن وُجدت */
+
+  /* سُلّم الوحدات: الوحدة الأساسية أولاً ثم ما فوقها، لكل مستوى كم يضمّ
+     من المستوى الذي تحته. «دفتر فيه 20 عبوة، والعبوة فيها 10 شفرات»
+     يصير: [شفرة ×1] [عبوة ×10 = 10] [دفتر ×20 = 200].
+     كل الكميات تُخزَّن بالوحدة الأساسية، والسُلّم للعرض والتحويل فقط. */
+  function ladder(i) {
+    const out = [{ name: baseUnit(i), n: 1, factor: 1 }];
+    const raw = Array.isArray(i && i.units) ? i.units : null;
+    if (raw) {
+      let f = 1;
+      raw.forEach((lv, k) => {
+        if (!k) return;                       // المستوى الأول هو الأساسية نفسها
+        const n = Math.max(1, +lv.n || 1);
+        f *= n;
+        out.push({ name: normName(lv.name) || `وحدة ${k}`, n, factor: f });
+      });
+      return out;
+    }
+    // توافق مع الصيغة السابقة: عبوة واحدة بمعاملها
+    if (i && i.pack && +i.packQty > 0) out.push({ name: i.pack, n: +i.packQty, factor: +i.packQty });
+    return out;
+  }
+  const topUnit = (i) => { const L = ladder(i); return L[L.length - 1]; };
+  const packOf = (i) => { const L = ladder(i); return L.length > 1 ? { name: L[L.length - 1].name, n: L[L.length - 1].factor } : null; };
+  /* المستوى الذي يُكتب به استهلاك اليوم */
+  function useLevel(i) {
+    const L = ladder(i);
+    const k = Math.min(Math.max(0, +(i && i.useUnit) || 0), L.length - 1);
+    return Object.assign({ k }, L[k]);
+  }
+
+  /* تفكيك كمية أساسية إلى «4 دفتر، 15 عبوة، 5 شفرة» */
+  function qtyParts(i, v) {
+    if (v == null) return "—";
+    const L = ladder(i);
+    if (L.length === 1) return `${fmtN(v)}${L[0].name ? ` ${L[0].name}` : ""}`;
+    let rest = v;
+    const out = [];
+    for (let k = L.length - 1; k >= 0; k--) {
+      const f = L[k].factor;
+      const n = k ? Math.floor(r3(rest) / f) : r3(rest / f);
+      if (n > 0 || (!out.length && !k)) out.push(`${fmtN(n)} ${L[k].name}`);
+      rest = r3(rest - n * f);
+    }
+    return out.length ? out.join("، ") : `0 ${L[0].name}`;
+  }
+  /* نصّ الكمية: التفكيك أولاً ومعه الأصل بالوحدة الأساسية */
   function qtyText(i, v) {
     if (v == null) return "—";
-    const b = baseUnit(i), pk = packOf(i);
-    const main = `${fmtN(v)}${b ? ` ${b}` : ""}`;
-    if (!pk || !v) return main;
-    const p = v / pk.n;
-    return `${main} (${fmtN(p)} ${pk.name})`;
+    const L = ladder(i);
+    const parts = qtyParts(i, v);
+    const base = `${fmtN(v)} ${L[0].name}`.trim();
+    if (L.length === 1 || parts === base) return base;   // لا يُكرَّر الرقم نفسه بين قوسين
+    return `${parts} (${base})`;
   }
   const DAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
   const SES = { m: "صباحي", e: "مسائي" };
@@ -74,6 +119,7 @@
   /* الكميات الكسرية (نصف دستة مثلاً) تُقرَّب فلا تتراكم أخطاء الفاصلة العائمة */
   const r3 = (v) => Math.round((+v + Number.EPSILON) * 1000) / 1000;
   const fmtN = (v) => v == null ? "—" : (Math.round(v * 100) / 100).toLocaleString("en-US");
+  const fmtIn = (v) => v == null ? "" : String(Math.round(v * 1000) / 1000);
   const fmtT = (ts) => new Date(ts).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" });
   const normName = (s) => String(s || "").replace(/\s+/g, " ").trim();
   const toast = (m) => ui.toast(m);
@@ -355,17 +401,17 @@
     const used = usedOn(u.date, u.loc, item.id);
     const inU = inUseOf(item);
     const stock = item.qty == null ? null : item.qty;
-    const pk = packOf(item);
+    const L = ladder(item), multi = L.length > 1, ul = useLevel(item);
     const low = item.min && stock != null && stock + inU <= item.min;
     return `<div class="row use ${used != null ? "st-ok" : ""} ${low ? "is-low" : ""}" data-id="${item.id}">
-      <div class="nm"><b>${esc(item.name)}</b><span class="uu">${esc(baseUnit(item))}${pk ? ` — ${esc(pk.name)} = ${fmtN(pk.n)}` : ""}${item.group ? `، ${esc(item.group)}` : ""}</span>${item.desc ? `<span class="d" title="${esc(item.desc)}">${esc(item.desc)}</span>` : ""}${note ? `<span class="nt">ملاحظة: ${esc(note)}</span>` : ""}</div>
-      <div class="kv"><small>المخزون</small><b>${fmtN(stock)}</b>${pk && stock ? `<i>${fmtN(stock / pk.n)} ${esc(pk.name)}</i>` : ""}</div>
-      <div class="kv in-use"><small>قيد الاستخدام</small><b>${fmtN(inU)}</b>${pk && inU ? `<i>${fmtN(inU / pk.n)} ${esc(pk.name)}</i>` : ""}</div>
+      <div class="nm"><b>${esc(item.name)}</b><span class="uu">${L.map((lv, k) => k ? `${esc(lv.name)} = ${fmtN(lv.n)} ${esc(L[k - 1].name)}` : esc(lv.name)).join(" — ")}${item.group ? `، ${esc(item.group)}` : ""}</span>${item.desc ? `<span class="d" title="${esc(item.desc)}">${esc(item.desc)}</span>` : ""}${note ? `<span class="nt">ملاحظة: ${esc(note)}</span>` : ""}</div>
+      <div class="kv"><small>المخزون</small><b>${multi ? qtyParts(item, stock) : fmtN(stock)}</b>${multi && stock ? `<i>${fmtN(stock)} ${esc(L[0].name)}</i>` : ""}</div>
+      <div class="kv in-use"><small>قيد الاستخدام</small><b>${multi ? qtyParts(item, inU) : fmtN(inU)}</b>${multi && inU ? `<i>${fmtN(inU)} ${esc(L[0].name)}</i>` : ""}</div>
       <button type="button" class="okb issue" data-issue title="إخراج كمية من المخزون إلى قيد الاستخدام">أخرِج</button>
-      <div class="step"><button type="button" data-ubump="-1" aria-label="إنقاص">−</button><input type="number" inputmode="decimal" min="0" step="any" value="${used == null ? "" : used}" placeholder="—" aria-label="استهلاك اليوم من ${esc(item.name)}" data-use><button type="button" data-ubump="1" aria-label="زيادة">+</button></div>
-      <div class="diff">${used == null ? '<span class="sub">استهلاك اليوم</span>'
+      <div class="step"><button type="button" data-ubump="-1" aria-label="إنقاص">−</button><input type="number" inputmode="decimal" min="0" step="any" value="${used == null ? "" : fmtIn(used / ul.factor)}" placeholder="—" aria-label="استهلاك اليوم من ${esc(item.name)} بوحدة ${esc(ul.name)}" data-use><button type="button" data-ubump="1" aria-label="زيادة">+</button></div>
+      <div class="diff">${used == null ? `<span class="sub">استهلاك اليوم<br>${esc(ul.name)}</span>`
         : used === 0 ? '<span class="pill ok">بلا استهلاك</span>'
-        : `<span class="pill over">−${fmtN(used)}</span>`}${low ? '<span class="pill short">بلغ الحدّ</span>' : ""}</div>
+        : `<span class="pill over">−${fmtN(used / ul.factor)} ${esc(ul.name)}</span>`}${low ? '<span class="pill short">بلغ الحدّ</span>' : ""}</div>
       <div class="row-tools">
         <button type="button" class="icon-btn ${note ? "has" : ""}" data-note title="ملاحظة على هذا الصنف" aria-label="ملاحظة"><span class="material-symbols-outlined btn-ico">sticky_note_2</span></button>
         ${inU > 0 ? '<button type="button" class="icon-btn" data-back title="إرجاع ما بقي قيد الاستخدام إلى المخزون" aria-label="إرجاع"><span class="material-symbols-outlined btn-ico">undo</span></button>' : "<span></span>"}
@@ -486,10 +532,12 @@
   const useKeyOf = (date, loc, id) => `use|${date}|${loc}|${id}`;
 
   /* استهلاك اليوم: يُخصم من «قيد الاستخدام» وحده، ولا يمسّ المخزون */
-  function setUse(id, raw) {
+  /* الرقم المكتوب بوحدة الاستهلاك يُحوَّل إلى الوحدة الأساسية قبل الخصم */
+  function setUse(id, raw, inBase) {
     if (sessionClosed()) return;
     const it = itemById(id);
     if (!it) return;
+    const ul = useLevel(it);
     const c = cnt(u.date, u.loc, true);
     const prev = c.use[id] == null ? 0 : c.use[id];
     const avail = r3(inUseOf(it) + prev);      // ما كان قيد الاستخدام قبل تسجيل اليوم
@@ -500,10 +548,24 @@
       dropUseMove(id);
       save(); refreshRow(id); return;
     }
-    next = Math.max(0, next);
+    next = r3(Math.max(0, next) * (inBase ? 1 : ul.factor));
     if (next > avail) {
+      // ما هو قيد الاستخدام لا يكفي: يُعرض سحب وحدة أكبر من المخزون وإكمال الخصم
+      const L = ladder(it), top = L[L.length - 1];
+      const stock = it.qty == null ? 0 : it.qty;
+      const packs = Math.ceil(r3(next - avail) / top.factor);
+      if (L.length > 1 && stock >= packs * top.factor) {
+        return ask("انتهى ما هو قيد الاستخدام",
+          `<p style="margin:0 0 10px">المطلوب <b>${qtyParts(it, next)}</b>، وقيد الاستخدام <b>${qtyParts(it, avail)}</b> فقط.</p>
+           <div class="note-box">يُخرَج <b>${fmtN(packs)} ${esc(top.name)}</b> من المخزون فيبقى فيه <b>${qtyParts(it, r3(stock - packs * top.factor))}</b>، ثم يُخصم استهلاك اليوم كاملاً.</div>`,
+          `أخرِج ${fmtN(packs)} ${top.name} وأكمل`, () => {
+            addMove({ type: "issue", loc: it.loc, itemId: id, qty: packs * top.factor, date: u.date, note: "إخراج عند نفاد ما هو قيد الاستخدام" }, true);
+            setUse(id, next, true);
+            render();
+          });
+      }
       next = avail;
-      toast(`قيد الاستخدام ${fmtN(avail)} فقط — أخرِج كمية جديدة من المخزون أولاً`);
+      toast(`قيد الاستخدام ${qtyParts(it, avail)} فقط — أخرِج كمية جديدة من المخزون أولاً`);
     }
     it.inUse = r3(avail - next);
     c.use[id] = r3(next);
@@ -511,8 +573,10 @@
     save(); refreshRow(id);
   }
   function bumpUse(id, d) {
+    const it = itemById(id);
+    const ul = useLevel(it);
     const cur = usedOn(u.date, u.loc, id);
-    setUse(id, Math.max(0, (cur == null ? 0 : cur) + d));
+    setUse(id, Math.max(0, r3((cur == null ? 0 : cur) / ul.factor) + d));
   }
   function dropUseMove(id) {
     const k = useKeyOf(u.date, u.loc, id);
@@ -535,15 +599,15 @@
   /* إخراج من المخزون إلى قيد الاستخدام */
   function issueDlg(id) {
     const it = itemById(id);
-    const b = baseUnit(it), pk = packOf(it);
+    const b = baseUnit(it), L = ladder(it);
     openModal(`إخراج للاستخدام — ${esc(it.name)}`,
       `<p class="sub" style="margin:0 0 10px">المخزون الآن <b>${qtyText(it, it.qty)}</b>، وقيد الاستخدام <b>${qtyText(it, inUseOf(it))}</b>. ما يُخرَج يُخصم من المخزون ويُضاف إلى قيد الاستخدام.</p>
        <div class="inv-form">
          <label class="field"><span>الكمية المُخرَجة</span>
            <input type="number" id="inv-issue-qty" min="0" step="any" value="1"></label>
-         ${pk ? `<label class="field"><span>بأي وحدة</span><select id="inv-issue-unit">
-             <option value="pack" selected>${esc(pk.name)} (= ${fmtN(pk.n)} ${esc(b)})</option>
-             <option value="base">${esc(b)}</option></select></label>` : ""}
+         ${L.length > 1 ? `<label class="field"><span>بأي وحدة</span><select id="inv-issue-unit">
+             ${L.map((lv, k) => `<option value="${k}" ${k === L.length - 1 ? "selected" : ""}>${esc(lv.name)}${k ? ` (= ${fmtN(lv.factor)} ${esc(L[0].name)})` : ""}</option>`).reverse().join("")}
+           </select></label>` : ""}
        </div>
        <div class="note-box" style="margin-top:12px" id="inv-issue-pv"></div>`,
       `<button class="btn secondary" type="button" data-modal-close>إلغاء</button>
@@ -568,9 +632,10 @@
   function issueBase(it) {
     const box = document.getElementById("inv-issue-qty");
     const n = Math.max(0, num(box ? box.value : 0) || 0);
+    const L = ladder(it);
     const sel = document.getElementById("inv-issue-unit");
-    const pk = packOf(it);
-    return r3((pk && (!sel || sel.value === "pack")) ? n * pk.n : n);
+    const k = sel ? Math.min(+sel.value || 0, L.length - 1) : L.length - 1;
+    return r3(n * L[k].factor);
   }
   function doIssue(id) {
     const it = itemById(id);
@@ -609,65 +674,80 @@
 
   /* ضبط الوحدات: نوع القياس، والوحدة الأساسية، والعبوة ومعاملها.
      تُفتح لصنف واحد، أو للأصناف المعروضة كلها بعد التصفية. */
-  let unitTarget = null;
+  let unitTarget = null, unitRows = [];
   function unitsDlg(id) {
     const many = !id;
     const list = many ? shownItems() : [itemById(id)].filter(Boolean);
     if (!list.length) return toast("لا أصناف معروضة");
     unitTarget = many ? "__shown__" : id;
     const i = list[0];
-    const m = measureOf(i), pk = packOf(i);
-    const hints = (k) => UNIT_HINTS[k].map((x) => `<option value="${x}">`).join("");
+    const L = ladder(i);
+    unitRows = L.map((lv, k) => ({ name: lv.name, n: k ? lv.n : 1 }));
     openModal(many ? `وحدات ${list.length} صنفاً معروضاً` : `وحدات «${esc(i.name)}»`,
       `${many ? `<div class="note-box" style="margin-bottom:12px">سيُطبَّق على <b>${list.length}</b> صنفاً معروضاً الآن. صفِّ القائمة بالموقع أو بالبحث أولاً إن أردت جزءاً منها.</div>` : ""}
-       <div class="inv-form">
-         <label class="field"><span>نوع القياس</span>
-           <select id="un-measure">${Object.keys(MEASURES).map((k) => `<option value="${k}" ${m === k ? "selected" : ""}>${MEASURES[k]}</option>`).join("")}</select></label>
-         <label class="field"><span>الوحدة الأساسية — بها تُحسب كل الكميات</span>
-           <input type="text" id="un-unit" list="un-unit-list" value="${esc(baseUnit(i))}" placeholder="قطعة">
-           <datalist id="un-unit-list">${hints(m)}</datalist></label>
-       </div>
-       <h3 style="margin:16px 0 4px">العبوة (اختيارية)</h3>
-       <p class="sub" style="margin:0 0 10px">إن كان الصنف يُشترى ويُخرج بعبوة أكبر: اكتب اسمها وكم وحدة أساسية فيها. عندها يسألك زرّ «أخرِج» بأي وحدة تُخرج، ويخصم المقابل من المخزون.</p>
-       <div class="inv-form">
-         <label class="field"><span>اسم العبوة</span>
-           <input type="text" id="un-pack" list="un-pack-list" value="${esc((pk && pk.name) || "")}" placeholder="دستة">
-           <datalist id="un-pack-list">${PACK_HINTS.map((x) => `<option value="${x}">`).join("")}</datalist></label>
-         <label class="field"><span>كم وحدة أساسية في العبوة</span>
-           <input type="number" id="un-packqty" min="0" step="any" value="${pk ? pk.n : ""}" placeholder="12"></label>
-       </div>
+       <label class="field" style="max-width:220px"><span>نوع القياس</span>
+         <select id="un-measure">${Object.keys(MEASURES).map((k) => `<option value="${k}" ${measureOf(i) === k ? "selected" : ""}>${MEASURES[k]}</option>`).join("")}</select></label>
+       <h3 style="margin:16px 0 4px">سُلّم الوحدات</h3>
+       <p class="sub" style="margin:0 0 10px">ابدأ بأصغر وحدة تُستعمل فعلاً، ثم أضف ما يضمّها فوقها. مثال شفرات الحلاقة: <b>شفرة</b>، ثم <b>عبوة</b> فيها 10 شفرات، ثم <b>دفتر</b> فيه 20 عبوة.</p>
+       <div id="un-rows"></div>
+       <div class="bar" style="margin-top:8px"><button class="btn small secondary" type="button" id="un-add">أضف وحدة أكبر</button></div>
+       <label class="field" style="max-width:260px;margin-top:14px"><span>وحدة الاستهلاك اليومي — بها يكتب المدرّب</span>
+         <select id="un-useunit"></select></label>
        <div class="note-box" style="margin-top:12px" id="un-preview"></div>`,
       `<button class="btn secondary" type="button" data-modal-close>إلغاء</button>
        <button class="btn navy" type="button" data-act="save-units">حفظ</button>`);
-    const sync = () => {
-      const mm = document.getElementById("un-measure").value;
-      const dl = document.getElementById("un-unit-list");
-      if (dl) dl.innerHTML = hints(mm);
-      const un = normName(document.getElementById("un-unit").value) || (mm === "count" ? "قطعة" : "الوحدة");
-      const pn = normName(document.getElementById("un-pack").value);
-      const pq = num(document.getElementById("un-packqty").value);
-      const box = document.getElementById("un-preview");
-      box.innerHTML = (pn && pq > 0)
-        ? `كل <b>${esc(pn)}</b> = <b>${fmtN(pq)}</b> ${esc(un)}. إخراج <b>2 ${esc(pn)}</b> يخصم <b>${fmtN(pq * 2)} ${esc(un)}</b> من المخزون ويضعها قيد الاستخدام.`
-        : `الكميات كلها بوحدة <b>${esc(un)}</b>، والإخراج بها مباشرة بلا تحويل.`;
-    };
-    ["un-measure", "un-unit", "un-pack", "un-packqty"].forEach((k) => {
-      const el = document.getElementById(k);
-      if (el) { el.addEventListener("input", sync); el.addEventListener("change", sync); }
-    });
-    sync();
+    unitRowsDraw(+(i.useUnit || 0));
   }
-  function saveUnits() {
+
+  function unitRowsDraw(useIdx) {
+    const box = document.getElementById("un-rows");
+    if (!box) return;
     const m = document.getElementById("un-measure").value;
-    const unit = normName(document.getElementById("un-unit").value);
-    const pack = normName(document.getElementById("un-pack").value);
-    const packQty = num(document.getElementById("un-packqty").value);
+    box.innerHTML = unitRows.map((lv, k) => `<div class="unit-row" data-k="${k}">
+      <span class="unit-lvl">${k ? `يضمّ` : "الوحدة الأساسية"}</span>
+      ${k ? `<input type="number" class="unit-n" min="1" step="any" value="${lv.n || ""}" data-un-n="${k}" placeholder="10">
+             <span class="unit-of">من «${esc(unitRows[k - 1].name || "…")}»، واسمها</span>` : ""}
+      <input type="text" class="unit-name" value="${esc(lv.name || "")}" data-un-name="${k}" list="un-hints-${k}" placeholder="${k ? "عبوة" : "قطعة"}">
+      <datalist id="un-hints-${k}">${(k ? PACK_HINTS : UNIT_HINTS[m]).map((x) => `<option value="${x}">`).join("")}</datalist>
+      ${k ? `<button type="button" class="icon-btn" data-un-del="${k}" title="احذف هذا المستوى"><span class="material-symbols-outlined btn-ico">close</span></button>` : "<span></span>"}
+    </div>`).join("");
+    const sel = document.getElementById("un-useunit");
+    const cur = useIdx == null ? +sel.value || 0 : useIdx;
+    sel.innerHTML = unitRows.map((lv, k) => `<option value="${k}" ${k === Math.min(cur, unitRows.length - 1) ? "selected" : ""}>${esc(lv.name || "…")}</option>`).join("");
+    unitPreview();
+  }
+
+  function unitReadRows() {
+    $$("#un-rows [data-un-name]").forEach((el) => { unitRows[+el.dataset.unName].name = normName(el.value); });
+    $$("#un-rows [data-un-n]").forEach((el) => { unitRows[+el.dataset.unN].n = Math.max(1, num(el.value) || 1); });
+  }
+
+  function unitPreview() {
+    const box = document.getElementById("un-preview");
+    if (!box) return;
+    const fake = { unit: unitRows[0].name, units: unitRows.map((lv, k) => k ? { name: lv.name, n: lv.n } : { name: lv.name }) };
+    const L = ladder(fake);
+    if (L.length === 1) { box.innerHTML = `الكميات كلها بوحدة <b>${esc(L[0].name || "…")}</b>، والإخراج بها مباشرة بلا تحويل.`; return; }
+    const top = L[L.length - 1];
+    const uk = Math.min(+document.getElementById("un-useunit").value || 0, L.length - 1);
+    box.innerHTML = `${L.slice(1).map((lv, k) => `<b>${esc(lv.name)}</b> = ${fmtN(lv.n)} ${esc(L[k].name)}`).join("، و")}
+      — أي أن <b>${esc(top.name)}</b> واحداً = <b>${fmtN(top.factor)} ${esc(L[0].name)}</b>.
+      <br>إخراج <b>${esc(top.name)}</b> واحد يضع <b>${fmtN(top.factor / L[uk].factor)} ${esc(L[uk].name)}</b> قيد الاستخدام، يُخصم منها استهلاك كل يوم حتى تنتهي.`;
+  }
+
+  function saveUnits() {
+    unitReadRows();
+    const m = document.getElementById("un-measure").value;
+    const useUnit = Math.min(+document.getElementById("un-useunit").value || 0, unitRows.length - 1);
+    const rows = unitRows.filter((lv, k) => !k || lv.name);
+    if (!rows[0].name) return toast("اكتب اسم الوحدة الأساسية");
     const list = unitTarget === "__shown__" ? shownItems() : [itemById(unitTarget)].filter(Boolean);
     list.forEach((i) => {
       i.measure = m;
-      i.unit = unit;
-      if (pack && packQty > 0) { i.pack = pack; i.packQty = packQty; }
-      else { delete i.pack; delete i.packQty; }
+      i.unit = rows[0].name;
+      i.units = rows.map((lv, k) => k ? { name: lv.name, n: lv.n } : { name: lv.name });
+      i.useUnit = useUnit;
+      delete i.pack; delete i.packQty;      // الصيغة القديمة استُبدلت بالسُلّم
     });
     save(); closeModal(); render();
     toast(`ضُبطت وحدات ${list.length} صنفاً`);
@@ -787,16 +867,17 @@
     // المواد المستهلكة لها كشفها: استهلاك كل يوم ومجموع الأسبوع
     const mats = all.filter(isUse), its = all.filter((i) => !isUse(i));
     const useBody = mats.map((i, k) => {
+      const ul = useLevel(i);
       const per = wd.map((d) => usedOn(d, u.weekLoc, i.id));
       const sum = per.reduce((a, v) => a + (v || 0), 0);
-      return `<tr><td>${k + 1}</td><td class="nm">${esc(i.name)}</td><td>${esc(i.unit || "")}</td>
-        <td><b>${fmtN(i.qty)}</b></td><td><b>${fmtN(inUseOf(i))}</b></td>
-        ${per.map((v) => `<td class="${v ? "a st-over" : ""}">${v == null ? "" : fmtN(v)}</td>`).join("")}
-        <td><b>${sum ? fmtN(sum) : ""}</b></td></tr>`;
+      return `<tr><td>${k + 1}</td><td class="nm">${esc(i.name)}</td><td>${esc(ul.name)}</td>
+        <td><b>${qtyParts(i, i.qty)}</b></td><td><b>${qtyParts(i, inUseOf(i))}</b></td>
+        ${per.map((v) => `<td class="${v ? "a st-over" : ""}">${v == null ? "" : fmtN(v / ul.factor)}</td>`).join("")}
+        <td><b>${sum ? fmtN(sum / ul.factor) : ""}</b></td></tr>`;
     }).join("");
     const useTbl = mats.length ? `<h2 style="margin:4px 0 8px">استهلاك المواد خلال الأسبوع</h2>
       <div class="table-wrap" style="margin-bottom:22px"><table class="sheet"><thead>
-        <tr><th>م</th><th>المادة</th><th>الوحدة</th><th>المخزون</th><th>قيد الاستخدام</th>${wd.map((d) => `<th class="day">${dayName(d).slice(0, 3)}<br>${fmtD(d).slice(0, 5)}</th>`).join("")}<th>مجموع الأسبوع</th></tr>
+        <tr><th>م</th><th>المادة</th><th>وحدة الاستهلاك</th><th>المخزون</th><th>قيد الاستخدام</th>${wd.map((d) => `<th class="day">${dayName(d).slice(0, 3)}<br>${fmtD(d).slice(0, 5)}</th>`).join("")}<th>مجموع الأسبوع</th></tr>
       </thead><tbody>${useBody}</tbody></table></div>` : "";
     let lastGroup = null;
     const body = its.map((i, k) => {
@@ -836,11 +917,14 @@
       <td class="sub">${esc((locById(i.loc) || {}).name || "")}</td>
       <td><select class="inv-cell cat-cell" data-cat aria-label="نوع ${esc(i.name)}">${catOptions(i.cat)}</select>
         ${isUse(i) ? '<span class="pill ok" style="margin-top:4px;display:inline-block">يُستهلك</span>' : ""}</td>
-      <td><button class="btn small secondary unit-btn" type="button" data-act="units" data-id="${i.id}" title="ضبط نوع القياس والوحدة والعبوة">
-        ${esc(baseUnit(i)) || "بلا وحدة"}${packOf(i) ? `<small>${esc(packOf(i).name)} = ${fmtN(packOf(i).n)}</small>` : `<small>${MEASURES[measureOf(i)]}</small>`}</button></td>
+      <td><button class="btn small secondary unit-btn" type="button" data-act="units" data-id="${i.id}" title="ضبط نوع القياس وسُلّم الوحدات">
+        ${esc(baseUnit(i)) || "بلا وحدة"}${ladder(i).length > 1
+          ? `<small>${ladder(i).slice(1).map((lv, k) => `${esc(lv.name)} = ${fmtN(lv.n)} ${esc(ladder(i)[k].name)}`).join("، ")}</small>`
+          : `<small>${MEASURES[measureOf(i)]}</small>`}</button></td>
       <td class="n"><input type="number" class="inv-cell" data-qty value="${i.qty == null ? "" : i.qty}" placeholder="—">
-        ${packOf(i) && i.qty ? `<div class="sub">${fmtN(i.qty / packOf(i).n)} ${esc(packOf(i).name)}</div>` : ""}</td>
-      <td class="n">${isUse(i) ? `<input type="number" class="inv-cell" data-inuse value="${inUseOf(i)}">` : '<span class="sub">—</span>'}</td>
+        ${ladder(i).length > 1 && i.qty ? `<div class="sub">${qtyParts(i, i.qty)}</div>` : ""}</td>
+      <td class="n">${isUse(i) ? `<input type="number" class="inv-cell" data-inuse value="${inUseOf(i)}">
+        ${ladder(i).length > 1 && inUseOf(i) ? `<div class="sub">${qtyParts(i, inUseOf(i))}</div>` : ""}` : '<span class="sub">—</span>'}</td>
       <td class="n"><input type="number" class="inv-cell" data-min value="${i.min || 0}"></td>
       <td class="noprint"><button class="btn small secondary" data-edit>تعديل</button> <button class="btn small danger" data-del>حذف</button></td>
     </tr>`).join("");
@@ -860,7 +944,8 @@
         </span>
       </div>
       <div class="note-box" style="margin-bottom:12px">
-        <b>الوحدة تُحسب بها كل كميات الصنف.</b> واذا كان يُخرَج بعبوة أكبر — دستة أو كرتونة — فاكتب العبوة ومعاملها، فيسألك زرّ «أخرِج» بأي وحدة تُخرج ويخصم المقابل من المخزون.
+        <b>الوحدة تُحسب بها كل كميات الصنف</b>، ويمكن بناء سُلّم فوقها بأي عدد من المستويات: <span dir="rtl">شفرة ← عبوة فيها 10 شفرات ← دفتر فيه 20 عبوة</span>.
+        عندها يسألك زرّ «أخرِج» بأي وحدة تُخرج، ويُكتب الاستهلاك اليومي بالوحدة التي تختارها، وإذا نفد ما هو قيد الاستخدام عُرض عليك إخراج وحدة جديدة.
         اضغط الوحدة في الجدول لضبط صنف واحد، أو:
         <span class="bar" style="margin-top:8px">
           <button class="btn small secondary" type="button" data-act="units">اضبط وحدات المعروض (${list.length})</button>
@@ -1058,8 +1143,9 @@
         <label class="field"><span>النوع</span><select id="it-cat">${catOptions(i.cat)}</select></label>
         <label class="field"><span>الوحدة الأساسية</span><input type="text" id="it-unit" value="${esc(i.unit || "")}" placeholder="قطعة، متر، كجم"></label>
         <label class="field"><span>نوع القياس</span><select id="it-measure">${Object.keys(MEASURES).map((k) => `<option value="${k}" ${measureOf(i) === k ? "selected" : ""}>${MEASURES[k]}</option>`).join("")}</select></label>
-        <label class="field"><span>اسم العبوة (اختياري)</span><input type="text" id="it-pack" value="${esc(i.pack || "")}" placeholder="دستة"></label>
-        <label class="field"><span>كم وحدة أساسية في العبوة</span><input type="number" id="it-packqty" min="0" step="any" value="${i.packQty || ""}" placeholder="12"></label>
+        ${id ? `<div class="field" style="grid-column:1/-1"><span>سُلّم الوحدات</span>
+          <div class="note-box">${esc(ladder(i).map((lv, k) => k ? `${lv.name} = ${fmtN(lv.n)} ${ladder(i)[k - 1].name}` : lv.name).join(" ← "))}
+          <br><button class="btn small secondary" type="button" style="margin-top:8px" data-act="units" data-id="${id}">عدّل سُلّم الوحدات</button></div></div>` : ""}
         <label class="field"><span>المكنة التابع لها</span><input type="text" id="it-group" value="${esc(i.group || "")}" placeholder="اختياري"></label>
         <label class="field"><span>المخزون (الكمية الكلية)</span><input type="number" id="it-qty" value="${i.qty == null ? "" : i.qty}" placeholder="اتركها فارغة إن لم تُعرف"></label>
         <label class="field"><span>قيد الاستخدام</span><input type="number" id="it-inuse" value="${inUseOf(i)}" min="0"></label>
@@ -1078,7 +1164,6 @@
       group: normName($("#it-group").value), qty: num($("#it-qty").value), min: num($("#it-min").value) || 0,
       inUse: Math.max(0, num($("#it-inuse").value) || 0), use: $("#it-use").checked,
       measure: $("#it-measure").value,
-      pack: normName($("#it-pack").value), packQty: num($("#it-packqty").value) || 0,
       desc: normName($("#it-desc").value),
     };
     if (id) Object.assign(itemById(id), data);
@@ -1157,11 +1242,12 @@
         const ms = wb.addWorksheet(`استهلاك ${l.name}`.slice(0, 28));
         ms.views = [{ rightToLeft: true }];
         ms.addRow([`استهلاك المواد — ${l.name}`]);
-        ms.addRow(["م", "المادة", "الوحدة", "المخزون", "قيد الاستخدام", ...wd.map((d) => `${dayName(d)} ${fmtD(d)}`), "مجموع الأسبوع"]);
+        ms.addRow(["م", "المادة", "وحدة الاستهلاك", "المخزون", "قيد الاستخدام", ...wd.map((d) => `${dayName(d)} ${fmtD(d)}`), "مجموع الأسبوع"]);
         mats.forEach((i, k) => {
+          const ul = useLevel(i);
           const per = wd.map((d) => usedOn(d, l.id, i.id));
-          ms.addRow([k + 1, i.name, i.unit || "", i.qty == null ? "" : i.qty, inUseOf(i),
-            ...per.map((v) => (v == null ? "" : v)), per.reduce((a, v) => a + (v || 0), 0)]);
+          ms.addRow([k + 1, i.name, ul.name, qtyParts(i, i.qty), qtyParts(i, inUseOf(i)),
+            ...per.map((v) => (v == null ? "" : r3(v / ul.factor))), r3(per.reduce((a, v) => a + (v || 0), 0) / ul.factor)]);
         });
         ms.columns.forEach((c) => { c.width = 14; });
       }
@@ -1719,8 +1805,29 @@
        ولذلك لا تصل أحداثها إلى مستمع الشاشة: تُربط هنا على المستمعين نفسيهما. */
     const modal = document.getElementById("inv-modal");
     if (modal) {
-      modal.addEventListener("click", (e) => { if (e.target.id === "inv-modal") return closeModal(); onClick(e); });
+      modal.addEventListener("click", (e) => {
+        if (e.target.id === "inv-modal") return closeModal();
+        const add = e.target.closest("#un-add");
+        if (add) { unitReadRows(); unitRows.push({ name: "", n: 10 }); unitRowsDraw(null); return; }
+        const del = e.target.closest("[data-un-del]");
+        if (del) { unitReadRows(); unitRows.splice(+del.dataset.unDel, 1); unitRowsDraw(null); return; }
+        onClick(e);
+      });
       modal.addEventListener("change", onChange);
+      modal.addEventListener("input", (e) => {
+        if (e.target.closest("#un-rows") || e.target.id === "un-useunit" || e.target.id === "un-measure") {
+          unitReadRows();
+          if (e.target.id === "un-measure") return unitRowsDraw(null);
+          // الاسم المكتوب يظهر في «يضمّ … من» وفي قائمة وحدة الاستهلاك
+          const sel = document.getElementById("un-useunit");
+          if (sel && e.target.matches("[data-un-name]")) {
+            const keep = +sel.value || 0;
+            sel.innerHTML = unitRows.map((lv, k) => `<option value="${k}" ${k === keep ? "selected" : ""}>${esc(lv.name || "…")}</option>`).join("");
+            $$("#un-rows .unit-of").forEach((el, k) => { el.textContent = `من «${unitRows[k].name || "…"}»، واسمها`; });
+          }
+          unitPreview();
+        }
+      });
     }
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape" || !modal || !modal.classList.contains("open")) return;
