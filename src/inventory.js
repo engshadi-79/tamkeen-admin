@@ -60,6 +60,22 @@
   }
   const topUnit = (i) => { const L = ladder(i); return L[L.length - 1]; };
   const packOf = (i) => { const L = ladder(i); return L.length > 1 ? { name: L[L.length - 1].name, n: L[L.length - 1].factor } : null; };
+  /* الكمية بوحدة الاستهلاك اليومي: «80 عبوة» بدل «800 شفرة» */
+  function useText(i, v) {
+    if (v == null) return "—";
+    const ul = useLevel(i);
+    return `${fmtN(r3(v / ul.factor))} ${ul.name}`;
+  }
+  /* السطر الصغير تحت الرقم: الكمية نفسها بوحدة أصغر مفهومة */
+  function subText(i, v) {
+    const L = ladder(i), ul = useLevel(i);
+    if (L.length === 1 || !v) return "";
+    const big = qtyParts(i, v);
+    const asUse = useText(i, v);
+    if (big !== asUse) return asUse;                 // «4 دفتر» ← «80 عبوة»
+    if (ul.k === 0) return "";
+    return `${fmtN(v)} ${L[0].name}`;                // «19 عبوة» ← «190 شفرة»
+  }
   /* المستوى الذي يُكتب به استهلاك اليوم */
   function useLevel(i) {
     const L = ladder(i);
@@ -258,8 +274,8 @@
       const a = actualInfo(t, l.id, i);
       if (a && a.s === "short") alerts.push({ c: "var(--short)", h: `<b>${esc(i.name)}</b> ناقص ${fmtN(a.x - a.v)}`, s: `${esc(l.name)} — جلسة ${SES[a.ses]}` });
       const have = (i.qty == null ? 0 : i.qty) + inUseOf(i);
-      if (i.min && i.qty != null && have <= i.min) alerts.push({ c: "var(--over)", h: `<b>${esc(i.name)}</b> بلغ الحدّ الأدنى`, s: `${esc(l.name)} — المتبقي ${fmtN(have)} والحدّ ${fmtN(i.min)}` });
-      if (isUse(i) && inUseOf(i) === 0 && i.qty != null && i.qty > 0) alerts.push({ c: "var(--nobase)", h: `<b>${esc(i.name)}</b> لا شيء منه قيد الاستخدام`, s: `${esc(l.name)} — في المخزون ${fmtN(i.qty)}، أخرِج كمية ليُسجَّل استهلاكها` });
+      if (i.min && i.qty != null && have <= i.min) alerts.push({ c: "var(--over)", h: `<b>${esc(i.name)}</b> بلغ الحدّ الأدنى`, s: `${esc(l.name)} — المتبقي ${qtyParts(i, have)} والحدّ ${qtyParts(i, i.min)}` });
+      if (isUse(i) && inUseOf(i) === 0 && i.qty != null && i.qty > 0) alerts.push({ c: "var(--nobase)", h: `<b>${esc(i.name)}</b> انتهى ما هو قيد الاستخدام`, s: `${esc(l.name)} — في المخزون ${qtyParts(i, i.qty)}، أخرِج كمية جديدة` });
     }));
     const recent = moves().slice(0, 6);
     const wkGrid = `<div class="wk"><div class="c hd" style="display:grid;grid-template-columns:1fr repeat(${wd.length},auto);gap:6px">
@@ -401,12 +417,13 @@
     const used = usedOn(u.date, u.loc, item.id);
     const inU = inUseOf(item);
     const stock = item.qty == null ? null : item.qty;
-    const L = ladder(item), multi = L.length > 1, ul = useLevel(item);
+    const L = ladder(item), multi = L.length > 1, ul = useLevel(item), top = L[L.length - 1];
     const low = item.min && stock != null && stock + inU <= item.min;
     return `<div class="row use ${used != null ? "st-ok" : ""} ${low ? "is-low" : ""}" data-id="${item.id}">
       <div class="nm"><b>${esc(item.name)}</b><span class="uu">${L.map((lv, k) => k ? `${esc(lv.name)} = ${fmtN(lv.n)} ${esc(L[k - 1].name)}` : esc(lv.name)).join(" — ")}${item.group ? `، ${esc(item.group)}` : ""}</span>${item.desc ? `<span class="d" title="${esc(item.desc)}">${esc(item.desc)}</span>` : ""}${note ? `<span class="nt">ملاحظة: ${esc(note)}</span>` : ""}</div>
-      <div class="kv"><small>المخزون</small><b>${multi ? qtyParts(item, stock) : fmtN(stock)}</b>${multi && stock ? `<i>${fmtN(stock)} ${esc(L[0].name)}</i>` : ""}</div>
-      <div class="kv in-use"><small>قيد الاستخدام</small><b>${multi ? qtyParts(item, inU) : fmtN(inU)}</b>${multi && inU ? `<i>${fmtN(inU)} ${esc(L[0].name)}</i>` : ""}</div>
+      <div class="kv"><small>في المخزون</small><b>${multi ? qtyParts(item, stock) : fmtN(stock)}</b>${multi ? `<i>${esc(subText(item, stock))}</i>` : ""}</div>
+      <div class="kv in-use"><small>قيد الاستخدام</small><b>${multi ? useText(item, inU) : fmtN(inU)}</b>${multi ? `<i>${esc(subText(item, inU))}</i>` : ""}
+        ${multi && top.factor > ul.factor ? `<span class="use-bar" title="ما بقي من ${esc(top.name)} المُخرَج"><i style="width:${Math.max(0, Math.min(100, (inU % top.factor || (inU ? top.factor : 0)) / top.factor * 100))}%"></i></span>` : ""}</div>
       <button type="button" class="okb issue" data-issue title="إخراج كمية من المخزون إلى قيد الاستخدام">أخرِج</button>
       <div class="step"><button type="button" data-ubump="-1" aria-label="إنقاص">−</button><input type="number" inputmode="decimal" min="0" step="any" value="${used == null ? "" : fmtIn(used / ul.factor)}" placeholder="—" aria-label="استهلاك اليوم من ${esc(item.name)} بوحدة ${esc(ul.name)}" data-use><button type="button" data-ubump="1" aria-label="زيادة">+</button></div>
       <div class="diff">${used == null ? `<span class="sub">استهلاك اليوم<br>${esc(ul.name)}</span>`
@@ -556,7 +573,7 @@
       const packs = Math.ceil(r3(next - avail) / top.factor);
       if (L.length > 1 && stock >= packs * top.factor) {
         return ask("انتهى ما هو قيد الاستخدام",
-          `<p style="margin:0 0 10px">المطلوب <b>${qtyParts(it, next)}</b>، وقيد الاستخدام <b>${qtyParts(it, avail)}</b> فقط.</p>
+          `<p style="margin:0 0 10px">المطلوب <b>${useText(it, next)}</b>، وقيد الاستخدام <b>${useText(it, avail)}</b> فقط.</p>
            <div class="note-box">يُخرَج <b>${fmtN(packs)} ${esc(top.name)}</b> من المخزون فيبقى فيه <b>${qtyParts(it, r3(stock - packs * top.factor))}</b>، ثم يُخصم استهلاك اليوم كاملاً.</div>`,
           `أخرِج ${fmtN(packs)} ${top.name} وأكمل`, () => {
             addMove({ type: "issue", loc: it.loc, itemId: id, qty: packs * top.factor, date: u.date, note: "إخراج عند نفاد ما هو قيد الاستخدام" }, true);
@@ -565,7 +582,7 @@
           });
       }
       next = avail;
-      toast(`قيد الاستخدام ${qtyParts(it, avail)} فقط — أخرِج كمية جديدة من المخزون أولاً`);
+      toast(`قيد الاستخدام ${useText(it, avail)} فقط — أخرِج كمية جديدة من المخزون أولاً`);
     }
     it.inUse = r3(avail - next);
     c.use[id] = r3(next);
@@ -601,7 +618,8 @@
     const it = itemById(id);
     const b = baseUnit(it), L = ladder(it);
     openModal(`إخراج للاستخدام — ${esc(it.name)}`,
-      `<p class="sub" style="margin:0 0 10px">المخزون الآن <b>${qtyText(it, it.qty)}</b>، وقيد الاستخدام <b>${qtyText(it, inUseOf(it))}</b>. ما يُخرَج يُخصم من المخزون ويُضاف إلى قيد الاستخدام.</p>
+      `<p class="sub" style="margin:0 0 10px">في المخزون <b>${qtyParts(it, it.qty)}</b>، وقيد الاستخدام <b>${useText(it, inUseOf(it))}</b>.
+        ${L.length > 1 ? `<br>السُلّم: ${L.map((lv, k) => k ? `<b>${esc(lv.name)}</b> = ${fmtN(lv.n)} ${esc(L[k - 1].name)}` : "").filter(Boolean).join("، و")}.` : ""}</p>
        <div class="inv-form">
          <label class="field"><span>الكمية المُخرَجة</span>
            <input type="number" id="inv-issue-qty" min="0" step="any" value="1"></label>
@@ -618,8 +636,9 @@
       const pv = document.getElementById("inv-issue-pv");
       const stock = it.qty == null ? 0 : it.qty;
       pv.innerHTML = !n ? "اكتب كمية أكبر من صفر."
-        : n > stock ? `<span style="color:var(--short)">المخزون ${qtyText(it, stock)} فقط، ولا يكفي لإخراج ${fmtN(n)} ${esc(b)}.</span>`
-        : `يُخصم <b>${fmtN(n)} ${esc(b)}</b> من المخزون فيبقى <b>${qtyText(it, r3(stock - n))}</b>، ويصير قيد الاستخدام <b>${qtyText(it, r3(inUseOf(it) + n))}</b>.`;
+        : n > stock ? `<span style="color:var(--short)">المخزون ${qtyParts(it, stock)} فقط، ولا يكفي لإخراج ${qtyParts(it, n)}.</span>`
+        : `يُخرَج <b>${qtyParts(it, n)}</b> فيبقى في المخزون <b>${qtyParts(it, r3(stock - n))}</b>،
+           ويصير قيد الاستخدام <b>${useText(it, r3(inUseOf(it) + n))}</b>${L.length > 1 ? ` (${fmtN(r3(inUseOf(it) + n))} ${esc(b)})` : ""}.`;
     };
     ["inv-issue-qty", "inv-issue-unit"].forEach((k) => {
       const el = document.getElementById(k);
@@ -644,7 +663,7 @@
     if (it.qty != null && n > it.qty) { toast(`المخزون ${qtyText(it, it.qty)} فقط`); return; }
     addMove({ type: "issue", loc: it.loc, itemId: id, qty: n, date: u.date, note: "إخراج من المخزون إلى قيد الاستخدام" }, true);
     save(); closeModal(); render();
-    toast(`أُخرج ${fmtN(n)} ${baseUnit(it)} للاستخدام`);
+    toast(`أُخرج ${qtyParts(it, n)} — صار قيد الاستخدام ${useText(it, inUseOf(it))}`);
   }
   function backToStock(id) {
     const it = itemById(id);
@@ -827,7 +846,7 @@
     openModal(`إغلاق جلسة ${SES[u.ses]} — ${esc(locById(u.loc).name)}`,
       `${todo.length ? `<div class="note-box" style="margin-bottom:14px;color:var(--short)">لم يُجرد <b>${todo.length}</b> صنفاً بعد. يمكنك الإغلاق وستظهر فارغة في الكشف.</div>` : ""}
        ${usedToday.length ? `<h3>استهلاك اليوم (${usedToday.length})</h3><p class="sub">مخصوم من «قيد الاستخدام»، ومسجَّل في الحركات.</p>
-         <ul class="alerts" style="margin-bottom:16px">${usedToday.map((x) => `<li><span class="pill over">−${fmtN(x.n)}</span><div style="flex:1"><b>${esc(x.i.name)}</b> <span class="muted">${esc(x.i.unit || "")}</span><div class="sub">بقي قيد الاستخدام ${fmtN(inUseOf(x.i))}، وفي المخزون ${fmtN(x.i.qty)}</div></div></li>`).join("")}</ul>` : ""}
+         <ul class="alerts" style="margin-bottom:16px">${usedToday.map((x) => `<li><span class="pill over">−${esc(useText(x.i, x.n))}</span><div style="flex:1"><b>${esc(x.i.name)}</b><div class="sub">بقي قيد الاستخدام ${esc(useText(x.i, inUseOf(x.i)))}، وفي المخزون ${esc(qtyParts(x.i, x.i.qty))}</div></div></li>`).join("")}</ul>` : ""}
        ${noUse.length ? `<div class="note-box" style="margin-bottom:14px"><b>${noUse.length}</b> مادة لم يُسجَّل استهلاكها اليوم. إن لم يُستهلك منها شيء فاكتب صفراً ليُعرف أنها رُوجعت.</div>` : ""}
        ${shorts.length ? `<h3>أصناف بها نقص (${shorts.length})</h3><p class="sub">اختر سبب النقص لتُخصم الكمية من الكمية الكلية، أو اتركه فرقاً مفتوحاً.</p>${tbl(shortRows, "الإجراء")}` : ""}
        ${overs.length ? `<h3>أصناف بها زيادة (${overs.length})</h3>${tbl(overRows, "الإجراء")}` : ""}
@@ -1009,7 +1028,9 @@
 
   /* ===== الحركات: التسجيل والتراجع ===== */
   function moveQtyText(m) {
-    return m.type === "adjust" ? `إلى ${fmtN(m.qty)} ${esc(m.unit || "")}` : `${MOVES[m.type].sign > 0 ? "+" : "−"}${fmtN(m.qty)} ${esc(m.unit || "")}`;
+    const it = itemById(m.itemId);
+    const txt = it ? (m.type === "consume" ? useText(it, m.qty) : qtyParts(it, m.qty)) : `${fmtN(m.qty)} ${esc(m.unit || "")}`;
+    return m.type === "adjust" ? `إلى ${txt}` : `${MOVES[m.type].sign > 0 ? "+" : "−"}${txt}`;
   }
   function addMove(m, silent) {
     const it = itemById(m.itemId);

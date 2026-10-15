@@ -727,3 +727,7 @@ html:root:root:root .unit-row .unit-of { color: var(--muted); font-size: 12.5px;
 html:root:root:root .unit-row .unit-n { width: 86px; }
 html:root:root:root .unit-row .unit-name { width: 130px; }
 html:root:root:root .unit-btn small { display: block; max-width: 180px; white-space: normal; }
+/* شريط ما بقي من الوحدة الكبيرة المُخرَجة */
+html:root:root:root .use-bar { display: block; height: 4px; margin-top: 4px; border-radius: 999px; background: var(--line-2); overflow: hidden; }
+html:root:root:root .use-bar i { display: block; height: 100%; background: var(--teal); }
+html:root:root:root .row.use .kv.in-use { min-width: 92px; }
