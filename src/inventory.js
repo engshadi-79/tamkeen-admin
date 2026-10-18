@@ -331,6 +331,7 @@
           </div>
         </div>
         <div id="inv-prog"></div>
+        <div class="next-step carry-step" id="inv-carry" hidden></div>
         <div class="next-step base-step" id="inv-base" hidden></div>
         <div class="next-step" id="inv-next" hidden></div>
         <div class="bar noprint" style="margin-top:10px">
@@ -366,6 +367,22 @@
         ${p.nobase ? `<span>بلا كمية كلية <b>${p.nobase}</b></span>` : ""}</div>`;
     const chips = [["all", "الكل", p.total], ["todo", "لم يُجرد", p.total - p.n], ["diff", "الفروقات", p.short + p.over]];
     $("#inv-chips").innerHTML = chips.map(([k, t, n]) => `<button type="button" class="chip ${u.filter === k ? "on" : ""}" data-chip="${k}">${t}<b>${n}</b></button>`).join("");
+    /* يوم جديد: يُسأل عن مصير ما بقي قيد الاستخدام قبل أن يبدأ التسجيل */
+    const cb = $("#inv-carry");
+    if (cb) {
+      const st = carryState();
+      cb.hidden = !st;
+      if (st) {
+        const sum = st.left.map((i) => `<b>${esc(i.name)}</b> ${esc(qtyParts(i, inUseOf(i)))}`).slice(0, 3).join("، ");
+        cb.innerHTML = `<span class="material-symbols-outlined">wb_twilight</span>
+          <div>${st.left.length
+            ? `بقي من آخر يوم عمل قيد الاستخدام: ${sum}${st.left.length > 3 ? ` وغيرها (${st.left.length - 3})` : ""}.`
+            : `لا شيء قيد الاستخدام في ${st.mats.length} مادة.`}
+            <small>${st.left.length ? "يستمر كما هو ما لم تُخرج كمية جديدة من المخزون." : "أخرِج كميات اليوم من المخزون ليُسجَّل استهلاكها."}</small></div>
+          <button class="btn secondary noprint" type="button" data-act="carry-keep">أبقِ ما بقي</button>
+          <button class="btn navy noprint" type="button" data-act="carry-dlg">أخرِج كمية جديدة</button>`;
+      }
+    }
     /* أصناف بلا كمية كلية: لا يعرف لها النظام متوقَّعاً فتظهر «جديد» ولا
        تُحسب نقصاً ولا زيادة. يُعرض الطريق إلى اعتمادها بدل تركه مجهولاً. */
     const base = $("#inv-base");
@@ -783,6 +800,67 @@
     delete it.use;
     save(); drawRows(); drawProgress();
     toast(toMat ? `«${it.name}» صار مادة مستهلكة — أخرِج منها للاستخدام` : `«${it.name}» عاد أداةً تُعدّ`);
+  }
+
+  /* بداية يوم جديد: ما بقي قيد الاستخدام من أمس يستمر ما لم يُقرَّر غير ذلك.
+     يُسأل المدرّب مرة واحدة في اليوم: أبقِ ما بقي، أو أخرِج كمية جديدة. */
+  function carryState() {
+    const mats = itemsOf(u.loc).filter(isUse);
+    if (!mats.length) return null;
+    const c = cnt(u.date, u.loc);
+    if (c && (c.carry || Object.keys(c.use || {}).length)) return null;  // قُرِّر، أو بدأ التسجيل
+    if (c && c.done[u.ses]) return null;
+    const left = mats.filter((i) => inUseOf(i) > 0);
+    return { mats, left };
+  }
+
+  function carryKeep() {
+    const c = cnt(u.date, u.loc, true);
+    c.carry = Date.now();
+    save(); render();
+    toast("استمرّ ما بقي قيد الاستخدام من آخر يوم");
+  }
+
+  function carryDlg() {
+    const st = carryState();
+    if (!st) return;
+    const rows = st.mats.map((i) => {
+      const L = ladder(i), top = L[L.length - 1];
+      return `<tr data-cid="${i.id}">
+        <td><b>${esc(i.name)}</b>${i.group ? `<div class="sub">${esc(i.group)}</div>` : ""}</td>
+        <td class="n">${inUseOf(i) ? `<b>${esc(qtyParts(i, inUseOf(i)))}</b>` : '<span class="sub">لا شيء</span>'}</td>
+        <td class="n">${esc(qtyParts(i, i.qty))}</td>
+        <td><div class="qty-cell">
+          <input type="number" min="0" step="any" data-carryqty placeholder="0">
+          <select data-carryunit>${L.map((lv, k) => `<option value="${k}" ${k === L.length - 1 ? "selected" : ""}>${esc(lv.name)}</option>`).reverse().join("")}</select>
+        </div></td>
+      </tr>`;
+    }).join("");
+    openModal(`بداية يوم جديد — ${esc(locById(u.loc).name)}، ${dayName(u.date)} ${fmtD(u.date)}`,
+      `<p class="sub" style="margin:0 0 10px">ما بقي قيد الاستخدام من آخر يوم عمل يستمر كما هو. اترك خانة «أخرِج اليوم» فارغة لتُبقيه، أو اكتب كمية جديدة تُخرَج من المخزون وتُضاف إليه.</p>
+       <div class="table-wrap"><table><thead><tr><th>المادة</th><th class="n">بقي قيد الاستخدام</th><th class="n">في المخزون</th><th>أخرِج اليوم</th></tr></thead>
+       <tbody>${rows}</tbody></table></div>`,
+      `<button class="btn secondary" type="button" data-act="carry-keep">أبقِ الكل كما هو</button>
+       <button class="btn navy" type="button" data-act="carry-run">نفّذ</button>`);
+  }
+
+  function carryRun() {
+    let n = 0;
+    $$("#inv-modal tr[data-cid]").forEach((tr) => {
+      const it = itemById(tr.dataset.cid);
+      const v = num(tr.querySelector("[data-carryqty]").value);
+      if (!it || !v || v <= 0) return;
+      const L = ladder(it);
+      const k = Math.min(+tr.querySelector("[data-carryunit]").value || 0, L.length - 1);
+      const base = r3(v * L[k].factor);
+      if (it.qty != null && base > it.qty) { toast(`${it.name}: المخزون ${qtyParts(it, it.qty)} فقط`); return; }
+      addMove({ type: "issue", loc: it.loc, itemId: it.id, qty: base, date: u.date, note: `إخراج بداية ${dayName(u.date)}` }, true);
+      n++;
+    });
+    const c = cnt(u.date, u.loc, true);
+    c.carry = Date.now();
+    save(); closeModal(); render();
+    toast(n ? `أُخرجت كميات ${n} مادة` : "استمرّ ما بقي قيد الاستخدام");
   }
 
   /* اعتماد الأرقام المعدودة ككميات كلية للأصناف التي لا كمية لها */
@@ -1763,6 +1841,9 @@
       if (a === "print") return window.print();
       if (a === "export-week") return exportWeek().catch((err) => toast(err.message));
       if (a === "export-items") return exportItems().catch((err) => toast(err.message));
+      if (a === "carry-dlg") return carryDlg();
+      if (a === "carry-keep") { closeModal(); return carryKeep(); }
+      if (a === "carry-run") return carryRun();
       if (a === "units") return unitsDlg(act.dataset.id || "");
       if (a === "save-units") return saveUnits();
       if (a === "set-base") return setBaseFromCount();
