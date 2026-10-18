@@ -561,17 +561,39 @@
     return n === all ? `كل الحقول (${ui.fmt(all)})` : `${ui.fmt(n)} حقلاً من ${ui.fmt(all)}`;
   };
 
+  /* شكل التمييز في المعاينة وفي الملف المنزَّل */
+  const MARKS = { fill: "خلفية صفراء", red: "خط أحمر", both: "خلفية صفراء وخط أحمر" };
+  const markClass = () => `mk-${(state.mg && state.mg.mark) || "fill"}`;
+  function mgMarkPicker() {
+    const cur = (state.mg && state.mg.mark) || "fill";
+    return `<div class="conv-grade-note">
+      <b>🎨 تمييز ما جاء من الملفات الأخرى</b>
+      <p class="conv-hint" style="margin:6px 0">يظهر في المعاينة وفي ملف Excel المنزَّل: كل خلية جاءت من ملف غير الأول، وكل صفّ لشخص ليس في الملف الأول أصلاً.</p>
+      <div class="conv-filter-list">${Object.keys(MARKS).map((k) => `<label class="conv-check">
+        <input type="radio" name="mg-mark" value="${k}" ${cur === k ? "checked" : ""}> ${MARKS[k]}</label>`).join("")}</div>
+    </div>`;
+  }
+
   function mgPreview() {
     const m = state.mg.merged;
     const cols = mgCols();
     if (!cols.length) return `<p class="warn">لم تختر أي حقل.</p>`;
     const shown = m.rows.slice(0, 15);
-    const cell = (v) => (v == null || v === "" ? `<td class="mg-empty">—</td>` : `<td>${esc(String(v))}</td>`);
+    const base = state.mg.files[0] ? state.mg.files[0].name : "الملف الأساسي";
+    const org = m.origins || [];
+    const mark = markClass();
+    const cell = (v, i, h) => {
+      if (v == null || v === "") return `<td class="mg-empty">—</td>`;
+      const from = org[i] ? org[i][h] : 0;
+      if (!from) return `<td>${esc(String(v))}</td>`;
+      const src = state.mg.files[from] ? state.mg.files[from].name : "ملف آخر";
+      return `<td class="mg-new ${mark}" title="من «${esc(src)}»">${esc(String(v))}</td>`;
+    };
     return `<div class="table-wrap mg-preview"><table>
         <thead><tr>${cols.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
-        <tbody>${shown.map((r, i) => `<tr class="${m.coverage[i] < state.mg.files.length ? "mg-partial" : ""}">${cols.map((h) => cell(r[h])).join("")}</tr>`).join("")}</tbody>
+        <tbody>${shown.map((r, i) => `<tr class="${(m.fromBase && !m.fromBase[i]) ? "mg-newrow " + mark : ""}">${cols.map((h) => cell(r[h], i, h)).join("")}</tr>`).join("")}</tbody>
       </table></div>
-      <p class="conv-hint">${m.rows.length > shown.length ? `تُعرض أول ${ui.fmt(shown.length)} صفاً من ${ui.fmt(m.rows.length)}، والملف المنزَّل فيه كل الصفوف. ` : ""}الصفوف الملوّنة ناقصة من ملف واحد على الأقل.</p>`;
+      <p class="conv-hint">${m.rows.length > shown.length ? `تُعرض أول ${ui.fmt(shown.length)} صفاً من ${ui.fmt(m.rows.length)}، والملف المنزَّل فيه كل الصفوف. ` : ""}الخلايا المميَّزة جاءت من ملف غير «${esc(base)}»، والصفّ المميَّز كلّه شخص ليس في «${esc(base)}».</p>`;
   }
 
   function mgFieldPicker() {
@@ -593,11 +615,12 @@
     const box = $("mg-body");
     const mg = state.mg;
     if (!mg.files.length) { box.innerHTML = ""; return; }
-    const files = mg.files.map((f, i) => `<div class="mg-file">
-        <span class="mg-name">📄 ${esc(f.name)} <small>(${ui.fmt(f.rows.length)} صفاً، ${ui.fmt(f.headers.length)} عموداً)</small></span>
+    const files = mg.files.map((f, i) => `<div class="mg-file${i ? "" : " mg-base"}">
+        <span class="mg-name">${i ? "📄" : "⭐"} ${esc(f.name)}${i ? "" : ' <b class="mg-base-tag">الملف الأساسي</b>'} <small>(${ui.fmt(f.rows.length)} صفاً، ${ui.fmt(f.headers.length)} عموداً)</small></span>
         <label>عمود الربط <select data-mg-key="${i}">${opt("", "— اختر —", !f.key)}${f.headers.map((h) => opt(h, h, h === f.key)).join("")}</select></label>
       </div>`).join("");
-    let html = `<p class="conv-hint">اختر في كل ملف العمود الذي يحدّد الشخص (رقم الهوية عادةً)، ولو اختلف اسمه بين الملفات.</p>
+    let html = `<p class="conv-hint">اختر في كل ملف العمود الذي يحدّد الشخص (رقم الهوية عادةً)، ولو اختلف اسمه بين الملفات.
+      <br><b>الملف الأول هو الأساس</b>: ترتيب أعمدته يُتَّبع، وقيمه تُقدَّم عند الاختلاف، وما يأتي من غيره يُميَّز بلون في الملف المنزَّل.</p>
       <div class="mg-files">${files}</div>
       <button type="button" class="btn" id="mg-run"><span class="material-symbols-outlined btn-ico">link</span>دمج الملفات</button>`;
     const m = mg.merged;
@@ -613,6 +636,7 @@
         ${st.conflicts ? `<p class="warn">⚠ ${ui.fmt(st.conflicts)} قيمة مختلفة للشخص نفسه بين الملفات؛ أُخذت قيمة الملف الأول.</p>` : ""}
         ${st.noKey ? `<p class="warn">⚠ ${ui.fmt(st.noKey)} صفاً بلا قيمة في عمود الربط؛ أُضيفت كما هي دون دمج.</p>` : ""}
         ${mgFieldPicker()}
+        ${mgMarkPicker()}
         <div id="mg-preview-box">${mgPreview()}</div>
         <div class="btn-row">
           <button type="button" class="btn secondary" id="mg-download"><span class="material-symbols-outlined btn-ico">download</span>تنزيل الملف المدموج</button>
@@ -627,12 +651,39 @@
     const m = state.mg.merged;
     const cols = mgCols();
     if (!cols.length) { ui.toast("اختر حقلاً واحداً على الأقل"); return; }
+    const mark = (state.mg && state.mg.mark) || "fill";
+    const base = state.mg.files[0] ? state.mg.files[0].name : "الملف الأساسي";
+    const YELLOW = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2A8" } };
+    const RED = { color: { argb: "FFC00000" }, bold: true };
+    /* التمييز نفسه في المعاينة وفي الملف: ما جاء من غير الملف الأول */
+    const paint = (cell) => {
+      if (mark === "fill" || mark === "both") cell.fill = YELLOW;
+      if (mark === "red" || mark === "both") cell.font = RED;
+    };
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("البيانات المدموجة", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
     ws.addRow(cols);
-    m.rows.forEach((r) => ws.addRow(cols.map((h) => (r[h] == null ? "" : r[h]))));
+    const org = m.origins || [];
+    m.rows.forEach((r, i) => {
+      const row = ws.addRow(cols.map((h) => (r[h] == null ? "" : r[h])));
+      const newRow = m.fromBase && !m.fromBase[i];
+      cols.forEach((h, c) => {
+        const from = org[i] ? org[i][h] : 0;
+        if (newRow || from) paint(row.getCell(c + 1));
+      });
+    });
     ws.getRow(1).font = { bold: true };
     ws.columns.forEach((c) => { c.width = 20; });
+    // ورقة تشرح معنى اللون حتى لا يُنسى بعد أيام
+    const lg = wb.addWorksheet("دليل الألوان", { views: [{ rightToLeft: true }] });
+    lg.addRow(["المعنى", "الشكل"]);
+    lg.getRow(1).font = { bold: true };
+    const r1 = lg.addRow([`قيمة جاءت من ملف غير «${base}»`, "مميَّزة"]);
+    paint(r1.getCell(2));
+    const r2 = lg.addRow([`صفّ كامل لشخص ليس في «${base}»`, "مميَّز"]);
+    paint(r2.getCell(2));
+    lg.addRow([`قيمة من «${base}» نفسه`, "بلا تمييز"]);
+    lg.columns.forEach((c) => { c.width = 44; });
     const buf = await wb.xlsx.writeBuffer();
     ui.download(`ملف مدموج - ${ui.todayISO()}.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
@@ -1463,6 +1514,11 @@
     });
     renderFixed();
     $("mg-body").addEventListener("change", (e) => {
+      if (e.target.name === "mg-mark") {
+        state.mg.mark = e.target.value;
+        $("mg-preview-box").innerHTML = mgPreview();
+        return;
+      }
       const col = e.target.dataset.mgCol;
       if (col != null) {
         if (e.target.checked) state.mg.hidden.delete(col); else state.mg.hidden.add(col);

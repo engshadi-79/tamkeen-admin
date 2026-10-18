@@ -559,7 +559,7 @@
         const kv = normalizeKeyValue(row[f.key]);
         let person = kv && byKey.get(kv);
         if (!person) {
-          person = { values: {}, files: new Set() };
+          person = { values: {}, files: new Set(), origin: {} };   // origin: من أي ملف جاءت كل قيمة
           people.push(person);
           if (kv) byKey.set(kv, person); else noKey++; // صف بلا قيمة ربط: يبقى كما هو دون دمج
         }
@@ -569,7 +569,7 @@
           if (v == null || v === "") return;
           const out = outName(f, h);
           const cur = person.values[out];
-          if (cur == null || cur === "") person.values[out] = v;
+          if (cur == null || cur === "") { person.values[out] = v; person.origin[out] = fi; }
           else if (normalizeKeyValue(cur) !== normalizeKeyValue(v)) conflicts++; // تبقى قيمة الملف الأول
         });
       });
@@ -585,6 +585,9 @@
       headers,
       rows: people.map((p) => p.values),
       coverage: people.map((p) => p.files.size),
+      // من أي ملف جاءت كل خلية، وهل الشخص غائب أصلاً عن الملف الأساسي
+      origins: people.map((p) => p.origin),
+      fromBase: people.map((p) => p.files.has(0)),
       key: keyHeader,
       keys,
       stats: { total: people.length, inAll: people.filter((p) => p.files.size === files.length).length, perFile, conflicts, noKey },
