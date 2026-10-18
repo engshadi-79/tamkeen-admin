@@ -294,6 +294,26 @@
       ? rows.map((r, i) => `<tr data-id="${esc(r.id)}"><td class="sh-n">${ui.fmt(i + 1)}</td>${s.columns.map((c) => cellHtml(r, c)).join("")}<td><button type="button" class="act-btn del" data-del-row="${esc(r.id)}"><span class="material-symbols-outlined btn-ico">delete</span></button></td></tr>`).join("")
       : `<tr><td colspan="${s.columns.length + 2}" class="empty">${rowsOf(s.id).length ? "لا صفوف مطابقة للبحث" : "لا صفوف بعد — ارفع ملف Excel أو أضف صفاً"}</td></tr>`;
     $("sh-title").textContent = s.name;
+    syncLine();
+  }
+
+  /* سطر حالة المزامنة: متى آخر تحديث، وهل وصل عمل مستخدم آخر.
+     الصفحة تُعاد كتابتها بعد كل مزامنة، لكن إعادة الرسم تنتظر خروج المستخدم من
+     الخانة التي يكتب فيها — فيُعلَن عن الوارد بدل أن يمرّ صامتاً. */
+  function syncLine() {
+    const box = $("sh-sync");
+    if (!box || !App.shared || !App.shared.syncState) return;
+    const st = App.shared.syncState();
+    const n = (st.incoming.sheetRows || 0) + (st.incoming.sheets || 0);
+    const secs = st.at ? Math.round((Date.now() - st.at) / 1000) : null;
+    const when = secs == null ? "لم تتم بعد"
+      : secs < 20 ? "الآن" : secs < 90 ? `قبل ${secs} ثانية` : `قبل ${Math.round(secs / 60)} دقيقة`;
+    const live = App.realtime && App.realtime.isLive && App.realtime.isLive();
+    box.innerHTML = `<span class="sh-dot ${live ? "on" : ""}" title="${live ? "التحديث الفوري متصل" : "التحديث الفوري غير متصل — المزامنة كل 15 ثانية"}"></span>
+      آخر تحديث من الخادم: <b>${when}</b>
+      ${n ? `<b class="sh-fresh">وصل ${ui.fmt(n)} تغييراً من مستخدم آخر</b>` : ""}
+      <button type="button" class="conv-link" id="sh-refresh">تحديث الآن</button>`;
+    if (n) App.shared.clearIncoming("sheetRows"), App.shared.clearIncoming("sheets");
   }
 
   /* ===== المخرجات ===== */
@@ -374,6 +394,17 @@
         $("shc-options").value = PRESETS[p.dataset.preset].join("\n");
       }
     });
+    $("sh-sync").addEventListener("click", (e) => {
+      if (!e.target.closest("#sh-refresh")) return;
+      $("sh-sync").innerHTML = '<span class="sh-dot on"></span> جارٍ التحديث…';
+      if (App.shared) App.shared.sync(true);
+      setTimeout(syncLine, 1500);
+    });
+    // السطر يُحدَّث وحده كل عشر ثوانٍ ما دامت الصفحة معروضة
+    setInterval(() => {
+      const v = $("view-sheets");
+      if (v && v.classList.contains("active") && !$("sh-main").hidden) syncLine();
+    }, 10000);
     $("sh-add-row").addEventListener("click", addRow);
     $("sh-del").addEventListener("click", deleteSheet);
     $("sh-rename").addEventListener("click", () => {

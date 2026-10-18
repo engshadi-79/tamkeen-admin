@@ -149,6 +149,12 @@
         });
         // سجل أُضيف أثناء الطلب ولم يصل الخادم بعد
         liveNow.forEach((live, id) => { if (sent[id] === undefined && !final.some((r) => r.id === id)) { final.push(live); kept.push(id); } });
+        // ما وصل من غير هذا الجهاز: يُعدّ ليُعرف هل تغيّرت الصفحة المفتوحة
+        const before = new Map(readCol(name).map((r) => [r.id, fingerprint(r)]));
+        let fresh = 0;
+        final.forEach((r) => { const b = before.get(r.id); if (b === undefined || b !== fingerprint(r)) fresh++; });
+        before.forEach((v, id) => { if (!final.some((r) => r.id === id)) fresh++; });
+        if (fresh) incoming[name] = (incoming[name] || 0) + fresh;
         writeCol(name, keepOrder(final, readCol(name)));
         if (kept.length) schedule(1200); // التعديلات التي حدثت أثناء الطلب تُرفع في الجولة التالية
         next[name] = {};
@@ -160,6 +166,7 @@
       if (skipped.length) console.warn("أقسام لا يدعمها الخادم بعد:", skipped.join("، "));
       saveSnap(next);
       store.save();
+      lastSync = Date.now();
       rerender();
       // إشارة فورية لبقية الأجهزة بالأقسام التي أرسلنا تغييراتها
       const sentCols = COLS.filter((n) => cols[n] && ((cols[n].records || []).length || Object.keys(cols[n].deleted || {}).length));
@@ -175,6 +182,12 @@
     }
   }
   const schedule = (ms) => { clearTimeout(timer); timer = setTimeout(() => sync(false), ms); };
+
+  /* حالة المزامنة لصفحات تعرضها للمستخدم (جداول البيانات مثلاً) */
+  let lastSync = 0;
+  let incoming = {};
+  const syncState = () => ({ at: lastSync, incoming: Object.assign({}, incoming) });
+  const clearIncoming = (name) => { delete incoming[name]; };
 
   const active = (view) => document.getElementById("view-" + view).classList.contains("active");
 
@@ -227,7 +240,14 @@
       else { try { localStorage.removeItem(SNAP_KEY); } catch (e) { /* تخزين غير متاح */ } }
     });
     if (App.cloud.ready()) { setTimeout(() => { sync(false); loadPeople(); }, 1200); }
-    setInterval(() => { if (document.visibilityState === "visible") sync(false); }, 60000);
+    // صفحات يعمل عليها أكثر من مستخدم معاً تُحدَّث أسرع ما دامت مفتوحة
+    const LIVE_VIEWS = ["sheets", "hospitality", "roster"];
+    let fastTick = 0;
+    setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      fastTick += 15;
+      if (fastTick >= 60 || LIVE_VIEWS.some(active)) { fastTick = 0; sync(false); }
+    }, 15000);
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") schedule(1000); });
   }
 
@@ -243,5 +263,5 @@
     try { localStorage.removeItem(SNAP_KEY); } catch (e) { /* تخزين غير متاح */ }
   }
 
-  App.shared = { init, sync, names, loadPeople, allowWipe, collect, resetSnap };
+  App.shared = { init, sync, names, loadPeople, allowWipe, collect, resetSnap, syncState, clearIncoming };
 })(window.App = window.App || {});

@@ -748,3 +748,9 @@ html:root:root:root .mg-preview td.mg-new.mk-red,
 html:root:root:root .mg-preview tr.mg-newrow.mk-red td { color: #C00000; font-weight: 800; }
 html:root:root:root .mg-preview td.mg-new.mk-both,
 html:root:root:root .mg-preview tr.mg-newrow.mk-both td { background: #FFF2A8; color: #C00000; font-weight: 800; }
+
+/* ===== حالة المزامنة في صفحة جداول البيانات ===== */
+html:root:root:root .sh-sync { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+html:root:root:root .sh-sync .sh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--nobase); }
+html:root:root:root .sh-sync .sh-dot.on { background: var(--c-ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-ok) 22%, transparent); }
+html:root:root:root .sh-sync .sh-fresh { color: var(--teal); background: var(--teal-soft); padding: 2px 8px; border-radius: 999px; }
