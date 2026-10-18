@@ -33,7 +33,7 @@
     volume: ["لتر", "مل", "جالون"],
     area: ["م²", "سم²"],
   };
-  const PACK_HINTS = ["دستة", "كرتونة", "علبة", "عبوة", "كيس", "رزمة", "لفة", "بكرة", "ربطة", "طقم"];
+  const PACK_HINTS = ["دستة", "دفتر", "كرتونة", "كرتون", "صندوق", "علبة", "عبوة", "كيس", "رزمة", "باكيت", "لفة", "بكرة", "ربطة", "شدة", "طقم"];
   const measureOf = (i) => (i && MEASURES[i.measure]) ? i.measure : "count";
   const baseUnit = (i) => normName((i && i.unit) || "") || (measureOf(i) === "count" ? "قطعة" : "");
 
@@ -725,7 +725,11 @@
        <label class="field" style="max-width:220px"><span>نوع القياس</span>
          <select id="un-measure">${Object.keys(MEASURES).map((k) => `<option value="${k}" ${measureOf(i) === k ? "selected" : ""}>${MEASURES[k]}</option>`).join("")}</select></label>
        <h3 style="margin:16px 0 4px">سُلّم الوحدات</h3>
-       <p class="sub" style="margin:0 0 10px">ابدأ بأصغر وحدة تُستعمل فعلاً، ثم أضف ما يضمّها فوقها. مثال شفرات الحلاقة: <b>شفرة</b>، ثم <b>عبوة</b> فيها 10 شفرات، ثم <b>دفتر</b> فيه 20 عبوة.</p>
+       <div class="note-box" style="margin:0 0 12px">
+         <b>ابدأ من الأصغر.</b> «أصغر وحدة» هي ما لا يُجزَّأ في الاستعمال وبها تُحسب كل الكميات داخلياً — شفرة، قطعة، متر، كجم، لتر.
+         ثم أضف فوقها ما يضمّها: <span dir="rtl"><b>شفرة</b> ← <b>عبوة</b> فيها 10 شفرات ← <b>دفتر</b> فيه 20 عبوة</span>.
+         <br>لا تضع «دفتر» في خانة أصغر وحدة، وإلا حُسب كل شيء بالدفاتر وظهرت كسور مثل 0.05 دفتر.
+       </div>
        <div id="un-rows"></div>
        <div class="bar" style="margin-top:8px"><button class="btn small secondary" type="button" id="un-add">أضف وحدة أكبر</button></div>
        <label class="field" style="max-width:260px;margin-top:14px"><span>وحدة الاستهلاك اليومي — بها يكتب المدرّب رقم اليوم</span>
@@ -741,7 +745,7 @@
     if (!box) return;
     const m = document.getElementById("un-measure").value;
     box.innerHTML = unitRows.map((lv, k) => `<div class="unit-row" data-k="${k}">
-      <span class="unit-lvl">${k ? `يضمّ` : "الوحدة الأساسية"}</span>
+      <span class="unit-lvl">${k ? `يضمّ` : "أصغر وحدة"}</span>
       ${k ? `<input type="number" class="unit-n" min="1" step="any" value="${lv.n || ""}" data-un-n="${k}" placeholder="10">
              <span class="unit-of">من «${esc(unitRows[k - 1].name || "…")}»، واسمها</span>` : ""}
       <input type="text" class="unit-name" value="${esc(lv.name || "")}" data-un-name="${k}" list="un-hints-${k}" placeholder="${k ? "عبوة" : "قطعة"}">
@@ -764,13 +768,15 @@
     if (!box) return;
     const fake = { unit: unitRows[0].name, units: unitRows.map((lv, k) => k ? { name: lv.name, n: lv.n } : { name: lv.name }) };
     const L = ladder(fake);
-    if (L.length === 1) { box.innerHTML = `الكميات كلها بوحدة <b>${esc(L[0].name || "…")}</b>، والإخراج بها مباشرة بلا تحويل.`; return; }
+    const warn = PACK_HINTS.includes(normName(L[0].name))
+      ? `<br><span style="color:var(--over)">«${esc(L[0].name)}» تبدو عبوة لا أصغر وحدة. إن كان داخلها ما يُستعمل مفرداً فاجعله أصغر وحدة، وضع «${esc(L[0].name)}» فوقه.</span>` : "";
+    if (L.length === 1) { box.innerHTML = `الكميات كلها بوحدة <b>${esc(L[0].name || "…")}</b>، والإخراج بها مباشرة بلا تحويل.${warn}`; return; }
     const top = L[L.length - 1];
     const uk = Math.min(+document.getElementById("un-useunit").value || 0, L.length - 1);
     box.innerHTML = `${L.slice(1).map((lv, k) => `<b>${esc(lv.name)}</b> = ${fmtN(lv.n)} ${esc(L[k].name)}`).join("، و")}
       — أي أن <b>${esc(top.name)}</b> واحداً = <b>${fmtN(top.factor)} ${esc(L[0].name)}</b>.
       <br>إخراج <b>${esc(top.name)}</b> واحد يضع <b>${fmtN(top.factor / L[uk].factor)} ${esc(L[uk].name)}</b> قيد الاستخدام، يُخصم منها استهلاك كل يوم حتى تنتهي.
-      ${uk === L.length - 1 && L.length > 1 ? `<br><span style="color:var(--over)">وحدة الاستهلاك اليومي الآن <b>${esc(L[uk].name)}</b> وهي الأكبر في السُلّم — غالباً يُستهلك يومياً بوحدة أصغر مثل <b>${esc(L[uk - 1].name)}</b>، وإلا ظهرت أرقام كسرية.</span>` : ""}`;
+      ${uk === L.length - 1 && L.length > 1 ? `<br><span style="color:var(--over)">وحدة الاستهلاك اليومي الآن <b>${esc(L[uk].name)}</b> وهي الأكبر في السُلّم — غالباً يُستهلك يومياً بوحدة أصغر مثل <b>${esc(L[uk - 1].name)}</b>، وإلا ظهرت أرقام كسرية.</span>` : ""}${warn}`;
   }
 
   function saveUnits() {
@@ -778,7 +784,7 @@
     const m = document.getElementById("un-measure").value;
     const useUnit = Math.min(+document.getElementById("un-useunit").value || 0, unitRows.length - 1);
     const rows = unitRows.filter((lv, k) => !k || lv.name);
-    if (!rows[0].name) return toast("اكتب اسم الوحدة الأساسية");
+    if (!rows[0].name) return toast("اكتب اسم أصغر وحدة");
     const list = unitTarget === "__shown__" ? shownItems() : [itemById(unitTarget)].filter(Boolean);
     list.forEach((i) => {
       i.measure = m;
@@ -1259,13 +1265,13 @@
         <label class="field" style="grid-column:1/-1"><span>اسم الصنف</span><input type="text" id="it-name" value="${esc(i.name)}"></label>
         <label class="field"><span>الموقع</span><select id="it-loc">${locOptions(i.loc)}</select></label>
         <label class="field"><span>النوع</span><select id="it-cat">${catOptions(i.cat)}</select></label>
-        <label class="field"><span>الوحدة الأساسية</span><input type="text" id="it-unit" value="${esc(i.unit || "")}" placeholder="قطعة، متر، كجم"></label>
+        <label class="field"><span>أصغر وحدة — بها تُحسب الكميات</span><input type="text" id="it-unit" value="${esc(i.unit || "")}" placeholder="شفرة، قطعة، متر، كجم"></label>
         <label class="field"><span>نوع القياس</span><select id="it-measure">${Object.keys(MEASURES).map((k) => `<option value="${k}" ${measureOf(i) === k ? "selected" : ""}>${MEASURES[k]}</option>`).join("")}</select></label>
         ${id ? `<div class="field" style="grid-column:1/-1"><span>سُلّم الوحدات</span>
           <div class="note-box">${esc(ladder(i).map((lv, k) => k ? `${lv.name} = ${fmtN(lv.n)} ${ladder(i)[k - 1].name}` : lv.name).join(" ← "))}
           <br><button class="btn small secondary" type="button" style="margin-top:8px" data-act="units" data-id="${id}">عدّل سُلّم الوحدات</button></div></div>` : ""}
         <label class="field"><span>المكنة التابع لها</span><input type="text" id="it-group" value="${esc(i.group || "")}" placeholder="اختياري"></label>
-        <label class="field"><span>المخزون بـ«${esc(baseUnit(i))}»</span><input type="number" id="it-qty" value="${i.qty == null ? "" : i.qty}" placeholder="اتركها فارغة إن لم تُعرف"></label>
+        <label class="field"><span>المخزون بـ«${esc(baseUnit(i))}» (أصغر وحدة)</span><input type="number" id="it-qty" value="${i.qty == null ? "" : i.qty}" placeholder="اتركها فارغة إن لم تُعرف"></label>
         <label class="field"><span>قيد الاستخدام بـ«${esc(baseUnit(i))}»</span><input type="number" id="it-inuse" value="${inUseOf(i)}" min="0"></label>
         <label class="field"><span>الحدّ الأدنى بـ«${esc(baseUnit(i))}»</span><input type="number" id="it-min" value="${i.min || 0}"></label>
         <label class="conv-check note-box" style="grid-column:1/-1"><input type="checkbox" id="it-use" ${isUse(i) ? "checked" : ""}>
