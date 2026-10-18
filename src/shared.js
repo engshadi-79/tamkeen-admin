@@ -34,10 +34,23 @@
     });
   }
 
+  /* بصمة لا تتأثر بترتيب المفاتيح: Postgres يخزّن jsonb بترتيبه هو، فيعود السجل
+     من الخادم بترتيب مفاتيح مختلف. كانت البصمة تختلف فيُعدّ السجل «متغيّراً»
+     ويُرفع من جديد بلا نهاية — حلقة رفع كل 17 ثانية على كل جهاز. */
+  function stable(v) {
+    if (Array.isArray(v)) return v.map(stable);
+    if (v && typeof v === "object") {
+      const out = {};
+      Object.keys(v).sort().forEach((k) => { out[k] = stable(v[k]); });
+      return out;
+    }
+    return v;
+  }
+
   function fingerprint(r) {
     const copy = Object.assign({}, r);
     delete copy.updatedAt;
-    const s = JSON.stringify(copy);
+    const s = JSON.stringify(stable(copy));
     let h = 5381;
     for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
     return String(h);
@@ -167,12 +180,13 @@
       saveSnap(next);
       store.save();
       lastSync = Date.now();
+      liveOk();
       rerender();
       // إشارة فورية لبقية الأجهزة بالأقسام التي أرسلنا تغييراتها
       const sentCols = COLS.filter((n) => cols[n] && ((cols[n].records || []).length || Object.keys(cols[n].deleted || {}).length));
       if (sentCols.length && App.realtime) App.realtime.notify(sentCols);
     } catch (e) {
-      console.warn("مزامنة الأقسام:", e.message);
+      liveFail(e.message);
       // الخادم مشغول: إعادة محاولة تلقائية بعد قليل
       if (/مشغول|مهلة|Lock|timed out/i.test(e.message)) schedule(8000);
       else if (showErrors) ui.toast(e.message);
@@ -186,7 +200,36 @@
   /* حالة المزامنة لصفحات تعرضها للمستخدم (جداول البيانات مثلاً) */
   let lastSync = 0;
   let incoming = {};
-  const syncState = () => ({ at: lastSync, incoming: Object.assign({}, incoming) });
+  let fails = 0;
+  let warned = false;
+
+  /* شارة أعلى الصفحة: كانت تقول «النظام متصل» دائماً ولو لم يصل شيء إلى
+     الخادم منذ ساعات، فيكتب المستخدم وهو يظنّ أن عمله محفوظ. */
+  function paintLive(state, msg) {
+    const box = document.getElementById("tb-live");
+    const txt = document.getElementById("tb-live-text");
+    if (!box || !txt) return;
+    box.classList.remove("is-warn", "is-bad");
+    if (state === "bad") box.classList.add("is-bad");
+    else if (state === "warn") box.classList.add("is-warn");
+    txt.textContent = msg;
+    box.title = state === "ok" ? "آخر حفظ على خادم المركز: الآن" : msg;
+  }
+  function liveOk() {
+    fails = 0; warned = false;
+    paintLive("ok", "النظام متصل");
+  }
+  function liveFail(err) {
+    fails++;
+    if (fails < 2) { paintLive("warn", "تعذّر الحفظ — يُعاد المحاولة"); return; }
+    paintLive("bad", "لم تُحفظ تغييراتك على الخادم");
+    if (!warned) {
+      warned = true;
+      ui.toast("تعذّر حفظ تغييراتك على خادم المركز. تبقى على هذا الجهاز، لكن لا يراها غيرك — تحقّق من الاتصال أو أعد تسجيل الدخول.");
+    }
+    console.warn("مزامنة الأقسام:", err);
+  }
+  const syncState = () => ({ at: lastSync, incoming: Object.assign({}, incoming), fails });
   const clearIncoming = (name) => { delete incoming[name]; };
 
   const active = (view) => document.getElementById("view-" + view).classList.contains("active");

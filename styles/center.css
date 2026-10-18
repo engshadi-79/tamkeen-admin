@@ -754,3 +754,7 @@ html:root:root:root .sh-sync { display: flex; gap: 8px; align-items: center; fle
 html:root:root:root .sh-sync .sh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--nobase); }
 html:root:root:root .sh-sync .sh-dot.on { background: var(--c-ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-ok) 22%, transparent); }
 html:root:root:root .sh-sync .sh-fresh { color: var(--teal); background: var(--teal-soft); padding: 2px 8px; border-radius: 999px; }
+html:root:root:root .tb-live.is-warn i { background: var(--over); box-shadow: 0 0 0 3px color-mix(in srgb, var(--over) 25%, transparent); }
+html:root:root:root .tb-live.is-bad i { background: var(--short); box-shadow: 0 0 0 3px color-mix(in srgb, var(--short) 25%, transparent); }
+html:root:root:root .tb-live.is-bad { color: var(--short); font-weight: 700; }
+html:root:root:root .sh-sync .sh-dot.bad { background: var(--short); box-shadow: 0 0 0 3px color-mix(in srgb, var(--short) 22%, transparent); }
