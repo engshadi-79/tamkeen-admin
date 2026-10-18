@@ -309,6 +309,12 @@
     const when = secs == null ? "لم تتم بعد"
       : secs < 20 ? "الآن" : secs < 90 ? `قبل ${secs} ثانية` : `قبل ${Math.round(secs / 60)} دقيقة`;
     const live = App.realtime && App.realtime.isLive && App.realtime.isLive();
+    if (st.fails >= 2) {
+      box.innerHTML = `<span class="sh-dot bad"></span>
+        <b style="color:var(--short)">تعذّر الحفظ على الخادم — ما تكتبه الآن لا يراه غيرك</b>
+        <button type="button" class="conv-link" id="sh-refresh">إعادة المحاولة</button>`;
+      return;
+    }
     box.innerHTML = `<span class="sh-dot ${live ? "on" : ""}" title="${live ? "التحديث الفوري متصل" : "التحديث الفوري غير متصل — المزامنة كل 15 ثانية"}"></span>
       آخر تحديث من الخادم: <b>${when}</b>
       ${n ? `<b class="sh-fresh">وصل ${ui.fmt(n)} تغييراً من مستخدم آخر</b>` : ""}

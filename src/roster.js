@@ -8,7 +8,17 @@
 
   const rows = () => (store.get().roster = store.get().roster || []);
   const lines = (t) => String(t || "").split("\n").map((l) => l.trim()).filter(Boolean);
-  const meta = () => (store.get().rosterMeta = Object.assign({ columns: [], keyColumn: "", name: "", importedAt: "", lastImport: null }, store.get().rosterMeta));
+  /* لا يُعاد بناء الكائن في كل نداء: الكتابة في المخزن تُعدّ تغييراً فتُطلق مزامنة،
+     فكان مجرد فتح الصفحة يرفع «أعمدة المستفيدين» من جديد كل مرة. */
+  const META_DEF = { columns: [], keyColumn: "", name: "", importedAt: "", lastImport: null };
+  const meta = () => {
+    const d = store.get();
+    const cur = d.rosterMeta;
+    if (!cur) return (d.rosterMeta = Object.assign({}, META_DEF));
+    const missing = Object.keys(META_DEF).filter((k) => !(k in cur));
+    if (missing.length) missing.forEach((k) => { cur[k] = META_DEF[k]; });
+    return cur;
+  };
 
   const DONE = "تم";
   const NOT_DONE = "لم يتم";
