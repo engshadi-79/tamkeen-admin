@@ -758,3 +758,129 @@ html:root:root:root .tb-live.is-warn i { background: var(--over); box-shadow: 0 
 html:root:root:root .tb-live.is-bad i { background: var(--short); box-shadow: 0 0 0 3px color-mix(in srgb, var(--short) 25%, transparent); }
 html:root:root:root .tb-live.is-bad { color: var(--short); font-weight: 700; }
 html:root:root:root .sh-sync .sh-dot.bad { background: var(--short); box-shadow: 0 0 0 3px color-mix(in srgb, var(--short) 22%, transparent); }
+
+/* ======================================================================
+   وضع الهاتف لصفحة الجرد: موظفو المسارات يفتحونها على جوّالهم واقفين،
+   وكان ثلثا الشاشة يذهب في شريط علوي وعنوان وتلميح قبل أول صنف.
+   ====================================================================== */
+@media (max-width: 700px) {
+  /* الشريط العلوي: الاسم وحده، بلا شارة ولا حالة ولا صندوق بحث عريض */
+  html:root:root:root .topbar { padding: 8px 12px; gap: 8px; }
+  html:root:root:root .topbar .tb-chip,
+  html:root:root:root .topbar .tb-meta,
+  html:root:root:root .topbar .tt-search span,
+  html:root:root:root .topbar .tt-search kbd { display: none; }
+  html:root:root:root .topbar .tb-title { font-size: 15px; }
+  html:root:root:root .topbar .tt-search { width: 42px; min-width: 0; flex: 0 0 auto; padding: 0; display: grid; place-items: center; }
+  html:root:root:root .topbar .top-tools { gap: 6px; }
+
+  /* التبويبات: شريط واحد يُسحب أفقياً ويلتصق تحت الشريط العلوي */
+  html:root:root:root #view-inventory .inv-tabs {
+    position: sticky; top: 0; z-index: 6; margin: 0 -14px 10px; padding: 0 14px;
+    overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none;
+    background: var(--bg); box-shadow: 0 1px 0 var(--line);
+  }
+  html:root:root:root #view-inventory .inv-tabs::-webkit-scrollbar { display: none; }
+  html:root:root:root #view-inventory .inv-tabs button { flex: 0 0 auto; padding: 10px 10px; font-size: 13px; }
+
+  /* التلميح يُطوى إلى سطر واحد، ويُفتح باللمس */
+  html:root:root:root .inv-hint { cursor: pointer; align-items: center; }
+  html:root:root:root .inv-hint:not(.open) > span:last-child {
+    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  /* عنوان الشاشة والوصف يكرّران ما في المنتقي: يُخفيان لتبدأ الأصناف أعلى */
+  html:root:root:root #view-inventory .head h1 { font-size: 17px; margin-bottom: 2px; }
+  html:root:root:root #view-inventory .head .lead { font-size: 12px; }
+  html:root:root:root .count-top .head h1,
+  html:root:root:root .count-top .head .lead { display: none; }
+  html:root:root:root .count-top { padding-top: 0; }
+  html:root:root:root .count-top .head { margin-bottom: 0 !important; }
+  /* أسماء الحقول تُفهم من محتواها على الهاتف */
+  html:root:root:root .pick > small { display: none; }
+  html:root:root:root .pick-bar { gap: 6px !important; }
+  html:root:root:root .meter { margin: 8px 0 4px; }
+  html:root:root:root .meter-legend { gap: 10px; font-size: 12px; }
+  /* البحث والرقائق في سطر واحد */
+  html:root:root:root #view-inventory .search { flex: 1 1 120px; }
+
+  /* مساحة لشريط الإجراءات الثابت أسفل الشاشة */
+  html:root:root:root #view-inventory { padding-bottom: 76px; }
+
+  /* ما يكرّره الشريط السفلي يُخفى من أعلى الصفحة: المتبقي والإغلاق وإعادة الفتح */
+  html:root:root:root #inv-next { display: none; }
+  html:root:root:root .count-top [data-act="close"],
+  html:root:root:root .count-top [data-act="reopen"],
+  html:root:root:root .count-top [data-act="fill"] { display: none; }
+  html:root:root:root .count-top .spacer { display: none; }
+  /* رقائق التصفية في سطر واحد يُسحب */
+  html:root:root:root #inv-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  html:root:root:root #inv-chips::-webkit-scrollbar { display: none; }
+
+  /* شريط بداية اليوم وشريط «بلا كمية»: أزرار متجاورة لا مكدّسة */
+  html:root:root:root .next-step { flex-wrap: wrap; padding: 10px 12px; }
+  html:root:root:root .next-step .btn { width: auto; flex: 1 1 140px; }
+  html:root:root:root .next-step > div { flex: 1 1 100%; font-size: 13px; }
+}
+
+/* ===== بطاقة الصنف على الهاتف: سطر للاسم وسطر للإدخال ===== */
+@media (max-width: 560px) {
+  html:root:root:root .row,
+  html:root:root:root .row.eve {
+    display: grid; gap: 6px 10px; padding: 10px 12px 11px;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: "nm nm tools" "kv step ok" "diff diff diff";
+    align-items: center;
+  }
+  html:root:root:root .row > :nth-child(1) { grid-area: nm; }
+  html:root:root:root .row > :nth-child(2) { grid-area: kv; }
+  html:root:root:root .row > :nth-child(3) { display: none; }      /* قيمة الصباحي تظهر في سطر الاسم */
+  html:root:root:root .row.eve > :nth-child(3) { display: block; grid-area: nm; justify-self: end; }
+  html:root:root:root .row > :nth-child(4) { grid-area: step; }
+  html:root:root:root .row > :nth-child(5) { grid-area: ok; }
+  html:root:root:root .row > :nth-child(6) { grid-area: diff; justify-self: start; }
+  html:root:root:root .row > :nth-child(7) { grid-area: tools; justify-self: start; }
+  /* «—» الفارغة لا تستحق سطراً */
+  html:root:root:root .row .diff:has(> .sub) { display: none; }
+
+  /* صفوف المواد: المخزون وقيد الاستخدام ثم الإخراج والاستهلاك */
+  html:root:root:root .row.use {
+    display: grid; gap: 6px 10px; padding: 10px 12px 11px;
+    grid-template-columns: auto auto 1fr;
+    grid-template-areas: "nm nm tools" "kv kv2 issue" "step step diff";
+    align-items: center;
+  }
+  html:root:root:root .row.use > :nth-child(1) { grid-area: nm; }
+  html:root:root:root .row.use > :nth-child(2) { grid-area: kv; }
+  html:root:root:root .row.use > :nth-child(3) { grid-area: kv2; }
+  html:root:root:root .row.use > :nth-child(4) { grid-area: issue; justify-self: end; }
+  html:root:root:root .row.use > :nth-child(5) { grid-area: step; }
+  html:root:root:root .row.use > :nth-child(6) { grid-area: diff; justify-self: start; }
+  html:root:root:root .row.use > :nth-child(7) { grid-area: tools; justify-self: start; }
+
+  html:root:root:root .row .nm b { font-size: 15px; }
+  html:root:root:root .row .kv { text-align: start; min-width: 56px; }
+  html:root:root:root .row .step { height: 44px; max-width: none; }
+  html:root:root:root .row .step button { width: 52px; }
+  html:root:root:root .row .step input { width: 100%; font-size: 19px; }
+  html:root:root:root .row .okb { padding: 12px 14px; font-size: 14px; }
+  html:root:root:root .row-tools { gap: 0; }
+  html:root:root:root .section-h { margin: 16px 0 6px; }
+}
+
+/* ===== شريط الإجراءات الثابت أسفل الشاشة (الهاتف فقط) ===== */
+html:root:root:root .inv-dock { display: none; }
+@media (max-width: 700px) {
+  html:root:root:root .inv-dock {
+    position: fixed; inset-inline: 0; bottom: 0; z-index: 40;
+    display: flex; gap: 8px; align-items: center;
+    padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+    background: var(--card); border-top: 1px solid var(--line);
+    box-shadow: 0 -6px 20px rgba(12, 22, 40, .10);
+  }
+  html:root:root:root .inv-dock .dk-n { font-size: 13px; font-weight: 700; line-height: 1.25; }
+  html:root:root:root .inv-dock .dk-n small { display: block; color: var(--muted); font-size: 11.5px; font-weight: 500; }
+  html:root:root:root .inv-dock .dk-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--line-2); overflow: hidden; }
+  html:root:root:root .inv-dock .dk-bar i { display: block; height: 100%; background: var(--c-ok); }
+  html:root:root:root .inv-dock .btn { padding: 11px 14px; }
+}
