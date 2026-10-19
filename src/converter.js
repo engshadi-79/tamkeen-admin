@@ -13,6 +13,7 @@
     savedTemplates: [],
     mg: { files: [], merged: null }, // الخطوة ①: ملفات الدمج ونتيجته
     qx: null,                        // الاستخراج السريع: ملف وحقوله المختارة
+    fx: { sys: null, mine: null, off: new Set() },  // إكمال الناقص من نظام المركز
     mergedData: null,                // الملف المدموج المعتمد كملف بيانات
     selectedSavedId: "",
     extraSavedIds: [], // قوالب محفوظة إضافية: يُولَّد ملف لكل قالب من نفس البيانات
@@ -517,6 +518,149 @@
     }
     if (files.length > 1) throw new Error("لدمج أكثر من ملف استخدم الخطوة «① دمج ملفات البيانات» أعلى الصفحة");
     return core().readDataFile(await readFile(files[0]));
+  }
+
+  /* ===== إكمال الناقص من نظام المركز =====
+     المتصفح لا يسمح لموقع تمكين بقراءة صفحات نظام المركز (سياسة المصدر
+     الواحد)، فتُجلب بسكربت يشغّله المستخدم في النظام نفسه، ثم يُرفع ناتجه
+     هنا مع ملفه الناقص. المطابقة برقم الهوية، والملء للخانات الفارغة فقط. */
+  const digits = (v) => String(v == null ? "" : v).replace(/[^0-9]/g, "");
+  const NID_COL = /هوي|identity/i;
+
+  async function onFxSystem(fileList) {
+    const f = [...fileList][0];
+    if (!f) { state.fx.sys = null; renderFill(); return; }
+    try {
+      const j = JSON.parse(await f.text());
+      const rows = Array.isArray(j) ? j : (j.rows || []);
+      if (!rows.length) throw new Error("الملف بلا صفوف");
+      const cols = [];
+      rows.forEach((r) => Object.keys(r).forEach((k) => { if (!cols.includes(k)) cols.push(k); }));
+      const byNid = new Map();
+      rows.forEach((r) => {
+        const n = digits(r["رقم الهوية"] || r.nid || r.id);
+        if (n && !byNid.has(n)) byNid.set(n, r);
+      });
+      state.fx.sys = { name: f.name, rows, cols, byNid };
+    } catch (e) {
+      state.fx.sys = null;
+      $("fx-body").innerHTML = `<p class="conv-error">تعذّرت قراءة ملف النظام: ${esc(e.message)}</p>`;
+      return;
+    }
+    renderFill();
+  }
+
+  async function onFxMine(fileList) {
+    const f = [...fileList][0];
+    if (!f) { state.fx.mine = null; renderFill(); return; }
+    try {
+      const d = await core().readDataFile(await readFile(f));
+      const nidCol = d.headers.find((h) => NID_COL.test(h)) || "";
+      state.fx.mine = { name: f.name.replace(/\.xlsx$/i, ""), headers: d.headers, rows: d.rows, nidCol };
+    } catch (e) {
+      state.fx.mine = null;
+      $("fx-body").innerHTML = `<p class="conv-error">${esc(e.message)}</p>`;
+      return;
+    }
+    renderFill();
+  }
+
+  /* ما الذي سيُملأ: لكل حقل في ملف المستخدم مصدرٌ من النظام يحمل الاسم نفسه */
+  function fxPlan() {
+    const sys = state.fx.sys, mine = state.fx.mine;
+    if (!sys || !mine || !mine.nidCol) return null;
+    const norm = core().normalizeHeader;
+    const pairs = mine.headers.map((h) => {
+      const hit = sys.cols.find((c) => c === h || norm(c) === norm(h));
+      return { col: h, from: hit || "" };
+    }).filter((p) => p.from && p.col !== mine.nidCol);
+    const chosen = pairs.filter((p) => !state.fx.off.has(p.col));
+    let matched = 0, missing = 0, fills = 0;
+    const filled = mine.rows.map((r) => {
+      const nid = digits(r[mine.nidCol]);
+      const src = nid ? sys.byNid.get(nid) : null;
+      if (!src) { missing++; return { row: Object.assign({}, r), got: {}, nid, found: false }; }
+      matched++;
+      const copy = Object.assign({}, r);
+      const got = {};
+      chosen.forEach((p) => {
+        const cur = String(copy[p.col] == null ? "" : copy[p.col]).trim();
+        const val = String(src[p.from] == null ? "" : src[p.from]).trim();
+        if (cur || !val) return;                 // لا يُستبدل ما كتبه المستخدم
+        copy[p.col] = val;
+        got[p.col] = true;
+        fills++;
+      });
+      return { row: copy, got, nid, found: true };
+    });
+    return { pairs, chosen, filled, matched, missing, fills };
+  }
+
+  function renderFill() {
+    const box = $("fx-body");
+    const sys = state.fx.sys, mine = state.fx.mine;
+    if (!sys && !mine) { box.innerHTML = ""; return; }
+    const bits = [];
+    bits.push(`<p class="conv-hint">${sys ? `✓ ملف النظام: <b>${ui.fmt(sys.rows.length)}</b> طالباً، <b>${ui.fmt(sys.byNid.size)}</b> برقم هوية.` : "في انتظار ملف النظام."}
+      ${mine ? `<br>✓ ملفك: <b>${ui.fmt(mine.rows.length)}</b> صفاً و<b>${ui.fmt(mine.headers.length)}</b> حقلاً.` : "<br>في انتظار ملفك."}</p>`);
+    if (mine) {
+      bits.push(`<label class="field" style="max-width:280px"><span>عمود رقم الهوية في ملفك</span>
+        <select id="fx-nid">${opt("", "— اختر —", !mine.nidCol)}${mine.headers.map((h) => opt(h, h, h === mine.nidCol)).join("")}</select></label>`);
+    }
+    const plan = fxPlan();
+    if (plan) {
+      if (!plan.pairs.length) {
+        bits.push('<p class="warn">لا يوجد في ملفك حقل يحمل اسم حقل في النظام، فلا شيء يُملأ. وحّد أسماء الأعمدة ثم أعد الرفع.</p>');
+      } else {
+        bits.push(`<div class="conv-grade-note conv-filter"><b>🧩 الحقول التي تُملأ</b>
+          <div class="conv-filter-list">${plan.pairs.map((p) => `<label class="conv-check">
+              <input type="checkbox" data-fx-col="${esc(p.col)}" ${state.fx.off.has(p.col) ? "" : "checked"}> ${esc(p.col)}
+            </label>`).join("")}</div>
+          <div class="conv-hint">تُملأ الخانات الفارغة وحدها؛ وما كتبتَه يبقى كما هو.</div></div>`);
+        bits.push(`<p class="conv-hint">تطابَق <b>${ui.fmt(plan.matched)}</b> صفاً، وتعذّر <b>${ui.fmt(plan.missing)}</b>، وستُملأ <b>${ui.fmt(plan.fills)}</b> خانة.</p>`);
+        const sample = plan.filled.filter((x) => Object.keys(x.got).length).slice(0, 8);
+        if (sample.length) {
+          const cols = [mine.nidCol].concat(plan.chosen.map((p) => p.col));
+          bits.push(`<div class="table-wrap mg-preview"><table>
+            <thead><tr>${cols.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+            <tbody>${sample.map((x) => `<tr>${cols.map((h) => `<td class="${x.got[h] ? "mg-new mk-fill" : ""}">${esc(String(x.row[h] == null ? "" : x.row[h]))}</td>`).join("")}</tr>`).join("")}</tbody>
+          </table></div><p class="conv-hint">الأصفر ما سيُملأ من النظام.</p>`);
+        }
+        bits.push('<div class="btn-row"><button type="button" class="btn navy" id="fx-run"><span class="material-symbols-outlined btn-ico">download</span>نزّل الملف المكتمل</button></div>');
+      }
+    } else if (sys && mine && !mine.nidCol) {
+      bits.push('<p class="warn">اختر عمود رقم الهوية في ملفك لتبدأ المطابقة.</p>');
+    }
+    box.innerHTML = bits.join("");
+  }
+
+  async function fxDownload() {
+    const plan = fxPlan();
+    const mine = state.fx.mine;
+    if (!plan) return;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("البيانات المكتملة", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+    ws.addRow(mine.headers);
+    ws.getRow(1).font = { bold: true };
+    const YELLOW = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2A8" } };
+    plan.filled.forEach((x) => {
+      const row = ws.addRow(mine.headers.map((h) => (x.row[h] == null ? "" : x.row[h])));
+      mine.headers.forEach((h, i) => { if (x.got[h]) row.getCell(i + 1).fill = YELLOW; });
+    });
+    ws.columns.forEach((c) => { c.width = 20; });
+    // ورقة من لم يُطابَق: ليُكمل يدوياً أو يُراجَع رقم هويته
+    const miss = plan.filled.filter((x) => !x.found);
+    if (miss.length) {
+      const ms = wb.addWorksheet("لم يُطابَق", { views: [{ rightToLeft: true }] });
+      ms.addRow(["رقم الهوية كما في ملفك", "السبب"].concat(mine.headers.slice(0, 3)));
+      ms.getRow(1).font = { bold: true };
+      miss.forEach((x) => ms.addRow([x.row[mine.nidCol] == null ? "" : x.row[mine.nidCol],
+        x.nid ? "لا يوجد في ملف النظام" : "بلا رقم هوية"].concat(mine.headers.slice(0, 3).map((h) => (x.row[h] == null ? "" : x.row[h])))));
+      ms.columns.forEach((c) => { c.width = 26; });
+    }
+    const buf = await wb.xlsx.writeBuffer();
+    ui.download(`${mine.name} - مكتمل.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    ui.toast(`مُلئت ${ui.fmt(plan.fills)} خانة لـ ${ui.fmt(plan.matched)} شخصاً${miss.length ? `، و${ui.fmt(miss.length)} لم يُطابَق` : ""}`);
   }
 
   /* ===== استخراج سريع: ملف Excel ← اختيار الحقول ← طباعة أو Excel أو Word =====
@@ -1612,6 +1756,26 @@
     $("conv-parse").addEventListener("click", handleParse);
     // الخطوة ①: دمج الملفات
     $("mg-files").addEventListener("change", (e) => onMergeFiles(e.target.files));
+    // إكمال الناقص من نظام المركز
+    $("fx-sys").addEventListener("change", (e) => onFxSystem(e.target.files));
+    $("fx-mine").addEventListener("change", (e) => onFxMine(e.target.files));
+    $("fx-copy-script").addEventListener("click", async () => {
+      try {
+        const txt = await (await fetch("tools/ksach-students.js")).text();
+        await navigator.clipboard.writeText(txt);
+        ui.toast("نُسخ السكربت — الصقه في Console داخل نظام المركز");
+      } catch (e) { ui.toast("تعذّر النسخ؛ استعمل «أو نزّله ملفاً»"); }
+    });
+    $("fx-body").addEventListener("change", (e) => {
+      if (e.target.id === "fx-nid") { state.fx.mine.nidCol = e.target.value; return renderFill(); }
+      const col = e.target.dataset.fxCol;
+      if (col == null) return;
+      if (e.target.checked) state.fx.off.delete(col); else state.fx.off.add(col);
+      renderFill();
+    });
+    $("fx-body").addEventListener("click", (e) => {
+      if (e.target.closest("#fx-run")) fxDownload().catch((err) => ui.toast(err.message));
+    });
     // الاستخراج السريع
     $("qx-file").addEventListener("change", (e) => onQuickFile(e.target.files));
     $("qx-body").addEventListener("change", (e) => {
