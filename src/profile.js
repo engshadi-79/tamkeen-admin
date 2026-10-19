@@ -45,10 +45,18 @@
 
   function applyAccess() {
     renderSideUser();
-    document.querySelectorAll("[data-view]").forEach((b) => { b.hidden = !canView(b.dataset.view); });
+    // القائمة الجانبية وحدها: تبويبات داخل الصفحات تستعمل data-view أيضاً
+    document.querySelectorAll(".sidebar [data-view]").forEach((b) => { b.hidden = !canView(b.dataset.view); });
     document.querySelectorAll("[data-admin-only]").forEach((b) => { b.hidden = !isAdmin(); });
     document.querySelectorAll("[data-perm]").forEach((b) => { b.hidden = !can(b.dataset.perm); });
   }
+  /* مسارات الجرد المسموح بها لهذا المستخدم: قائمة فارغة تعني كل المسارات */
+  const invLocs = () => {
+    const u = user();
+    if (!u || u.admin) return [];
+    const list = (u.perms || {}).invLocs;
+    return Array.isArray(list) ? list : [];
+  };
   const get = () => ({ name: name(), admin: isAdmin() });
   const ensure = () => Promise.resolve(name());
   const notify = () => { renderBadges(); applyAccess(); listeners.forEach((fn) => fn()); };
@@ -401,5 +409,5 @@
     else App.cloud.refreshUser().then(notify).catch(() => { /* بلا إنترنت: تبقى الجلسة المحفوظة */ });
   }
 
-  App.profile = { init, get, name, isAdmin, canView, firstView, can, applyAccess, ensure, open, onChange: (fn) => listeners.push(fn) };
+  App.profile = { init, get, name, isAdmin, canView, firstView, can, invLocs, applyAccess, ensure, open, onChange: (fn) => listeners.push(fn) };
 })(window.App = window.App || {});

@@ -142,7 +142,17 @@
   const toast = (m) => ui.toast(m);
 
   /* ===== المخزن: أقسام مزامَنة بدل localStorage وحده ===== */
-  const locs = () => (store.get().invLocs = store.get().invLocs || []);
+  const allLocs = () => (store.get().invLocs = store.get().invLocs || []);
+  /* المستخدم لا يرى إلا المسارات المسموح له بها (المدير يرى الكل).
+     كل ما في الصفحة يمرّ من هنا: المنتقيات، واللوحة، والكشوف، والتنبيهات. */
+  const locs = () => {
+    const all = allLocs();
+    const allow = (App.profile && App.profile.invLocs) ? App.profile.invLocs() : [];
+    if (!allow.length) return all;
+    const set = new Set(allow);
+    return all.filter((l) => set.has(l.id));
+  };
+  const locked = () => locs().length !== allLocs().length;
   const items = () => (store.get().invItems = store.get().invItems || []);
   const counts = () => (store.get().invCounts = store.get().invCounts || []);
   const moves = () => (store.get().invMoves = store.get().invMoves || []);
@@ -158,7 +168,7 @@
 
   /* أول تشغيل: المواقع من مسارات تمكين، ومعها الإدارة والمخزن */
   function ensureLocs() {
-    if (locs().length) return;
+    if (allLocs().length) return;
     (store.get().tracks || []).forEach((t) => { if (t.name) locs().push({ id: uid("l"), name: t.name, type: "track" }); });
     locs().push({ id: "admin", name: "غرفة الإدارة", type: "admin" }, { id: "store", name: "المخزن الرئيسي", type: "store" });
     save();
@@ -1087,7 +1097,8 @@
 
   /* --- الحركات --- */
   VIEWS.moves = () => {
-    const list = moves().filter((m) => (u.mLoc === "all" || m.loc === u.mLoc) && (u.mType === "all" || m.type === u.mType));
+    const mine = new Set(locs().map((l) => l.id));
+    const list = moves().filter((m) => mine.has(m.loc) && (u.mLoc === "all" || m.loc === u.mLoc) && (u.mType === "all" || m.type === u.mType));
     const rows = list.slice(0, 200).map((m) => `<tr data-id="${m.id}">
       <td class="sub">${fmtD(m.date)}</td>
       <td><span class="pill ${MOVES[m.type].c}">${MOVES[m.type].t}</span></td>
@@ -1202,7 +1213,8 @@
       }, true);
   }
   function moveDlg() {
-    const its = items().filter((i) => i.active !== false);
+    const mine = new Set(locs().map((l) => l.id));
+    const its = items().filter((i) => i.active !== false && mine.has(i.loc));
     openModal("تسجيل حركة", `
       <div class="inv-form">
         <label class="field"><span>النوع</span><select id="mv-type">${Object.keys(MOVES).map((k) => `<option value="${k}">${MOVES[k].t}</option>`).join("")}</select></label>
@@ -1251,7 +1263,9 @@
   /* الأصناف المعروضة الآن في شاشة الأصناف: ما تراه هو ما يتغيّر */
   function shownItems() {
     const q = normName(u.iQ);
+    const mine = new Set(locs().map((l) => l.id));
     return items().filter((i) => i.active !== false)
+      .filter((i) => mine.has(i.loc))
       .filter((i) => u.iLoc === "all" || i.loc === u.iLoc)
       .filter((i) => u.iCat === "all" || i.cat === u.iCat)
       .filter((i) => !q || i.name.includes(q) || String(i.group || "").includes(q));
@@ -1775,8 +1789,11 @@
     nav.innerHTML = NAV.map(([k, t]) => `<button type="button" class="${u.view === k ? "on" : ""}" data-view="${k}"><span class="material-symbols-outlined">${NAVI[k]}</span>${t}</button>`).join("");
     const hint = document.getElementById("inv-hint");
     if (hint) {
-      hint.hidden = !HINTS[u.view];
-      hint.innerHTML = HINTS[u.view] ? `<span class="material-symbols-outlined">info</span><span>${HINTS[u.view]}</span>` : "";
+      // المستخدم المحدود يُخبَر صراحةً أن ما يراه جزء من مسارات المركز
+      const extra = locked() ? ` — معك ${locs().length} من ${allLocs().length} مسارات، وبقيتها لمستخدمين آخرين.` : "";
+      const txt = HINTS[u.view] ? HINTS[u.view] + extra : "";
+      hint.hidden = !txt;
+      hint.innerHTML = txt ? `<span class="material-symbols-outlined">info</span><span>${txt}</span>` : "";
       hint.onclick = () => hint.classList.toggle("open");
     }
     document.getElementById("inv-main").innerHTML = (VIEWS[u.view] || VIEWS.dash)();
