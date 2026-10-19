@@ -12,6 +12,7 @@
     mode: "upload",
     savedTemplates: [],
     mg: { files: [], merged: null }, // الخطوة ①: ملفات الدمج ونتيجته
+    qx: null,                        // الاستخراج السريع: ملف وحقوله المختارة
     mergedData: null,                // الملف المدموج المعتمد كملف بيانات
     selectedSavedId: "",
     extraSavedIds: [], // قوالب محفوظة إضافية: يُولَّد ملف لكل قالب من نفس البيانات
@@ -516,6 +517,127 @@
     }
     if (files.length > 1) throw new Error("لدمج أكثر من ملف استخدم الخطوة «① دمج ملفات البيانات» أعلى الصفحة");
     return core().readDataFile(await readFile(files[0]));
+  }
+
+  /* ===== استخراج سريع: ملف Excel ← اختيار الحقول ← طباعة أو Excel أو Word =====
+     لا يحتاج قالباً: كثير من الكشوف تُطلب بأعمدة معيّنة فقط، وكان لا بدّ من
+     قالب جاهز لكل تشكيلة. */
+  async function onQuickFile(fileList) {
+    const f = [...fileList][0];
+    if (!f) { state.qx = null; renderQuick(); return; }
+    $("qx-body").innerHTML = '<p class="conv-hint">…جارٍ قراءة الملف</p>';
+    try {
+      const d = await core().readDataFile(await readFile(f));
+      state.qx = {
+        name: f.name.replace(/\.xlsx$/i, ""),
+        headers: d.headers,
+        rows: d.rows,
+        hidden: new Set(),
+        q: "",
+      };
+    } catch (e) {
+      state.qx = null;
+      $("qx-body").innerHTML = `<p class="conv-error">${esc(e.message)}</p>`;
+      return;
+    }
+    renderQuick();
+  }
+
+  const qxCols = () => state.qx.headers.filter((h) => !state.qx.hidden.has(h));
+  function qxRows() {
+    const q = String(state.qx.q || "").trim();
+    if (!q) return state.qx.rows;
+    const cols = qxCols();
+    return state.qx.rows.filter((r) => cols.some((h) => String(r[h] == null ? "" : r[h]).includes(q)));
+  }
+
+  function renderQuick() {
+    const box = $("qx-body");
+    if (!state.qx) { box.innerHTML = ""; return; }
+    const x = state.qx;
+    const cols = qxCols();
+    const rows = qxRows();
+    const shown = rows.slice(0, 12);
+    const wide = cols.length > 8;
+    box.innerHTML = `
+      <div class="conv-grade-note conv-filter">
+        <b>🧩 الحقول التي تظهر</b>
+        <div class="conv-filter-list">${x.headers.map((h) => `<label class="conv-check">
+            <input type="checkbox" data-qx-col="${esc(h)}" ${x.hidden.has(h) ? "" : "checked"}> ${esc(h)}
+          </label>`).join("")}</div>
+        <div><button type="button" class="conv-link" data-qx-all>تحديد الكل</button> · <button type="button" class="conv-link" data-qx-none>إلغاء الكل</button>
+          — <b>${ui.fmt(cols.length)} حقلاً من ${ui.fmt(x.headers.length)}</b></div>
+      </div>
+      <div class="reg-toolbar" style="margin:10px 0">
+        <div class="reg-search-box"><input type="search" id="qx-q" placeholder="تصفية الصفوف بكلمة" value="${esc(x.q)}"></div>
+        <span class="conv-hint">${ui.fmt(rows.length)} صفاً من ${ui.fmt(x.rows.length)}</span>
+      </div>
+      ${cols.length ? `<div class="table-wrap mg-preview"><table>
+          <thead><tr>${cols.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+          <tbody>${shown.map((r) => `<tr>${cols.map((h) => `<td>${esc(String(r[h] == null ? "" : r[h]))}</td>`).join("")}</tr>`).join("")}</tbody>
+        </table></div>
+        <p class="conv-hint">${rows.length > shown.length ? `تُعرض أول ${ui.fmt(shown.length)} صفاً، والمخرجات فيها كل الصفوف المطابقة. ` : ""}${wide ? "عدد الحقول كبير على عرض صفحة Word — الطباعة وExcel أنسب." : ""}</p>`
+        : '<p class="warn">لم تختر أي حقل.</p>'}
+      <div class="btn-row">
+        <button type="button" class="btn secondary" data-qx-print><span class="material-symbols-outlined btn-ico">print</span>طباعة</button>
+        <button type="button" class="btn secondary" data-qx-xlsx><span class="material-symbols-outlined btn-ico">download</span>تصدير Excel</button>
+        <button type="button" class="btn navy" data-qx-docx><span class="material-symbols-outlined btn-ico">description</span>تصدير Word</button>
+      </div>`;
+  }
+
+  function qxCheck() {
+    if (!state.qx) return null;
+    const cols = qxCols();
+    if (!cols.length) { ui.toast("اختر حقلاً واحداً على الأقل"); return null; }
+    const rows = qxRows();
+    if (!rows.length) { ui.toast("لا صفوف مطابقة"); return null; }
+    return { cols, rows };
+  }
+
+  async function qxExcel() {
+    const d = qxCheck();
+    if (!d) return;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(state.qx.name.slice(0, 28) || "البيانات", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+    ws.addRow(d.cols);
+    d.rows.forEach((r) => ws.addRow(d.cols.map((h) => (r[h] == null ? "" : r[h]))));
+    ws.getRow(1).font = { bold: true };
+    ws.columns.forEach((c) => { c.width = 20; });
+    const buf = await wb.xlsx.writeBuffer();
+    ui.download(`${state.qx.name} - مختصر.xlsx`, new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  }
+
+  function qxWord() {
+    const d = qxCheck();
+    if (!d) return;
+    if (!App.docx) { ui.toast("مولّد Word غير جاهز"); return; }
+    try {
+      const blob = App.docx.build([
+        { kind: "title", text: state.qx.name },
+        { kind: "table", headers: d.cols, rows: d.rows.map((r) => d.cols.map((h) => (r[h] == null ? "" : String(r[h])))) },
+      ]);
+      ui.download(`${state.qx.name}.docx`, blob);
+    } catch (e) { ui.toast(e.message); }
+  }
+
+  function qxPrint() {
+    const d = qxCheck();
+    if (!d) return;
+    const root = document.getElementById("print-root");
+    root.innerHTML = `<div class="qx-print"><h2>${esc(state.qx.name)}</h2>
+      <table><thead><tr>${d.cols.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+      <tbody>${d.rows.map((r) => `<tr>${d.cols.map((h) => `<td>${esc(String(r[h] == null ? "" : r[h]))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    document.body.classList.add("printing");
+    const title = document.title;
+    document.title = state.qx.name;
+    const cleanup = () => {
+      document.body.classList.remove("printing");
+      root.innerHTML = "";
+      document.title = title;
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
+    setTimeout(() => window.print(), 60);
   }
 
   /* ===== الخطوة ①: دمج عدة ملفات لنفس الأشخاص في ملف واحد =====
@@ -1490,6 +1612,30 @@
     $("conv-parse").addEventListener("click", handleParse);
     // الخطوة ①: دمج الملفات
     $("mg-files").addEventListener("change", (e) => onMergeFiles(e.target.files));
+    // الاستخراج السريع
+    $("qx-file").addEventListener("change", (e) => onQuickFile(e.target.files));
+    $("qx-body").addEventListener("change", (e) => {
+      if (!state.qx) return;
+      const col = e.target.dataset.qxCol;
+      if (col == null) return;
+      if (e.target.checked) state.qx.hidden.delete(col); else state.qx.hidden.add(col);
+      renderQuick();
+    });
+    $("qx-body").addEventListener("input", (e) => {
+      if (!state.qx || e.target.id !== "qx-q") return;
+      state.qx.q = e.target.value;
+      renderQuick();
+      const el = $("qx-q");
+      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+    });
+    $("qx-body").addEventListener("click", (e) => {
+      if (!state.qx) return;
+      if (e.target.closest("[data-qx-all]")) { state.qx.hidden.clear(); return renderQuick(); }
+      if (e.target.closest("[data-qx-none]")) { state.qx.headers.forEach((h) => state.qx.hidden.add(h)); return renderQuick(); }
+      if (e.target.closest("[data-qx-print]")) return qxPrint();
+      if (e.target.closest("[data-qx-xlsx]")) return qxExcel().catch((err) => ui.toast(err.message));
+      if (e.target.closest("[data-qx-docx]")) return qxWord();
+    });
     // البيانات الثابتة: تُحفظ أثناء الكتابة، ويُعاد الرسم عند الإضافة والحذف فقط
     $("fx-list").addEventListener("input", (e) => {
       const i = e.target.dataset.fxName != null ? e.target.dataset.fxName : e.target.dataset.fxValue;
