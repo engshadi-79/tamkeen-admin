@@ -13,7 +13,7 @@
     savedTemplates: [],
     mg: { files: [], merged: null }, // الخطوة ①: ملفات الدمج ونتيجته
     qx: null,                        // الاستخراج السريع: ملف وحقوله المختارة
-    fx: { sys: null, mine: null, off: new Set() },  // إكمال الناقص من نظام المركز
+    fx: { sys: null, mine: null, map: {}, showAll: false },  // إكمال الناقص من نظام المركز
     mergedData: null,                // الملف المدموج المعتمد كملف بيانات
     selectedSavedId: "",
     extraSavedIds: [], // قوالب محفوظة إضافية: يُولَّد ملف لكل قالب من نفس البيانات
@@ -542,6 +542,7 @@
         if (n && !byNid.has(n)) byNid.set(n, r);
       });
       state.fx.sys = { name: f.name, rows, cols, byNid };
+      fxGuess();
     } catch (e) {
       state.fx.sys = null;
       $("fx-body").innerHTML = `<p class="conv-error">تعذّرت قراءة ملف النظام: ${esc(e.message)}</p>`;
@@ -557,6 +558,7 @@
       const d = await core().readDataFile(await readFile(f));
       const nidCol = d.headers.find((h) => NID_COL.test(h)) || "";
       state.fx.mine = { name: f.name.replace(/\.xlsx$/i, ""), headers: d.headers, rows: d.rows, nidCol };
+      fxGuess();
     } catch (e) {
       state.fx.mine = null;
       $("fx-body").innerHTML = `<p class="conv-error">${esc(e.message)}</p>`;
@@ -565,16 +567,77 @@
     renderFill();
   }
 
-  /* ما الذي سيُملأ: لكل حقل في ملف المستخدم مصدرٌ من النظام يحمل الاسم نفسه */
+  /* ===== ربط أعمدة ملف المستخدم بحقول النظام =====
+     الأسماء لا تتطابق حرفياً في الواقع: «اسم المتقدم» عند المستخدم و«الاسم»
+     في النظام، و«الجوال 1» و«الجوال». فيُقترح الربط تلقائياً ويبقى تغييره
+     بيد المستخدم. */
+  const fxNorm = (h) => String(h == null ? "" : h)
+    .replace(/[\u064B-\u0652]/g, "").replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/(^|\s)ال/g, "$1").replace(/[\s_\-()[\]./\\]/g, "").trim();
+
+  /* مرادفات شائعة بين كشوف المركز وأسماء النظام */
+  const FX_SYN = [
+    ["اسم", "اسممتقدم", "اسمطالب", "طالب", "اسمالمستفيد", "مستفيد"],
+    ["جوال", "جوال1", "هاتف", "رقمجوال", "موبايل"],
+    ["مسار", "برنامج"],
+    ["مجموعه", "شعبه"],
+    ["حاله", "حالهطلب"],
+    ["هويه", "رقمهويه"],
+    ["دوره", "مرحله"],
+    ["مدرب", "معلم"],
+  ];
+  const fxGroup = (n) => FX_SYN.findIndex((g) => g.includes(n));
+
+  function fxScore(mineCol, sysCol) {
+    const a2 = fxNorm(mineCol), b2 = fxNorm(sysCol);
+    if (!a2 || !b2) return 0;
+    if (a2 === b2) return 100;
+    const ga = fxGroup(a2), gb = fxGroup(b2);
+    if (ga >= 0 && ga === gb) return 85;
+    // الاحتواء وحده يخدع: «الحالة الاجتماعية» تحتوي «الحالة» وليست هي.
+    // يُشترط أن يكون الأقصر جُلّ الأطول، لا جزءاً صغيراً منه.
+    const [sh, lo] = a2.length <= b2.length ? [a2, b2] : [b2, a2];
+    if (lo.includes(sh) && sh.length / lo.length >= 0.75) return 70;
+    return 0;
+  }
+
+  /* أفضل حقل من النظام لكل عمود، مرة واحدة عند رفع الملفين */
+  function fxGuess() {
+    const sys = state.fx.sys, mine = state.fx.mine;
+    if (!sys || !mine) return;
+    // أفضل مرشّح لكل عمود، ثم حقل النظام لا يُربط بأكثر من عمود واحد:
+    // «الجوال 1» و«الجوال 2» لا يأخذان كلاهما «الجوال».
+    const cand = [];
+    mine.headers.forEach((h) => {
+      if (h === mine.nidCol) return;
+      let best = "", score = 0;
+      sys.cols.forEach((c) => {
+        const sc = fxScore(h, c);
+        if (sc > score) { score = sc; best = c; }
+      });
+      if (score >= 70) cand.push({ col: h, from: best, score });
+    });
+    cand.sort((x, y) => y.score - x.score);
+    const map = {}, used = new Set();
+    cand.forEach((c) => { if (used.has(c.from)) return; used.add(c.from); map[c.col] = c.from; });
+    state.fx.map = map;
+  }
+
+  /* كم خانة فارغة في كل عمود: ما يستحق الملء */
+  function fxGaps() {
+    const mine = state.fx.mine;
+    const out = {};
+    mine.headers.forEach((h) => {
+      out[h] = mine.rows.filter((r) => !String(r[h] == null ? "" : r[h]).trim()).length;
+    });
+    return out;
+  }
+
   function fxPlan() {
     const sys = state.fx.sys, mine = state.fx.mine;
     if (!sys || !mine || !mine.nidCol) return null;
-    const norm = core().normalizeHeader;
-    const pairs = mine.headers.map((h) => {
-      const hit = sys.cols.find((c) => c === h || norm(c) === norm(h));
-      return { col: h, from: hit || "" };
-    }).filter((p) => p.from && p.col !== mine.nidCol);
-    const chosen = pairs.filter((p) => !state.fx.off.has(p.col));
+    const map = state.fx.map || {};
+    const chosen = Object.keys(map).filter((k) => map[k]);
     let matched = 0, missing = 0, fills = 0;
     const filled = mine.rows.map((r) => {
       const nid = digits(r[mine.nidCol]);
@@ -583,17 +646,17 @@
       matched++;
       const copy = Object.assign({}, r);
       const got = {};
-      chosen.forEach((p) => {
-        const cur = String(copy[p.col] == null ? "" : copy[p.col]).trim();
-        const val = String(src[p.from] == null ? "" : src[p.from]).trim();
+      chosen.forEach((col) => {
+        const cur = String(copy[col] == null ? "" : copy[col]).trim();
+        const val = String(src[map[col]] == null ? "" : src[map[col]]).trim();
         if (cur || !val) return;                 // لا يُستبدل ما كتبه المستخدم
-        copy[p.col] = val;
-        got[p.col] = true;
+        copy[col] = val;
+        got[col] = true;
         fills++;
       });
       return { row: copy, got, nid, found: true };
     });
-    return { pairs, chosen, filled, matched, missing, fills };
+    return { chosen, filled, matched, missing, fills };
   }
 
   function renderFill() {
@@ -601,34 +664,49 @@
     const sys = state.fx.sys, mine = state.fx.mine;
     if (!sys && !mine) { box.innerHTML = ""; return; }
     const bits = [];
-    bits.push(`<p class="conv-hint">${sys ? `✓ ملف النظام: <b>${ui.fmt(sys.rows.length)}</b> طالباً، <b>${ui.fmt(sys.byNid.size)}</b> برقم هوية.` : "في انتظار ملف النظام."}
+    bits.push(`<p class="conv-hint">${sys ? `✓ ملف النظام: <b>${ui.fmt(sys.rows.length)}</b> طالباً، <b>${ui.fmt(sys.byNid.size)}</b> برقم هوية، و<b>${ui.fmt(sys.cols.length)}</b> حقلاً.` : "في انتظار ملف النظام."}
       ${mine ? `<br>✓ ملفك: <b>${ui.fmt(mine.rows.length)}</b> صفاً و<b>${ui.fmt(mine.headers.length)}</b> حقلاً.` : "<br>في انتظار ملفك."}</p>`);
     if (mine) {
       bits.push(`<label class="field" style="max-width:280px"><span>عمود رقم الهوية في ملفك</span>
         <select id="fx-nid">${opt("", "— اختر —", !mine.nidCol)}${mine.headers.map((h) => opt(h, h, h === mine.nidCol)).join("")}</select></label>`);
     }
-    const plan = fxPlan();
-    if (plan) {
-      if (!plan.pairs.length) {
-        bits.push('<p class="warn">لا يوجد في ملفك حقل يحمل اسم حقل في النظام، فلا شيء يُملأ. وحّد أسماء الأعمدة ثم أعد الرفع.</p>');
-      } else {
-        bits.push(`<div class="conv-grade-note conv-filter"><b>🧩 الحقول التي تُملأ</b>
-          <div class="conv-filter-list">${plan.pairs.map((p) => `<label class="conv-check">
-              <input type="checkbox" data-fx-col="${esc(p.col)}" ${state.fx.off.has(p.col) ? "" : "checked"}> ${esc(p.col)}
-            </label>`).join("")}</div>
-          <div class="conv-hint">تُملأ الخانات الفارغة وحدها؛ وما كتبتَه يبقى كما هو.</div></div>`);
-        bits.push(`<p class="conv-hint">تطابَق <b>${ui.fmt(plan.matched)}</b> صفاً، وتعذّر <b>${ui.fmt(plan.missing)}</b>، وستُملأ <b>${ui.fmt(plan.fills)}</b> خانة.</p>`);
+    if (sys && mine && mine.nidCol) {
+      const gaps = fxGaps();
+      const map = state.fx.map || {};
+      const all = state.fx.showAll;
+      const rows = mine.headers
+        .filter((h) => h !== mine.nidCol)
+        .filter((h) => all || gaps[h] || map[h])
+        .map((h) => `<tr>
+          <td><b>${esc(h)}</b></td>
+          <td class="n">${gaps[h] ? `<span class="pill over">${ui.fmt(gaps[h])}</span>` : '<span class="sub">—</span>'}</td>
+          <td><select data-fx-map="${esc(h)}">
+            ${opt("", "— لا تملأ —", !map[h])}
+            ${sys.cols.map((c) => opt(c, c, map[h] === c)).join("")}
+          </select></td>
+        </tr>`).join("");
+      bits.push(`<div class="conv-grade-note"><b>🔗 اربط أعمدة ملفك بحقول النظام</b>
+        <p class="conv-hint" style="margin:6px 0">الاقتراح تلقائي، وتستطيع تغييره. تُملأ الخانات الفارغة وحدها، وما كتبتَه يبقى كما هو.</p>
+        <div class="table-wrap"><table><thead><tr><th>العمود في ملفك</th><th class="n">خانات فارغة</th><th>يُملأ من حقل النظام</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="3" class="empty">لا أعمدة ناقصة.</td></tr>'}</tbody></table></div>
+        <button type="button" class="conv-link" id="fx-toggle-all">${all ? "اعرض الأعمدة الناقصة فقط" : "اعرض كل الأعمدة"}</button></div>`);
+
+      const plan = fxPlan();
+      if (plan) {
+        bits.push(`<p class="conv-hint">تطابَق <b>${ui.fmt(plan.matched)}</b> صفاً برقم الهوية، وتعذّر <b>${ui.fmt(plan.missing)}</b>، وستُملأ <b>${ui.fmt(plan.fills)}</b> خانة.</p>`);
         const sample = plan.filled.filter((x) => Object.keys(x.got).length).slice(0, 8);
         if (sample.length) {
-          const cols = [mine.nidCol].concat(plan.chosen.map((p) => p.col));
+          const cols = [mine.nidCol].concat(plan.chosen);
           bits.push(`<div class="table-wrap mg-preview"><table>
             <thead><tr>${cols.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
             <tbody>${sample.map((x) => `<tr>${cols.map((h) => `<td class="${x.got[h] ? "mg-new mk-fill" : ""}">${esc(String(x.row[h] == null ? "" : x.row[h]))}</td>`).join("")}</tr>`).join("")}</tbody>
           </table></div><p class="conv-hint">الأصفر ما سيُملأ من النظام.</p>`);
+        } else if (plan.matched) {
+          bits.push('<p class="warn">تطابقت الصفوف لكن لا خانة فارغة يقابلها حقل مربوط — راجع الربط أعلاه.</p>');
         }
         bits.push('<div class="btn-row"><button type="button" class="btn navy" id="fx-run"><span class="material-symbols-outlined btn-ico">download</span>نزّل الملف المكتمل</button></div>');
       }
-    } else if (sys && mine && !mine.nidCol) {
+    } else if (sys && mine) {
       bits.push('<p class="warn">اختر عمود رقم الهوية في ملفك لتبدأ المطابقة.</p>');
     }
     box.innerHTML = bits.join("");
@@ -1767,13 +1845,14 @@
       } catch (e) { ui.toast("تعذّر النسخ؛ استعمل «أو نزّله ملفاً»"); }
     });
     $("fx-body").addEventListener("change", (e) => {
-      if (e.target.id === "fx-nid") { state.fx.mine.nidCol = e.target.value; return renderFill(); }
-      const col = e.target.dataset.fxCol;
+      if (e.target.id === "fx-nid") { state.fx.mine.nidCol = e.target.value; fxGuess(); return renderFill(); }
+      const col = e.target.dataset.fxMap;
       if (col == null) return;
-      if (e.target.checked) state.fx.off.delete(col); else state.fx.off.add(col);
+      if (e.target.value) state.fx.map[col] = e.target.value; else delete state.fx.map[col];
       renderFill();
     });
     $("fx-body").addEventListener("click", (e) => {
+      if (e.target.closest("#fx-toggle-all")) { state.fx.showAll = !state.fx.showAll; return renderFill(); }
       if (e.target.closest("#fx-run")) fxDownload().catch((err) => ui.toast(err.message));
     });
     // الاستخراج السريع
