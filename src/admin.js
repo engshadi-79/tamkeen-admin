@@ -142,9 +142,37 @@
     $("adm-perms").innerHTML = PERMS.map((p) => `<label class="conv-check">
         <input type="checkbox" data-perm="${p.id}" ${(p.id === "approve" ? perms[p.id] === true : perms[p.id] !== false) ? "checked" : ""}> ${esc(p.label)}
       </label>`).join("");
+    drawLocs(perms.invLocs);
+    $("adm-locs").onchange = () => {
+      const n = [...$("adm-locs").querySelectorAll("[data-loc]")].filter((b) => b.checked).length;
+      const t = invLocList().length;
+      $("adm-locs-note").textContent = (!n || n === t)
+        ? "لم تختر شيئاً، فيرى كل المسارات. اختر مساراً أو أكثر لتحصره فيها."
+        : `مختار ${n} من ${t}. لا تختر شيئاً ليرى كل المسارات.`;
+    };
     $("adm-cancel").hidden = !u;
     syncAdminToggle();
     $("adm-name").focus();
+  }
+
+  /* مسارات الجرد: لا تحديد = كل المسارات. تُقرأ من مواقع الجرد نفسها
+     حتى تتبع ما يُضاف منها لاحقاً. */
+  const invLocList = () => ((store.get() || {}).invLocs || []);
+  function drawLocs(sel) {
+    const list = invLocList();
+    const chosen = Array.isArray(sel) ? sel : [];
+    const note = $("adm-locs-note");
+    if (!list.length) {
+      note.textContent = "لا مواقع جرد بعد — تُنشأ من صفحة جرد المسارات.";
+      $("adm-locs").innerHTML = "";
+      return;
+    }
+    note.textContent = chosen.length
+      ? `مختار ${ui.fmt(chosen.length)} من ${ui.fmt(list.length)}. لا تختر شيئاً ليرى كل المسارات.`
+      : "لم تختر شيئاً، فيرى كل المسارات. اختر مساراً أو أكثر لتحصره فيها.";
+    $("adm-locs").innerHTML = list.map((l) => `<label class="conv-check">
+        <input type="checkbox" data-loc="${esc(l.id)}" ${chosen.includes(l.id) ? "checked" : ""}> ${esc(l.name)}
+      </label>`).join("");
   }
 
   /* المدير يرى كل الصفحات دائماً */
@@ -166,10 +194,17 @@
       admin: $("adm-admin").checked,
       active: $("adm-active").checked,
       views: $("adm-admin").checked || checkedViews.length === VIEWS.length ? [] : checkedViews,
-      perms: $("adm-admin").checked ? {} : PERMS.reduce((acc, p) => {
-        acc[p.id] = $("adm-perms").querySelector(`[data-perm="${p.id}"]`).checked;
-        return acc;
-      }, {}),
+      perms: $("adm-admin").checked ? {} : Object.assign(
+        PERMS.reduce((acc, p) => {
+          acc[p.id] = $("adm-perms").querySelector(`[data-perm="${p.id}"]`).checked;
+          return acc;
+        }, {}),
+        (() => {
+          const picked = [...$("adm-locs").querySelectorAll("[data-loc]")].filter((b) => b.checked).map((b) => b.dataset.loc);
+          // كل المسارات مختارة = بلا تحديد، فيتبع ما يُضاف لاحقاً تلقائياً
+          return { invLocs: picked.length === invLocList().length ? [] : picked };
+        })()
+      ),
     };
     if (!data.name) { ui.toast("اكتب الاسم الظاهر"); return; }
     $("adm-save").disabled = true;
