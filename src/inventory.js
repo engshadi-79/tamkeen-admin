@@ -214,8 +214,9 @@
   }
 
   /* ===== حالة الواجهة ===== */
+  const phone = () => window.matchMedia("(max-width: 700px)").matches;
   const u = {
-    view: "dash", loc: null, date: today(), ses: "m", filter: "all", q: "",
+    view: phone() ? "count" : "dash", loc: null, date: today(), ses: "m", filter: "all", q: "",
     week: null, weekLoc: null, iLoc: "all", iCat: "all", iQ: "",
     mLoc: "all", mType: "all",
   };
@@ -345,6 +346,7 @@
         </div>
         ${closed ? `<div class="closed-banner">الجلسة مغلقة منذ ${fmtT(c.done[u.ses])}. لتعديل الأرقام أعد فتحها.</div>` : ""}
       </div>
+      <div class="inv-dock noprint" id="inv-dock" hidden></div>
       <div id="inv-rows" class="${closed ? "locked" : ""}">${all.length ? "" : `<div class="card empty">
         <p style="margin:0 0 4px">لا توجد أصناف في <b>${esc((loc || {}).name || "هذا الموقع")}</b>، فلا شيء يُجرد بعد.</p>
         <p class="sub" style="margin:0 0 12px">أضف أصنافه يدوياً، أو ارفع ملف الجرد وفيه ورقة لكل مسار.</p>
@@ -398,6 +400,22 @@
               ? `عُدَّ منها ${counted.length}. اعتمد الأرقام المعدودة كمياتٍ كلية الآن، أو اتركها لتُعتمد عند إغلاق الجلسة.`
               : "عُدَّها اليوم ثم اعتمد أرقامها، أو اكتب كمياتها في شاشة «الأصناف»."}</small></div>
           ${counted.length ? `<button class="btn secondary noprint" type="button" data-act="set-base">اعتمد ${counted.length} رقماً</button>` : ""}`;
+      }
+    }
+    /* شريط ثابت أسفل شاشة الهاتف: التقدّم والإجراء الأهمّ في متناول الإبهام */
+    const dk = $("#inv-dock");
+    if (dk) {
+      const pct = p.total ? Math.round(p.n / p.total * 100) : 0;
+      dk.hidden = !p.total;
+      if (p.total) {
+        dk.innerHTML = `<div class="dk-n">${p.n} من ${p.total}<small>${p.done ? "الجلسة مغلقة" : p.short + p.over ? `${p.short + p.over} فرق` : "لا فروقات"}</small></div>
+          <span class="dk-bar"><i style="width:${pct}%"></i></span>
+          ${p.done
+            ? '<button class="btn secondary" type="button" data-act="reopen">إعادة فتح</button>'
+            : p.n < p.total
+              ? `<button class="btn secondary" type="button" data-chip="todo">المتبقي ${p.total - p.n}</button>
+                 <button class="btn navy" type="button" data-act="close">إغلاق</button>`
+              : '<button class="btn navy" type="button" data-act="close">إغلاق الجلسة</button>'}`;
       }
     }
     /* الخطوة التالية مكتوبة صراحة، فلا يحتاج المدرّب أن يخمّن ماذا يفعل بعد العدّ */
@@ -1759,6 +1777,7 @@
     if (hint) {
       hint.hidden = !HINTS[u.view];
       hint.innerHTML = HINTS[u.view] ? `<span class="material-symbols-outlined">info</span><span>${HINTS[u.view]}</span>` : "";
+      hint.onclick = () => hint.classList.toggle("open");
     }
     document.getElementById("inv-main").innerHTML = (VIEWS[u.view] || VIEWS.dash)();
     if (AFTER[u.view]) AFTER[u.view]();
@@ -1909,6 +1928,11 @@
       if (t.id === "inv-course") { meta().course = normName(t.value); save(); return; }
     };
     root.addEventListener("change", onChange);
+
+    // على الهاتف: أول لمسة تُحدّد الرقم القديم فيُستبدل بالكتابة بلا مسح
+    root.addEventListener("focusin", (e) => {
+      if (e.target.matches("[data-val],[data-use]")) setTimeout(() => { try { e.target.select(); } catch (err) { /* لا يدعمه المتصفح */ } }, 0);
+    });
 
     root.addEventListener("input", (e) => {
       if (e.target.id === "inv-q") { u.q = e.target.value; drawRows(); }
