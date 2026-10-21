@@ -13,7 +13,7 @@
     savedTemplates: [],
     mg: { files: [], merged: null }, // الخطوة ①: ملفات الدمج ونتيجته
     qx: null,                        // الاستخراج السريع: ملف وحقوله المختارة
-    fx: { sys: null, mine: [], map: {}, showAll: false },  // إكمال الناقص من نظام المركز
+    fx: { sys: null, mine: [], map: {}, showAll: false, cur: "" },  // إكمال الناقص من نظام المركز
     mergedData: null,                // الملف المدموج المعتمد كملف بيانات
     selectedSavedId: "",
     extraSavedIds: [], // قوالب محفوظة إضافية: يُولَّد ملف لكل قالب من نفس البيانات
@@ -720,6 +720,15 @@
       });
       bits.push(`<button type="button" class="conv-link" id="fx-toggle-all">${state.fx.showAll ? "اعرض الأعمدة الناقصة فقط" : "اعرض كل الأعمدة"}</button>`);
 
+      // الدورة الجارية تُستثنى من «سبق أن التحق»، وإلا عُدّت التحاقاً سابقاً
+      const courses = fxCourses();
+      if (courses.length) {
+        bits.push(`<label class="field" style="max-width:340px;margin-top:12px"><span>الدورة الجارية — تُستثنى من «سبق أن التحق»</span>
+          <select id="fx-cur">${opt("", "— لا تستثنِ شيئاً —", !state.fx.cur)}${courses.map((c) => opt(c, c, c === state.fx.cur)).join("")}</select></label>`);
+      } else if (sys) {
+        bits.push('<p class="conv-hint">ملف النظام بلا سجلّ دورات — أعد تشغيل السكربت لتظهر «سبق أن التحق».</p>');
+      }
+
       // حصيلة كل ملف على حدة
       const lines = [];
       let anyFill = 0;
@@ -727,12 +736,14 @@
         const plan = fxPlan(m, g);
         if (!plan) return;
         anyFill += plan.fills;
+        const prevN = fxCompare(m, g).filter((x) => x.nCourses > 0).length;
         lines.push(`<tr><td><b>${esc(m.name)}</b></td><td class="n">${ui.fmt(m.rows.length)}</td>
           <td class="n">${ui.fmt(plan.matched)}</td><td class="n">${plan.missing ? `<span class="pill short">${ui.fmt(plan.missing)}</span>` : "0"}</td>
-          <td class="n">${plan.fills ? `<span class="pill ok">${ui.fmt(plan.fills)}</span>` : "0"}</td></tr>`);
+          <td class="n">${plan.fills ? `<span class="pill ok">${ui.fmt(plan.fills)}</span>` : "0"}</td>
+          <td class="n">${prevN ? `<span class="pill over">${ui.fmt(prevN)}</span>` : "0"}</td></tr>`);
       }));
       if (lines.length) {
-        bits.push(`<div class="table-wrap"><table><thead><tr><th>الملف</th><th class="n">صفوف</th><th class="n">تطابَق</th><th class="n">تعذّر</th><th class="n">خانات تُملأ</th></tr></thead>
+        bits.push(`<div class="table-wrap"><table><thead><tr><th>الملف</th><th class="n">صفوف</th><th class="n">تطابَق</th><th class="n">تعذّر</th><th class="n">خانات تُملأ</th><th class="n">سبق أن التحق</th></tr></thead>
           <tbody>${lines.join("")}</tbody></table></div>`);
         bits.push('<p class="conv-hint" style="margin-top:10px"><b>مخرجان:</b> «الملف المكتمل» يملأ الفراغات ويُبقي كل شيء آخر كما هو · «تقرير المقارنة» لا يغيّر بياناتك بل يُضيف أعمدة تقول من ليس في النظام، وأين تختلف القيم، ومن سبق أن التحق بدورة.</p>');
         bits.push(`<div class="btn-row"><button type="button" class="btn navy" id="fx-run"${anyFill ? "" : " disabled"}>
@@ -795,6 +806,37 @@
      ثلاثة أسئلة يجيب عنها: من في كشفك وليس في النظام، ومن في النظام
      وليس في أي كشف، وأين تختلف القيم. ومعها سجلّ الدورات السابقة لكل
      شخص — وهو ما يُعرف به من سبق أن التحق. */
+  /* كل الدورات التي ذكرها النظام، لاختيار الدورة الجارية منها */
+  function fxCourses() {
+    const sys = state.fx.sys;
+    if (!sys) return [];
+    const set = new Set();
+    sys.rows.forEach((r) => {
+      (r["_التحاقات"] || []).forEach((e) => { if (e["الدورة"]) set.add(clean(e["الدورة"])); });
+      String(r["الدورات السابقة"] || "").split("،").forEach((c) => { const v = clean(c); if (v) set.add(v); });
+    });
+    return [...set].sort();
+  }
+  const clean = (v) => String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+
+  /* التحاقات الشخص في دورات غير الجارية: هذا هو «سبق أن التحق» */
+  function fxPrev(src) {
+    if (!src) return { prev: [], history: [] };
+    const cur = clean(state.fx.cur || "");
+    const en = (src["_التحاقات"] || []).filter((e) => clean(e["الدورة"]));
+    const hist = en.map((e) => ({
+      course: clean(e["الدورة"]),
+      line: [e["الدورة"], e["المسار"], e["الحالة"]].filter(Boolean).map(clean).join(" — "),
+    }));
+    // لا سجلّ التحاقات (ملف نظام قديم): يُرجع إلى حقل «الدورات السابقة» النصّي
+    if (!hist.length) {
+      String(src["الدورات السابقة"] || "").split("،").map(clean).filter(Boolean)
+        .forEach((c) => hist.push({ course: c, line: c }));
+    }
+    const prev = hist.filter((h) => !cur || h.course !== cur);
+    return { prev, history: hist };
+  }
+
   function fxCompare(m, g) {
     const sys = state.fx.sys;
     const map = (state.fx.map || {})[g.sig] || {};
@@ -810,12 +852,12 @@
           if (mine && theirs && fxSame(mine, theirs) === false) diffs.push(`${col}: عندك «${mine}» وفي النظام «${theirs}»`);
         });
       }
-      const en = (src && src["_التحاقات"]) || [];
+      const h = fxPrev(src);
       return {
         r, nid, src, diffs,
-        courses: src ? (src["الدورات السابقة"] || "") : "",
-        nCourses: src ? (src["عدد الدورات"] || 0) : 0,
-        history: en.map((e) => [e["الدورة"], e["المسار"], e["الحالة"]].filter(Boolean).join(" — ")).join(" ؛ "),
+        courses: h.prev.map((x) => x.course).filter((c, i, a) => a.indexOf(c) === i).join("، "),
+        nCourses: h.prev.map((x) => x.course).filter((c, i, a) => a.indexOf(c) === i).length,
+        history: h.history.map((x) => x.line).join(" ؛ "),
       };
     });
     return rows;
@@ -839,16 +881,19 @@
     const YELLOW = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2A8" } };
 
     const ws = wb.addWorksheet("المقارنة", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
-    const extra = ["في النظام؟", "عدد الدورات السابقة", "الدورات السابقة", "سجلّ الالتحاق", "قيم مختلفة"];
+    const extra = ["سبق أن التحق؟", "في النظام؟", "عدد الدورات السابقة", "الدورات السابقة", "سجلّ الالتحاق", "قيم مختلفة"];
     ws.addRow(m.headers.concat(extra));
     ws.getRow(1).font = { bold: true };
     rows.forEach((x) => {
+      const was = x.nCourses > 0;
       const row = ws.addRow(m.headers.map((h) => (x.r[h] == null ? "" : x.r[h]))
-        .concat([x.src ? "نعم" : "لا", x.nCourses, x.courses, x.history, x.diffs.join(" | ")]));
+        .concat([was ? "نعم" : "لا", x.src ? "نعم" : "لا", x.nCourses, x.courses, x.history, x.diffs.join(" | ")]));
       const base = m.headers.length;
-      row.getCell(base + 1).fill = x.src ? GREEN : RED;
-      if (x.nCourses > 0) row.getCell(base + 2).fill = YELLOW;
-      if (x.diffs.length) row.getCell(base + 5).fill = RED;
+      const bold = { bold: true };
+      row.getCell(base + 1).fill = was ? YELLOW : GREEN;       // سبق أن التحق
+      row.getCell(base + 1).font = bold;
+      row.getCell(base + 2).fill = x.src ? GREEN : RED;        // في النظام
+      if (x.diffs.length) row.getCell(base + 6).fill = RED;
     });
     ws.columns.forEach((c, i) => { c.width = i >= m.headers.length ? 30 : 20; });
 
@@ -2035,6 +2080,7 @@
       } catch (e) { ui.toast("تعذّر النسخ؛ استعمل «أو نزّله ملفاً»"); }
     });
     $("fx-body").addEventListener("change", (e) => {
+      if (e.target.id === "fx-cur") { state.fx.cur = e.target.value; return renderFill(); }
       const gi = e.target.dataset.fxNid;
       if (gi != null) {
         const g = fxGroups()[Number(gi)];
