@@ -734,6 +734,7 @@
       if (lines.length) {
         bits.push(`<div class="table-wrap"><table><thead><tr><th>الملف</th><th class="n">صفوف</th><th class="n">تطابَق</th><th class="n">تعذّر</th><th class="n">خانات تُملأ</th></tr></thead>
           <tbody>${lines.join("")}</tbody></table></div>`);
+        bits.push('<p class="conv-hint" style="margin-top:10px"><b>مخرجان:</b> «الملف المكتمل» يملأ الفراغات ويُبقي كل شيء آخر كما هو · «تقرير المقارنة» لا يغيّر بياناتك بل يُضيف أعمدة تقول من ليس في النظام، وأين تختلف القيم، ومن سبق أن التحق بدورة.</p>');
         bits.push(`<div class="btn-row"><button type="button" class="btn navy" id="fx-run"${anyFill ? "" : " disabled"}>
           <span class="material-symbols-outlined btn-ico">download</span>${mine.length > 1 ? `نزّل ${ui.fmt(mine.length)} ملفات مكتملة (مضغوطة)` : "نزّل الملف المكتمل"}</button>
           <button type="button" class="btn secondary" id="fx-cmp"><span class="material-symbols-outlined btn-ico">compare_arrows</span>تقرير المقارنة بالنظام</button></div>`);
