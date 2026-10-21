@@ -117,7 +117,10 @@
   const report = {};
   const SKIP_COL = /^(#|م|إجراءات|العمليات|خيارات|تحكم|الإجراء)$/;
 
-  function eat(t, source) {
+  /* أعمدة تدلّ على الدورة أو المرحلة داخل الصف نفسه */
+  const COURSE_COL = /دوره|دورة|مرحل|فصل دراسي|الفترة/;
+
+  function eat(t, source, ctx) {
     let added = 0;
     const nameIdx = t.head.findIndex((h) => PERSON.test(h));
     t.rows.forEach((r) => {
@@ -130,13 +133,30 @@
       const key = nid || "اسم:" + name;
       let rec = byKey.get(key);
       if (!rec) {
-        rec = { "رقم الهوية": nid, "الاسم": name, "_مصادر": [] };
+        rec = { "رقم الهوية": nid, "الاسم": name, "_مصادر": [], "_التحاقات": [] };
         byKey.set(key, rec);
         added++;
       }
       if (!rec["رقم الهوية"] && nid) rec["رقم الهوية"] = nid;
       if (!rec["الاسم"] && name) rec["الاسم"] = name;
       if (rec["_مصادر"].indexOf(source) === -1) rec["_مصادر"].push(source);
+
+      // الدورة: من عمود في الصف، وإلا من الفلتر الذي قرأنا به الصفحة
+      let course = "";
+      t.head.forEach((h, i) => { if (!course && COURSE_COL.test(h)) course = clean(r[i]); });
+      if (!course && ctx) course = ctx;
+      let track = "", status = "", group = "";
+      t.head.forEach((h, i) => {
+        if (!track && /مسار|برنامج/.test(h)) track = clean(r[i]);
+        if (!status && /^الحاله$|^الحالة$|حاله الطلب|حالة الطلب|^الوضع$/.test(h)) status = clean(r[i]);
+        if (!group && /مجموع|شعبه|شعبة/.test(h)) group = clean(r[i]);
+      });
+      // التحاق واحد لكل (دورة + مسار + مصدر): إعادة القراءة لا تكرّره
+      const sig = [course, track, source].join("|");
+      if (!rec["_التحاقات"].some((e) => e._sig === sig)) {
+        rec["_التحاقات"].push({ _sig: sig, "الدورة": course, "المسار": track, "المجموعة": group, "الحالة": status, "المصدر": source });
+      }
+
       t.head.forEach((h, i) => {
         const k = clean(h);
         const v = clean(r[i]);
@@ -148,7 +168,7 @@
   }
 
   /* كل صفحات قائمة واحدة */
-  async function readList(path, label, source) {
+  async function readList(path, label, source, ctx) {
     let lastFirst = "";
     let wide = true;
     let got = 0;
@@ -168,7 +188,7 @@
       if (first === lastFirst) break;        // النظام يعيد الصفحة نفسها
       lastFirst = first;
       got += t.rows.length;
-      eat(t, source);
+      eat(t, source, ctx);
       say(`${label} — صفحة ${page} · ${byKey.size} شخصاً`);
     }
     return got;
@@ -217,7 +237,7 @@
             const sep = path.includes("?") ? "&" : "?";
             try {
               seen += await readList(`${path}${sep}${encodeURIComponent(f.name)}=${encodeURIComponent(o.v)}`,
-                `${label}/${o.t.slice(0, 14)}`, label);
+                `${label}/${o.t.slice(0, 14)}`, label, /دوره|دورة|مرحل/.test(f.label) ? o.t : "");
             } catch (e) { /* خيار لا يقبله النظام: يُتجاوز */ }
           }
           if (declared && seen >= declared) break;   // اكتمل العدد
@@ -227,7 +247,16 @@
       }
     }
 
-    const out = [...byKey.values()].map((r) => Object.assign({}, r, { "_مصادر": r["_مصادر"].join("، ") }));
+    const out = [...byKey.values()].map((r) => {
+      const en = (r["_التحاقات"] || []).filter((e) => e["الدورة"] || e["المسار"]);
+      const courses = [...new Set(en.map((e) => e["الدورة"]).filter(Boolean))];
+      return Object.assign({}, r, {
+        "_مصادر": r["_مصادر"].join("، "),
+        "_التحاقات": en.map((e) => ({ "الدورة": e["الدورة"], "المسار": e["المسار"], "المجموعة": e["المجموعة"], "الحالة": e["الحالة"], "المصدر": e["المصدر"] })),
+        "عدد الدورات": courses.length,
+        "الدورات السابقة": courses.join("، "),
+      });
+    });
     if (!out.length) {
       say("لم يُعثر على أي جدول أشخاص. افتح صفحة الطلاب أو المتقدمين يدوياً ثم أعد التشغيل.");
       return;
@@ -235,7 +264,8 @@
     const withNid = out.filter((r) => r["رقم الهوية"]).length;
     const cols = new Set();
     out.forEach((r) => Object.keys(r).forEach((k) => cols.add(k)));
-    say(`تمّ: ${out.length} شخصاً، منهم ${withNid} برقم هوية · ${cols.size} حقلاً`);
+    const repeat = out.filter((r) => (r["عدد الدورات"] || 0) > 1).length;
+    say(`تمّ: ${out.length} شخصاً، منهم ${withNid} برقم هوية · ${cols.size} حقلاً · ${repeat} التحقوا بأكثر من دورة`);
     sum();
 
     const blob = new Blob([JSON.stringify({ source: "tamkeen.ksach.org", at: new Date().toISOString(), count: out.length, rows: out })],
