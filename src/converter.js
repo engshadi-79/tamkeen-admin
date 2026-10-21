@@ -13,7 +13,7 @@
     savedTemplates: [],
     mg: { files: [], merged: null }, // الخطوة ①: ملفات الدمج ونتيجته
     qx: null,                        // الاستخراج السريع: ملف وحقوله المختارة
-    fx: { sys: null, mine: [], map: {}, showAll: false, cur: "" },  // إكمال الناقص من نظام المركز
+    fx: { sys: null, mine: [], map: {}, showAll: false, cur: "", judge: true },  // إكمال الناقص من نظام المركز
     mergedData: null,                // الملف المدموج المعتمد كملف بيانات
     selectedSavedId: "",
     extraSavedIds: [], // قوالب محفوظة إضافية: يُولَّد ملف لكل قالب من نفس البيانات
@@ -745,7 +745,9 @@
       if (lines.length) {
         bits.push(`<div class="table-wrap"><table><thead><tr><th>الملف</th><th class="n">صفوف</th><th class="n">تطابَق</th><th class="n">تعذّر</th><th class="n">خانات تُملأ</th><th class="n">سبق أن التحق</th></tr></thead>
           <tbody>${lines.join("")}</tbody></table></div>`);
-        bits.push('<p class="conv-hint" style="margin-top:10px"><b>مخرجان:</b> «الملف المكتمل» يملأ الفراغات ويُبقي كل شيء آخر كما هو · «تقرير المقارنة» لا يغيّر بياناتك بل يُضيف أعمدة تقول من ليس في النظام، وأين تختلف القيم، ومن سبق أن التحق بدورة.</p>');
+        bits.push(`<label class="conv-check" style="margin-top:12px"><input type="checkbox" id="fx-judge" ${state.fx.judge ? "checked" : ""}>
+          أضف إلى الملف المكتمل أعمدة الحكم: <b>سبق أن التحق؟</b> وفي النظام؟ والدورات السابقة وسجلّ الالتحاق</label>`);
+        bits.push('<p class="conv-hint" style="margin-top:10px"><b>مخرجان:</b> «الملف المكتمل» يملأ الفراغات، ويضيف أعمدة الحكم إن أشّرت أعلاه · «تقرير المقارنة» لا يملأ شيئاً، بل يعرض الحكم كاملاً ومعه أوراق «قيم مختلفة» و«ليسوا في النظام» و«ليسوا في أي كشف».</p>');
         bits.push(`<div class="btn-row"><button type="button" class="btn navy" id="fx-run"${anyFill ? "" : " disabled"}>
           <span class="material-symbols-outlined btn-ico">download</span>${mine.length > 1 ? `نزّل ${ui.fmt(mine.length)} ملفات مكتملة (مضغوطة)` : "نزّل الملف المكتمل"}</button>
           <button type="button" class="btn secondary" id="fx-cmp"><span class="material-symbols-outlined btn-ico">compare_arrows</span>تقرير المقارنة بالنظام</button></div>`);
@@ -756,16 +758,30 @@
 
   async function fxBook(m, g) {
     const plan = fxPlan(m, g);
+    const cmp = state.fx.judge ? fxCompare(m, g) : null;      // أعمدة الحكم اختيارية
+    const extra = ["سبق أن التحق؟", "في النظام؟", "عدد الدورات السابقة", "الدورات السابقة", "سجلّ الالتحاق"];
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("البيانات المكتملة", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
-    ws.addRow(m.headers);
+    ws.addRow(cmp ? m.headers.concat(extra) : m.headers);
     ws.getRow(1).font = { bold: true };
     const YELLOW = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2A8" } };
-    plan.filled.forEach((x) => {
-      const row = ws.addRow(m.headers.map((h) => (x.row[h] == null ? "" : x.row[h])));
-      m.headers.forEach((h, i) => { if (x.got[h]) row.getCell(i + 1).fill = YELLOW; });
+    const GREEN = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD8F0E2" } };
+    const RED = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7D4D0" } };
+    plan.filled.forEach((x, i) => {
+      const base = m.headers.map((h) => (x.row[h] == null ? "" : x.row[h]));
+      const c = cmp ? cmp[i] : null;
+      const row = ws.addRow(c
+        ? base.concat([c.nCourses > 0 ? "نعم" : "لا", c.src ? "نعم" : "لا", c.nCourses, c.courses, c.history])
+        : base);
+      m.headers.forEach((h, k) => { if (x.got[h]) row.getCell(k + 1).fill = YELLOW; });
+      if (c) {
+        const b = m.headers.length;
+        row.getCell(b + 1).fill = c.nCourses > 0 ? YELLOW : GREEN;
+        row.getCell(b + 1).font = { bold: true };
+        row.getCell(b + 2).fill = c.src ? GREEN : RED;
+      }
     });
-    ws.columns.forEach((c) => { c.width = 20; });
+    ws.columns.forEach((c, i) => { c.width = i >= m.headers.length ? 28 : 20; });
     // ورقة من لم يُطابَق: ليُكمل يدوياً أو يُراجَع رقم هويته
     const miss = plan.filled.filter((x) => !x.found);
     if (miss.length) {
@@ -775,6 +791,19 @@
       miss.forEach((x) => ms.addRow([x.row[g.nidCol] == null ? "" : x.row[g.nidCol],
         x.nid ? "لا يوجد في ملف النظام" : "بلا رقم هوية"].concat(m.headers.slice(0, 3).map((h) => (x.row[h] == null ? "" : x.row[h])))));
       ms.columns.forEach((c) => { c.width = 26; });
+    }
+    // من سبق أن التحق: ورقة مستقلة في الملف المكتمل كذلك
+    if (cmp) {
+      const old2 = cmp.filter((x) => x.nCourses > 0);
+      if (old2.length) {
+        const os = wb.addWorksheet("سبق أن التحق", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+        os.addRow([g.nidCol, "الاسم في ملفك", "عدد الدورات", "الدورات السابقة", "سجلّ الالتحاق"]);
+        os.getRow(1).font = { bold: true };
+        const nameCol = m.headers.find((h) => /اسم/.test(h)) || "";
+        old2.forEach((x) => os.addRow([x.r[g.nidCol] == null ? "" : x.r[g.nidCol],
+          nameCol ? (x.r[nameCol] == null ? "" : x.r[nameCol]) : "", x.nCourses, x.courses, x.history]));
+        os.columns.forEach((c) => { c.width = 30; });
+      }
     }
     return { blob: new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), plan };
   }
@@ -2080,6 +2109,7 @@
       } catch (e) { ui.toast("تعذّر النسخ؛ استعمل «أو نزّله ملفاً»"); }
     });
     $("fx-body").addEventListener("change", (e) => {
+      if (e.target.id === "fx-judge") { state.fx.judge = e.target.checked; return; }
       if (e.target.id === "fx-cur") { state.fx.cur = e.target.value; return renderFill(); }
       const gi = e.target.dataset.fxNid;
       if (gi != null) {
