@@ -735,7 +735,8 @@
         bits.push(`<div class="table-wrap"><table><thead><tr><th>الملف</th><th class="n">صفوف</th><th class="n">تطابَق</th><th class="n">تعذّر</th><th class="n">خانات تُملأ</th></tr></thead>
           <tbody>${lines.join("")}</tbody></table></div>`);
         bits.push(`<div class="btn-row"><button type="button" class="btn navy" id="fx-run"${anyFill ? "" : " disabled"}>
-          <span class="material-symbols-outlined btn-ico">download</span>${mine.length > 1 ? `نزّل ${ui.fmt(mine.length)} ملفات مكتملة (مضغوطة)` : "نزّل الملف المكتمل"}</button></div>`);
+          <span class="material-symbols-outlined btn-ico">download</span>${mine.length > 1 ? `نزّل ${ui.fmt(mine.length)} ملفات مكتملة (مضغوطة)` : "نزّل الملف المكتمل"}</button>
+          <button type="button" class="btn secondary" id="fx-cmp"><span class="material-symbols-outlined btn-ico">compare_arrows</span>تقرير المقارنة بالنظام</button></div>`);
       }
     }
     box.innerHTML = bits.join("");
@@ -787,6 +788,146 @@
       ui.download(`ملفات مكتملة ${ui.fmt(made.length)} - ${ui.todayISO()}.zip`, await zip.generateAsync({ type: "blob" }));
     }
     ui.toast(`مُلئت ${ui.fmt(fills)} خانة في ${ui.fmt(made.length)} ملفاً${miss ? `، و${ui.fmt(miss)} صفاً لم يُطابَق` : ""}`);
+  }
+
+  /* ===== تقرير المقارنة بالنظام =====
+     ثلاثة أسئلة يجيب عنها: من في كشفك وليس في النظام، ومن في النظام
+     وليس في أي كشف، وأين تختلف القيم. ومعها سجلّ الدورات السابقة لكل
+     شخص — وهو ما يُعرف به من سبق أن التحق. */
+  function fxCompare(m, g) {
+    const sys = state.fx.sys;
+    const map = (state.fx.map || {})[g.sig] || {};
+    const pairs = Object.keys(map).filter((k) => map[k]);
+    const rows = m.rows.map((r) => {
+      const nid = digits(r[g.nidCol]);
+      const src = nid ? sys.byNid.get(nid) : null;
+      const diffs = [];
+      if (src) {
+        pairs.forEach((col) => {
+          const mine = String(r[col] == null ? "" : r[col]).trim();
+          const theirs = String(src[map[col]] == null ? "" : src[map[col]]).trim();
+          if (mine && theirs && fxSame(mine, theirs) === false) diffs.push(`${col}: عندك «${mine}» وفي النظام «${theirs}»`);
+        });
+      }
+      const en = (src && src["_التحاقات"]) || [];
+      return {
+        r, nid, src, diffs,
+        courses: src ? (src["الدورات السابقة"] || "") : "",
+        nCourses: src ? (src["عدد الدورات"] || 0) : 0,
+        history: en.map((e) => [e["الدورة"], e["المسار"], e["الحالة"]].filter(Boolean).join(" — ")).join(" ؛ "),
+      };
+    });
+    return rows;
+  }
+
+  /* مقارنة قيمتين بتسامح: الفروق الشكلية ليست اختلافاً */
+  function fxSame(a, b) {
+    const n = (v) => String(v).replace(/[\s\u200f\u200e]/g, "").replace(/[إأآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").toLowerCase();
+    if (n(a) === n(b)) return true;
+    const da = digits(a), db = digits(b);
+    if (da && db && da.replace(/^0+/, "") === db.replace(/^0+/, "")) return true;
+    return false;
+  }
+
+  async function fxCompareBook(m, g) {
+    const sys = state.fx.sys;
+    const rows = fxCompare(m, g);
+    const wb = new ExcelJS.Workbook();
+    const RED = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7D4D0" } };
+    const GREEN = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD8F0E2" } };
+    const YELLOW = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2A8" } };
+
+    const ws = wb.addWorksheet("المقارنة", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+    const extra = ["في النظام؟", "عدد الدورات السابقة", "الدورات السابقة", "سجلّ الالتحاق", "قيم مختلفة"];
+    ws.addRow(m.headers.concat(extra));
+    ws.getRow(1).font = { bold: true };
+    rows.forEach((x) => {
+      const row = ws.addRow(m.headers.map((h) => (x.r[h] == null ? "" : x.r[h]))
+        .concat([x.src ? "نعم" : "لا", x.nCourses, x.courses, x.history, x.diffs.join(" | ")]));
+      const base = m.headers.length;
+      row.getCell(base + 1).fill = x.src ? GREEN : RED;
+      if (x.nCourses > 0) row.getCell(base + 2).fill = YELLOW;
+      if (x.diffs.length) row.getCell(base + 5).fill = RED;
+    });
+    ws.columns.forEach((c, i) => { c.width = i >= m.headers.length ? 30 : 20; });
+
+    // من سبق أن التحق: ورقة مستقلة ليراها المقابِل بسرعة
+    const old = rows.filter((x) => x.nCourses > 0);
+    if (old.length) {
+      const os = wb.addWorksheet("سبق أن التحق", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+      os.addRow([g.nidCol, "الاسم", "عدد الدورات", "الدورات السابقة", "سجلّ الالتحاق"]);
+      os.getRow(1).font = { bold: true };
+      old.forEach((x) => os.addRow([x.r[g.nidCol] == null ? "" : x.r[g.nidCol],
+        x.src ? x.src["الاسم"] : "", x.nCourses, x.courses, x.history]));
+      os.columns.forEach((c) => { c.width = 30; });
+    }
+
+    // ليسوا في النظام
+    const none = rows.filter((x) => !x.src);
+    if (none.length) {
+      const ns = wb.addWorksheet("ليسوا في النظام", { views: [{ rightToLeft: true }] });
+      ns.addRow([g.nidCol, "السبب"].concat(m.headers.slice(0, 3)));
+      ns.getRow(1).font = { bold: true };
+      none.forEach((x) => ns.addRow([x.r[g.nidCol] == null ? "" : x.r[g.nidCol],
+        x.nid ? "لا يوجد في ملف النظام" : "بلا رقم هوية"].concat(m.headers.slice(0, 3).map((h) => (x.r[h] == null ? "" : x.r[h])))));
+      ns.columns.forEach((c) => { c.width = 26; });
+    }
+
+    // اختلاف القيم
+    const diff = rows.filter((x) => x.diffs.length);
+    if (diff.length) {
+      const ds = wb.addWorksheet("قيم مختلفة", { views: [{ rightToLeft: true }] });
+      ds.addRow([g.nidCol, "الاسم", "الاختلاف"]);
+      ds.getRow(1).font = { bold: true };
+      diff.forEach((x) => ds.addRow([x.r[g.nidCol] == null ? "" : x.r[g.nidCol], x.src["الاسم"] || "", x.diffs.join(" | ")]));
+      ds.columns.forEach((c, i) => { c.width = i === 2 ? 70 : 26; });
+    }
+    return { blob: new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      stats: { total: rows.length, inSys: rows.length - none.length, none: none.length, old: old.length, diff: diff.length } };
+  }
+
+  /* من في النظام ولم يرد في أي كشف رُفع */
+  async function fxLeftoverBook(seenIds) {
+    const sys = state.fx.sys;
+    const left = sys.rows.filter((r) => { const n = digits(r["رقم الهوية"] || ""); return n && !seenIds.has(n); });
+    if (!left.length) return null;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("ليسوا في أي كشف", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+    const cols = sys.cols.filter((c) => c !== "_التحاقات").slice(0, 14);
+    ws.addRow(cols);
+    ws.getRow(1).font = { bold: true };
+    left.forEach((r) => ws.addRow(cols.map((c) => {
+      const v = r[c];
+      return v == null ? "" : (typeof v === "object" ? "" : v);
+    })));
+    ws.columns.forEach((c) => { c.width = 22; });
+    return { blob: new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), count: left.length };
+  }
+
+  async function fxCompareDownload() {
+    const groups = fxGroups().filter((g) => g.nidCol);
+    if (!groups.length) return;
+    const made = [];
+    const seenIds = new Set();
+    let sum = { total: 0, inSys: 0, none: 0, old: 0, diff: 0 };
+    for (const g of groups) {
+      for (const m of g.files) {
+        m.rows.forEach((r) => { const n = digits(r[g.nidCol]); if (n) seenIds.add(n); });
+        const r = await fxCompareBook(m, g);
+        made.push({ name: `${m.name} - مقارنة.xlsx`, blob: r.blob });
+        Object.keys(sum).forEach((k) => { sum[k] += r.stats[k]; });
+      }
+    }
+    const left = await fxLeftoverBook(seenIds);
+    if (left) made.push({ name: "ليسوا في أي كشف.xlsx", blob: left.blob });
+    if (made.length === 1) {
+      ui.download(made[0].name, made[0].blob);
+    } else {
+      const zip = new JSZip();
+      made.forEach((x) => zip.file(x.name, x.blob));
+      ui.download(`تقرير المقارنة - ${ui.todayISO()}.zip`, await zip.generateAsync({ type: "blob" }));
+    }
+    ui.toast(`${ui.fmt(sum.inSys)} في النظام، و${ui.fmt(sum.none)} ليسوا فيه، و${ui.fmt(sum.old)} سبق أن التحقوا${sum.diff ? `، و${ui.fmt(sum.diff)} باختلاف قيم` : ""}`);
   }
 
   /* ===== استخراج سريع: ملف Excel ← اختيار الحقول ← طباعة أو Excel أو Word =====
@@ -1910,6 +2051,7 @@
     $("fx-body").addEventListener("click", (e) => {
       if (e.target.closest("#fx-toggle-all")) { state.fx.showAll = !state.fx.showAll; return renderFill(); }
       if (e.target.closest("#fx-run")) fxDownload().catch((err) => ui.toast(err.message));
+      if (e.target.closest("#fx-cmp")) fxCompareDownload().catch((err) => ui.toast(err.message));
     });
     // الاستخراج السريع
     $("qx-file").addEventListener("change", (e) => onQuickFile(e.target.files));
