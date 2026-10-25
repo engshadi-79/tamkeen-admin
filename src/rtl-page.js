@@ -5,7 +5,8 @@
   const esc = ui.esc;
   let results = []; // { name, blob, stats, error, driveLink }
 
-  const fixedName = (name) => name.replace(/\.docx$/i, "") + " - مصحح.docx";
+  const extOf = (name) => (/\.pptx$/i.test(name) ? "pptx" : "docx");
+  const fixedName = (name) => name.replace(/\.(docx|pptx)$/i, "") + " - مصحح." + extOf(name);
 
   function render() {
     const list = $("rtl-results");
@@ -16,7 +17,7 @@
       ? `<li class="rtl-item err"><b>${esc(r.name)}</b><span>${esc(r.error)}</span></li>`
       : `<li class="rtl-item" data-i="${i}">
           <b>${esc(fixedName(r.name))}</b>
-          <span class="conv-hint">${ui.fmt(r.stats.paragraphs)} فقرة، ${ui.fmt(r.stats.runs)} نص عربي، ${ui.fmt(r.stats.tables)} جدول${r.stats.align ? `، ${ui.fmt(r.stats.align)} محاذاة` : ""}${r.stats.parts ? "" : " — الملف سليم أصلاً، لم يلزم تعديل"}</span>
+          <span class="conv-hint">${r.stats.slides ? `${ui.fmt(r.stats.slides)} شريحة، ` : ""}${ui.fmt(r.stats.paragraphs)} فقرة، ${ui.fmt(r.stats.runs)} ${r.stats.slides ? "فقرة ضُبط اتجاهها" : "نص عربي"}، ${ui.fmt(r.stats.tables)} جدول${r.stats.align ? `، ${ui.fmt(r.stats.align)} محاذاة` : ""}${r.stats.parts ? "" : " — الملف سليم أصلاً، لم يلزم تعديل"}</span>
           <span class="rtl-btns">
             <button class="btn small" data-dl>تنزيل</button>
             ${r.driveLink ? `<a class="conv-link" href="${esc(r.driveLink)}" target="_blank" rel="noopener"><span class="material-symbols-outlined btn-ico">cloud</span>فتح في Drive</a>` : `<button class="btn secondary small" data-drive><span class="material-symbols-outlined btn-ico">cloud</span>أرشفة في Drive</button>`}
@@ -25,23 +26,25 @@
   }
 
   async function handleFiles(files) {
-    const docx = [...files].filter((f) => /\.docx$/i.test(f.name));
-    if (!docx.length) { ui.toast("اختر ملفات Word بصيغة .docx"); return; }
+    const list = [...files].filter((f) => /\.(docx|pptx)$/i.test(f.name));
+    if (!list.length) { ui.toast("اختر ملفات Word (.docx) أو PowerPoint (.pptx)"); return; }
     if (typeof JSZip === "undefined") { ui.toast("تعذّر تحميل مكتبة JSZip"); return; }
     $("rtl-busy").hidden = false;
-    for (const f of docx) {
+    for (const f of list) {
       try {
-        const { blob, stats } = await App.rtlFixer.fixDocx(await f.arrayBuffer());
+        const { blob, stats } = await App.rtlFixer.fixFile(await f.arrayBuffer(), f.name);
         results.unshift({ name: f.name, blob, stats });
       } catch (e) {
         console.error(e);
-        results.unshift({ name: f.name, error: e.message && /[؀-ۿ]/.test(e.message) ? e.message : "تعذّر قراءة الملف؛ تأكد أنه ملف Word سليم." });
+        const ppt = /\.pptx$/i.test(f.name);
+        results.unshift({ name: f.name, error: e.message && /[؀-ۿ]/.test(e.message) ? e.message
+          : `تعذّر قراءة الملف؛ تأكد أنه ملف ${ppt ? "PowerPoint" : "Word"} سليم.` });
       }
     }
     $("rtl-busy").hidden = true;
     $("rtl-input").value = "";
     render();
-    ui.toast(docx.length === 1 ? "تم تصحيح الملف" : `تم تصحيح ${docx.length} ملفات`);
+    ui.toast(list.length === 1 ? "تم تصحيح الملف" : `تم تصحيح ${list.length} ملفات`);
   }
 
   async function archive(r) {
