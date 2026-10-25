@@ -107,5 +107,80 @@
     return { blob, stats };
   }
 
-  App.rtlFixer = { fixDocx, fixXml };
+  /* ===== PowerPoint =====
+     الشرائح لغتها XML أخرى: الفقرة <a:p> واتجاهها في <a:pPr rtl="1">،
+     والمحاذاة algn (l/ctr/r/just). وفي العرض ثنائي الاتجاه يفسّر PowerPoint
+     القيمة l بداية السطر، فتُحوَّل r→l ليصير النص يمينياً، وتبقى ctr و just.
+     الجداول: <a:tbl> يُقلب اتجاهها بـ rtl="1" في <a:tblPr>. */
+  const PPTX_PARTS = /^ppt\/(slides|slideLayouts|slideMasters|notesSlides)\/[^/]+\.xml$/;
+
+  /* المحاذاة في شرائح PowerPoint ليست كما في Word: قيمة algn تُفسَّر بحسب
+     اتجاه الفقرة، فقلبها يفسد ما لم يكن فاسداً. الملفات المعطوبة تأتي بـ
+     algn="l" مفروضة على كل فقرة، وحذفها يجعلها ترث الاتجاه الجديد فتصير
+     يمينية. وما اختاره صاحب الملف صراحةً — توسيط أو ضبط أو يمين — يبقى. */
+  function pptAlign(pPr) {
+    return pPr.replace(/\s*algn="l"/g, "");
+  }
+
+  function fixPptXml(xml, stats) {
+    let out = xml;
+
+    // 1) كل فقرة فيها عربية: rtl="1" على <a:pPr>، وتُنشأ إن لم تكن
+    out = out.replace(/<a:p>([\s\S]*?)<\/a:p>/g, (whole, inner) => {
+      if (!ARABIC.test(inner)) return whole;
+      stats.paragraphs++;
+      let body = inner;
+      const has = /<a:pPr\b/.test(body);
+      if (has) {
+        body = body.replace(/<a:pPr\b([^>]*?)(\/?)>/, (m2, attrs, selfClose) => {
+          let a = attrs;
+          if (!/\brtl="/.test(a)) { a += ' rtl="1"'; stats.runs++; }
+          else a = a.replace(/\brtl="0"/, 'rtl="1"');
+          const before = a;
+          a = pptAlign(a);
+          if (a !== before) stats.align++;
+          return `<a:pPr${a}${selfClose}>`;
+        });
+      } else {
+        body = `<a:pPr rtl="1"/>${body}`;
+        stats.runs++;
+      }
+      return `<a:p>${body}</a:p>`;
+    });
+
+    // 2) الجداول: ترتيب الأعمدة من اليمين
+    out = out.replace(/<a:tblPr\b([^>]*?)(\/?)>/g, (m, attrs, selfClose) => {
+      if (/\brtl="1"/.test(attrs)) return m;
+      stats.tables++;
+      return `<a:tblPr${attrs.replace(/\brtl="0"/, "")} rtl="1"${selfClose}>`;
+    });
+
+    return out;
+  }
+
+  async function fixPptx(buffer) {
+    const zip = await JSZip.loadAsync(buffer);
+    if (!zip.file("ppt/presentation.xml")) throw new Error("الملف ليس عرض PowerPoint صالحاً (.pptx)");
+    const stats = { paragraphs: 0, runs: 0, tables: 0, sections: 0, align: 0, parts: 0, slides: 0 };
+    for (const name of Object.keys(zip.files)) {
+      if (!PPTX_PARTS.test(name)) continue;
+      if (/^ppt\/slides\//.test(name)) stats.slides++;
+      const xml = await zip.file(name).async("string");
+      const fixed = fixPptXml(xml, stats);
+      if (fixed !== xml) { zip.file(name, fixed); stats.parts++; }
+    }
+    const blob = await zip.generateAsync({
+      type: "blob",
+      compression: "DEFLATE",
+      mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    });
+    return { blob, stats };
+  }
+
+  /* الوجهة تُختار من امتداد الملف */
+  async function fixFile(buffer, name) {
+    return /\.pptx$/i.test(name) ? fixPptx(buffer) : fixDocx(buffer);
+  }
+
+  App.rtlFixer = { fixDocx, fixPptx, fixFile, fixXml, fixPptXml };
 })(window.App = window.App || {});

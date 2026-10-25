@@ -15,7 +15,7 @@
     { id: "meetings", label: "محاضر الاجتماعات" },
     { id: "registry", label: "الوارد والصادر" },
     { id: "roster", label: "المستفيدون والتعهدات" },
-    { id: "rtl", label: "تصحيح اتجاه Word" },
+    { id: "rtl", label: "تصحيح اتجاه Word و PPT" },
     { id: "converter", label: "تحويل ملف حسب قالب" },
     { id: "hospitality", label: "كشف توزيع الضيافة" },
     { id: "sheets", label: "جداول البيانات" },
