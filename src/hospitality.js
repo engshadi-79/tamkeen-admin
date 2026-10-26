@@ -15,18 +15,35 @@
   const NOTE = "ملاحظة: يُدخل عدد المتدربين يدوياً في خلية تقاطع كل مسار مع تاريخ اليوم. وتوضع (1) في خلية تقاطع اسم الموظف مع تاريخ اليوم عند استلامه الضيافة، وتترك الخانة فارغة في حال عدم الاستلام. صفوف وأعمدة الإجمالي محسوبة تلقائياً بمعادلات ولا يجب تعديلها يدوياً.";
 
   // مفاتيح الصفوف الافتراضية ثابتة (لا عشوائية) حتى تتطابق خانات الأجهزة كلها قبل أي تعديل
+  const SECURITY = 3;   // عدد رجال الأمن: استلامهم يُحسب بهذا العدد
   const DEFAULT_ROWS = {
     tracks: ["الحلاقة الرجالية", "التجميل النسائي", "التطريز والخياطة", "صناعة الإكسسوارات", "المساعد الافتراضي"]
       .map((name, i) => ({ key: `t${i + 1}`, name })),
     staff: ["م.شادي القططي", "د.يوسف جربوع", "أميرة ابو ريدة", "رشا بركة", "طلعت بركة", "عائد الوزير", "وردة ابو عيادة", "ايه زعرب", "علاء ابو صلاح", "ابو العبد فروانة", "رجال الامن", "ضيوف + أطفال"]
-      .map((name, i) => (name === "ضيوف + أطفال" ? { key: `s${i + 1}`, name, variable: true } : { key: `s${i + 1}`, name, value: name === "رجال الامن" ? 2 : 1 })),
+      .map((name, i) => (name === "ضيوف + أطفال" ? { key: `s${i + 1}`, name, variable: true } : { key: `s${i + 1}`, name, value: name === "رجال الامن" ? SECURITY : 1 })),
   };
-  // قيمة الاستلام للموظف: 1 افتراضياً، ولبعض الصفوف أكثر (رجال الأمن = 2)
+  // قيمة الاستلام للموظف: 1 افتراضياً، ولبعض الصفوف أكثر (رجال الأمن = 3)
   // صف متغيّر (ضيوف + أطفال): يُكتب العدد يدوياً كل يوم بدل الضغط
   const isVariable = (r) => !!(r && (r.variable || (r.variable === undefined && r.value === undefined && /ضيوف/.test(r.name))));
-  const staffValue = (r) => Math.max(1, Math.floor(Number(r && r.value) || (r && /رجال\s*ال[اأ]من/.test(r.name) ? 2 : 1)));
+  const staffValue = (r) => Math.max(1, Math.floor(Number(r && r.value) || (r && /رجال\s*ال[اأ]من/.test(r.name) ? SECURITY : 1)));
 
+  /* الصفوف المحفوظة سابقاً تحمل 2 لرجال الأمن: تُرفع إلى 3 مرة واحدة.
+     ومن غيّرها يدوياً بعد ذلك تبقى كما اختار، لأن الترقية لا تتكرّر. */
+  function migrateSecurity() {
+    const r = store.get().hospitalityRows;
+    if (!r || !Array.isArray(r.staff) || r.secFix3) return;
+    let changed = false;
+    r.staff.forEach((row) => {
+      if (/رجال\s*ال[اأ]من/.test(row.name || "") && Number(row.value) === 2) { row.value = SECURITY; changed = true; }
+    });
+    r.secFix3 = true;
+    store.save();
+    if (changed) console.info("كشف الضيافة: رُفع عدد رجال الأمن إلى", SECURITY);
+  }
+
+  let migrated = false;
   const rowsDef = () => {
+    if (!migrated) { migrated = true; try { migrateSecurity(); } catch (e) { /* مخزن غير جاهز */ } }
     const r = store.get().hospitalityRows;
     return r && Array.isArray(r.tracks) && Array.isArray(r.staff) ? r : DEFAULT_ROWS;
   };
