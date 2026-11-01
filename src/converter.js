@@ -83,7 +83,8 @@
 
   async function refreshSaved() {
     try {
-      state.savedTemplates = await store().list();
+      // قوالب جدول الاختبارات لها بطاقتها الخاصة، فلا تظهر في قائمة قوالب التحويل
+      state.savedTemplates = (await store().list()).filter((t) => t.kind !== "exam");
     } catch (e) {
       state.savedTemplates = [];
       console.error(e);

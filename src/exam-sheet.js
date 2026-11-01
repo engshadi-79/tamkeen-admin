@@ -24,6 +24,7 @@
     tplBuf: null, tplName: "",
     rows: [], headers: [],
     map: { name: "", nid: "", track: "", group: "" },
+    oneFile: false,      // كل المسارات في ملف واحد
     plan: {},            // لكل مجموعة: { theory:{date,time}, practical:[{date,time}] }
   };
 
@@ -151,8 +152,18 @@
     return p;
   }
 
-  /* ===== بناء الملف ===== */
-  async function build(track, groups) {
+  /* يكتب نصاً في فقرة مع إبقاء تنسيقها */
+  function setPara(p, text) {
+    const t = tag(p, "t");
+    if (!t.length) return;
+    t.slice(1).forEach((x) => { x.textContent = ""; });
+    t[0].textContent = text;
+    t[0].setAttribute("xml:space", "preserve");
+  }
+
+  /* ===== بناء الملف =====
+     list: ‎[{ track, groups }]‎ — مسار واحد، أو عدة مسارات ورى بعض في ملف واحد */
+  async function build(list) {
     const zip = await JSZip.loadAsync(state.tplBuf);
     const xml = await zip.file("word/document.xml").async("string");
     const doc = new DOMParser().parseFromString(xml, "application/xml");
@@ -162,27 +173,54 @@
     if (!tables.length) throw new Error("القالب بلا جداول — تأكّد أنه «قالب جدول الاختبارات»");
     const proto = tables[0];
 
-    // عنوان المسار: الفقرة التي فيها «اسم المسار»
-    kids.filter((k) => k.localName === "p").forEach((p) => {
-      const t = tag(p, "t");
-      const whole = t.map((x) => x.textContent).join("");
-      if (/اسم المسار/.test(whole)) {
-        t.slice(1).forEach((x) => { x.textContent = ""; });
-        if (t[0]) t[0].textContent = `اسم المسار : ${track}`;
-      }
-    });
-
     // الصفوف النموذجية من الجدول الأول
     const pr = [...proto.children].filter((c) => c.localName === "tr");
     const rowGroup = pr[0], rowHead = pr[1], rowData = pr[2];
-    const sig = kids.filter((k) => k.localName === "p").slice(-1)[0];
+    const paras = kids.filter((k) => k.localName === "p");
+    const sig = paras[paras.length - 1];
+    // فقرة «اسم المسار» نموذج يُستنسخ لكل مسار
+    const trackProto = (paras.find((p) => /اسم المسار/.test(tag(p, "t").map((x) => x.textContent).join("")))
+      || paras[1]).cloneNode(true);
 
-    // كل الجداول القديمة وما بينها من فقرات فارغة تُزال، ويُبقى العنوانان والتذييل
-    const titleP = kids.filter((k) => k.localName === "p").slice(0, 2);
+    // يبقى العنوان الأعلى والتذييل فقط، وما عداهما يُعاد بناؤه
+    const title = paras[0];
     const sectPr = kids.find((k) => k.localName === "sectPr");
-    kids.forEach((k) => { if (k !== sectPr && !titleP.includes(k) && k !== sig) body.removeChild(k); });
+    kids.forEach((k) => { if (k !== sectPr && k !== title && k !== sig) body.removeChild(k); });
 
-    groups.forEach((g, gi) => {
+    let firstPage = true;
+    list.forEach(({ track, groups }) => {
+      groups.forEach((g, gi) => {
+        if (!firstPage) body.insertBefore(pageBreak(doc), sig);   // كل مجموعة في صفحة
+        if (!gi) {
+          const tp = trackProto.cloneNode(true);
+          setPara(tp, `اسم المسار : ${track}`);
+          body.insertBefore(tp, sig);
+        }
+        firstPage = false;
+        buildTable(doc, { proto, rowGroup, rowHead, rowData }, track, g, gi, body, sig);
+      });
+    });
+
+    // التوقيع كان يفصله عن الجدول في النموذج فقرات فارغة حُذفت، فيُعاد الفاصل
+    body.insertBefore(doc.createElementNS(W, "w:p"), sig);
+    body.insertBefore(doc.createElementNS(W, "w:p"), sig);
+
+    // XMLSerializer يُخرج ترويسة ‎<?xml?>‎ بنفسه؛ إضافة ثانية تجعل Word يرفض الملف
+    let outXml = new XMLSerializer().serializeToString(doc);
+    if (!outXml.startsWith("<?xml")) {
+      outXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + outXml;
+    }
+    zip.file("word/document.xml", outXml, { createFolders: false });
+    return zip.generateAsync({
+      type: "blob",
+      compression: "DEFLATE",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+  }
+
+  function buildTable(doc, protos, track, g, gi, body, sig) {
+    const { proto, rowGroup, rowHead, rowData } = protos;
+    {
       const plan = planOf(track, g.name);
       const tbl = proto.cloneNode(true);
       [...tbl.children].filter((c) => c.localName === "tr").forEach((tr) => tbl.removeChild(tr));
@@ -238,26 +276,8 @@
           mergeDown(doc, cells, b, N);
         });
       }
-      // كل مجموعة في صفحة مستقلة
-      if (gi) body.insertBefore(pageBreak(doc), sig);
       body.insertBefore(tbl, sig);
-    });
-
-    // التوقيع كان يفصله عن الجدول في النموذج فقرات فارغة حُذفت، فيُعاد الفاصل
-    body.insertBefore(doc.createElementNS(W, "w:p"), sig);
-    body.insertBefore(doc.createElementNS(W, "w:p"), sig);
-
-    // XMLSerializer يُخرج ترويسة ‎<?xml?>‎ بنفسه؛ إضافة ثانية تجعل Word يرفض الملف
-    let outXml = new XMLSerializer().serializeToString(doc);
-    if (!outXml.startsWith("<?xml")) {
-      outXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + outXml;
     }
-    zip.file("word/document.xml", outXml, { createFolders: false });
-    return zip.generateAsync({
-      type: "blob",
-      compression: "DEFLATE",
-      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    });
   }
 
   /* ===== التجميع: مسار ← مجموعات ← طلبة ===== */
@@ -278,12 +298,44 @@
     }));
   }
 
+  /* ===== القالب المحفوظ =====
+     يُحفظ مرة واحدة في مخزن القوالب المشترك (بعلامة exam حتى لا يختلط بقوالب
+     التحويل)، فيجده المستخدم جاهزاً في كل مرة وعلى كل جهاز. */
+  const tplStore = () => App.converterStore;
+  async function savedExams() {
+    if (!tplStore()) return [];
+    try { return (await tplStore().list()).filter((t) => t.kind === "exam"); } catch (e) { return []; }
+  }
+  async function loadSaved() {
+    const list = await savedExams();
+    if (!list.length) return false;
+    try {
+      const t = await tplStore().get(list[0].id);
+      state.tplBuf = await t.file.arrayBuffer();
+      state.tplName = t.name;
+      state.tplSavedId = t.id;
+      return true;
+    } catch (e) { return false; }
+  }
+  async function saveTpl(file) {
+    if (!tplStore()) return;
+    const old = await savedExams();
+    state.tplSavedId = await tplStore().save({
+      name: file.name.replace(/\.docx$/i, ""), format: "docx", headers: [], kind: "exam",
+      file: new Blob([state.tplBuf], { type: file.type }),
+    });
+    // القالب واحد؛ النسخ القديمة تُزال حتى لا تتراكم
+    for (const t of old) { try { await tplStore().remove(t.id); } catch (e) { /* يكفي تجاهلها */ } }
+  }
+
   /* ===== الواجهة ===== */
   function render() {
     const box = $("ex-body");
     if (!box) return;
     if (!state.rows.length) {
-      box.innerHTML = state.tplBuf ? '<p class="conv-hint">✓ القالب جاهز. ارفع ملف الطلبة.</p>' : "";
+      box.innerHTML = state.tplBuf
+        ? `<p class="conv-hint">✓ القالب محفوظ وجاهز: <b>${esc(state.tplName)}</b>${state.tplSavedId ? " — لا داعي لرفعه مرة أخرى" : ""}. ارفع ملف الطلبة.</p>`
+        : "";
       return;
     }
     const m = state.map;
@@ -316,6 +368,11 @@
           </div>`);
         });
       });
+      const many = grouped().length > 1;
+      if (many) {
+        bits.push(`<label class="conv-check"><input type="checkbox" id="ex-one" ${state.oneFile ? "checked" : ""}>
+          كل المسارات في ملف Word واحد ورى بعض — بدل ملف لكل مسار</label>`);
+      }
       bits.push(`<div class="btn-row"><button type="button" class="btn navy" id="ex-run" ${state.tplBuf ? "" : "disabled"}>
         <span class="material-symbols-outlined btn-ico">description</span>أنشئ جداول الاختبارات</button></div>`);
     }
@@ -325,9 +382,14 @@
   async function run() {
     const list = grouped();
     if (!list.length) { ui.toast("لا بيانات"); return; }
+    if (state.oneFile && list.length > 1) {
+      ui.download(`جداول الاختبارات - ${ui.todayISO()}.docx`, await build(list));
+      ui.toast(`أُنشئ ملف واحد فيه ${ui.fmt(list.length)} مسارات`);
+      return;
+    }
     const made = [];
     for (const t of list) {
-      made.push({ name: `جدول اختبارات - ${t.track}.docx`, blob: await build(t.track, t.groups) });
+      made.push({ name: `جدول اختبارات - ${t.track}.docx`, blob: await build([t]) });
     }
     if (made.length === 1) ui.download(made[0].name, made[0].blob);
     else {
@@ -344,15 +406,33 @@
 
     tpl.addEventListener("change", async (e) => {
       const f = e.target.files[0];
-      if (!f) { state.tplBuf = null; return render(); }
+      if (!f) return;
       state.tplBuf = await f.arrayBuffer();
       state.tplName = f.name;
       render();
+      try { await saveTpl(f); ui.toast("حُفظ القالب — لن تحتاج رفعه مرة أخرى"); } catch (err) { ui.toast(err.message); }
+      render();
+    });
+
+    /* القالب المحفوظ يُحمَّل تلقائياً. المخزن قد لا يكون جاهزاً عند الإقلاع،
+       ولا عند وصول المزامنة، فيُعاد السؤال مرات قليلة متباعدة. */
+    const retry = (ms) => {
+      if (state.tplBuf) return;
+      loadSaved().then((ok) => {
+        if (ok) return render();
+        const next = [500, 1500, 4000, 10000].find((d) => d > ms);
+        if (next) setTimeout(() => retry(next), next - ms);
+      });
+    };
+    retry(0);
+    if (App.store && App.store.onChange) App.store.onChange(() => {
+      if (!state.tplBuf) loadSaved().then((ok) => { if (ok) render(); });
     });
 
     data.addEventListener("change", async (e) => {
       const f = e.target.files[0];
       if (!f) { state.rows = []; return render(); }
+      if (!state.tplBuf) await loadSaved();
       try {
         const d = await App.converterCore.readDataFile(new Uint8Array(await f.arrayBuffer()));
         state.headers = d.headers;
@@ -368,6 +448,7 @@
     body.addEventListener("change", (e) => {
       const key = e.target.dataset.exMap;
       if (key) { state.map[key] = e.target.value; return render(); }
+      if (e.target.id === "ex-one") { state.oneFile = e.target.checked; return; }
       const card = e.target.closest(".ex-grp");
       if (!card) return;
       const plan = planOf(card.dataset.track, card.dataset.grp);
