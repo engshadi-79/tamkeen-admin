@@ -21,12 +21,17 @@
   const fmtDate = (iso) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
 
   const state = {
-    tplBuf: null, tplName: "",
+    tplBuf: null, tplName: "", tplSavedId: "",
+    attBuf: null, attName: "", attSavedId: "",
     rows: [], headers: [],
     map: { name: "", nid: "", track: "", group: "" },
     oneFile: false,      // كل المسارات في ملف واحد
+    withAtt: true,       // كشوف الحضور مع الجداول
+    stage: "",           // المرحلة، تُكتب في عمود «المرحلة» بكشف الحضور
+    trainers: {},        // لكل مسار: أسماء المدربين
     plan: {},            // لكل مجموعة: { theory:{date,time}, practical:[{date,time}] }
   };
+  const trainersOf = (track) => (state.trainers[track] || "").split(/[,،\n]/).map(clean).filter(Boolean);
 
   /* المواعيد تُحدَّد لكل مجموعة داخل المسار، كما في النموذج:
      المجموعة الأولى لها نظريّها ومواعيد عمليها، والثانية غيرها. */
@@ -205,7 +210,11 @@
     body.insertBefore(doc.createElementNS(W, "w:p"), sig);
     body.insertBefore(doc.createElementNS(W, "w:p"), sig);
 
-    // XMLSerializer يُخرج ترويسة ‎<?xml?>‎ بنفسه؛ إضافة ثانية تجعل Word يرفض الملف
+    return pack(zip, doc);
+  }
+
+  /* XMLSerializer يُخرج ترويسة ‎<?xml?>‎ بنفسه؛ إضافة ثانية تجعل Word يرفض الملف */
+  function pack(zip, doc) {
     let outXml = new XMLSerializer().serializeToString(doc);
     if (!outXml.startsWith("<?xml")) {
       outXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + outXml;
@@ -280,6 +289,122 @@
     }
   }
 
+  /* ===== كشف الحضور والغياب =====
+     النموذج صفحة واحدة: عنوان فيه اسم المسار، سطر اليوم والتاريخ، جدول
+     بأسماء الطلبة، ثم أسماء المدربين بتوقيعاتهم. تُستنسخ الصفحة كاملةً
+     لكل موعد امتحان (النظري ثم كل موعد عملي)، بترتيب الأسماء نفسه. */
+  const runText = (r) => tag(r, "t").map((t) => t.textContent).join("");
+  function setRun(r, text) {
+    const ts = tag(r, "t");
+    if (!ts.length) return;
+    ts.slice(1).forEach((t) => t.parentNode.removeChild(t));
+    ts[0].textContent = text;
+    ts[0].setAttribute("xml:space", "preserve");
+  }
+  const paraText = (p) => tag(p, "t").map((t) => t.textContent).join("");
+  /* اسم المدرب في القالب مقسّم على أكثر من run؛ يُكتب في الأول وتُفرَّغ بقيتها
+     حتى نقاط التوقيع، وإلا بقي آخر القديم ملتصقاً بالجديد */
+  function setName(runs, i, name) {
+    if (!runs[i]) return;
+    setRun(runs[i], name);
+    for (let k = i + 1; k < runs.length; k++) {
+      const t = runText(runs[k]);
+      if (/\.{3,}/.test(t) || !t.trim()) break;
+      setRun(runs[k], "");
+    }
+  }
+
+  function attPage(doc, block, ctx) {
+    const kids = block.map((k) => k.cloneNode(true));
+    kids.forEach((k) => {
+      if (k.localName === "tbl") return fillAttTable(doc, k, ctx);
+      const txt = paraText(k);
+      const runs = tag(k, "r");
+      if (/كشف الحضور/.test(txt)) {
+        setRun(runs[0], `كشف الحضور والغياب للامتحان النهائي (${ctx.kind}) - `);
+        if (runs[1]) setRun(runs[1], ctx.track);
+        else setRun(runs[0], `كشف الحضور والغياب للامتحان النهائي (${ctx.kind}) - ${ctx.track}`);
+      } else if (/اليوم/.test(txt)) {
+        const iDay = runs.findIndex((r) => /اليوم/.test(runText(r)));
+        if (iDay >= 0 && runs[iDay + 1]) setRun(runs[iDay + 1], ` ${ctx.day} `);
+        const iDate = runs.findIndex((r) => /التاريخ/.test(runText(r)));
+        if (iDate >= 0) {
+          setRun(runs[iDate], `التاريخ: ${ctx.date}م`);
+          runs.slice(iDate + 1).forEach((r) => setRun(r, ""));
+        }
+      } else if (/^\s*1-/.test(txt) || /مدرب المسار/.test(txt)) {
+        const i1 = runs.findIndex((r) => /^\s*1-\s*$/.test(runText(r)));
+        if (i1 >= 0) setName(runs, i1 + 1, ctx.trainers[0] || "");
+      } else if (/^\s*2-/.test(txt)) {
+        setName(runs, 1, ctx.trainers[1] || "");
+      }
+    });
+    // مدربون أكثر من اثنين: يُستنسخ سطر «2-» لكل واحد منهم
+    const second = kids.find((k) => /^\s*2-/.test(paraText(k)));
+    const out = [];
+    kids.forEach((k) => {
+      out.push(k);
+      if (k !== second) return;
+      ctx.trainers.slice(2).forEach((name, i) => {
+        const p = second.cloneNode(true);
+        const runs = tag(p, "r");
+        setRun(runs[0], `${i + 3}- `);
+        if (runs[1]) setRun(runs[1], name);
+        out.push(p);
+      });
+    });
+    if (ctx.trainers.length < 2 && second) out.splice(out.indexOf(second), 1);
+    return out;
+  }
+
+  function fillAttTable(doc, tbl, ctx) {
+    const trs = [...tbl.children].filter((c) => c.localName === "tr");
+    const head = trs[0], proto = trs[1] || trs[0];
+    trs.forEach((tr) => tbl.removeChild(tr));
+    tbl.appendChild(head);
+    ctx.students.forEach((s, i) => {
+      const tr = proto.cloneNode(true);
+      const c = cellsOf(tr);
+      const donor = tag(c[0], "r")[0] || null;
+      const vals = [String(i + 1), s.name, s.nid, ctx.stage, ctx.group, ""];
+      vals.forEach((v, ci) => { if (c[ci]) setCell(c[ci], v, donor); });
+      tbl.appendChild(tr);
+    });
+  }
+
+  async function buildAtt(list) {
+    const zip = await JSZip.loadAsync(state.attBuf);
+    const xml = await zip.file("word/document.xml").async("string");
+    const doc = new DOMParser().parseFromString(xml, "application/xml");
+    const body = firstTag(doc.documentElement, "body");
+    const sectPr = [...body.children].find((k) => k.localName === "sectPr");
+    const block = [...body.children].filter((k) => k !== sectPr);
+    if (!block.some((k) => k.localName === "tbl")) throw new Error("قالب كشف الحضور بلا جدول");
+    block.forEach((k) => body.removeChild(k));
+
+    let first = true;
+    list.forEach(({ track, groups }) => {
+      const trainers = trainersOf(track);
+      groups.forEach((g, gi) => {
+        const plan = planOf(track, g.name);
+        const appts = [];
+        if (plan.theory && plan.theory.date) appts.push({ kind: "نظري", date: plan.theory.date });
+        (plan.practical || []).forEach((p) => { if (p.date) appts.push({ kind: "عملي", date: p.date }); });
+        if (!appts.length) appts.push({ kind: "نظري", date: "" });
+        appts.forEach((ap) => {
+          if (!first) body.insertBefore(pageBreak(doc), sectPr);
+          first = false;
+          attPage(doc, block, {
+            track, kind: ap.kind, day: dayOf(ap.date), date: fmtDate(ap.date),
+            students: g.students, stage: state.stage,
+            group: `المجموعة ${ORDINAL[gi] || gi + 1}`, trainers,
+          }).forEach((k) => body.insertBefore(k, sectPr));
+        });
+      });
+    });
+    return pack(zip, doc);
+  }
+
   /* ===== التجميع: مسار ← مجموعات ← طلبة ===== */
   function grouped() {
     const m = state.map;
@@ -302,27 +427,28 @@
      يُحفظ مرة واحدة في مخزن القوالب المشترك (بعلامة exam حتى لا يختلط بقوالب
      التحويل)، فيجده المستخدم جاهزاً في كل مرة وعلى كل جهاز. */
   const tplStore = () => App.converterStore;
-  async function savedExams() {
+  const KINDS = { tpl: "exam", att: "exam-att" };
+  async function savedOf(which) {
     if (!tplStore()) return [];
-    try { return (await tplStore().list()).filter((t) => t.kind === "exam"); } catch (e) { return []; }
+    try { return (await tplStore().list()).filter((t) => t.kind === KINDS[which]); } catch (e) { return []; }
   }
-  async function loadSaved() {
-    const list = await savedExams();
+  async function loadSaved(which) {
+    const list = await savedOf(which);
     if (!list.length) return false;
     try {
       const t = await tplStore().get(list[0].id);
-      state.tplBuf = await t.file.arrayBuffer();
-      state.tplName = t.name;
-      state.tplSavedId = t.id;
+      state[which + "Buf"] = await t.file.arrayBuffer();
+      state[which + "Name"] = t.name;
+      state[which + "SavedId"] = t.id;
       return true;
     } catch (e) { return false; }
   }
-  async function saveTpl(file) {
+  async function saveTpl(which, file) {
     if (!tplStore()) return;
-    const old = await savedExams();
-    state.tplSavedId = await tplStore().save({
-      name: file.name.replace(/\.docx$/i, ""), format: "docx", headers: [], kind: "exam",
-      file: new Blob([state.tplBuf], { type: file.type }),
+    const old = await savedOf(which);
+    state[which + "SavedId"] = await tplStore().save({
+      name: file.name.replace(/\.docx$/i, ""), format: "docx", headers: [], kind: KINDS[which],
+      file: new Blob([state[which + "Buf"]], { type: file.type }),
     });
     // القالب واحد؛ النسخ القديمة تُزال حتى لا تتراكم
     for (const t of old) { try { await tplStore().remove(t.id); } catch (e) { /* يكفي تجاهلها */ } }
@@ -344,10 +470,23 @@
     const bits = [`<p class="conv-hint">${state.tplBuf ? `✓ القالب: ${esc(state.tplName)}` : "⚠ لم يُرفع القالب بعد"} · ملف الطلبة: <b>${ui.fmt(state.rows.length)}</b> صفاً</p>`,
       `<div class="inv-form">${sel("name", "عمود الاسم")}${sel("nid", "رقم الهوية")}${sel("track", "المسار")}${sel("group", "المجموعة (اختياري)")}</div>`];
 
+    if (state.attBuf) {
+      bits.push(`<p class="conv-hint">✓ قالب كشف الحضور جاهز: <b>${esc(state.attName)}</b></p>
+        <label class="conv-check"><input type="checkbox" id="ex-withatt" ${state.withAtt ? "checked" : ""}>
+          أنشئ كشوف توقيع المتدربين أيضاً — كشف لكل موعد امتحان بترتيب الأسماء نفسه</label>
+        <div class="inv-form"><label class="field"><span>المرحلة (تُكتب في عمود «المرحلة»)</span>
+          <input type="text" id="ex-stage" value="${esc(state.stage)}" placeholder="الثانية"></label></div>`);
+    }
+
     if (m.name && m.track) {
       grouped().forEach((t) => {
         const total = t.groups.reduce((n, g) => n + g.students.length, 0);
         bits.push(`<h4 class="ex-head">${esc(t.track)} <span class="conv-hint">${ui.fmt(total)} طالباً · ${ui.fmt(t.groups.length)} مجموعة</span></h4>`);
+        if (state.attBuf && state.withAtt) {
+          bits.push(`<div class="inv-form ex-trainers" data-track="${esc(t.track)}"><label class="field">
+            <span>مدربو المسار (افصل بينهم بفاصلة)</span>
+            <input type="text" data-ex-trainers value="${esc(state.trainers[t.track] || "")}" placeholder="اسراء خليل، انسام سليمان"></label></div>`);
+        }
         t.groups.forEach((g, gi) => {
           const plan = planOf(t.track, g.name);
           bits.push(`<div class="conv-grade-note ex-grp" data-track="${esc(t.track)}" data-grp="${esc(g.name)}">
@@ -382,14 +521,16 @@
   async function run() {
     const list = grouped();
     if (!list.length) { ui.toast("لا بيانات"); return; }
-    if (state.oneFile && list.length > 1) {
-      ui.download(`جداول الاختبارات - ${ui.todayISO()}.docx`, await build(list));
-      ui.toast(`أُنشئ ملف واحد فيه ${ui.fmt(list.length)} مسارات`);
-      return;
-    }
+    const att = state.withAtt && state.attBuf;
     const made = [];
-    for (const t of list) {
-      made.push({ name: `جدول اختبارات - ${t.track}.docx`, blob: await build([t]) });
+    if (state.oneFile && list.length > 1) {
+      made.push({ name: `جداول الاختبارات - ${ui.todayISO()}.docx`, blob: await build(list) });
+      if (att) made.push({ name: `كشوف الحضور - ${ui.todayISO()}.docx`, blob: await buildAtt(list) });
+    } else {
+      for (const t of list) {
+        made.push({ name: `جدول اختبارات - ${t.track}.docx`, blob: await build([t]) });
+        if (att) made.push({ name: `كشف الحضور - ${t.track}.docx`, blob: await buildAtt([t]) });
+      }
     }
     if (made.length === 1) ui.download(made[0].name, made[0].blob);
     else {
@@ -397,42 +538,47 @@
       made.forEach((x) => zip.file(x.name, x.blob));
       ui.download(`جداول الاختبارات - ${ui.todayISO()}.zip`, await zip.generateAsync({ type: "blob" }));
     }
-    ui.toast(`أُنشئ ${ui.fmt(made.length)} جدولاً`);
+    ui.toast(`أُنشئ ${ui.fmt(made.length)} ملفاً`);
   }
 
   function init() {
     const tpl = $("ex-tpl"), data = $("ex-data"), body = $("ex-body");
     if (!tpl || !data || !body) return;
 
-    tpl.addEventListener("change", async (e) => {
+    const onTpl = (which, label) => async (e) => {
       const f = e.target.files[0];
       if (!f) return;
-      state.tplBuf = await f.arrayBuffer();
-      state.tplName = f.name;
+      state[which + "Buf"] = await f.arrayBuffer();
+      state[which + "Name"] = f.name;
       render();
-      try { await saveTpl(f); ui.toast("حُفظ القالب — لن تحتاج رفعه مرة أخرى"); } catch (err) { ui.toast(err.message); }
+      try { await saveTpl(which, f); ui.toast(`حُفظ ${label} — لن تحتاج رفعه مرة أخرى`); } catch (err) { ui.toast(err.message); }
       render();
-    });
+    };
+    tpl.addEventListener("change", onTpl("tpl", "قالب الاختبارات"));
+    if ($("ex-att")) $("ex-att").addEventListener("change", onTpl("att", "قالب كشف الحضور"));
 
-    /* القالب المحفوظ يُحمَّل تلقائياً. المخزن قد لا يكون جاهزاً عند الإقلاع،
+    /* القوالب المحفوظة تُحمَّل تلقائياً. المخزن قد لا يكون جاهزاً عند الإقلاع،
        ولا عند وصول المزامنة، فيُعاد السؤال مرات قليلة متباعدة. */
-    const retry = (ms) => {
-      if (state.tplBuf) return;
-      loadSaved().then((ok) => {
+    const retry = (which) => (ms) => {
+      if (state[which + "Buf"]) return;
+      loadSaved(which).then((ok) => {
         if (ok) return render();
         const next = [500, 1500, 4000, 10000].find((d) => d > ms);
-        if (next) setTimeout(() => retry(next), next - ms);
+        if (next) setTimeout(() => retry(which)(next), next - ms);
       });
     };
-    retry(0);
+    retry("tpl")(0);
+    retry("att")(0);
     if (App.store && App.store.onChange) App.store.onChange(() => {
-      if (!state.tplBuf) loadSaved().then((ok) => { if (ok) render(); });
+      if (!state.tplBuf) loadSaved("tpl").then((ok) => { if (ok) render(); });
+      if (!state.attBuf) loadSaved("att").then((ok) => { if (ok) render(); });
     });
 
     data.addEventListener("change", async (e) => {
       const f = e.target.files[0];
       if (!f) { state.rows = []; return render(); }
-      if (!state.tplBuf) await loadSaved();
+      if (!state.tplBuf) await loadSaved("tpl");
+      if (!state.attBuf) await loadSaved("att");
       try {
         const d = await App.converterCore.readDataFile(new Uint8Array(await f.arrayBuffer()));
         state.headers = d.headers;
@@ -449,6 +595,10 @@
       const key = e.target.dataset.exMap;
       if (key) { state.map[key] = e.target.value; return render(); }
       if (e.target.id === "ex-one") { state.oneFile = e.target.checked; return; }
+      if (e.target.id === "ex-withatt") { state.withAtt = e.target.checked; return render(); }
+      if (e.target.id === "ex-stage") { state.stage = e.target.value; return; }
+      const tr = e.target.closest(".ex-trainers");
+      if (tr) { state.trainers[tr.dataset.track] = e.target.value; return; }
       const card = e.target.closest(".ex-grp");
       if (!card) return;
       const plan = planOf(card.dataset.track, card.dataset.grp);
@@ -474,7 +624,7 @@
     });
   }
 
-  App.examSheet = { init, build, grouped, render, state };
+  App.examSheet = { init, build, buildAtt, grouped, render, state };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
