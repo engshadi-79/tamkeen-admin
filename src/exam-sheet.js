@@ -141,9 +141,12 @@
       if (gi < groups.length - 1) body.insertBefore(doc.createElementNS(W, "w:p"), sig);
     });
 
-    const outXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n'
-      + new XMLSerializer().serializeToString(doc);
-    zip.file("word/document.xml", outXml);
+    // XMLSerializer يُخرج ترويسة ‎<?xml?>‎ بنفسه؛ إضافة ثانية تجعل Word يرفض الملف
+    let outXml = new XMLSerializer().serializeToString(doc);
+    if (!outXml.startsWith("<?xml")) {
+      outXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + outXml;
+    }
+    zip.file("word/document.xml", outXml, { createFolders: false });
     return zip.generateAsync({
       type: "blob",
       compression: "DEFLATE",
