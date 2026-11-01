@@ -903,3 +903,11 @@ html:root:root:root .fx-step b { display: block; margin-bottom: 4px; }
 html:root:root:root .fx-step p { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
 html:root:root:root .fx-step .field { margin-bottom: 8px; }
 @media (max-width: 860px) { html:root:root:root .fx-steps { grid-template-columns: 1fr; } }
+
+/* جدول الاختبارات */
+.ex-track { margin-top: 10px; }
+.ex-prac { margin-top: 6px; border-top: 1px dashed var(--line, #d7dbe3); padding-top: 6px; }
+.ex-slot { align-items: flex-end; }
+.ex-slot .btn.small { margin-bottom: 2px; }
+.ex-head { margin: 14px 0 4px; font-size: .98rem; }
+.ex-slot .btn.small { width: auto; justify-self: start; align-self: end; margin-bottom: 4px; }
