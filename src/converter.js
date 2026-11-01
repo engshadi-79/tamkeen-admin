@@ -1725,6 +1725,11 @@
     const fromExtras = (state.extras || []).reduce((all, t) => all.concat(t.missing), []);
     const extra = [...new Set((state.extraFields || []).concat(fromExtras))].filter((f) => !missing.includes(f));
     let html = profileNote();
+    // قالب جدول الاختبارات ليس قالباً عادياً: مواعيده تختلف من مجموعة لأخرى،
+    // فلا تصلح له تعبئة قيمة واحدة لكل الصفوف. له بطاقته أعلى الصفحة.
+    if (p.templateHeaders.includes("الاختبار النظري") && p.templateHeaders.includes("الاختبار العملي")) {
+      html += `<p class="conv-grade-note">📋 يبدو أن هذا <b>قالب جدول الاختبارات</b> — استخدم بطاقة «<b>جدول الاختبارات</b>» في أعلى هذه الصفحة بدل هذه البطاقة، فهي تعطيك موعد النظري ومواعيد العملي لكل مجموعة على حدة.</p>`;
+    }
     if (state.fixedUsed && state.fixedUsed.length) {
       html += `<p class="conv-grade-note">📌 عُبّئ من البيانات الثابتة: ${state.fixedUsed.map(esc).join("، ")} — تظهر قيمها في «حقول لم نجد لها بيانات» ويمكن تغييرها هناك لهذا الكشف فقط.</p>`;
     }
