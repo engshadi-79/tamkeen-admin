@@ -77,6 +77,35 @@
   }
   const cellsOf = (tr) => [...tr.children].filter((c) => c.localName === "tc");
 
+  /* ترتيب عناصر ‎<w:tcPr>‎ مُلزِم في مخطط OOXML؛ الإدراج في غير موضعه يُفسد الملف */
+  const TCPR_ORDER = ["cnfStyle", "tcW", "gridSpan", "hMerge", "vMerge", "tcBorders", "shd",
+    "noWrap", "tcMar", "textDirection", "tcFitText", "vAlign", "hideMark"];
+  function tcPrOf(doc, tc) {
+    let pr = firstTag(tc, "tcPr");
+    if (!pr) { pr = doc.createElementNS(W, "w:tcPr"); tc.insertBefore(pr, tc.firstChild); }
+    return pr;
+  }
+  function putInPr(doc, tc, name, val) {
+    const pr = tcPrOf(doc, tc);
+    [...pr.children].filter((c) => c.localName === name).forEach((c) => pr.removeChild(c));
+    const el = doc.createElementNS(W, "w:" + name);
+    if (val) el.setAttribute("w:val", val);
+    const rank = TCPR_ORDER.indexOf(name);
+    const after = [...pr.children].find((c) => TCPR_ORDER.indexOf(c.localName) > rank);
+    pr.insertBefore(el, after || null);
+  }
+  /* يدمج خلايا عمود واحد من الصف a حتى b (غير شامل) في خلية واحدة متوسطة رأسياً،
+     فتبقى القيمة في منتصف العمود مهما طال */
+  function mergeDown(doc, cells, a, b) {
+    putInPr(doc, cells[a], "vAlign", "center");
+    if (b - a <= 1) return;
+    putInPr(doc, cells[a], "vMerge", "restart");
+    for (let i = a + 1; i < b; i++) {
+      putInPr(doc, cells[i], "vMerge", "continue");
+      tag(cells[i], "r").forEach((r) => r.parentNode.removeChild(r));
+    }
+  }
+
   /* ===== بناء الملف ===== */
   async function build(track, groups) {
     const zip = await JSZip.loadAsync(state.tplBuf);
@@ -117,26 +146,39 @@
       setCell(cellsOf(gr)[0], `المجموعة ${ORDINAL[gi] || gi + 1}`);
       tbl.appendChild(gr);
       tbl.appendChild(rowHead.cloneNode(true));
-      // الصفوف
-      g.students.forEach((s, i) => {
+      // صفوف الطلبة، وأعمدة المواعيد تُترك فارغة ثم تُملأ ودمجاً فيما بعد
+      const rows = g.students.map((s, i) => {
         const tr = rowData.cloneNode(true);
         const c = cellsOf(tr);
         const donor = tag(c[0], "r")[0] || null;
         setCell(c[0], String(i + 1), donor);
         setCell(c[1], s.name, donor);
         setCell(c[2], s.nid, donor);
-        // النظري في أول صف فقط، كما في النموذج
-        const th = i === 0 ? plan.theory || {} : {};
-        setCell(c[3], i === 0 ? dayOf(th.date) : "", donor);
-        setCell(c[4], i === 0 ? fmtDate(th.date) : "", donor);
-        setCell(c[5], i === 0 ? clean(th.time) : "", donor);
-        // مواعيد العملي: موعد في كل صف من أعلى الجدول
-        const p2 = (plan.practical || [])[i];
-        setCell(c[6], p2 ? dayOf(p2.date) : "", donor);
-        setCell(c[7], p2 ? fmtDate(p2.date) : "", donor);
-        setCell(c[8], p2 ? clean(p2.time) : "", donor);
+        for (let k = 3; k <= 8; k++) setCell(c[k], "", donor);
         tbl.appendChild(tr);
+        return tr;
       });
+
+      /* المواعيد تُكتب في خلايا ممتدة على ارتفاع نصيبها من الصفوف ومتوسّطة فيها:
+         النظري موعد واحد يمتد على المجموعة كلها، والعملي يُقسَّم بالتساوي. */
+      const N = rows.length;
+      const col = (ci) => rows.map((tr) => cellsOf(tr)[ci]);
+      const slot = (cols, a, b, day, date, time) => {
+        const c = [col(cols[0])[a], col(cols[1])[a], col(cols[2])[a]];
+        const donor = tag(cellsOf(rows[a])[0], "r")[0] || null;
+        setCell(c[0], day, donor); setCell(c[1], date, donor); setCell(c[2], time, donor);
+        cols.forEach((ci) => mergeDown(doc, col(ci), a, b));
+      };
+      if (N) {
+        const th = plan.theory || {};
+        slot([3, 4, 5], 0, N, dayOf(th.date), fmtDate(th.date), clean(th.time));
+        const ps = (plan.practical || []).slice(0, N);
+        ps.forEach((p, j) => {
+          const a = Math.floor((j * N) / ps.length);
+          const b = Math.floor(((j + 1) * N) / ps.length);
+          slot([6, 7, 8], a, b, dayOf(p.date), fmtDate(p.date), clean(p.time));
+        });
+      }
       body.insertBefore(tbl, sig);
       if (gi < groups.length - 1) body.insertBefore(doc.createElementNS(W, "w:p"), sig);
     });
