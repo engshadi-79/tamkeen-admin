@@ -31,7 +31,19 @@
     trainers: {},        // لكل مسار: أسماء المدربين
     plan: {},            // لكل مجموعة: { theory:{date,time}, practical:[{date,time}] }
   };
-  const trainersOf = (track) => (state.trainers[track] || "").split(/[,،\n]/).map(clean).filter(Boolean);
+  /* مدربو المسار من النظام (صفحة المسارات): اسم المسار في ملف الطلبة يُطابَق
+     بمسارات النظام — مطابقةً مرنة كما في «تحويل حسب قالب» — فيُؤخذ منها
+     المدربان. وللمستخدم أن يكتب غيرهما فيُعتمد ما كتب. */
+  function sysTrainers(track) {
+    try {
+      const tracks = ((App.store.get() || {}).tracks || []).filter((t) => t && t.name);
+      const t = App.converterCore.findTrack(tracks, track);
+      if (!t) return "";
+      return [clean(t.trainer1), clean(t.trainer2)].filter(Boolean).join("، ");
+    } catch (e) { return ""; }
+  }
+  const trainersText = (track) => (track in state.trainers ? state.trainers[track] : sysTrainers(track));
+  const trainersOf = (track) => trainersText(track).split(/[,،\n]/).map(clean).filter(Boolean);
 
   /* المواعيد تُحدَّد لكل مجموعة داخل المسار، كما في النموذج:
      المجموعة الأولى لها نظريّها ومواعيد عمليها، والثانية غيرها. */
@@ -518,9 +530,13 @@
         const total = t.groups.reduce((n, g) => n + g.students.length, 0);
         bits.push(`<h4 class="ex-head">${esc(t.track)} <span class="conv-hint">${ui.fmt(total)} طالباً · ${ui.fmt(t.groups.length)} مجموعة</span></h4>`);
         if (state.attBuf && state.withAtt) {
+          const sys = sysTrainers(t.track);
+          const val = trainersText(t.track);
+          const note = !val ? ' <span class="conv-error">لا مدربين لهذا المسار في النظام — اكتبهم هنا</span>'
+            : (t.track in state.trainers) ? "" : " <span class=\"conv-hint\">من النظام</span>";
           bits.push(`<div class="inv-form ex-trainers" data-track="${esc(t.track)}"><label class="field">
-            <span>مدربو المسار (افصل بينهم بفاصلة)</span>
-            <input type="text" data-ex-trainers value="${esc(state.trainers[t.track] || "")}" placeholder="اسراء خليل، انسام سليمان"></label></div>`);
+            <span>مدربو المسار (افصل بينهم بفاصلة)${note}</span>
+            <input type="text" data-ex-trainers value="${esc(val)}" placeholder="${esc(sys || "اسراء خليل، انسام سليمان")}"></label></div>`);
         }
         t.groups.forEach((g, gi) => {
           const plan = planOf(t.track, g.name);
