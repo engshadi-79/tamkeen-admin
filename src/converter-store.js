@@ -79,8 +79,8 @@
     }
   }
 
-  async function save({ name, format, headers, file }) {
-    const m = { id: App.store.uid(), name, format, headers, defaultGroupBy: [], createdAt: now(), updatedAt: now(), fileId: null, owner: me() };
+  async function save({ name, format, headers, file, kind }) {
+    const m = { id: App.store.uid(), name, format, headers, kind: kind || "", defaultGroupBy: [], createdAt: now(), updatedAt: now(), fileId: null, owner: me() };
     await tx("readwrite", (s) => s.put(Object.assign({}, m, { file, migrated: true })));
     meta().push(m);
     App.store.save();

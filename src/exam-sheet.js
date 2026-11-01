@@ -298,12 +298,44 @@
     }));
   }
 
+  /* ===== القالب المحفوظ =====
+     يُحفظ مرة واحدة في مخزن القوالب المشترك (بعلامة exam حتى لا يختلط بقوالب
+     التحويل)، فيجده المستخدم جاهزاً في كل مرة وعلى كل جهاز. */
+  const tplStore = () => App.converterStore;
+  async function savedExams() {
+    if (!tplStore()) return [];
+    try { return (await tplStore().list()).filter((t) => t.kind === "exam"); } catch (e) { return []; }
+  }
+  async function loadSaved() {
+    const list = await savedExams();
+    if (!list.length) return false;
+    try {
+      const t = await tplStore().get(list[0].id);
+      state.tplBuf = await t.file.arrayBuffer();
+      state.tplName = t.name;
+      state.tplSavedId = t.id;
+      return true;
+    } catch (e) { return false; }
+  }
+  async function saveTpl(file) {
+    if (!tplStore()) return;
+    const old = await savedExams();
+    state.tplSavedId = await tplStore().save({
+      name: file.name.replace(/\.docx$/i, ""), format: "docx", headers: [], kind: "exam",
+      file: new Blob([state.tplBuf], { type: file.type }),
+    });
+    // القالب واحد؛ النسخ القديمة تُزال حتى لا تتراكم
+    for (const t of old) { try { await tplStore().remove(t.id); } catch (e) { /* يكفي تجاهلها */ } }
+  }
+
   /* ===== الواجهة ===== */
   function render() {
     const box = $("ex-body");
     if (!box) return;
     if (!state.rows.length) {
-      box.innerHTML = state.tplBuf ? '<p class="conv-hint">✓ القالب جاهز. ارفع ملف الطلبة.</p>' : "";
+      box.innerHTML = state.tplBuf
+        ? `<p class="conv-hint">✓ القالب محفوظ وجاهز: <b>${esc(state.tplName)}</b>${state.tplSavedId ? " — لا داعي لرفعه مرة أخرى" : ""}. ارفع ملف الطلبة.</p>`
+        : "";
       return;
     }
     const m = state.map;
@@ -374,15 +406,33 @@
 
     tpl.addEventListener("change", async (e) => {
       const f = e.target.files[0];
-      if (!f) { state.tplBuf = null; return render(); }
+      if (!f) return;
       state.tplBuf = await f.arrayBuffer();
       state.tplName = f.name;
       render();
+      try { await saveTpl(f); ui.toast("حُفظ القالب — لن تحتاج رفعه مرة أخرى"); } catch (err) { ui.toast(err.message); }
+      render();
+    });
+
+    /* القالب المحفوظ يُحمَّل تلقائياً. المخزن قد لا يكون جاهزاً عند الإقلاع،
+       ولا عند وصول المزامنة، فيُعاد السؤال مرات قليلة متباعدة. */
+    const retry = (ms) => {
+      if (state.tplBuf) return;
+      loadSaved().then((ok) => {
+        if (ok) return render();
+        const next = [500, 1500, 4000, 10000].find((d) => d > ms);
+        if (next) setTimeout(() => retry(next), next - ms);
+      });
+    };
+    retry(0);
+    if (App.store && App.store.onChange) App.store.onChange(() => {
+      if (!state.tplBuf) loadSaved().then((ok) => { if (ok) render(); });
     });
 
     data.addEventListener("change", async (e) => {
       const f = e.target.files[0];
       if (!f) { state.rows = []; return render(); }
+      if (!state.tplBuf) await loadSaved();
       try {
         const d = await App.converterCore.readDataFile(new Uint8Array(await f.arrayBuffer()));
         state.headers = d.headers;
