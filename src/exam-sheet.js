@@ -357,6 +357,38 @@
     return out;
   }
 
+  /* توسيط أفقي داخل الخلية */
+  function setJc(doc, tc, val) {
+    tag(tc, "p").forEach((p) => {
+      let pPr = tag(p, "pPr")[0];
+      if (!pPr || pPr.parentNode !== p) {
+        pPr = doc.createElementNS(W, "w:pPr");
+        p.insertBefore(pPr, p.firstChild);
+      }
+      [...pPr.children].filter((c) => c.localName === "jc").forEach((c) => pPr.removeChild(c));
+      const jc = doc.createElementNS(W, "w:jc");
+      jc.setAttribute("w:val", val);
+      const rPr = [...pPr.children].find((c) => c.localName === "rPr" || c.localName === "sectPr");
+      pPr.insertBefore(jc, rPr || null);
+    });
+  }
+
+  /* عمود «المجموعة» في القالب 1094 نقطة فقط، فيلتفّ «المجموعة الأولى» سطرين.
+     يُوسَّع من عمودَي الاسم والتوقيع، ومجموع العرض يبقى كما هو. */
+  const ATT_W = [443, 2896, 1360, 1236, 1800, 2333];
+  function widenGroup(doc, tbl) {
+    const grid = firstTag(tbl, "tblGrid");
+    if (grid) {
+      [...grid.children].forEach((c, i) => { if (ATT_W[i]) c.setAttribute("w:w", String(ATT_W[i])); });
+    }
+    [...tbl.children].filter((c) => c.localName === "tr").forEach((tr) => {
+      cellsOf(tr).forEach((tc, i) => {
+        const w = firstTag(tc, "tcW");
+        if (w && ATT_W[i]) w.setAttribute("w:w", String(ATT_W[i]));
+      });
+    });
+  }
+
   function fillAttTable(doc, tbl, ctx) {
     const trs = [...tbl.children].filter((c) => c.localName === "tr");
     const head = trs[0], proto = trs[1] || trs[0];
@@ -368,6 +400,8 @@
       const donor = tag(c[0], "r")[0] || null;
       const vals = [String(i + 1), s.name, s.nid, ctx.stage, ctx.group, ""];
       vals.forEach((v, ci) => { if (c[ci]) setCell(c[ci], v, donor); });
+      // الاسم والمرحلة والمجموعة في وسط خلاياها
+      [1, 3, 4].forEach((ci) => { if (c[ci]) { setJc(doc, c[ci], "center"); putInPr(doc, c[ci], "vAlign", "center"); } });
       tbl.appendChild(tr);
     });
   }
@@ -380,6 +414,7 @@
     const sectPr = [...body.children].find((k) => k.localName === "sectPr");
     const block = [...body.children].filter((k) => k !== sectPr);
     if (!block.some((k) => k.localName === "tbl")) throw new Error("قالب كشف الحضور بلا جدول");
+    block.filter((k) => k.localName === "tbl").forEach((t) => widenGroup(doc, t));
     block.forEach((k) => body.removeChild(k));
 
     let first = true;
