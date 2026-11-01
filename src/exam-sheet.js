@@ -94,16 +94,61 @@
     const after = [...pr.children].find((c) => TCPR_ORDER.indexOf(c.localName) > rank);
     pr.insertBefore(el, after || null);
   }
+  function dropFromPr(doc, tc, name) {
+    const pr = firstTag(tc, "tcPr");
+    if (pr) [...pr.children].filter((c) => c.localName === name).forEach((c) => pr.removeChild(c));
+  }
+  /* حدود الخلية: ترتيب الجهات داخل ‎<w:tcBorders>‎ مُلزِم هو الآخر */
+  const SIDES = ["top", "left", "bottom", "right", "insideH", "insideV", "tl2br", "tr2bl"];
+  function setBorder(doc, tc, side, val) {
+    const pr = tcPrOf(doc, tc);
+    let bs = firstTag(tc, "tcBorders");
+    if (!bs) {
+      bs = doc.createElementNS(W, "w:tcBorders");
+      const rank = TCPR_ORDER.indexOf("tcBorders");
+      pr.insertBefore(bs, [...pr.children].find((c) => TCPR_ORDER.indexOf(c.localName) > rank) || null);
+    }
+    [...bs.children].filter((c) => c.localName === side).forEach((c) => bs.removeChild(c));
+    const el = doc.createElementNS(W, "w:" + side);
+    el.setAttribute("w:val", val);
+    if (val !== "nil") {
+      el.setAttribute("w:sz", "4"); el.setAttribute("w:space", "0"); el.setAttribute("w:color", "auto");
+    }
+    const rank = SIDES.indexOf(side);
+    bs.insertBefore(el, [...bs.children].find((c) => SIDES.indexOf(c.localName) > rank) || null);
+  }
+
   /* يدمج خلايا عمود واحد من الصف a حتى b (غير شامل) في خلية واحدة متوسطة رأسياً،
-     فتبقى القيمة في منتصف العمود مهما طال */
+     فتبقى القيمة في منتصف العمود مهما طال. صفّ القالب نفسه يحمل
+     ‎vMerge restart‎ في أعمدة المواعيد، فلا بدّ من ضبط كل صف صراحةً. */
   function mergeDown(doc, cells, a, b) {
+    if (b - a <= 0) return;
     putInPr(doc, cells[a], "vAlign", "center");
-    if (b - a <= 1) return;
-    putInPr(doc, cells[a], "vMerge", "restart");
+    if (b - a > 1) putInPr(doc, cells[a], "vMerge", "restart");
+    else dropFromPr(doc, cells[a], "vMerge");
     for (let i = a + 1; i < b; i++) {
       putInPr(doc, cells[i], "vMerge", "continue");
       tag(cells[i], "r").forEach((r) => r.parentNode.removeChild(r));
     }
+    setBorder(doc, cells[b - 1], "bottom", "single");   // يُغلق أسفل الكتلة
+  }
+  /* خلية مستقلة بحدّ أسفلها، كصفوف المواعيد العملية في النموذج */
+  function standalone(doc, tc) {
+    dropFromPr(doc, tc, "vMerge");
+    putInPr(doc, tc, "vAlign", "center");
+    setBorder(doc, tc, "top", "nil");
+    setBorder(doc, tc, "bottom", "single");
+  }
+
+  /* فقرة فاصل صفحات: ‎<w:br w:type="page"/>‎ */
+  function pageBreak(doc) {
+    const p = doc.createElementNS(W, "w:p");
+    const r = doc.createElementNS(W, "w:r");
+    const br = doc.createElementNS(W, "w:br");
+    br.setAttribute("w:type", "page");
+    r.appendChild(br);
+    p.appendChild(r);
+    return p;
   }
 
   /* ===== بناء الملف ===== */
@@ -159,29 +204,39 @@
         return tr;
       });
 
-      /* المواعيد تُكتب في خلايا ممتدة على ارتفاع نصيبها من الصفوف ومتوسّطة فيها:
-         النظري موعد واحد يمتد على المجموعة كلها، والعملي يُقسَّم بالتساوي. */
+      /* النظري موعد واحد في خلية تمتد على صفوف المجموعة كلها ومتوسّطة فيها.
+         والعملي مواعيد متتالية صفاً تحت صف، وكتلتها في منتصف العمود — كما في
+         النموذج: ثلاثة مواعيد في الصفوف 11–13 من 23. */
       const N = rows.length;
       const col = (ci) => rows.map((tr) => cellsOf(tr)[ci]);
-      const slot = (cols, a, b, day, date, time) => {
-        const c = [col(cols[0])[a], col(cols[1])[a], col(cols[2])[a]];
-        const donor = tag(cellsOf(rows[a])[0], "r")[0] || null;
+      const write = (cols, i, day, date, time) => {
+        const donor = tag(cellsOf(rows[i])[0], "r")[0] || null;
+        const c = cols.map((ci) => col(ci)[i]);
         setCell(c[0], day, donor); setCell(c[1], date, donor); setCell(c[2], time, donor);
-        cols.forEach((ci) => mergeDown(doc, col(ci), a, b));
       };
       if (N) {
         const th = plan.theory || {};
-        slot([3, 4, 5], 0, N, dayOf(th.date), fmtDate(th.date), clean(th.time));
+        write([3, 4, 5], 0, dayOf(th.date), fmtDate(th.date), clean(th.time));
+        [3, 4, 5].forEach((ci) => mergeDown(doc, col(ci), 0, N));
+
         const ps = (plan.practical || []).slice(0, N);
-        ps.forEach((p, j) => {
-          const a = Math.floor((j * N) / ps.length);
-          const b = Math.floor(((j + 1) * N) / ps.length);
-          slot([6, 7, 8], a, b, dayOf(p.date), fmtDate(p.date), clean(p.time));
+        const start = ps.length ? Math.max(0, Math.round((N - ps.length) / 2)) : 0;
+        ps.forEach((p, j) => write([6, 7, 8], start + j, dayOf(p.date), fmtDate(p.date), clean(p.time)));
+        [6, 7, 8].forEach((ci) => {
+          const cells = col(ci);
+          mergeDown(doc, cells, 0, start);                       // فراغ فوق المواعيد
+          ps.forEach((p, j) => standalone(doc, cells[start + j]));
+          mergeDown(doc, cells, start + ps.length, N);            // وفراغ تحتها
         });
       }
+      // كل مجموعة في صفحة مستقلة
+      if (gi) body.insertBefore(pageBreak(doc), sig);
       body.insertBefore(tbl, sig);
-      if (gi < groups.length - 1) body.insertBefore(doc.createElementNS(W, "w:p"), sig);
     });
+
+    // التوقيع كان يفصله عن الجدول في النموذج فقرات فارغة حُذفت، فيُعاد الفاصل
+    body.insertBefore(doc.createElementNS(W, "w:p"), sig);
+    body.insertBefore(doc.createElementNS(W, "w:p"), sig);
 
     // XMLSerializer يُخرج ترويسة ‎<?xml?>‎ بنفسه؛ إضافة ثانية تجعل Word يرفض الملف
     let outXml = new XMLSerializer().serializeToString(doc);
