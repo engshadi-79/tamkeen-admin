@@ -215,18 +215,27 @@
         setCell(c[0], day, donor); setCell(c[1], date, donor); setCell(c[2], time, donor);
       };
       if (N) {
-        const th = plan.theory || {};
-        write([3, 4, 5], 0, dayOf(th.date), fmtDate(th.date), clean(th.time));
-        [3, 4, 5].forEach((ci) => mergeDown(doc, col(ci), 0, N));
-
         const ps = (plan.practical || []).slice(0, N);
-        const start = ps.length ? Math.max(0, Math.round((N - ps.length) / 2)) : 0;
-        ps.forEach((p, j) => write([6, 7, 8], start + j, dayOf(p.date), fmtDate(p.date), clean(p.time)));
+        const a = ps.length ? Math.max(0, Math.round((N - ps.length) / 2)) : 0;
+        const b = ps.length ? a + ps.length : N;
+
+        // النظري: خلية واحدة تمتد على كتلة المواعيد العملية نفسها فتتوسّطها
+        const th = plan.theory || {};
+        write([3, 4, 5], a, dayOf(th.date), fmtDate(th.date), clean(th.time));
+        [3, 4, 5].forEach((ci) => {
+          const cells = col(ci);
+          mergeDown(doc, cells, 0, a);
+          mergeDown(doc, cells, a, b);
+          mergeDown(doc, cells, b, N);
+        });
+
+        // العملي: صفوف متتالية بحدودها، وفوقها وتحتها فراغ مدموج
+        ps.forEach((p, j) => write([6, 7, 8], a + j, dayOf(p.date), fmtDate(p.date), clean(p.time)));
         [6, 7, 8].forEach((ci) => {
           const cells = col(ci);
-          mergeDown(doc, cells, 0, start);                       // فراغ فوق المواعيد
-          ps.forEach((p, j) => standalone(doc, cells[start + j]));
-          mergeDown(doc, cells, start + ps.length, N);            // وفراغ تحتها
+          mergeDown(doc, cells, 0, a);
+          ps.forEach((p, j) => standalone(doc, cells[a + j]));
+          mergeDown(doc, cells, b, N);
         });
       }
       // كل مجموعة في صفحة مستقلة
