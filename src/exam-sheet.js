@@ -330,6 +330,18 @@
     }
   }
 
+  /* القالب يذيّله فقرات فارغة؛ استنساخها مع كل مجموعة يدفع الجدول لصفحة
+     ثانية ويخلّف صفحة فارغة في آخر الملف */
+  function trimTail(block) {
+    const out = block.slice();
+    while (out.length) {
+      const k = out[out.length - 1];
+      if (k.localName === "tbl" || paraText(k).trim()) break;
+      out.pop();
+    }
+    return out;
+  }
+
   function attPage(doc, block, ctx) {
     const kids = block.map((k) => k.cloneNode(true));
     kids.forEach((k) => {
@@ -450,10 +462,10 @@
     const doc = new DOMParser().parseFromString(xml, "application/xml");
     const body = firstTag(doc.documentElement, "body");
     const sectPr = [...body.children].find((k) => k.localName === "sectPr");
-    const block = [...body.children].filter((k) => k !== sectPr);
+    const block = trimTail([...body.children].filter((k) => k !== sectPr));
     if (!block.some((k) => k.localName === "tbl")) throw new Error("قالب كشف الحضور بلا جدول");
     block.filter((k) => k.localName === "tbl").forEach((t) => widenGroup(doc, t));
-    block.forEach((k) => body.removeChild(k));
+    [...body.children].filter((k) => k !== sectPr).forEach((k) => body.removeChild(k));
 
     let first = true;
     list.forEach(({ track, groups }) => {
@@ -519,8 +531,8 @@
     const doc = new DOMParser().parseFromString(xml, "application/xml");
     const body = firstTag(doc.documentElement, "body");
     const sectPr = [...body.children].find((k) => k.localName === "sectPr");
-    const block = [...body.children].filter((k) => k !== sectPr);
-    block.forEach((k) => body.removeChild(k));
+    const block = trimTail([...body.children].filter((k) => k !== sectPr));
+    [...body.children].filter((k) => k !== sectPr).forEach((k) => body.removeChild(k));
 
     const trainers = trainersOf(track);
     groups.forEach((g, gi) => {
