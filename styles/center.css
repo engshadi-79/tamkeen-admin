@@ -911,3 +911,16 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 .ex-slot .btn.small { margin-bottom: 2px; }
 .ex-head { margin: 14px 0 4px; font-size: .98rem; }
 .ex-slot .btn.small { width: auto; justify-self: start; align-self: end; margin-bottom: 4px; }
+
+/* تبويبات صفحة التحويل: أداة في كل تبويب */
+.cv-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; }
+.cv-tab { flex: 1 1 180px; display: flex; flex-direction: column; gap: 2px; text-align: right;
+  padding: 10px 12px; border: 1px solid var(--line, #d7dbe3); border-radius: 10px;
+  background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+.cv-tab b { font-size: .95rem; color: var(--navy-800, #1b3350); }
+.cv-tab small { font-size: .76rem; color: #6b7686; font-weight: 500; }
+.cv-tab:hover { border-color: var(--teal-600, #1d8f85); }
+.cv-tab.active { background: var(--navy-800, #1b3350); border-color: var(--navy-800, #1b3350); }
+.cv-tab.active b, .cv-tab.active small { color: #fff; }
+.cv-pane[hidden] { display: none; }
+@media (max-width: 640px) { .cv-tab { flex-basis: 100%; } }
