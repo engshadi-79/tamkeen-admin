@@ -371,9 +371,10 @@
       const txt = paraText(k);
       const runs = tag(k, "r");
       if (/كشف الحضور/.test(txt)) {
+        const tail = ctx.track + (ctx.stage ? ` (المرحلة ${ctx.stage})` : "");
         setRun(runs[0], `كشف الحضور والغياب للامتحان النهائي (${ctx.kind}) - `);
-        if (runs[1]) setRun(runs[1], ctx.track);
-        else setRun(runs[0], `كشف الحضور والغياب للامتحان النهائي (${ctx.kind}) - ${ctx.track}`);
+        if (runs[1]) setRun(runs[1], tail);
+        else setRun(runs[0], `كشف الحضور والغياب للامتحان النهائي (${ctx.kind}) - ${tail}`);
       } else if (/درجات التقييم/.test(txt)) {
         // «درجات التقييم النهائي العملي - <المسار>»: اسم المسار في آخر run
         setRun(runs[runs.length - 1], ctx.track);
@@ -382,7 +383,8 @@
         setRun(runs[0], `المرحلة ${ctx.stage || "الأولى"} `);
         if (runs.length > 2) setRun(runs[runs.length - 1], ` ${ctx.group}`);
       } else if (/اليوم/.test(txt)) {
-        if (ctx.noDate) return;   // يُتركان نقاطاً فارغة ليُكتبا بخط اليد
+        // بلا موعد محدَّد يُترك سطر القالب بنقاطه بدل «التاريخ: م» فارغة
+        if (ctx.noDate || !ctx.date) return;
         const iDay = runs.findIndex((r) => /اليوم/.test(runText(r)));
         if (iDay >= 0 && runs[iDay + 1]) setRun(runs[iDay + 1], ` ${ctx.day} `);
         const iDate = runs.findIndex((r) => /التاريخ/.test(runText(r)));
