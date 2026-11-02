@@ -321,6 +321,28 @@
   const paraText = (p) => tag(p, "t").map((t) => t.textContent).join("");
   /* اسم المدرب في القالب مقسّم على أكثر من run؛ يُكتب في الأول وتُفرَّغ بقيتها
      حتى نقاط التوقيع، وإلا بقي آخر القديم ملتصقاً بالجديد */
+  /* سطر المدرب يختلف شكله بين النماذج: في بعضها «1- » وحدها في رنّة والاسم
+     في التالية، وفي بعضها «1- الاسم ... نقاط التوقيع» كلّها في رنّة واحدة.
+     فيُعالَج نصّاً: يُبقى الرقم ونقاط التوقيع ويُستبدل ما بينهما. */
+  function setTrainer(runs, findNum, name, showNum) {
+    const i = runs.findIndex((r) => new RegExp("^\\s*" + findNum + "-").test(runText(r)));
+    if (i < 0) return false;
+    const m = runText(runs[i]).match(/^(\s*\d+-\s*)([\s\S]*?)(\s*\.{3,}[\s\S]*)?$/);
+    const dots = (m && m[3]) || "";
+    const inline = ((m && m[2]) || "").trim() || dots;
+    if (inline) {
+      setRun(runs[i], `${showNum || findNum}- ${name}${dots}`);
+      for (let k = i + 1; k < runs.length; k++) {
+        if (/\.{3,}/.test(runText(runs[k]))) break;
+        setRun(runs[k], "");
+      }
+    } else {
+      if (showNum) setRun(runs[i], `${showNum}- `);
+      setName(runs, i + 1, name);
+    }
+    return true;
+  }
+
   function setName(runs, i, name) {
     if (!runs[i]) return;
     setRun(runs[i], name);
@@ -369,10 +391,9 @@
           runs.slice(iDate + 1).forEach((r) => setRun(r, ""));
         }
       } else if (/^\s*1-/.test(txt) || /مدرب المسار/.test(txt)) {
-        const i1 = runs.findIndex((r) => /^\s*1-\s*$/.test(runText(r)));
-        if (i1 >= 0) setName(runs, i1 + 1, ctx.trainers[0] || "");
+        setTrainer(runs, 1, ctx.trainers[0] || "");
       } else if (/^\s*2-/.test(txt)) {
-        setName(runs, 1, ctx.trainers[1] || "");
+        setTrainer(runs, 2, ctx.trainers[1] || "");
       }
     });
     // مدربون أكثر من اثنين: يُستنسخ سطر «2-» لكل واحد منهم
@@ -383,9 +404,7 @@
       if (k !== second) return;
       ctx.trainers.slice(2).forEach((name, i) => {
         const p = second.cloneNode(true);
-        const runs = tag(p, "r");
-        setRun(runs[0], `${i + 3}- `);
-        if (runs[1]) setRun(runs[1], name);
+        setTrainer(tag(p, "r"), 2, name, i + 3);
         out.push(p);
       });
     });
