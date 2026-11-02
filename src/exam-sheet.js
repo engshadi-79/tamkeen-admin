@@ -31,6 +31,7 @@
     trainers: {},        // لكل مسار: أسماء المدربين
     evals: [],           // نماذج التقييم، لكل مسار نموذجه
     withEval: true,      // نماذج التقييم مع الجداول
+    evalDate: true,      // اليوم والتاريخ في نماذج التقييم
     forms: [],           // القوالب المحفوظة المتاحة
     pickForms: [],       // ما اختاره المستخدم منها
     plan: {},            // لكل مجموعة: { theory:{date,time}, practical:[{date,time}] }
@@ -343,10 +344,11 @@
         // «درجات التقييم النهائي العملي - <المسار>»: اسم المسار في آخر run
         setRun(runs[runs.length - 1], ctx.track);
       } else if (/الدورة/.test(txt) && /المجموعة/.test(txt)) {
-        // «الدورة الأولى – المجموعة الاولى»
-        setRun(runs[0], `الدورة ${ctx.stage || "الأولى"} `);
+        // «الدورة الأولى – المجموعة الاولى» ← «المرحلة … – المجموعة …»
+        setRun(runs[0], `المرحلة ${ctx.stage || "الأولى"} `);
         if (runs.length > 2) setRun(runs[runs.length - 1], ` ${ctx.group}`);
       } else if (/اليوم/.test(txt)) {
+        if (ctx.noDate) return;   // يُتركان نقاطاً فارغة ليُكتبا بخط اليد
         const iDay = runs.findIndex((r) => /اليوم/.test(runText(r)));
         if (iDay >= 0 && runs[iDay + 1]) setRun(runs[iDay + 1], ` ${ctx.day} `);
         const iDate = runs.findIndex((r) => /التاريخ/.test(runText(r)));
@@ -518,6 +520,7 @@
         track, kind: "عملي", day: dayOf(ap.date), date: fmtDate(ap.date),
         students: g.students, stage: state.stage,
         group: `المجموعة ${ORDINAL[gi] || gi + 1}`, trainers, lean: true,
+        noDate: !state.evalDate,
       }).forEach((k) => body.insertBefore(k, sectPr));
     });
     return pack(zip, doc);
@@ -670,6 +673,10 @@
     if (state.evals.length) {
       bits.push(`<label class="conv-check"><input type="checkbox" id="ex-witheval" ${state.withEval ? "checked" : ""}>
         أنشئ نماذج التقييم أيضاً — ${ui.fmt(state.evals.length)} نموذجاً محفوظاً، لكل مسار معاييره</label>`);
+      if (state.withEval) {
+        bits.push(`<br><label class="conv-check"><input type="checkbox" id="ex-evaldate" ${state.evalDate ? "checked" : ""}>
+          اكتب اليوم والتاريخ في نموذج التقييم — بلا تأشير تبقى نقاطاً تُملأ بخط اليد</label>`);
+      }
     }
     if (state.attBuf) {
       bits.push(`<p class="conv-hint">✓ قالب كشف الحضور جاهز: <b>${esc(state.attName)}</b></p>
@@ -868,6 +875,7 @@
       if (e.target.id === "ex-one") { state.oneFile = e.target.checked; return; }
       if (e.target.id === "ex-withatt") { state.withAtt = e.target.checked; return render(); }
       if (e.target.id === "ex-witheval") { state.withEval = e.target.checked; return render(); }
+      if (e.target.id === "ex-evaldate") { state.evalDate = e.target.checked; return; }
       if (e.target.id === "ex-stage") { state.stage = e.target.value; return; }
       const fid = e.target.dataset.exForm;
       if (fid) {
