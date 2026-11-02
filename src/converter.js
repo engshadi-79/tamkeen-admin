@@ -2081,7 +2081,30 @@
     }
   }
 
+  /* تبويبات الصفحة: كل أداة في تبويب باسمها، ويُحفظ آخر تبويب فُتح */
+  const TAB_KEY = "tamkeen-conv-tab";
+  function initTabs() {
+    const tabs = [...document.querySelectorAll("[data-cv-tab]")];
+    const panes = [...document.querySelectorAll("[data-cv-pane]")];
+    if (!tabs.length) return;
+    const show = (key) => {
+      const k = panes.some((p) => p.dataset.cvPane === key) ? key : panes[0].dataset.cvPane;
+      tabs.forEach((t) => {
+        const on = t.dataset.cvTab === k;
+        t.classList.toggle("active", on);
+        t.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      panes.forEach((p) => { p.hidden = p.dataset.cvPane !== k; });
+      try { localStorage.setItem(TAB_KEY, k); } catch (e) { /* وضع التصفح الخاص */ }
+    };
+    tabs.forEach((t) => t.addEventListener("click", () => show(t.dataset.cvTab)));
+    let last = "";
+    try { last = localStorage.getItem(TAB_KEY) || ""; } catch (e) { /* يكفي الأول */ }
+    show(last || panes[0].dataset.cvPane);
+  }
+
   function init() {
+    initTabs();
     document.querySelectorAll("[data-conv-mode]").forEach((b) =>
       b.addEventListener("click", () => { state.mode = b.dataset.convMode; renderSource(); })
     );
