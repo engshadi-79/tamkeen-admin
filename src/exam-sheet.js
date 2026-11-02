@@ -494,10 +494,22 @@
       return clean(i >= 0 ? t.slice(i + 3) : "");
     } catch (e) { return ""; }
   }
+  /* مطابقة اسم المسار: findTrack لا يوحّد الشرطات، و«التجميل النسائي – كوافير»
+     في النموذج تكتب بشرطة طويلة بينما ملف الطلبة يكتبها قصيرة. */
+  const trackKey = (v) => App.converterCore.normalizeHeader(v == null ? "" : v)
+    .replace(/[‐-―−\-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^مسار\s*/, "")
+    .trim();
   const evalFor = (track) => {
-    const list = state.evals.filter((e) => e.track);
-    const hit = App.converterCore.findTrack(list.map((e) => ({ id: e.id, name: e.track })), track);
-    return hit ? list.find((e) => e.id === hit.id) : null;
+    const k = trackKey(track);
+    if (!k) return null;
+    const list = state.evals.filter((e) => e.track).map((e) => ({ e, k: trackKey(e.track) }));
+    const exact = list.find((x) => x.k === k);
+    if (exact) return exact.e;
+    const near = list.filter((x) => x.k.includes(k) || k.includes(x.k))
+      .sort((a, b) => b.k.length - a.k.length);
+    return near.length ? near[0].e : null;
   };
 
   async function buildEval(meta, track, groups) {
@@ -670,9 +682,11 @@
     const bits = [`<p class="conv-hint">${state.tplBuf ? `✓ القالب: ${esc(state.tplName)}` : "⚠ لم يُرفع القالب بعد"} · ملف الطلبة: <b>${ui.fmt(state.rows.length)}</b> صفاً</p>`,
       `<div class="inv-form">${sel("name", "عمود الاسم")}${sel("nid", "رقم الهوية")}${sel("track", "المسار")}${sel("group", "المجموعة (اختياري)")}</div>`];
 
-    if (state.evals.length) {
+    {
       bits.push(`<label class="conv-check"><input type="checkbox" id="ex-witheval" ${state.withEval ? "checked" : ""}>
-        أنشئ نماذج التقييم أيضاً — ${ui.fmt(state.evals.length)} نموذجاً محفوظاً، لكل مسار معاييره</label>`);
+        أنشئ نماذج التقييم أيضاً — ${state.evals.length
+          ? `${ui.fmt(state.evals.length)} نموذجاً محفوظاً، لكل مسار معاييره`
+          : "<b class=\"conv-error\">لم تُرفع نماذج تقييم بعد</b>"}</label>`);
       if (state.withEval) {
         bits.push(`<br><label class="conv-check"><input type="checkbox" id="ex-evaldate" ${state.evalDate ? "checked" : ""}>
           اكتب اليوم والتاريخ في نموذج التقييم — بلا تأشير تبقى نقاطاً تُملأ بخط اليد</label>`);
@@ -690,7 +704,7 @@
       grouped().forEach((t) => {
         const total = t.groups.reduce((n, g) => n + g.students.length, 0);
         bits.push(`<h4 class="ex-head">${esc(t.track)} <span class="conv-hint">${ui.fmt(total)} طالباً · ${ui.fmt(t.groups.length)} مجموعة</span></h4>`);
-        if (state.withEval && state.evals.length) {
+        if (state.withEval) {
           const ev = evalFor(t.track);
           bits.push(ev
             ? `<p class="conv-hint">✓ نموذج التقييم: ${esc(ev.name)}</p>`
@@ -757,10 +771,12 @@
         if (att) made.push({ name: `كشف الحضور - ${t.track}.docx`, blob: await buildAtt([t]) });
       }
     }
-    if (state.withEval && state.evals.length) {
+    const noEval = [];
+    if (state.withEval) {
       for (const t of list) {
-        const ev = evalFor(t.track);
+        const ev = state.evals.length ? evalFor(t.track) : null;
         if (ev) made.push({ name: `التقييم - ${t.track}.docx`, blob: await buildEval(ev, t.track, t.groups) });
+        else noEval.push(t.track);
       }
     }
     for (const id of state.pickForms) {
@@ -777,7 +793,10 @@
       made.forEach((x) => zip.file(x.name, x.blob));
       ui.download(`جداول الاختبارات - ${ui.todayISO()}.zip`, await zip.generateAsync({ type: "blob" }));
     }
-    ui.toast(`أُنشئ ${ui.fmt(made.length)} ملفاً`);
+    // سكوتٌ عن نموذج تقييم مفقود يُوهم أن الملف خرج، فيُقال صراحةً
+    ui.toast(noEval.length
+      ? `أُنشئ ${ui.fmt(made.length)} ملفاً — بلا تقييم لـ: ${noEval.join("، ")}`
+      : `أُنشئ ${ui.fmt(made.length)} ملفاً`);
   }
 
   function init() {
