@@ -29,6 +29,8 @@
     withAtt: true,       // كشوف الحضور مع الجداول
     stage: "",           // المرحلة، تُكتب في عمود «المرحلة» بكشف الحضور
     trainers: {},        // لكل مسار: أسماء المدربين
+    evals: [],           // نماذج التقييم، لكل مسار نموذجه
+    withEval: true,      // نماذج التقييم مع الجداول
     forms: [],           // القوالب المحفوظة المتاحة
     pickForms: [],       // ما اختاره المستخدم منها
     plan: {},            // لكل مجموعة: { theory:{date,time}, practical:[{date,time}] }
@@ -322,8 +324,7 @@
     if (!runs[i]) return;
     setRun(runs[i], name);
     for (let k = i + 1; k < runs.length; k++) {
-      const t = runText(runs[k]);
-      if (/\.{3,}/.test(t) || !t.trim()) break;
+      if (/\.{3,}/.test(runText(runs[k]))) break;   // نقاط التوقيع: حدّ الاسم
       setRun(runs[k], "");
     }
   }
@@ -338,6 +339,13 @@
         setRun(runs[0], `كشف الحضور والغياب للامتحان النهائي (${ctx.kind}) - `);
         if (runs[1]) setRun(runs[1], ctx.track);
         else setRun(runs[0], `كشف الحضور والغياب للامتحان النهائي (${ctx.kind}) - ${ctx.track}`);
+      } else if (/درجات التقييم/.test(txt)) {
+        // «درجات التقييم النهائي العملي - <المسار>»: اسم المسار في آخر run
+        setRun(runs[runs.length - 1], ctx.track);
+      } else if (/الدورة/.test(txt) && /المجموعة/.test(txt)) {
+        // «الدورة الأولى – المجموعة الاولى»
+        setRun(runs[0], `الدورة ${ctx.stage || "الأولى"} `);
+        if (runs.length > 2) setRun(runs[runs.length - 1], ` ${ctx.group}`);
       } else if (/اليوم/.test(txt)) {
         const iDay = runs.findIndex((r) => /اليوم/.test(runText(r)));
         if (iDay >= 0 && runs[iDay + 1]) setRun(runs[iDay + 1], ` ${ctx.day} `);
@@ -403,19 +411,33 @@
     });
   }
 
+  /* نموذج التقييم يبدأ بصفّ عناوين ثم صفّ الدرجات القصوى (5، 10، … 50)؛
+     يُعرف بأن خلاياه بعد الثالثة أرقام، وخاناته الأولى فارغة. يبقى كما هو. */
+  function headRows(trs) {
+    if (trs.length < 3) return 1;
+    const c = cellsOf(trs[1]).map((tc) => tag(tc, "t").map((t) => t.textContent).join("").trim());
+    const nums = c.slice(3).filter((v) => v && /^\d+$/.test(v)).length;
+    return nums >= 2 && !c[0] && !c[1] ? 2 : 1;
+  }
+
   function fillAttTable(doc, tbl, ctx) {
     const trs = [...tbl.children].filter((c) => c.localName === "tr");
-    const head = trs[0], proto = trs[1] || trs[0];
+    const keep = headRows(trs);
+    const proto = trs[keep] || trs[keep - 1];
     trs.forEach((tr) => tbl.removeChild(tr));
-    tbl.appendChild(head);
+    trs.slice(0, keep).forEach((tr) => tbl.appendChild(tr));
     ctx.students.forEach((s, i) => {
       const tr = proto.cloneNode(true);
       const c = cellsOf(tr);
       const donor = tag(c[0], "r")[0] || null;
-      const vals = [String(i + 1), s.name, s.nid, ctx.stage, ctx.group, ""];
-      vals.forEach((v, ci) => { if (c[ci]) setCell(c[ci], v, donor); });
-      // الاسم والمرحلة والمجموعة في وسط خلاياها
-      [1, 3, 4].forEach((ci) => { if (c[ci]) { setJc(doc, c[ci], "center"); putInPr(doc, c[ci], "vAlign", "center"); } });
+      // ما بعد الهوية: أعمدة التقييم في نموذج التقييم — تبقى فارغة لتُملأ يدوياً
+      const vals = ctx.lean ? [String(i + 1), s.name, s.nid]
+        : [String(i + 1), s.name, s.nid, ctx.stage, ctx.group, ""];
+      c.forEach((tc, ci) => { if (ci < vals.length) setCell(tc, vals[ci], donor); else if (!ctx.lean) setCell(tc, "", donor); });
+      // الاسم وما يليه في وسط خلاياه
+      (ctx.lean ? [1] : [1, 3, 4]).forEach((ci) => {
+        if (c[ci]) { setJc(doc, c[ci], "center"); putInPr(doc, c[ci], "vAlign", "center"); }
+      });
       tbl.appendChild(tr);
     });
   }
@@ -454,12 +476,62 @@
     return pack(zip, doc);
   }
 
+  /* ===== نماذج التقييم: لكل مسار نموذجه بمعاييره =====
+     المسار مكتوب في عنوان النموذج نفسه («درجات التقييم … - مسار كذا»)،
+     فيُقرأ منه عند الرفع ويُطابَق بمسارات ملف الطلبة. */
+  async function evalTrack(buf) {
+    try {
+      const zip = await JSZip.loadAsync(buf);
+      const xml = await zip.file("word/document.xml").async("string");
+      const doc = new DOMParser().parseFromString(xml, "application/xml");
+      const p = tag(firstTag(doc.documentElement, "body"), "p")
+        .find((x) => /درجات التقييم/.test(paraText(x)));
+      if (!p) return "";
+      const t = paraText(p);
+      const i = t.lastIndexOf(" - ");
+      return clean(i >= 0 ? t.slice(i + 3) : "");
+    } catch (e) { return ""; }
+  }
+  const evalFor = (track) => {
+    const list = state.evals.filter((e) => e.track);
+    const hit = App.converterCore.findTrack(list.map((e) => ({ id: e.id, name: e.track })), track);
+    return hit ? list.find((e) => e.id === hit.id) : null;
+  };
+
+  async function buildEval(meta, track, groups) {
+    const t = await tplStore().get(meta.id);
+    const zip = await JSZip.loadAsync(await t.file.arrayBuffer());
+    const xml = await zip.file("word/document.xml").async("string");
+    const doc = new DOMParser().parseFromString(xml, "application/xml");
+    const body = firstTag(doc.documentElement, "body");
+    const sectPr = [...body.children].find((k) => k.localName === "sectPr");
+    const block = [...body.children].filter((k) => k !== sectPr);
+    block.forEach((k) => body.removeChild(k));
+
+    const trainers = trainersOf(track);
+    groups.forEach((g, gi) => {
+      if (gi) body.insertBefore(pageBreak(doc), sectPr);
+      const plan = planOf(track, g.name);
+      // التقييم عمليّ، فتاريخه أول موعد عملي إن وُجد
+      const ap = (plan.practical || []).find((p) => p.date) || plan.theory || {};
+      attPage(doc, block, {
+        track, kind: "عملي", day: dayOf(ap.date), date: fmtDate(ap.date),
+        students: g.students, stage: state.stage,
+        group: `المجموعة ${ORDINAL[gi] || gi + 1}`, trainers, lean: true,
+      }).forEach((k) => body.insertBefore(k, sectPr));
+    });
+    return pack(zip, doc);
+  }
+
   /* ===== نماذج محفوظة تُستخرج مع الجداول =====
      أي قالب في «قوالب التحويل» (ككشوف الدرجات النهائية) يُملأ بالطلبة أنفسهم
      وبترتيبهم نفسه، عبر آلية «تحويل حسب قالب» ذاتها. */
   async function savedForms() {
     if (!tplStore()) return [];
-    try { return (await tplStore().list()).filter((t) => t.kind !== KINDS.tpl && t.kind !== KINDS.att); } catch (e) { return []; }
+    try {
+      const skip = Object.keys(KINDS).map((k) => KINDS[k]);
+      return (await tplStore().list()).filter((t) => !skip.includes(t.kind));
+    } catch (e) { return []; }
   }
 
   /* صفوف غنية بالأعمدة حتى تجد مطابقةُ القالب ما يلزمها */
@@ -552,7 +624,7 @@
      يُحفظ مرة واحدة في مخزن القوالب المشترك (بعلامة exam حتى لا يختلط بقوالب
      التحويل)، فيجده المستخدم جاهزاً في كل مرة وعلى كل جهاز. */
   const tplStore = () => App.converterStore;
-  const KINDS = { tpl: "exam", att: "exam-att" };
+  const KINDS = { tpl: "exam", att: "exam-att", eval: "exam-eval" };
   async function savedOf(which) {
     if (!tplStore()) return [];
     try { return (await tplStore().list()).filter((t) => t.kind === KINDS[which]); } catch (e) { return []; }
@@ -595,6 +667,10 @@
     const bits = [`<p class="conv-hint">${state.tplBuf ? `✓ القالب: ${esc(state.tplName)}` : "⚠ لم يُرفع القالب بعد"} · ملف الطلبة: <b>${ui.fmt(state.rows.length)}</b> صفاً</p>`,
       `<div class="inv-form">${sel("name", "عمود الاسم")}${sel("nid", "رقم الهوية")}${sel("track", "المسار")}${sel("group", "المجموعة (اختياري)")}</div>`];
 
+    if (state.evals.length) {
+      bits.push(`<label class="conv-check"><input type="checkbox" id="ex-witheval" ${state.withEval ? "checked" : ""}>
+        أنشئ نماذج التقييم أيضاً — ${ui.fmt(state.evals.length)} نموذجاً محفوظاً، لكل مسار معاييره</label>`);
+    }
     if (state.attBuf) {
       bits.push(`<p class="conv-hint">✓ قالب كشف الحضور جاهز: <b>${esc(state.attName)}</b></p>
         <label class="conv-check"><input type="checkbox" id="ex-withatt" ${state.withAtt ? "checked" : ""}>
@@ -607,6 +683,12 @@
       grouped().forEach((t) => {
         const total = t.groups.reduce((n, g) => n + g.students.length, 0);
         bits.push(`<h4 class="ex-head">${esc(t.track)} <span class="conv-hint">${ui.fmt(total)} طالباً · ${ui.fmt(t.groups.length)} مجموعة</span></h4>`);
+        if (state.withEval && state.evals.length) {
+          const ev = evalFor(t.track);
+          bits.push(ev
+            ? `<p class="conv-hint">✓ نموذج التقييم: ${esc(ev.name)}</p>`
+            : `<p class="conv-error">لا نموذج تقييم لهذا المسار — ارفعه في «نماذج التقييم»</p>`);
+        }
         if (state.attBuf && state.withAtt) {
           const sys = sysTrainers(t.track);
           const val = trainersText(t.track);
@@ -668,6 +750,12 @@
         if (att) made.push({ name: `كشف الحضور - ${t.track}.docx`, blob: await buildAtt([t]) });
       }
     }
+    if (state.withEval && state.evals.length) {
+      for (const t of list) {
+        const ev = evalFor(t.track);
+        if (ev) made.push({ name: `التقييم - ${t.track}.docx`, blob: await buildEval(ev, t.track, t.groups) });
+      }
+    }
     for (const id of state.pickForms) {
       const meta = state.forms.find((f) => f.id === id);
       if (!meta) continue;
@@ -701,6 +789,31 @@
     tpl.addEventListener("change", onTpl("tpl", "قالب الاختبارات"));
     if ($("ex-att")) $("ex-att").addEventListener("change", onTpl("att", "قالب كشف الحضور"));
 
+    /* نماذج التقييم: يُقرأ اسم المسار من كل نموذج ويُحفظ معه، وما كان
+       لمسار سبق رفعه يحلّ محلّه بدل أن يتراكم. */
+    if ($("ex-eval")) $("ex-eval").addEventListener("change", async (e) => {
+      const files = [...e.target.files];
+      if (!files.length || !tplStore()) return;
+      let done = 0, nameless = 0;
+      for (const f of files) {
+        const buf = await f.arrayBuffer();
+        const track = await evalTrack(buf);
+        if (!track) { nameless++; continue; }
+        const old = (await savedOf("eval")).filter((t) => t.track === track);
+        await tplStore().save({
+          name: f.name.replace(/\.docx$/i, ""), format: "docx", headers: [],
+          kind: KINDS.eval, track, file: new Blob([buf], { type: f.type }),
+        });
+        for (const t of old) { try { await tplStore().remove(t.id); } catch (err) { /* يكفي تجاهلها */ } }
+        done++;
+      }
+      state.evals = await savedOf("eval");
+      render();
+      ui.toast(nameless
+        ? `حُفظ ${ui.fmt(done)} نموذجاً، و${ui.fmt(nameless)} بلا اسم مسار في عنوانه`
+        : `حُفظ ${ui.fmt(done)} نموذج تقييم — لن تحتاج رفعها مرة أخرى`);
+    });
+
     /* القوالب المحفوظة تُحمَّل تلقائياً. المخزن قد لا يكون جاهزاً عند الإقلاع،
        ولا عند وصول المزامنة، فيُعاد السؤال مرات قليلة متباعدة. */
     const retry = (which) => (ms) => {
@@ -713,6 +826,13 @@
     };
     retry("tpl")(0);
     retry("att")(0);
+    const loadEvals = () => savedOf("eval").then((e) => {
+      if (e.length === state.evals.length && e.every((x, i) => x.id === state.evals[i].id)) return;
+      state.evals = e;
+      render();
+    });
+    loadEvals();
+    [1000, 3000, 8000].forEach((ms) => setTimeout(loadEvals, ms));
     const loadForms = () => savedForms().then((f) => {
       if (f.length === state.forms.length && f.every((x, i) => x.id === state.forms[i].id)) return;
       state.forms = f;
@@ -747,6 +867,7 @@
       if (key) { state.map[key] = e.target.value; return render(); }
       if (e.target.id === "ex-one") { state.oneFile = e.target.checked; return; }
       if (e.target.id === "ex-withatt") { state.withAtt = e.target.checked; return render(); }
+      if (e.target.id === "ex-witheval") { state.withEval = e.target.checked; return render(); }
       if (e.target.id === "ex-stage") { state.stage = e.target.value; return; }
       const fid = e.target.dataset.exForm;
       if (fid) {
@@ -782,7 +903,7 @@
     });
   }
 
-  App.examSheet = { init, build, buildAtt, buildForm, grouped, render, state };
+  App.examSheet = { init, build, buildAtt, buildEval, buildForm, evalFor, grouped, render, state };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
