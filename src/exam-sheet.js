@@ -29,6 +29,8 @@
     withAtt: true,       // كشوف الحضور مع الجداول
     stage: "",           // المرحلة، تُكتب في عمود «المرحلة» بكشف الحضور
     trainers: {},        // لكل مسار: أسماء المدربين
+    forms: [],           // القوالب المحفوظة المتاحة
+    pickForms: [],       // ما اختاره المستخدم منها
     plan: {},            // لكل مجموعة: { theory:{date,time}, practical:[{date,time}] }
   };
   /* مدربو المسار من النظام (صفحة المسارات): اسم المسار في ملف الطلبة يُطابَق
@@ -452,6 +454,82 @@
     return pack(zip, doc);
   }
 
+  /* ===== نماذج محفوظة تُستخرج مع الجداول =====
+     أي قالب في «قوالب التحويل» (ككشوف الدرجات النهائية) يُملأ بالطلبة أنفسهم
+     وبترتيبهم نفسه، عبر آلية «تحويل حسب قالب» ذاتها. */
+  async function savedForms() {
+    if (!tplStore()) return [];
+    try { return (await tplStore().list()).filter((t) => t.kind !== KINDS.tpl && t.kind !== KINDS.att); } catch (e) { return []; }
+  }
+
+  /* صفوف غنية بالأعمدة حتى تجد مطابقةُ القالب ما يلزمها */
+  function formRows(track, groups) {
+    const rows = [];
+    groups.forEach((g, gi) => {
+      const plan = planOf(track, g.name);
+      const th = plan.theory || {};
+      const [t1, t2] = trainersOf(track);
+      const label = `المجموعة ${ORDINAL[gi] || gi + 1}`;
+      g.students.forEach((s, i) => {
+        rows.push({
+          "م": String(i + 1),
+          "اسم الطالب": s.name, "الاسم": s.name,
+          "رقم الهوية": s.nid,
+          "المسار": track, "المجموعة": label, "المرحلة": state.stage,
+          "المدرب الأول": t1 || "", "المدرب الثاني": t2 || "",
+          "المدربون": [t1, t2].filter(Boolean).join("، "),
+          "اليوم": dayOf(th.date), "التاريخ": fmtDate(th.date), "الساعة": clean(th.time),
+        });
+      });
+    });
+    return rows;
+  }
+
+  async function buildForm(meta, track, groups) {
+    const core = App.converterCore;
+    const t = await tplStore().get(meta.id);
+    const buffer = await t.file.arrayBuffer();
+    const isDocx = (t.format || "docx") === "docx";
+    const headers = (t.headers && t.headers.length) ? t.headers : await core.readTemplateHeaders(buffer, isDocx);
+    const rows = formRows(track, groups);
+    const dataHeaders = Object.keys(rows[0] || {});
+    /* تطابق تام فقط: المطابقة المرنة تضع «المجموعة الأولى» في عمود «المجموع».
+       وما لا نملك له قيمة (أعمدة الدرجات) يبقى فارغاً ليُملأ بخط اليد. */
+    const norm = core.normalizeHeader;
+    const mapping = {};
+    headers.forEach((h) => {
+      const hit = dataHeaders.find((d) => norm(d) === norm(h));
+      if (hit) mapping[h] = hit;
+    });
+    const groupBy = headers.includes("المجموعة") || groups.length < 2 ? [] : ["المجموعة"];
+    const out = await core.generate({
+      templateBuffer: buffer, templateIsDocx: isDocx, templateName: `${t.name} - ${track}`,
+      templateHeaders: headers, mapping, dataRows: rows,
+      outputFormat: isDocx ? "docx" : "xlsx",
+      groupByColumns: groupBy.length ? groupBy : undefined,
+      autoNumberHeader: headers.find((h) => h === "م") || undefined,
+      textFields: isDocx ? await trackTextFields(buffer, track, groups) : undefined,
+    });
+    return out;
+  }
+
+  /* نصوص ترويسة القالب (اسم المسار، اليوم، التاريخ) تُملأ من موعد المجموعة الأولى */
+  async function trackTextFields(buffer, track, groups) {
+    const core = App.converterCore;
+    let fields = [];
+    try { fields = await core.readTemplateTextFields(buffer, [track]); } catch (e) { return undefined; }
+    if (!fields.length) return undefined;
+    const th = (planOf(track, (groups[0] || {}).name || "") || {}).theory || {};
+    return fields.map((f) => {
+      const label = String(f.label || "");
+      let value = "";
+      if (/مسار/.test(label)) value = track;
+      else if (/يوم/.test(label)) value = dayOf(th.date);
+      else if (/تاريخ/.test(label)) value = fmtDate(th.date);
+      return Object.assign({}, f, { value });
+    });
+  }
+
   /* ===== التجميع: مسار ← مجموعات ← طلبة ===== */
   function grouped() {
     const m = state.map;
@@ -558,6 +636,13 @@
           </div>`);
         });
       });
+      if (state.forms.length) {
+        bits.push(`<div class="conv-grade-note"><b class="conv-label">نماذج محفوظة تُستخرج معها</b>
+          <p class="conv-hint">تُملأ بالطلبة أنفسهم وبترتيبهم نفسه — من «قوالب التحويل».</p>
+          ${state.forms.map((f) => `<label class="conv-check"><input type="checkbox" data-ex-form="${esc(f.id)}"
+            ${state.pickForms.includes(f.id) ? "checked" : ""}> ${esc(f.name)} <span class="conv-hint">(${f.format === "docx" ? "Word" : "Excel"})</span></label>`).join("<br>")}
+        </div>`);
+      }
       const many = grouped().length > 1;
       if (many) {
         bits.push(`<label class="conv-check"><input type="checkbox" id="ex-one" ${state.oneFile ? "checked" : ""}>
@@ -581,6 +666,14 @@
       for (const t of list) {
         made.push({ name: `جدول اختبارات - ${t.track}.docx`, blob: await build([t]) });
         if (att) made.push({ name: `كشف الحضور - ${t.track}.docx`, blob: await buildAtt([t]) });
+      }
+    }
+    for (const id of state.pickForms) {
+      const meta = state.forms.find((f) => f.id === id);
+      if (!meta) continue;
+      for (const t of list) {
+        const out = await buildForm(meta, t.track, t.groups);
+        made.push({ name: out.filename, blob: out.blob });
       }
     }
     if (made.length === 1) ui.download(made[0].name, made[0].blob);
@@ -620,6 +713,13 @@
     };
     retry("tpl")(0);
     retry("att")(0);
+    const loadForms = () => savedForms().then((f) => {
+      if (f.length === state.forms.length && f.every((x, i) => x.id === state.forms[i].id)) return;
+      state.forms = f;
+      render();
+    });
+    loadForms();
+    [1000, 3000, 8000].forEach((ms) => setTimeout(loadForms, ms));
     if (App.store && App.store.onChange) App.store.onChange(() => {
       if (!state.tplBuf) loadSaved("tpl").then((ok) => { if (ok) render(); });
       if (!state.attBuf) loadSaved("att").then((ok) => { if (ok) render(); });
@@ -648,6 +748,13 @@
       if (e.target.id === "ex-one") { state.oneFile = e.target.checked; return; }
       if (e.target.id === "ex-withatt") { state.withAtt = e.target.checked; return render(); }
       if (e.target.id === "ex-stage") { state.stage = e.target.value; return; }
+      const fid = e.target.dataset.exForm;
+      if (fid) {
+        state.pickForms = e.target.checked
+          ? state.pickForms.concat(fid)
+          : state.pickForms.filter((x) => x !== fid);
+        return;
+      }
       const tr = e.target.closest(".ex-trainers");
       if (tr) { state.trainers[tr.dataset.track] = e.target.value; return; }
       const card = e.target.closest(".ex-grp");
@@ -675,7 +782,7 @@
     });
   }
 
-  App.examSheet = { init, build, buildAtt, grouped, render, state };
+  App.examSheet = { init, build, buildAtt, buildForm, grouped, render, state };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
