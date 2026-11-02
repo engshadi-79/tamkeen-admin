@@ -682,6 +682,10 @@
     const bits = [`<p class="conv-hint">${state.tplBuf ? `✓ القالب: ${esc(state.tplName)}` : "⚠ لم يُرفع القالب بعد"} · ملف الطلبة: <b>${ui.fmt(state.rows.length)}</b> صفاً</p>`,
       `<div class="inv-form">${sel("name", "عمود الاسم")}${sel("nid", "رقم الهوية")}${sel("track", "المسار")}${sel("group", "المجموعة (اختياري)")}</div>`];
 
+    // بلا عمود مجموعة يصير الطلبة كلهم «المجموعة الأولى» — وهو سبب خفيّ لضياع المجموعات
+    if (!state.map.group) {
+      bits.push(`<p class="conv-error">⚠ لم تحدّد عمود «المجموعة» — سيخرج الطلبة كلهم في مجموعة واحدة.</p>`);
+    }
     {
       bits.push(`<label class="conv-check"><input type="checkbox" id="ex-witheval" ${state.withEval ? "checked" : ""}>
         أنشئ نماذج التقييم أيضاً — ${state.evals.length
@@ -703,7 +707,8 @@
     if (m.name && m.track) {
       grouped().forEach((t) => {
         const total = t.groups.reduce((n, g) => n + g.students.length, 0);
-        bits.push(`<h4 class="ex-head">${esc(t.track)} <span class="conv-hint">${ui.fmt(total)} طالباً · ${ui.fmt(t.groups.length)} مجموعة</span></h4>`);
+        bits.push(`<h4 class="ex-head">${esc(t.track)} <span class="conv-hint">${ui.fmt(total)} طالباً · ${ui.fmt(t.groups.length)} مجموعة
+          (${t.groups.map((g) => esc(g.name)).join("، ")})</span></h4>`);
         if (state.withEval) {
           const ev = evalFor(t.track);
           bits.push(ev
