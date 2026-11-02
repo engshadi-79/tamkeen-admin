@@ -267,7 +267,35 @@
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       navigator.serviceWorker.register("sw.js").catch(() => { /* غير متاح */ });
     }
+    if (location.protocol.startsWith("http")) freshen();
     window.addEventListener("hashchange", () => show(location.hash.slice(1)));
     show(location.hash.slice(1));
   });
+
+  /* نسخة جديدة منشورة: المتصفح قد يعطي index.html من ذاكرته فتبقى وحدات
+     قديمة تعمل والمستخدم لا يدري. تُقرأ النسخة الحيّة مرة عند الإقلاع،
+     وتُفتح الصفحة من جديد إن اختلفت — مرة واحدة لكل نسخة كي لا تدور. */
+  const MARK = "tamkeen-freshened";
+  async function freshen() {
+    const tag = document.querySelector('script[src*="app.js?v="]');
+    const mine = tag && (tag.getAttribute("src").match(/v=(\d+)/) || [])[1];
+    if (!mine) return;
+    let live;
+    try {
+      const html = await fetch("index.html", { cache: "no-store" }).then((r) => r.text());
+      live = (html.match(/app\.js\?v=(\d+)/) || [])[1];
+    } catch (e) { return; }          // بلا إنترنت: تبقى النسخة المخزّنة
+    if (!live || live === mine) { try { sessionStorage.removeItem(MARK); } catch (e) { /* خاص */ } return; }
+    try {
+      if (sessionStorage.getItem(MARK) === live) return;
+      sessionStorage.setItem(MARK, live);
+    } catch (e) { return; }
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    } catch (e) { /* لا تخزين */ }
+    // عنوان مختلف كي لا يُعاد تقديم الصفحة من الذاكرة نفسها
+    location.replace(`${location.pathname}?v=${live}${location.hash}`);
+  }
+  App.freshen = freshen;
 })(window.App = window.App || {});
