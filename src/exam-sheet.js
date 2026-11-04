@@ -658,6 +658,27 @@
       });
       tbl.appendChild(tr);
     });
+    // «الدورة» لا لزوم لها: المرحلة مكتوبة في العنوان
+    const di = heads.findIndex((h) => /^(ال)?دوره$/.test(App.converterCore.normalizeHeader(h).trim()));
+    if (di >= 0) dropColumn(doc, tbl, di);
+  }
+
+  /* حذف عمود من الجدول: من كل صفوفه ومن شبكته، وعرضه يُضاف إلى عمود
+     الاسم حتى يبقى عرض الجدول كما هو */
+  function dropColumn(doc, tbl, idx) {
+    const grid = firstTag(tbl, "tblGrid");
+    const cols = grid ? [...grid.children].filter((c) => c.localName === "gridCol") : [];
+    const freed = cols[idx] ? Number(cols[idx].getAttribute("w:w")) || 0 : 0;
+    const to = idx === 1 ? 0 : 1;                       // عمود الاسم غالباً
+    if (cols[idx]) grid.removeChild(cols[idx]);
+    if (cols[to]) cols[to].setAttribute("w:w", String((Number(cols[to].getAttribute("w:w")) || 0) + freed));
+    [...tbl.children].filter((c) => c.localName === "tr").forEach((tr) => {
+      const cells = cellsOf(tr);
+      if (!cells[idx]) return;
+      const w = cells[to] && firstTag(cells[to], "tcW");
+      if (w) w.setAttribute("w:w", String((Number(w.getAttribute("w:w")) || 0) + freed));
+      tr.removeChild(cells[idx]);
+    });
   }
 
   const buildAtt = (list) => buildPages(state.attBuf, list, "att");
