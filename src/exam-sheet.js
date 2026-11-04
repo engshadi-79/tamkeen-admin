@@ -388,13 +388,13 @@
       }
       p.appendChild(r);
     };
-    // سطر تحت سطر، بلا جدولة ولا حشو مسافات، ومتوسّطة في عرض النص
+    // سطر تحت سطر، بلا جدولة ولا حشو مسافات، ومحاذاة لأقصى اليسار
     SIGN.forEach((t, i) => { if (i) piece(null, "br"); piece(t); });
     const pPr = tag(p, "pPr")[0];
     if (pPr && pPr.parentNode === p) {
       [...pPr.children].filter((c) => c.localName === "ind").forEach((c) => pPr.removeChild(c));
     }
-    setJcPara(doc, p, "center");
+    setJcPara(doc, p, "left");
   }
 
   /* توسيط فقرة (setJc يعمل على خلايا الجداول) */
@@ -417,7 +417,7 @@
     const runs = tag(p, "r");
     const texts = runs.map(runText);
     const joined = texts.join("");
-    if (!/\{\{/.test(joined)) return;
+    if (!/\{\{/.test(joined)) return false;
     const map = { "المسار": ctx.track, "المرحلة": ctx.stage, "الدورة": ctx.stage, "المجموعة": ctx.group };
     const hits = [];
     const re = /\{\{\s*([^}]+?)\s*\}\}/g;
@@ -444,17 +444,42 @@
       });
       if (touched) setRun(runs[i], res + t.slice(cur - a));
     });
+    return true;
+  }
+
+  /* سطر «مدرب المسار : …» في بعض القوالب: ما بعد النقطتين موضعُ الاسم،
+     أيّاً كان ما فيه الآن (رقم أو اسم قديم أو فراغ). */
+  function setTrainerSlot(runs, name) {
+    const texts = runs.map(runText);
+    const joined = texts.join("");
+    const at = joined.search(/مدرب/);
+    if (at < 0) return false;
+    const colon = joined.indexOf(":", at);
+    if (colon < 0) return false;
+    // الاسم ينتهي عند «التوقيع» أو نقاطه، وإلا فآخر الفقرة
+    const stop = joined.slice(colon + 1).search(/التوقيع|\.{3,}/);
+    const end = stop >= 0 ? colon + 1 + stop : joined.length;
+    let pos = 0;
+    const bounds = texts.map((t) => { const b = [pos, pos + t.length]; pos += t.length; return b; });
+    texts.forEach((t, i) => {
+      const [a, b] = bounds[i];
+      const s = Math.max(a, colon + 1), e = Math.min(b, end);
+      if (s >= e) return;
+      const put = colon + 1 >= a && colon + 1 < b ? " " + name : "";
+      setRun(runs[i], t.slice(0, s - a) + put + t.slice(e - a));
+    });
+    return true;
   }
 
   function attPage(doc, block, ctx) {
     const kids = block.map((k) => k.cloneNode(true));
     const drop = [];
-    const seq = { i: 0 };
+    const seq = { i: 0, t: 0 };
     kids.forEach((k) => {
       if (k.localName === "tbl") return fillAttTable(doc, k, ctx);
       const txt = paraText(k);
       const runs = tag(k, "r");
-      fillVars(k, ctx, seq);           // متغيّرات القالب أينما وردت
+      const subbed = fillVars(k, ctx, seq);   // متغيّرات القالب أينما وردت
       if (/كشف الحضور/.test(txt)) {
         const tail = ctx.track + (ctx.stage ? ` (المرحلة ${ctx.stage})` : "");
         setRun(runs[0], `كشف الحضور والغياب للامتحان النهائي (${ctx.kind}) - `);
@@ -465,7 +490,12 @@
         setRun(runs[runs.length - 1], ctx.track);
       } else if (/كشف درجات/.test(txt)) {
         // قالب بلا متغيّر: اسم المسار يحلّ محلّ ما بعد الشرطة في العنوان
-        if (!/\{\{/.test(txt)) setRun(runs[runs.length - 1], ` ${ctx.track}`);
+        if (!subbed) setRun(runs[runs.length - 1], ` ${ctx.track}`);
+        // ثم المرحلة بعده
+        if (ctx.stage && !/المرحلة/.test(paraText(k))) {
+          const last = runs.filter((r) => tag(r, "t").length).pop();
+          if (last) setRun(last, runText(last) + ` (المرحلة ${ctx.stage})`);
+        }
       } else if (SIGN_RE.test(txt)) {
         signature(doc, k, runs);
       } else if (/^\s*د\.\s*عصام/.test(txt)) {
@@ -484,10 +514,13 @@
           setRun(runs[iDate], `التاريخ: ${ctx.date}م`);
           runs.slice(iDate + 1).forEach((r) => setRun(r, ""));
         }
-      } else if (/^\s*1-/.test(txt) || /مدرب المسار/.test(txt)) {
-        setTrainer(runs, 1, ctx.trainers[0] || "");
+      } else if (/^\s*1-/.test(txt) || /مدرب\s*المسار/.test(txt)) {
+        // قالب بسطر «1- الاسم»، أو بسطر «مدرب المسار : …» لكل مدرّب
+        if (!subbed && !setTrainer(runs, 1, ctx.trainers[0] || "")) {
+          setTrainerSlot(runs, ctx.trainers[seq.t++] || "");
+        }
       } else if (/^\s*2-/.test(txt)) {
-        setTrainer(runs, 2, ctx.trainers[1] || "");
+        if (!subbed) setTrainer(runs, 2, ctx.trainers[1] || "");
       }
     });
     // مدربون أكثر من اثنين: يُستنسخ سطر «2-» لكل واحد منهم.
