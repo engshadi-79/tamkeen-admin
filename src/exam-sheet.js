@@ -390,14 +390,25 @@
     };
     // سطر تحت سطر، بلا جدولة ولا حشو مسافات، ومحاذاة لأقصى اليسار
     SIGN.forEach((t, i) => { if (i) piece(null, "br"); piece(t); });
-    const pPr = tag(p, "pPr")[0];
-    if (pPr && pPr.parentNode === p) {
-      [...pPr.children].filter((c) => c.localName === "ind").forEach((c) => pPr.removeChild(c));
-    }
+    setIndentZero(doc, p);
     setJcPara(doc, p, "left");
   }
 
-  /* توسيط فقرة (setJc يعمل على خلايا الجداول) */
+  /* الإزاحة قد تأتي من نمط الفقرة لا منها، فتُصفَّر صراحةً */
+  function setIndentZero(doc, p) {
+    let pPr = tag(p, "pPr")[0];
+    if (!pPr || pPr.parentNode !== p) {
+      pPr = doc.createElementNS(W, "w:pPr");
+      p.insertBefore(pPr, p.firstChild);
+    }
+    [...pPr.children].filter((c) => c.localName === "ind").forEach((c) => pPr.removeChild(c));
+    const ind = doc.createElementNS(W, "w:ind");
+    ["left", "right", "firstLine", "start", "end"].forEach((k) => ind.setAttribute("w:" + k, "0"));
+    const after = [...pPr.children].find((c) => ["jc", "textDirection", "textAlignment", "rPr", "sectPr"].includes(c.localName));
+    pPr.insertBefore(ind, after || null);
+  }
+
+  /* محاذاة فقرة (setJc يعمل على خلايا الجداول) */
   function setJcPara(doc, p, val) {
     let pPr = tag(p, "pPr")[0];
     if (!pPr || pPr.parentNode !== p) {
@@ -589,7 +600,8 @@
     if (h === "م" || h === "ر.م" || h === "رقم") return String(i + 1);
     if (/^اسم/.test(h) || h === "الاسم") return s.name;
     if (/هوي/.test(h)) return s.nid;
-    if (/^(ال)?مرحله$|^(ال)?دوره$/.test(h)) return ctx.stage;
+    if (/^(ال)?مرحله$/.test(h)) return ctx.stage;
+    if (/^(ال)?دوره$/.test(h)) return "";        // المرحلة تُكتب في العنوان لا في عمود
     if (/^(ال)?مجموعه$/.test(h)) return ctx.group;
     return "";                                  // درجات وتوقيع: تُملأ بخط اليد
   }
@@ -746,6 +758,30 @@
       });
     });
     return rows;
+  }
+
+  /* يعرف نوع القالب من عنوانه: كشف درجات أو كشف حضور أو نموذج تقييم */
+  const KIND_CACHE = new Map();
+  async function sheetKind(meta) {
+    if (KIND_CACHE.has(meta.id)) return KIND_CACHE.get(meta.id);
+    let res = null;
+    try {
+      if ((meta.format || "docx") === "docx") {
+        const t = await tplStore().get(meta.id);
+        const buf = await t.file.arrayBuffer();
+        const zip = await JSZip.loadAsync(buf);
+        const xml = await zip.file("word/document.xml").async("string");
+        const doc = new DOMParser().parseFromString(xml, "application/xml");
+        const body = firstTag(doc.documentElement, "body");
+        const head = tag(body, "p").slice(0, 6).map(paraText).join(" ");
+        const which = /كشف درجات/.test(head) ? "grd"
+          : /كشف الحضور/.test(head) ? "att"
+            : /درجات التقييم/.test(head) ? "grd" : "";
+        if (which) res = { which, buf };
+      }
+    } catch (e) { res = null; }
+    KIND_CACHE.set(meta.id, res);
+    return res;
   }
 
   async function buildForm(meta, track, groups) {
@@ -971,9 +1007,16 @@
     for (const id of state.pickForms) {
       const meta = state.forms.find((f) => f.id === id);
       if (!meta) continue;
+      /* قالب محفوظ قد يكون كشفاً من كشوف الاختبارات (درجات أو حضور أو تقييم):
+         يُبنى حينها ببانيها — بمدربيه وتوقيعه ومرحلته — لا بملء الأعمدة فقط. */
+      const kind = await sheetKind(meta);
       for (const t of list) {
-        const out = await buildForm(meta, t.track, t.groups);
-        made.push({ name: out.filename, blob: out.blob });
+        if (kind) {
+          made.push({ name: `${meta.name} - ${t.track}.docx`, blob: await buildPages(kind.buf, [t], kind.which) });
+        } else {
+          const out = await buildForm(meta, t.track, t.groups);
+          made.push({ name: out.filename, blob: out.blob });
+        }
       }
     }
     if (made.length === 1) ui.download(made[0].name, made[0].blob);
