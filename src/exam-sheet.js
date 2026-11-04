@@ -374,8 +374,8 @@
   const SIGN = ["رئيس المركز السعودي للثقافة والتراث",
     "مدير مركز مسارات التمكين للتدريب",
     "د. عصام أبو خليل"];
-  function signature(doc, p, runs) {
-    const proto = runs[0];
+  function signature(doc, p, runs, styleRun) {
+    const proto = styleRun ? styleRun.cloneNode(true) : runs[0];
     if (!proto) return;
     runs.forEach((r) => r.parentNode.removeChild(r));
     const piece = (text, kind) => {
@@ -391,7 +391,22 @@
     // سطر تحت سطر، بلا جدولة ولا حشو مسافات، ومحاذاة لأقصى اليسار
     SIGN.forEach((t, i) => { if (i) piece(null, "br"); piece(t); });
     setIndentZero(doc, p);
-    setJcPara(doc, p, "left");
+    /* «left» في فقرة عربية تعني «البداية» أي اليمين، فتُثبَّت الفقرة
+       على الاتجاه العربي وتُحاذى إلى «النهاية» — وهي اليسار الفيزيائي. */
+    setBidi(doc, p);
+    setJcPara(doc, p, "right");
+  }
+
+  function setBidi(doc, p) {
+    let pPr = tag(p, "pPr")[0];
+    if (!pPr || pPr.parentNode !== p) {
+      pPr = doc.createElementNS(W, "w:pPr");
+      p.insertBefore(pPr, p.firstChild);
+    }
+    if ([...pPr.children].some((c) => c.localName === "bidi")) return;
+    const el = doc.createElementNS(W, "w:bidi");
+    const after = [...pPr.children].find((c) => ["spacing", "ind", "jc", "rPr", "sectPr"].includes(c.localName));
+    pPr.insertBefore(el, after || null);
   }
 
   /* الإزاحة قد تأتي من نمط الفقرة لا منها، فتُصفَّر صراحةً */
@@ -486,6 +501,11 @@
     const kids = block.map((k) => k.cloneNode(true));
     const drop = [];
     const seq = { i: 0, t: 0 };
+    // حجم خط سطر الاعتماد يتبع سطر «مدرب المسار» حتى لا يصغر عنه
+    const styleRun = (() => {
+      const line = kids.find((k) => k.localName === "p" && /مدرب\s*المسار/.test(paraText(k)));
+      return line ? (tag(line, "r").find((r) => tag(r, "t").length) || null) : null;
+    })();
     kids.forEach((k) => {
       if (k.localName === "tbl") return fillAttTable(doc, k, ctx);
       const txt = paraText(k);
@@ -508,7 +528,7 @@
           if (last) setRun(last, runText(last) + ` (المرحلة ${ctx.stage})`);
         }
       } else if (SIGN_RE.test(txt)) {
-        signature(doc, k, runs);
+        signature(doc, k, runs, styleRun);
       } else if (/^\s*د\.\s*عصام/.test(txt)) {
         drop.push(k);                       // اسم المدير صار ضمن سطر التوقيع
       } else if (/الدورة/.test(txt) && /المجموعة/.test(txt)) {
