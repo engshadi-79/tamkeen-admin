@@ -23,10 +23,12 @@
   const state = {
     tplBuf: null, tplName: "", tplSavedId: "",
     attBuf: null, attName: "", attSavedId: "",
+    grdBuf: null, grdName: "", grdSavedId: "",
     rows: [], headers: [],
     map: { name: "", nid: "", track: "", group: "" },
     oneFile: false,      // كل المسارات في ملف واحد
     withAtt: true,       // كشوف الحضور مع الجداول
+    withGrd: true,       // كشوف الدرجات مع الجداول
     stage: "",           // المرحلة، تُكتب في عمود «المرحلة» بكشف الحضور
     trainers: {},        // لكل مسار: أسماء المدربين
     evals: [],           // نماذج التقييم، لكل مسار نموذجه
@@ -364,8 +366,46 @@
     return out;
   }
 
+  /* سطر الاعتماد الموحَّد في كل الكشوف، بتنسيق قالب جدول الاختبارات:
+     «رئيس المركز السعودي…» ثم سطرٌ فيه «مدير مركز…» و«د. عصام أبو خليل». */
+  const SIGN_RE = /مدير مركز مسارات التمكين|اعتماد رئيس مجلس الإدارة|رئيس المركز السعودي/;
+  const SIGN = ["رئيس المركز السعودي للثقافة والتراث",
+    "                 مدير مركز مسارات التمكين للتدريب                                     ",
+    "د. عصام أبو خليل"];
+  function signature(doc, p, runs) {
+    const proto = runs[0];
+    if (!proto) return;
+    runs.forEach((r) => r.parentNode.removeChild(r));
+    const piece = (text, kind) => {
+      const r = proto.cloneNode(true);
+      if (kind) {
+        tag(r, "t").forEach((t) => t.parentNode.removeChild(t));
+        r.appendChild(doc.createElementNS(W, "w:" + kind));
+      } else {
+        setRun(r, text);
+      }
+      p.appendChild(r);
+    };
+    piece(SIGN[0]);
+    piece(null, "br");
+    piece(SIGN[1]);
+    piece(null, "tab");
+    piece(SIGN[2]);
+  }
+
+  /* متغيّرات القالب: ‎{{المسار}}‎ و‎{{المرحلة}}‎ و‎{{المجموعة}}‎ */
+  function fillVars(runs, ctx) {
+    const map = { "المسار": ctx.track, "المرحلة": ctx.stage, "الدورة": ctx.stage, "المجموعة": ctx.group };
+    runs.forEach((r) => {
+      const t = runText(r);
+      if (!/\{\{/.test(t)) return;
+      setRun(r, t.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (m, k) => (k in map ? map[k] : m)));
+    });
+  }
+
   function attPage(doc, block, ctx) {
     const kids = block.map((k) => k.cloneNode(true));
+    const drop = [];
     kids.forEach((k) => {
       if (k.localName === "tbl") return fillAttTable(doc, k, ctx);
       const txt = paraText(k);
@@ -378,6 +418,13 @@
       } else if (/درجات التقييم/.test(txt)) {
         // «درجات التقييم النهائي العملي - <المسار>»: اسم المسار في آخر run
         setRun(runs[runs.length - 1], ctx.track);
+      } else if (/كشف درجات/.test(txt)) {
+        // «كشف درجات الطلاب- {{المسار}}» — القالب يحمل متغيّراً
+        fillVars(runs, ctx);
+      } else if (SIGN_RE.test(txt)) {
+        signature(doc, k, runs);
+      } else if (/^\s*د\.\s*عصام/.test(txt)) {
+        drop.push(k);                       // اسم المدير صار ضمن سطر التوقيع
       } else if (/الدورة/.test(txt) && /المجموعة/.test(txt)) {
         // «الدورة الأولى – المجموعة الاولى» ← «المرحلة … – المجموعة …»
         setRun(runs[0], `المرحلة ${ctx.stage || "الأولى"} `);
@@ -398,10 +445,12 @@
         setTrainer(runs, 2, ctx.trainers[1] || "");
       }
     });
-    // مدربون أكثر من اثنين: يُستنسخ سطر «2-» لكل واحد منهم
+    // مدربون أكثر من اثنين: يُستنسخ سطر «2-» لكل واحد منهم.
+    // وسطرا المدرّبَين يبقيان دائماً — الفارغ منهما يُكتب بخط اليد.
     const second = kids.find((k) => /^\s*2-/.test(paraText(k)));
     const out = [];
     kids.forEach((k) => {
+      if (drop.includes(k)) return;
       out.push(k);
       if (k !== second) return;
       ctx.trainers.slice(2).forEach((name, i) => {
@@ -410,7 +459,6 @@
         out.push(p);
       });
     });
-    if (ctx.trainers.length < 2 && second) out.splice(out.indexOf(second), 1);
     return out;
   }
 
@@ -455,9 +503,23 @@
     return nums >= 2 && !c[0] && !c[1] ? 2 : 1;
   }
 
+  /* القيمة تُوضع حسب اسم العمود لا موضعه، فيخدم ذلك النماذج كلها:
+     كشف الحضور (المرحلة/المجموعة/التوقيع)، والتقييم (أعمدة المعايير)،
+     وكشف الدرجات (الدورة/المجموعة/العملي/النظري/الأنشطة). */
+  function valueFor(head, s, i, ctx) {
+    const h = App.converterCore.normalizeHeader(head).replace(/\s*\(.*$/, "").trim();
+    if (h === "م" || h === "ر.م" || h === "رقم") return String(i + 1);
+    if (/^اسم/.test(h) || h === "الاسم") return s.name;
+    if (/هوي/.test(h)) return s.nid;
+    if (/^(ال)?مرحله$|^(ال)?دوره$/.test(h)) return ctx.stage;
+    if (/^(ال)?مجموعه$/.test(h)) return ctx.group;
+    return "";                                  // درجات وتوقيع: تُملأ بخط اليد
+  }
+
   function fillAttTable(doc, tbl, ctx) {
     const trs = [...tbl.children].filter((c) => c.localName === "tr");
     const keep = headRows(trs);
+    const heads = cellsOf(trs[0]).map((tc) => tag(tc, "t").map((t) => t.textContent).join(""));
     const proto = trs[keep] || trs[keep - 1];
     trs.forEach((tr) => tbl.removeChild(tr));
     trs.slice(0, keep).forEach((tr) => tbl.appendChild(tr));
@@ -465,27 +527,27 @@
       const tr = proto.cloneNode(true);
       const c = cellsOf(tr);
       const donor = tag(c[0], "r")[0] || null;
-      // ما بعد الهوية: أعمدة التقييم في نموذج التقييم — تبقى فارغة لتُملأ يدوياً
-      const vals = ctx.lean ? [String(i + 1), s.name, s.nid]
-        : [String(i + 1), s.name, s.nid, ctx.stage, ctx.group, ""];
-      c.forEach((tc, ci) => { if (ci < vals.length) setCell(tc, vals[ci], donor); else if (!ctx.lean) setCell(tc, "", donor); });
-      // الاسم وما يليه في وسط خلاياه
-      (ctx.lean ? [1] : [1, 3, 4]).forEach((ci) => {
-        if (c[ci]) { setJc(doc, c[ci], "center"); putInPr(doc, c[ci], "vAlign", "center"); }
+      c.forEach((tc, ci) => {
+        const v = valueFor(heads[ci] || "", s, i, ctx);
+        setCell(tc, v, donor);
+        if (ci && v) { setJc(doc, tc, "center"); putInPr(doc, tc, "vAlign", "center"); }
       });
       tbl.appendChild(tr);
     });
   }
 
-  async function buildAtt(list) {
-    const zip = await JSZip.loadAsync(state.attBuf);
+  const buildAtt = (list) => buildPages(state.attBuf, list, "att");
+  const buildGrd = (list) => buildPages(state.grdBuf, list, "grd");
+
+  async function buildPages(buf, list, which) {
+    const zip = await JSZip.loadAsync(buf);
     const xml = await zip.file("word/document.xml").async("string");
     const doc = new DOMParser().parseFromString(xml, "application/xml");
     const body = firstTag(doc.documentElement, "body");
     const sectPr = [...body.children].find((k) => k.localName === "sectPr");
     const block = trimTail([...body.children].filter((k) => k !== sectPr));
-    if (!block.some((k) => k.localName === "tbl")) throw new Error("قالب كشف الحضور بلا جدول");
-    block.filter((k) => k.localName === "tbl").forEach((t) => widenGroup(doc, t));
+    if (!block.some((k) => k.localName === "tbl")) throw new Error("القالب بلا جدول");
+    if (which === "att") block.filter((k) => k.localName === "tbl").forEach((t) => widenGroup(doc, t));
     [...body.children].filter((k) => k !== sectPr).forEach((k) => body.removeChild(k));
 
     let first = true;
@@ -493,9 +555,12 @@
       const trainers = trainersOf(track);
       groups.forEach((g, gi) => {
         const plan = planOf(track, g.name);
+        // كشف الحضور لكل موعد امتحان، وكشف الدرجات صفحة واحدة لكل مجموعة
         const appts = [];
-        if (plan.theory && plan.theory.date) appts.push({ kind: "نظري", date: plan.theory.date });
-        (plan.practical || []).forEach((p) => { if (p.date) appts.push({ kind: "عملي", date: p.date }); });
+        if (which === "att") {
+          if (plan.theory && plan.theory.date) appts.push({ kind: "نظري", date: plan.theory.date });
+          (plan.practical || []).forEach((p) => { if (p.date) appts.push({ kind: "عملي", date: p.date }); });
+        }
         if (!appts.length) appts.push({ kind: "نظري", date: "" });
         appts.forEach((ap) => {
           if (!first) body.insertBefore(pageBreak(doc), sectPr);
@@ -672,7 +737,7 @@
      يُحفظ مرة واحدة في مخزن القوالب المشترك (بعلامة exam حتى لا يختلط بقوالب
      التحويل)، فيجده المستخدم جاهزاً في كل مرة وعلى كل جهاز. */
   const tplStore = () => App.converterStore;
-  const KINDS = { tpl: "exam", att: "exam-att", eval: "exam-eval" };
+  const KINDS = { tpl: "exam", att: "exam-att", grd: "exam-grades", eval: "exam-eval" };
   async function savedOf(which) {
     if (!tplStore()) return [];
     try { return (await tplStore().list()).filter((t) => t.kind === KINDS[which]); } catch (e) { return []; }
@@ -728,6 +793,11 @@
         bits.push(`<br><label class="conv-check"><input type="checkbox" id="ex-evaldate" ${state.evalDate ? "checked" : ""}>
           اكتب اليوم والتاريخ في نموذج التقييم — بلا تأشير تبقى نقاطاً تُملأ بخط اليد</label>`);
       }
+    }
+    if (state.grdBuf) {
+      bits.push(`<p class="conv-hint">✓ قالب كشف الدرجات جاهز: <b>${esc(state.grdName)}</b></p>
+        <label class="conv-check"><input type="checkbox" id="ex-withgrd" ${state.withGrd ? "checked" : ""}>
+          أنشئ كشوف الدرجات أيضاً — كشف لكل مجموعة بأسمائها بالترتيب نفسه</label>`);
     }
     if (state.attBuf) {
       bits.push(`<p class="conv-hint">✓ قالب كشف الحضور جاهز: <b>${esc(state.attName)}</b></p>
@@ -799,14 +869,17 @@
     const list = grouped();
     if (!list.length) { ui.toast("لا بيانات"); return; }
     const att = state.withAtt && state.attBuf;
+    const grd = state.withGrd && state.grdBuf;
     const made = [];
     if (state.oneFile && list.length > 1) {
       made.push({ name: `جداول الاختبارات - ${ui.todayISO()}.docx`, blob: await build(list) });
       if (att) made.push({ name: `كشوف الحضور - ${ui.todayISO()}.docx`, blob: await buildAtt(list) });
+      if (grd) made.push({ name: `كشوف الدرجات - ${ui.todayISO()}.docx`, blob: await buildGrd(list) });
     } else {
       for (const t of list) {
         made.push({ name: `جدول اختبارات - ${t.track}.docx`, blob: await build([t]) });
         if (att) made.push({ name: `كشف الحضور - ${t.track}.docx`, blob: await buildAtt([t]) });
+        if (grd) made.push({ name: `كشف الدرجات - ${t.track}.docx`, blob: await buildGrd([t]) });
       }
     }
     const noEval = [];
@@ -852,6 +925,7 @@
     };
     tpl.addEventListener("change", onTpl("tpl", "قالب الاختبارات"));
     if ($("ex-att")) $("ex-att").addEventListener("change", onTpl("att", "قالب كشف الحضور"));
+    if ($("ex-grd")) $("ex-grd").addEventListener("change", onTpl("grd", "قالب كشف الدرجات"));
 
     /* نماذج التقييم: يُقرأ اسم المسار من كل نموذج ويُحفظ معه، وما كان
        لمسار سبق رفعه يحلّ محلّه بدل أن يتراكم. */
@@ -890,6 +964,7 @@
     };
     retry("tpl")(0);
     retry("att")(0);
+    retry("grd")(0);
     const loadEvals = () => savedOf("eval").then((e) => {
       if (e.length === state.evals.length && e.every((x, i) => x.id === state.evals[i].id)) return;
       state.evals = e;
@@ -907,6 +982,7 @@
     if (App.store && App.store.onChange) App.store.onChange(() => {
       if (!state.tplBuf) loadSaved("tpl").then((ok) => { if (ok) render(); });
       if (!state.attBuf) loadSaved("att").then((ok) => { if (ok) render(); });
+      if (!state.grdBuf) loadSaved("grd").then((ok) => { if (ok) render(); });
     });
 
     data.addEventListener("change", async (e) => {
@@ -914,6 +990,7 @@
       if (!f) { state.rows = []; return render(); }
       if (!state.tplBuf) await loadSaved("tpl");
       if (!state.attBuf) await loadSaved("att");
+      if (!state.grdBuf) await loadSaved("grd");
       try {
         const d = await App.converterCore.readDataFile(new Uint8Array(await f.arrayBuffer()));
         state.headers = d.headers;
@@ -931,6 +1008,7 @@
       if (key) { state.map[key] = e.target.value; return render(); }
       if (e.target.id === "ex-one") { state.oneFile = e.target.checked; return; }
       if (e.target.id === "ex-withatt") { state.withAtt = e.target.checked; return render(); }
+      if (e.target.id === "ex-withgrd") { state.withGrd = e.target.checked; return render(); }
       if (e.target.id === "ex-witheval") { state.withEval = e.target.checked; return render(); }
       if (e.target.id === "ex-evaldate") { state.evalDate = e.target.checked; return; }
       if (e.target.id === "ex-stage") { state.stage = e.target.value; return; }
@@ -968,7 +1046,7 @@
     });
   }
 
-  App.examSheet = { init, build, buildAtt, buildEval, buildForm, evalFor, grouped, render, state };
+  App.examSheet = { init, build, buildAtt, buildGrd, buildEval, buildForm, evalFor, grouped, render, state };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
