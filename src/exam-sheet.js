@@ -597,9 +597,11 @@
      وكشف الدرجات (الدورة/المجموعة/العملي/النظري/الأنشطة). */
   function valueFor(head, s, i, ctx) {
     const h = App.converterCore.normalizeHeader(head).replace(/\s*\(.*$/, "").trim();
+    /* مطابقة محكمة: «الهوية المؤسسية والتأسيس» عمود معيار لا عمود هوية،
+       وكذلك أي عنوان أطول من عنوان البيانات المعتاد. */
     if (h === "م" || h === "ر.م" || h === "رقم") return String(i + 1);
-    if (/^اسم/.test(h) || h === "الاسم") return s.name;
-    if (/هوي/.test(h)) return s.nid;
+    if (/^(ال)?اسم$/.test(h) || /^اسم\s*(ال)?\S+$/.test(h)) return s.name;
+    if (/^(رقم\s*)?(ال)?هويه$/.test(h) || /^رقم\s*(ال)?هويه\s*(ال)?\S*$/.test(h)) return s.nid;
     if (/^(ال)?مرحله$/.test(h)) return ctx.stage;
     if (/^(ال)?دوره$/.test(h)) return "";        // المرحلة تُكتب في العنوان لا في عمود
     if (/^(ال)?مجموعه$/.test(h)) return ctx.group;
