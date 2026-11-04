@@ -388,27 +388,73 @@
       }
       p.appendChild(r);
     };
-    // سطر تحت سطر، بلا جدولة ولا حشو مسافات
+    // سطر تحت سطر، بلا جدولة ولا حشو مسافات، ومتوسّطة في عرض النص
     SIGN.forEach((t, i) => { if (i) piece(null, "br"); piece(t); });
+    const pPr = tag(p, "pPr")[0];
+    if (pPr && pPr.parentNode === p) {
+      [...pPr.children].filter((c) => c.localName === "ind").forEach((c) => pPr.removeChild(c));
+    }
+    setJcPara(doc, p, "center");
   }
 
-  /* متغيّرات القالب: ‎{{المسار}}‎ و‎{{المرحلة}}‎ و‎{{المجموعة}}‎ */
-  function fillVars(runs, ctx) {
+  /* توسيط فقرة (setJc يعمل على خلايا الجداول) */
+  function setJcPara(doc, p, val) {
+    let pPr = tag(p, "pPr")[0];
+    if (!pPr || pPr.parentNode !== p) {
+      pPr = doc.createElementNS(W, "w:pPr");
+      p.insertBefore(pPr, p.firstChild);
+    }
+    [...pPr.children].filter((c) => c.localName === "jc").forEach((c) => pPr.removeChild(c));
+    const jc = doc.createElementNS(W, "w:jc");
+    jc.setAttribute("w:val", val);
+    const rPr = [...pPr.children].find((c) => c.localName === "rPr" || c.localName === "sectPr");
+    pPr.insertBefore(jc, rPr || null);
+  }
+
+  /* متغيّرات القالب: ‎{{المسار}}‎ و‎{{المرحلة}}‎ و‎{{المجموعة}}‎ و‎{{المدرب}}‎.
+     «المدرب» يتكرر في الصفحة، فالأول للمدرّب الأول والثاني للثاني. */
+  function fillVars(p, ctx, seq) {
+    const runs = tag(p, "r");
+    const texts = runs.map(runText);
+    const joined = texts.join("");
+    if (!/\{\{/.test(joined)) return;
     const map = { "المسار": ctx.track, "المرحلة": ctx.stage, "الدورة": ctx.stage, "المجموعة": ctx.group };
-    runs.forEach((r) => {
-      const t = runText(r);
-      if (!/\{\{/.test(t)) return;
-      setRun(r, t.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (m, k) => (k in map ? map[k] : m)));
+    const hits = [];
+    const re = /\{\{\s*([^}]+?)\s*\}\}/g;
+    let m;
+    while ((m = re.exec(joined))) {
+      const k = m[1];
+      const val = /^(ال)?مدرب/.test(k) ? (ctx.trainers[seq ? seq.i++ : 0] || "")
+        : (k in map ? map[k] : m[0]);
+      hits.push({ start: m.index, end: m.index + m[0].length, val });
+    }
+    // Word يقسّم المتغيّر على عدة وحدات نصّية، فيُحسب لكل وحدة نصيبها منه
+    let at = 0;
+    const bounds = texts.map((t) => { const b = [at, at + t.length]; at += t.length; return b; });
+    texts.forEach((t, i) => {
+      const [a, b] = bounds[i];
+      let res = "", cur = a, touched = false;
+      hits.forEach((h) => {
+        const s = Math.max(a, h.start), e = Math.min(b, h.end);
+        if (s >= e) return;
+        touched = true;
+        res += t.slice(cur - a, s - a);
+        if (h.start >= a && h.start < b) res += h.val;   // القيمة في أول وحدة تحوي بدايته
+        cur = e;
+      });
+      if (touched) setRun(runs[i], res + t.slice(cur - a));
     });
   }
 
   function attPage(doc, block, ctx) {
     const kids = block.map((k) => k.cloneNode(true));
     const drop = [];
+    const seq = { i: 0 };
     kids.forEach((k) => {
       if (k.localName === "tbl") return fillAttTable(doc, k, ctx);
       const txt = paraText(k);
       const runs = tag(k, "r");
+      fillVars(k, ctx, seq);           // متغيّرات القالب أينما وردت
       if (/كشف الحضور/.test(txt)) {
         const tail = ctx.track + (ctx.stage ? ` (المرحلة ${ctx.stage})` : "");
         setRun(runs[0], `كشف الحضور والغياب للامتحان النهائي (${ctx.kind}) - `);
@@ -418,8 +464,8 @@
         // «درجات التقييم النهائي العملي - <المسار>»: اسم المسار في آخر run
         setRun(runs[runs.length - 1], ctx.track);
       } else if (/كشف درجات/.test(txt)) {
-        // «كشف درجات الطلاب- {{المسار}}» — القالب يحمل متغيّراً
-        fillVars(runs, ctx);
+        // قالب بلا متغيّر: اسم المسار يحلّ محلّ ما بعد الشرطة في العنوان
+        if (!/\{\{/.test(txt)) setRun(runs[runs.length - 1], ` ${ctx.track}`);
       } else if (SIGN_RE.test(txt)) {
         signature(doc, k, runs);
       } else if (/^\s*د\.\s*عصام/.test(txt)) {
