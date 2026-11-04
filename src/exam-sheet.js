@@ -340,11 +340,11 @@
         if (/\.{3,}/.test(runText(runs[k]))) break;
         setRun(runs[k], "");
       }
-    } else {
-      if (showNum) setRun(runs[i], `${showNum}- `);
-      setName(runs, i + 1, name);
+      return runs[i];
     }
-    return true;
+    if (showNum) setRun(runs[i], `${showNum}- `);
+    setName(runs, i + 1, name);
+    return runs[i + 1] || runs[i];
   }
 
   function setName(runs, i, name) {
@@ -391,8 +391,23 @@
     // سطر تحت سطر، بلا جدولة ولا حشو مسافات، ومحاذاة لأقصى اليسار
     SIGN.forEach((t, i) => { if (i) piece(null, "br"); piece(t); });
     setIndentZero(doc, p);
-    // اتجاه الفقرة يبقى كما في القالب؛ تغييره يقلب ترتيب الكلمات
-    setJcPara(doc, p, "left");
+    /* الموضع لا يُترك لاتجاه فقرة القالب: يُثبَّت الاتجاه العربي (فيبقى
+       ترتيب الكلمات سليماً) وتُحاذى الفقرة إلى «النهاية» — وهي في العربية
+       اليسار الفيزيائي. فيخرج السطر يساراً في كل قالب مهما كان أصله. */
+    setBidi(doc, p);
+    setJcPara(doc, p, "right");
+  }
+
+  function setBidi(doc, p) {
+    let pPr = tag(p, "pPr")[0];
+    if (!pPr || pPr.parentNode !== p) {
+      pPr = doc.createElementNS(W, "w:pPr");
+      p.insertBefore(pPr, p.firstChild);
+    }
+    [...pPr.children].filter((c) => c.localName === "bidi").forEach((c) => pPr.removeChild(c));
+    const el = doc.createElementNS(W, "w:bidi");
+    const after = [...pPr.children].find((c) => ["spacing", "ind", "jc", "rPr", "sectPr"].includes(c.localName));
+    pPr.insertBefore(el, after || null);
   }
 
 
@@ -439,7 +454,7 @@
       const k = m[1];
       const val = /^(ال)?مدرب/.test(k) ? (ctx.trainers[seq ? seq.i++ : 0] || "")
         : (k in map ? map[k] : m[0]);
-      hits.push({ start: m.index, end: m.index + m[0].length, val });
+      hits.push({ start: m.index, end: m.index + m[0].length, val, trainer: /^(ال)?مدرب/.test(k) });
     }
     // Word يقسّم المتغيّر على عدة وحدات نصّية، فيُحسب لكل وحدة نصيبها منه
     let at = 0;
@@ -452,7 +467,10 @@
         if (s >= e) return;
         touched = true;
         res += t.slice(cur - a, s - a);
-        if (h.start >= a && h.start < b) res += h.val;   // القيمة في أول وحدة تحوي بدايته
+        if (h.start >= a && h.start < b) {
+          res += h.val;                                   // القيمة في أول وحدة تحوي بدايته
+          if (h.trainer && seq && !seq.nameRun) seq.nameRun = runs[i];
+        }
         cur = e;
       });
       if (touched) setRun(runs[i], res + t.slice(cur - a));
@@ -472,22 +490,24 @@
     // الاسم ينتهي عند «التوقيع» أو نقاطه، وإلا فآخر الفقرة
     const stop = joined.slice(colon + 1).search(/التوقيع|\.{3,}/);
     const end = stop >= 0 ? colon + 1 + stop : joined.length;
-    let pos = 0;
+    let pos = 0, hit = null;
     const bounds = texts.map((t) => { const b = [pos, pos + t.length]; pos += t.length; return b; });
     texts.forEach((t, i) => {
       const [a, b] = bounds[i];
       const s = Math.max(a, colon + 1), e = Math.min(b, end);
       if (s >= e) return;
       const put = colon + 1 >= a && colon + 1 < b ? " " + name : "";
+      if (put) hit = runs[i];
       setRun(runs[i], t.slice(0, s - a) + put + t.slice(e - a));
     });
-    return true;
+    return hit || true;
   }
 
   function attPage(doc, block, ctx) {
     const kids = block.map((k) => k.cloneNode(true));
     const drop = [];
-    const seq = { i: 0, t: 0 };
+    const sigs = [];
+    const seq = { i: 0, t: 0, nameRun: null };
     // حجم خط سطر الاعتماد يتبع سطر «مدرب المسار» حتى لا يصغر عنه
     const styleRun = (() => {
       const line = kids.find((k) => k.localName === "p" && /مدرب\s*المسار/.test(paraText(k)));
@@ -515,7 +535,7 @@
           if (last) setRun(last, runText(last) + ` (المرحلة ${ctx.stage})`);
         }
       } else if (SIGN_RE.test(txt)) {
-        signature(doc, k, runs, styleRun);
+        sigs.push({ p: k, runs });          // يُؤجَّل حتى يُعرف خطّ اسم المدرب
       } else if (/^\s*د\.\s*عصام/.test(txt)) {
         drop.push(k);                       // اسم المدير صار ضمن سطر التوقيع
       } else if (/الدورة/.test(txt) && /المجموعة/.test(txt)) {
@@ -534,13 +554,18 @@
         }
       } else if (/^\s*1-/.test(txt) || /مدرب\s*المسار/.test(txt)) {
         // قالب بسطر «1- الاسم»، أو بسطر «مدرب المسار : …» لكل مدرّب
-        if (!subbed && !setTrainer(runs, 1, ctx.trainers[0] || "")) {
-          setTrainerSlot(runs, ctx.trainers[seq.t++] || "");
+        if (!subbed) {
+          const r = setTrainer(runs, 1, ctx.trainers[0] || "")
+            || setTrainerSlot(runs, ctx.trainers[seq.t++] || "");
+          if (r && r.nodeType && !seq.nameRun) seq.nameRun = r;
         }
       } else if (/^\s*2-/.test(txt)) {
         if (!subbed) setTrainer(runs, 2, ctx.trainers[1] || "");
       }
     });
+    // خطّ سطر الاعتماد خطّ اسم المدرب نفسه
+    sigs.forEach((x) => signature(doc, x.p, x.runs, seq.nameRun || styleRun));
+
     // مدربون أكثر من اثنين: يُستنسخ سطر «2-» لكل واحد منهم.
     // وسطرا المدرّبَين يبقيان دائماً — الفارغ منهما يُكتب بخط اليد.
     const second = kids.find((k) => /^\s*2-/.test(paraText(k)));
