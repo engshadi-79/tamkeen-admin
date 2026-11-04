@@ -391,23 +391,10 @@
     // سطر تحت سطر، بلا جدولة ولا حشو مسافات، ومحاذاة لأقصى اليسار
     SIGN.forEach((t, i) => { if (i) piece(null, "br"); piece(t); });
     setIndentZero(doc, p);
-    /* «left» في فقرة عربية تعني «البداية» أي اليمين، فتُثبَّت الفقرة
-       على الاتجاه العربي وتُحاذى إلى «النهاية» — وهي اليسار الفيزيائي. */
-    setBidi(doc, p);
-    setJcPara(doc, p, "right");
+    // اتجاه الفقرة يبقى كما في القالب؛ تغييره يقلب ترتيب الكلمات
+    setJcPara(doc, p, "left");
   }
 
-  function setBidi(doc, p) {
-    let pPr = tag(p, "pPr")[0];
-    if (!pPr || pPr.parentNode !== p) {
-      pPr = doc.createElementNS(W, "w:pPr");
-      p.insertBefore(pPr, p.firstChild);
-    }
-    if ([...pPr.children].some((c) => c.localName === "bidi")) return;
-    const el = doc.createElementNS(W, "w:bidi");
-    const after = [...pPr.children].find((c) => ["spacing", "ind", "jc", "rPr", "sectPr"].includes(c.localName));
-    pPr.insertBefore(el, after || null);
-  }
 
   /* الإزاحة قد تأتي من نمط الفقرة لا منها، فتُصفَّر صراحةً */
   function setIndentZero(doc, p) {
