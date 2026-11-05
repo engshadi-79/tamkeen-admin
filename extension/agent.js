@@ -56,7 +56,7 @@ window.__kxStart = async () => {
   const actEl = h("div"); actEl.style.marginTop = "10px";
   box.append(title, sayEl, bodyEl, logEl, actEl);
   document.body.appendChild(box);
-  const say = (t) => { sayEl.textContent = t; };
+  const say = (t) => { sayEl.textContent = t; if (typeof window.__kxProgress === "function") window.__kxProgress(t); };
   const log = (t) => { const d = h("div", { textContent: t }); logEl.prepend(d); };
   const btn = (label, fn, kind) => {
     const b = h("button", { textContent: label });
@@ -247,7 +247,16 @@ window.__kxStart = async () => {
 
     // 2) لا كتابة قبل موافقتك
     say("سيُكتب في نظام المركز " + todo.length + " طالباً. راجع الجدول ثم اضغط «نفّذ».");
-    const go = await wait("نفّذ تسجيل " + todo.length + " طالباً", "go");
+    // موصول بتمكين عبر الإضافة؟ تظهر الخطة هناك وتُقبل منها، وتبقى أزرار هذه اللوحة بديلاً
+    const summary = {
+      total: plan.length, create: n("create"), exists: n("exists"), invalid: n("invalid"),
+      rows: plan.slice(0, 80).map((p) => ({ name: p.name, nid: p.nid, state: p.state, why: p.why })),
+    };
+    const local = wait("نفّذ تسجيل " + todo.length + " طالباً", "go");
+    const go = typeof window.__kxApprove === "function"
+      ? await Promise.race([local, window.__kxApprove(summary)])
+      : await local;
+    actEl.replaceChildren(stopBtn);
     const markSkipped = (why) => todo.forEach((p) => {
       if (!out.rows.some((r) => r.nid === p.nid)) out.rows.push({ name: p.name, nid: p.nid, status: "skipped", message: why });
     });
@@ -310,6 +319,8 @@ window.__kxStart = async () => {
       if (/الجلسة/.test(e.message)) break;
     }
   }
-  save();
-  say(stopped ? "أُوقف. نُزّلت النتائج." : "انتهى. نُزّل ksach-results.json — ارفعه في تمكين.");
+  const payload = { v: 1, at: new Date().toISOString(), results };
+  const sent = typeof window.__kxDone === "function" ? await window.__kxDone(payload) : false;
+  if (!sent) save();                       // لا تمكين مفتوح يستلمها: تُنزَّل ملفاً كما كان
+  say(sent ? "انتهى. أُرسلت النتائج إلى تمكين." : stopped ? "أُوقف. نُزّلت النتائج." : "انتهى. نُزّل ksach-results.json — ارفعه في تمكين.");
 };

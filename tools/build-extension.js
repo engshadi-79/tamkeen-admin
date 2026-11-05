@@ -11,7 +11,7 @@ const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const SRC = path.join(ROOT, "extension");
-const FILES = ["manifest.json", "background.js", "popup.html", "popup.js", "agent-boot.js", "agent.js", "icon.png", "اقرأني.txt"];
+const FILES = ["manifest.json", "background.js", "bridge.js", "popup.html", "popup.js", "agent-boot.js", "agent.js", "icon.png", "اقرأني.txt"];
 
 const runner = fs.readFileSync(path.join(ROOT, "tools", "ksach-runner.js"), "utf8");
 const open = "(async () => {";
@@ -32,12 +32,17 @@ if (testIdx >= 0) {
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
   FILES.filter((f) => f !== "agent.js").forEach((f) => fs.copyFileSync(path.join(SRC, f), path.join(out, f)));
-  const T = "http://localhost:4197/";
+  const T = "http://localhost:4197/";                       // نظام المركز الوهمي
+  const APPS = ["http://localhost:4196/", "http://localhost:4180/"];   // صفحة تمكين الاختبارية والحقيقية محلياً
   const m = JSON.parse(fs.readFileSync(path.join(out, "manifest.json"), "utf8"));
   m.host_permissions = [T + "*"];
-  m.content_scripts[0].matches = [T + "*"];
+  m.content_scripts[0].matches = APPS.map((a) => a + "*");
+  m.content_scripts[1].matches = [T + "*"];
   fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify(m, null, 2));
-  const bg = fs.readFileSync(path.join(out, "background.js"), "utf8").replace('"https://tamkeen.ksach.org/"', '"' + T + '"');
+  const bg = fs.readFileSync(path.join(out, "background.js"), "utf8")
+    .replace('const KSACH = "https://tamkeen.ksach.org/";', 'const KSACH = "' + T + '";')
+    .replace('const APPS = ["https://tamkeen-admin.vercel.app/"];', "const APPS = " + JSON.stringify(APPS) + ";");
+  if (!bg.includes(T) || !bg.includes(APPS[0])) throw new Error("لم تُستبدل ثوابت الاختبار في background.js");
   fs.writeFileSync(path.join(out, "background.js"), bg);
   // الاختبار على localhost: يتجاوز حارس اسم النطاق في الوكيل
   fs.writeFileSync(path.join(out, "agent.js"), "window.__KX_TEST = true;\n" + agent);
