@@ -627,6 +627,11 @@
   /* القيمة تُوضع حسب اسم العمود لا موضعه، فيخدم ذلك النماذج كلها:
      كشف الحضور (المرحلة/المجموعة/التوقيع)، والتقييم (أعمدة المعايير)،
      وكشف الدرجات (الدورة/المجموعة/العملي/النظري/الأنشطة). */
+  const isName = (head) => {
+    const h = App.converterCore.normalizeHeader(head || "").replace(/\s*\(.*$/, "").trim();
+    return /^(ال)?اسم$/.test(h) || /^اسم\s*(ال)?\S+$/.test(h);
+  };
+
   function valueFor(head, s, i, ctx) {
     const h = App.converterCore.normalizeHeader(head).replace(/\s*\(.*$/, "").trim();
     /* مطابقة محكمة: «الهوية المؤسسية والتأسيس» عمود معيار لا عمود هوية،
@@ -654,7 +659,11 @@
       c.forEach((tc, ci) => {
         const v = valueFor(heads[ci] || "", s, i, ctx);
         setCell(tc, v, donor);
-        if (ci && v) { setJc(doc, tc, "center"); putInPr(doc, tc, "vAlign", "center"); }
+        if (!ci || !v) return;
+        // اسم الطالب يُحاذى يميناً كبقية النصّ العربي، وما عداه يُتوسّط
+        // «البداية» في الخلية العربية هي اليمين الفيزيائي
+        setJc(doc, tc, isName(heads[ci]) ? "left" : "center");
+        putInPr(doc, tc, "vAlign", "center");
       });
       tbl.appendChild(tr);
     });
