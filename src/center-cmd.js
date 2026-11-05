@@ -162,7 +162,7 @@
 لا تكتب شرحاً خارج JSON ولا تنفذ أي شيء بنفسك.`;
 
   function privateSearchTarget(raw) {
-    const match = raw.match(/(?:دور(?:لي)?|فتش(?:لي)?|ابحث(?:لي)?|اشوف|شوف(?:لي)?|اجيب(?:لي)?|جيب(?:لي)?|هات(?:لي)?|اطلع(?:لي)?|طلع(?:لي)?|لقي(?:لي)?|اعرف(?:لي)?|عرفني|خبرني|احكيلي|سيرش(?:لي)?|search|استعلم|تحقق|اعثر)\s+(?:(?:عن|على|ع|بخصوص|لي|لنا)\s+)?(.+)$/iu)
+    const match = raw.match(/(?:دور(?:لي)?|فتش(?:لي)?|ابحث(?:لي)?|اشوف|شوف(?:لي)?|اجيب(?:لي)?|جيب(?:لي)?|هات(?:لي)?|اطلع(?:لي)?|طلع(?:لي)?|لقي(?:لي)?|اعرف(?:لي)?|عرفني|خبرني|احكيلي|سيرش(?:لي)?|search|استعلم|تحقق|اعثر)\s+(?:(?:عن|على|ع|بخصوص|لي|لنا)\s+)*(.+)$/iu)
       || raw.match(/(?:شو|كيف|وين|ايش|إيش)\s+(?:(?:وضع|حاله|حالة|بيانات)\s+)?(.+)$/iu);
     if (!match) return [];
     let target = clean(match[1]);
@@ -200,9 +200,73 @@
     return params;
   }
 
+  /* ===== فهم محلي للأوامر الشائعة =====
+     البحث والقوائم والتسجيل تُفهم هنا دون أي خدمة خارجية: أسرع، ولا تتعطل إن تعذّر
+     الوصول لمزوّد الذكاء الاصطناعي، ولا يخرج نص الطلب من المتصفح. وما لا يُفهم
+     محلياً أو يحتمل أكثر من معنى يُترك للذكاء الاصطناعي. */
+  const STOP_WORDS = new Set(["مسار", "عن", "بعد", "في", "من", "علي", "الي"]);
+  const wordsOf = (v) => norm(v).split(/[\s\-–—/،,.:()]+/)
+    .map((w) => w.replace(/^(ال|و)(?=.{3,})/, "")).filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
+  const STATUS_WORDS = [
+    ["graduated", /(متخرج|خريج|خريجين|خريجات|تخرج|ناجح)/],
+    ["withdrawn", /(منسحب|انسحب|انسحاب)/],
+    ["suspended", /(موقوف|ايقاف|وقف)/],
+    ["under_review", /(قيد المراجعه|تحت المراجعه)/],
+    ["active", /(نشط|نشيط|فعال|على راس عمله|مستمر)/],
+  ];
+
+  function localIntent(raw) {
+    const n = norm(raw);
+    // تسجيل طلاب: يحتاج ملف Excel يرفقه المستخدم
+    if (/(سجل|تسجيل|ضيف|اضف|اضافه|ادخل|ادراج)/.test(n) && /(طلاب|طالب|متدرب|اكسل|excel|ملف|كشف|اسماء)/.test(n)) {
+      return { type: "register-needed", message: "أرفق ملف Excel؛ سيقرأ الوكيل الأعمدة ثم تراجع المعاينة وتوافق قبل أن يُكتب شيء." };
+    }
+    // استعلام عن شخص محدد
+    const targets = privateSearchTarget(raw);
+    const searchVerb = /(دور|فتش|ابحث|بحث|اشوف|شوف|اجيب|جيب|هات|اطلع|طلع|لقي|اعرف|عرفني|خبرني|احكيلي|سيرش|search|استعلم|تحقق|اعثر)/.test(n);
+    const askAbout = /(شو|ايش|كيف|وين)\s+(وضع|حاله|بيانات|معلومات|رقم)/.test(n);
+    if (targets.length && (searchVerb || askAbout)) return { type: "lookup", label: "استعلام من الطلب", items: targets.map((q) => ({ q })) };
+    // قائمة طلاب
+    if (!/(طلاب|طلبه|طالبات|متدرب|متخرج|خريج|منسحب|نشط|مسجل|موقوف|مستفيد|قائمه|لسته|كشف)/.test(n)) return null;
+    const f = SCHEMA().studentFilters.fields;
+    const field = (name) => f.find((x) => x.name === name) || { options: [] };
+    const params = {};
+
+    const st = STATUS_WORDS.find(([, rx]) => rx.test(n));
+    if (st) params.status = st[0];
+
+    // المسار: يُختار إن كان أفضل تطابق وحيداً، وإلا يُترك لفهم أدق
+    const textWords = new Set(wordsOf(raw));
+    const scored = field("track_id").options.filter((o) => o.v).map((o) => ({ o, hit: wordsOf(o.t).filter((w) => textWords.has(w)).length }))
+      .filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit);
+    if (scored.length) {
+      if (scored.length > 1 && scored[0].hit === scored[1].hit) return null;       // «الرقمي» تطابق مساراً أكثر من واحد
+      params.track_id = String(scored[0].o.v);
+      // المرحلة (الدورة): «المرحلة الثانية» مع المسار نفسه
+      const sm = n.match(/(?:مرحله|دوره)\s*(?:ال)?(اولي|ثانيه|ثالثه)/);
+      if (sm) {
+        const trackWords = wordsOf(scored[0].o.t);
+        const course = field("training_course_id").options.filter((o) => o.v &&
+          norm(o.t).includes(sm[1]) && trackWords.every((w) => wordsOf(o.t).includes(w)));
+        if (course.length === 1) params.training_course_id = String(course[0].v);
+        else return null;
+      }
+    }
+    if (/غير\s*(ال)?موزع/.test(n) || /(بدون|بلا|ما عندهم|ليس لهم)\s*(مجموعه|توزيع)/.test(n)) params.group_status = "unassigned";
+    else if (/(ال)?موزع/.test(n)) params.group_status = "assigned";
+
+    const all = /(كل|جميع|كافه)\s*(ال)?(طلاب|طلبه|متدرب)/.test(n);
+    if (!Object.keys(params).length && !all) {
+      return { error: "هل تريد قائمة كل الطلاب؟ حدّد المسار أو الحالة، أو قل صراحة «كل الطلاب»." };
+    }
+    return { type: "list", label: "قائمة من الطلب", params };
+  }
+
   async function interpretRequest(raw) {
     const text = clean(raw);
     if (!text) throw new Error("اكتب طلبك باللهجة التي تفضلها.");
+    const understood = localIntent(text);
+    if (understood) return understood;                 // مفهوم محلياً: لا حاجة للذكاء الاصطناعي
     if (!App.ai || !App.ai.hasKey()) throw new Error("NO_KEY");
     const targets = privateSearchTarget(text);
     const options = (SCHEMA().studentFilters.fields || []).filter((f) => f.name !== "per_page").map((f) => ({ name: f.name, label: f.label, options: f.options || [] }));
@@ -219,7 +283,7 @@
         onText: (part) => { output += part; },
       });
     } catch (error) {
-      if (error.name === "AbortError") throw new Error("تأخر تحليل الطلب. جرّب صياغة أقصر أو تحقق من اتصال الإنترنت.");
+      if (error.name === "AbortError") throw new Error("تأخر مزوّد الذكاء الاصطناعي في الرد (ربما لا يصل إليه اتصالك، أو مفتاحه لا يعمل). الأوامر المباشرة تُفهم دونه، مثل: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار الحلاقة» أو «سجّل طلاب».");
       throw error;
     } finally { window.clearTimeout(timeout); }
     const start = output.indexOf("{");
@@ -467,7 +531,7 @@
     return true;
   }
 
-  App.centerCmd = { init, render, state, buildRegister, toOption, execute: executeCommand };
+  App.centerCmd = { init, render, state, buildRegister, toOption, execute: executeCommand, localIntent };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
