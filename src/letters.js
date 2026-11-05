@@ -669,5 +669,5 @@
     renderApprovals();
   }
 
-  App.letters = { init, render: renderPreview, blocks, startReply, refreshTemplates: () => { renderSelect(); renderApprovals(); } };
+  App.letters = { init, render: renderPreview, blocks, startReply, openAiSettings, refreshTemplates: () => { renderSelect(); renderApprovals(); } };
 })(window.App = window.App || {});

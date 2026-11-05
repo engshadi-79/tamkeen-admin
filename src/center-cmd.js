@@ -1,8 +1,5 @@
-/* أوامر نظام المركز: يبني تمكين ملف أوامر، ويُنفّذه «وكيل» صغير داخل جلسة الموظف
-   في نظام المركز نفسه (tools/ksach-runner.js)، ثم تعود النتائج إلى هنا.
-
-   لماذا هكذا؟ نظام المركز صفحات تُرسم من الخادم ولا يصل إليه إلا متصفح الموظف
-   وهو مسجّل دخوله؛ فلا كلمة مرور ولا رمز جلسة يمرّان بتمكين أبداً. */
+/* واجهة الوكيل المحلي. يتولى tools/ksach-agent-server.js تشغيل Edge وربط الأوامر
+   المسموحة بصفحة النظام المفتوحة في جلسة المستخدم. */
 (function (App) {
   const { ui } = App;
   const $ = (id) => document.getElementById(id);
@@ -14,12 +11,17 @@
   const digits = (v) => String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, "");
 
   const state = {
-    cmds: [],            // الأوامر المضافة
-    adding: "",          // register | lookup | list
+    adding: "",          // register
     reg: null,           // مُنشئ أمر التسجيل: { fileName, headers, rows, map }
-    lookupText: "",
-    listParams: {},
-    results: null,       // نتائج التنفيذ المرفوعة
+    requestText: "",
+    proposal: null,
+    results: null,
+    resultError: "",
+    busy: false,
+    thinking: false,
+    autoRunRegister: false,
+    needsAiKey: false,
+    agentStatus: null,
   };
 
   /* ===== أسماء الأعمدة المحتملة لكل حقل ===== */
@@ -139,35 +141,135 @@
     return `<div class="conv-grade-note"><b class="conv-label">تسجيل طلاب — ${esc(r.fileName)}</b>
       <p class="conv-hint">${ui.fmt(r.rows.length)} صفاً في الملف. اربط أعمدة ملفك بحقول نظام المركز (الإلزامي بنجمة).</p>
       <table class="cc-table"><tbody>${rows}</tbody></table>
-      <p class="${bad.length ? "conv-error" : "conv-hint"}">✓ صالح للإرسال: <b>${ui.fmt(ok.length)}</b>${bad.length ? ` · ⚠ به مشكلة: <b>${ui.fmt(bad.length)}</b> (لن يُرسل)` : ""}</p>
+      <p class="${bad.length || ok.length > 80 ? "conv-error" : "conv-hint"}">✓ صالح للإرسال: <b>${ui.fmt(ok.length)}</b>${bad.length ? ` · ⚠ به مشكلة: <b>${ui.fmt(bad.length)}</b> (لن يُرسل)` : ""}${ok.length > 80 ? " · الحد 80 طالباً في الدفعة؛ قسّم الملف." : ""}</p>
       ${bad.length ? `<details><summary>تفاصيل المشاكل (${ui.fmt(bad.length)})</summary><table class="cc-table"><tbody>${bad.slice(0, 40).map((b) => `<tr><td>صف ${b.n}</td><td>${esc(b.name || "")}</td><td>${esc(b.why)}</td></tr>`).join("")}</tbody></table></details>` : ""}
       ${sample ? `<table class="cc-table"><thead><tr><th>الاسم</th><th>الهوية</th><th>المسار</th><th>الجنس</th><th>الجوال</th></tr></thead><tbody>${sample}</tbody></table>` : ""}
-      <div class="btn-row"><button type="button" class="btn navy" data-cc="reg-add" ${ok.length ? "" : "disabled"}>أضف ${ui.fmt(ok.length)} طالباً إلى الأوامر</button>
-        <button type="button" class="conv-link" data-cc="cancel">إلغاء</button></div></div>`;
-  }
-
-  function lookupBuilder() {
-    return `<div class="conv-grade-note"><b class="conv-label">استعلام عن طلاب</b>
-      <label class="field"><span>اكتب في كل سطر: رقم هوية أو اسماً أو جوالاً</span>
-        <textarea id="cc-lookup" rows="6" placeholder="401157938&#10;ملاك علاء الدين">${esc(state.lookupText)}</textarea></label>
-      <div class="btn-row"><button type="button" class="btn navy" data-cc="lookup-add">أضف الاستعلام</button>
-        <button type="button" class="conv-link" data-cc="cancel">إلغاء</button></div></div>`;
-  }
-
-  function listBuilder() {
-    const fs = (SCHEMA().studentFilters.fields || []).filter((f) => f.name !== "per_page");
-    const inputs = fs.map((f) => f.options
-      ? `<label class="field"><span>${esc(f.label || f.name)}</span><select data-cc-lp="${f.name}">${f.options.map((o) => `<option value="${esc(o.v)}" ${(state.listParams[f.name] || "") === o.v ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>`
-      : `<label class="field"><span>${esc(f.label || f.name)}</span><input data-cc-lp="${f.name}" value="${esc(state.listParams[f.name] || "")}"></label>`).join("");
-    return `<div class="conv-grade-note"><b class="conv-label">استخراج قائمة الطلاب</b>
-      <div class="inv-form">${inputs}</div>
-      <div class="btn-row"><button type="button" class="btn navy" data-cc="list-add">أضف الاستخراج</button>
+      <div class="btn-row">${!state.autoRunRegister ? `<button type="button" class="btn navy" data-cc="register-run" ${ok.length && ok.length <= 80 && !bad.length && !state.busy ? "" : "disabled"}>أرسل الملف وسجّل ${ui.fmt(ok.length)} طالباً</button>` : ""}
         <button type="button" class="conv-link" data-cc="cancel">إلغاء</button></div></div>`;
   }
 
   const cmdSummary = (c) => c.type === "register" ? `تسجيل ${ui.fmt(c.rows.length)} طالباً`
     : c.type === "lookup" ? `استعلام عن ${ui.fmt(c.items.length)}`
       : "استخراج قائمة الطلاب" + (Object.keys(c.params).length ? ` (${Object.keys(c.params).map((k) => `${k}=${c.params[k]}`).join("، ")})` : "");
+
+  const INTENT_SYSTEM = `أنت تفهم أوامر موظف عربي لنظام إدارة متدربين. افهم الفصحى والعامية واللهجات الفلسطينية والشامية، ثم أعد كائن JSON واحداً فقط دون Markdown.
+الأعمال المسموحة فقط:
+1) lookup: البحث عن طالب محدد. الصيغة {"type":"lookup"}.
+2) list: استخراج قائمة طلاب. الصيغة {"type":"list","filters":{"track_id":"قيمة","status":"قيمة"},"all":false}. أرسل فقط المرشحات التي طلبها المستخدم صراحة، واستخدم القيم المرمزة الواردة في خيارات الحقول. اجعل all=true فقط إذا طلب صراحة كل الطلاب.
+3) register: تسجيل طلاب من ملف Excel يرفقه المستخدم. الصيغة {"type":"register"}.
+إذا كان الطلب غامضاً، أو يطلب حذفاً أو تعديلاً أو اعتماداً أو أي عمل آخر، أعد {"type":"clarify","message":"سؤال قصير باللهجة المناسبة"} ولا تخمّن.
+في lookup أعد {"type":"lookup"} فقط؛ هدف البحث محجوب عنك وسيضيفه التطبيق محلياً. لا تطلب الاسم أو الهوية إذا كانت ظاهرة كـ[هدف محجوب].
+لا تكتب شرحاً خارج JSON ولا تنفذ أي شيء بنفسك.`;
+
+  function privateSearchTarget(raw) {
+    const match = raw.match(/(?:دور(?:لي)?|فتش(?:لي)?|ابحث(?:لي)?|اشوف|شوف(?:لي)?|اجيب(?:لي)?|جيب(?:لي)?|هات(?:لي)?|اطلع(?:لي)?|طلع(?:لي)?|لقي(?:لي)?|اعرف(?:لي)?|عرفني|خبرني|احكيلي|سيرش(?:لي)?|search|استعلم|تحقق|اعثر)\s+(?:(?:عن|على|ع|بخصوص|لي|لنا)\s+)?(.+)$/iu)
+      || raw.match(/(?:شو|كيف|وين|ايش|إيش)\s+(?:(?:وضع|حاله|حالة|بيانات)\s+)?(.+)$/iu);
+    if (!match) return [];
+    let target = clean(match[1]);
+    if (/^(?:قائمه|القائمه|لسته|اللسته|كشف|كشوف|تقرير|سجل|كل|جميع|طلاب|الطلاب|طلبه|الطلبه|طالبات|الطالبات|المتدربين|المتدربات|المستفيدين|المستفيدات|المتخرجين|المتخرجات|الخريجين|الخريجات|المسجلين|المسجلات|الناجحين|الناجحات|المنسحبين|المنسحبات|النشطين|النشطات)(?:\s|$)/iu.test(norm(target))) return [];
+    target = target.replace(/^(?:اذا|إذا|هل|لو|ان|إن)\s+/iu, "");
+    for (let i = 0; i < 3; i++) target = target.replace(/^(?:(?:ال)?(?:طالب|طالبه|متدرب|متدربه|مستفيد|مستفيده)|اسم|بيانات|معلومات|ملف|حاله|حالة|هويه|هوية|رقم\s*(?:الهويه|الهوية|الجوال|التواصل))\s*[:：-]?\s*/iu, "");
+    target = target.split(/\s+(?:اللي|الذي|التي|في\s+مسار|بمسار|ضمن\s+مسار|في\s+دوره|في\s+الدوره|في\s+الدورة|متى|شو|وضعه|رقمه|رقمها|متخرج|متخرجه|متخرجين|متخرجات|ناجح|ناجحه|مسجل|مسجله|حضر|حاضره|قدم)(?:\s|$)/iu)[0];
+    const numberRuns = target.match(/[0-9٠-٩]{9,}/g);
+    if (numberRuns && numberRuns.length) return [...new Set(numberRuns.map(digits))].filter(Boolean).slice(0, 50);
+    return target.split(/[\n,،;؛]+/).map(clean).filter((x) => x.length >= 2).slice(0, 50);
+  }
+
+  function sanitizedIntentText(raw, privateTargets) {
+    let safe = raw;
+    privateTargets.forEach((target) => { if (target) safe = safe.replaceAll(target, "[هدف بحث محجوب]"); });
+    safe = safe.replace(/[0-9٠-٩]{7,}/g, "[رقم محجوب]");
+    safe = safe.replace(/((?:الطالب|الطالبة|المتدرب|المتدربة|المستفيد|المستفيدة)\s+)([\p{L}][\p{L}\s-]{1,50})/gu, "$1[اسم محجوب]");
+    return safe;
+  }
+
+  function normalizeFilters(rawFilters) {
+    const fields = (SCHEMA().studentFilters.fields || []).filter((f) => f.name !== "per_page");
+    const params = {};
+    for (const [key, rawValue] of Object.entries(rawFilters || {})) {
+      const field = fields.find((f) => f.name === key);
+      if (!field || !field.options) throw new Error("اختار المحلل مرشحاً غير متاح؛ أعد صياغة الطلب.");
+      if (rawValue == null) continue;
+      const value = String(rawValue);
+      const exact = field.options.find((o) => String(o.v) === value);
+      const byLabel = field.options.filter((o) => norm(o.t) === norm(value));
+      const found = exact || (byLabel.length === 1 ? byLabel[0] : null);
+      if (!found || !found.v) throw new Error(`لم أستطع تحديد خيار «${field.label}» بدقة. أعد صياغة الطلب مع اسم المسار أو الحالة كما تظهر في النظام.`);
+      params[key] = String(found.v);
+    }
+    return params;
+  }
+
+  async function interpretRequest(raw) {
+    const text = clean(raw);
+    if (!text) throw new Error("اكتب طلبك باللهجة التي تفضلها.");
+    if (!App.ai || !App.ai.hasKey()) throw new Error("NO_KEY");
+    const targets = privateSearchTarget(text);
+    const options = (SCHEMA().studentFilters.fields || []).filter((f) => f.name !== "per_page").map((f) => ({ name: f.name, label: f.label, options: f.options || [] }));
+    const context = `طلب الموظف بعد حجب اسم/رقم البحث: ${sanitizedIntentText(text, targets)}\nخيارات المرشحات الرسمية:\n${JSON.stringify(options)}`;
+    let output = "";
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45000);
+    try {
+      await App.ai.generate({
+        request: "حلل الطلب وأعد JSON حسب التعليمات. إذا كان بحثاً فاستخدم type=lookup فقط.",
+        context,
+        systemPrompt: INTENT_SYSTEM,
+        signal: controller.signal,
+        onText: (part) => { output += part; },
+      });
+    } catch (error) {
+      if (error.name === "AbortError") throw new Error("تأخر تحليل الطلب. جرّب صياغة أقصر أو تحقق من اتصال الإنترنت.");
+      throw error;
+    } finally { window.clearTimeout(timeout); }
+    const start = output.indexOf("{");
+    const end = output.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("لم أفهم صيغة النتيجة من محلل الطلب. جرّب صياغة أقصر.");
+    let intent;
+    try { intent = JSON.parse(output.slice(start, end + 1)); }
+    catch { throw new Error("تعذّر تحليل الأمر. أعد صياغته بجملة قصيرة."); }
+    if (intent.type === "clarify") return { error: clean(intent.message) || "هل توضح المطلوب أكثر؟" };
+    if (intent.type === "register") return { type: "register-needed", message: "أرفق ملف Excel؛ سيقرأ الوكيل الأعمدة محلياً ثم يسجل الصفوف الصالحة." };
+    if (intent.type === "lookup") {
+      if (!targets.length) return { error: "من تقصد؟ اذكر اسماً أو رقم هوية، مثلاً: «دورلي على [الاسم]»." };
+      return { type: "lookup", label: "استعلام من الطلب", items: targets.map((q) => ({ q })) };
+    }
+    if (intent.type === "list") {
+      const params = normalizeFilters(intent.filters);
+      if (!Object.keys(params).length && intent.all !== true) return { error: "هل تريد قائمة كل الطلاب؟ حدّد المسار أو الحالة، أو قل صراحة «كل الطلاب»." };
+      return { type: "list", label: "قائمة من الطلب", params };
+    }
+    return { error: "هذا الأمر غير متاح حالياً. أستطيع البحث، استخراج القوائم، أو تسجيل طلاب من Excel." };
+  }
+
+  function assistantView() {
+    const p = state.proposal;
+    let preview = "";
+    if (p && p.type === "register-needed") preview = `<p class="conv-hint">${esc(p.message)}</p>`;
+    else if (p && p.error) preview = `<p class="conv-error" role="status">${esc(p.error)}</p>${state.needsAiKey ? '<button type="button" class="btn secondary small" data-cc="ai-settings">إعداد الذكاء الاصطناعي</button>' : ""}`;
+    const status = state.agentStatus;
+    const statusText = state.thinking ? "أحلل صياغة طلبك…" : state.busy ? (state.progress || "الوكيل ينفّذ طلبك الآن…") : status ? status.message : "جارٍ الاتصال بالوكيل المحلي…";
+    const statusClass = state.thinking || state.busy || (status && status.loggedIn) ? "conv-hint" : "conv-error";
+    return `<div class="conv-grade-note cc-assistant"><b class="conv-label">اكتب طلبك بالعربية</b>
+      <p id="cc-status" class="${statusClass}" role="status">${esc(statusText)}</p>
+      <label class="field"><span>اكتبها بطريقتك، مثلاً: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار التسويق»</span>
+        <textarea id="cc-request" rows="3" placeholder="ماذا تريد من الوكيل؟">${esc(state.requestText)}</textarea></label>
+      <p class="conv-hint">يحلّل الطلب مزوّد الذكاء الاصطناعي المحدد في إعداداتك. يحاول الوكيل حجب هدف البحث والأرقام قبل الإرسال؛ لا يرسل نتائج النظام أو ملف Excel.</p>
+      <div class="btn-row"><button type="button" class="btn navy" data-cc="interpret" ${state.busy || state.thinking ? "disabled" : ""}>${state.thinking ? "جارٍ الفهم…" : "نفّذ الأمر"}</button></div>
+      <div data-cc-preview>${preview}</div>${state.resultError ? `<p class="conv-error" role="alert">${esc(state.resultError)}</p>` : ""}</div>`;
+  }
+
+  /* خطة التسجيل القادمة من الوكيل: تُراجَع هنا ولا يُكتب شيء قبل «نفّذ» */
+  function planView() {
+    const p = state.plan;
+    if (!p) return "";
+    const L = { create: "سيُسجَّل", exists: "موجود أصلاً — سيُتجاوز", invalid: "غير صالح — لن يُرسل" };
+    return `<div class="conv-grade-note cc-plan"><b class="conv-label">معاينة قبل الكتابة في نظام المركز</b>
+      <p class="conv-hint">سيُسجَّل <b>${ui.fmt(p.create)}</b> · مسجّل أصلاً ${ui.fmt(p.exists)} · غير صالح ${ui.fmt(p.invalid)} — من ${ui.fmt(p.total)}.</p>
+      <div class="cc-scroll"><table class="cc-table"><tbody>${p.rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.nid)}</td><td>${esc(L[r.state] || r.state)}${r.why ? " — " + esc(r.why) : ""}</td></tr>`).join("")}</tbody></table></div>
+      <div class="btn-row"><button type="button" class="btn navy" data-cc="plan-ok" ${p.create ? "" : "disabled"}>نفّذ تسجيل ${ui.fmt(p.create)} طالباً</button>
+        <button type="button" class="conv-link" data-cc="plan-no">إلغاء</button></div></div>`;
+  }
 
   function resultsView() {
     const res = state.results;
@@ -196,31 +298,16 @@
     const box = $("cc-body");
     if (!box) return;
     if (!SCHEMA()) { box.innerHTML = '<p class="conv-error">مخطط نظام المركز غير محمَّل.</p>'; return; }
-    const adding = state.adding === "register" ? registerBuilder() : state.adding === "lookup" ? lookupBuilder() : state.adding === "list" ? listBuilder() : "";
+    const adding = state.adding === "register" ? registerBuilder() : "";
     box.innerHTML = `
       <div class="cc-step"><span class="cv-step-tag">١</span> <b>ما الذي تريد من الوكيل أن يفعله؟</b></div>
-      <div class="btn-row">
-        <button type="button" class="btn navy" data-cc="add-register">+ تسجيل طلاب من Excel</button>
-        <button type="button" class="btn" data-cc="add-lookup">+ استعلام</button>
-        <button type="button" class="btn" data-cc="add-list">+ استخراج قائمة</button>
-      </div>
+      ${assistantView()}
+      ${planView()}
       ${adding}
-      ${state.cmds.length ? `<div class="conv-grade-note"><b class="conv-label">الأوامر (${ui.fmt(state.cmds.length)})</b>
-        ${state.cmds.map((c, i) => `<p>${i + 1}. ${esc(cmdSummary(c))} <button type="button" class="conv-link danger" data-cc="del" data-i="${i}">حذف</button></p>`).join("")}
-        <div class="btn-row"><button type="button" class="btn navy" data-cc="bundle">📋 انسخ الوكيل مع أوامري (الأسهل)</button>
-          <button type="button" class="conv-link" data-cc="pack">أو نزّل ملف الأوامر منفصلاً</button></div></div>` : ""}
-      <div class="cc-step"><span class="cv-step-tag">٢</span> <b>شغّل الوكيل في نظام المركز</b></div>
-      <ol class="cc-how">
-        <li>اضغط <b>«انسخ الوكيل مع أوامري»</b> أعلاه (ينسخ سكربتاً واحداً فيه كل شيء).</li>
-        <li>افتح نظام المركز وأنت <b>مسجّل دخولك</b>، ثم F12 ← <b>Console</b>، والصق (Ctrl+V) ثم <b>Enter</b>.</li>
-        <li>تظهر لوحة فيها <b>معاينة</b> بما سيُكتب. لا يُكتب شيء حتى تضغط «نفّذ».</li>
-        <li>ينزل ملف <b>ksach-results.json</b> عند الانتهاء؛ ارفعه في الأسفل.</li>
-      </ol>
-      <p class="conv-hint">⚠ لا تلصق ملف <b>ksach-commands.json</b> في Console — هو ملف بيانات لا سكربت. استعمله فقط إن نزّلت الوكيل منفصلاً (فيُختار من نافذته).
-        <button type="button" class="conv-link" data-cc="runner-dl">نزّل الوكيل منفصلاً</button></p>
-      <p class="conv-hint">🔒 لا كلمة مرور ولا رمز جلسة يمرّان بتمكين؛ الوكيل يعمل في جلستك أنت، ولا يرسل إلا: قراءة قائمة الطلاب، وفتح نموذج الإضافة، وإضافة طالب. ويتجاوز المسجّل أصلاً (بالبحث برقم الهوية) ويتوقف بعد ثلاثة إخفاقات متتالية.</p>
-      <div class="cc-step"><span class="cv-step-tag">٣</span> <b>النتائج</b></div>
-      <label class="field"><span>ملف النتائج (ksach-results.json)</span><input type="file" id="cc-results" accept=".json"></label>
+      ${App.centerAgent && App.centerAgent.isReady()
+        ? '<p class="conv-hint">تعمل الأوامر في متصفحك عبر إضافة «وكيل تمكين». سجّل دخولك في نظام المركز مرة واحدة؛ والبحث والقوائم تُنفَّذ مباشرة، أما التسجيل فتراجع معاينته هنا وتوافق قبل أن يُكتب شيء.</p>'
+        : '<p class="conv-hint">تعمل الجلسة في نافذة Edge المحلية. سجّل الدخول فيها مرة واحدة؛ بعدها ينفّذ الوكيل البحث والقوائم والتسجيل ويعرض النتيجة هنا. أو ثبّت إضافة «وكيل تمكين» في Chrome لتعمل دون خادم محلي.</p>'}
+      <div class="cc-step"><span class="cv-step-tag">٢</span> <b>النتيجة</b></div>
       ${resultsView()}`;
   }
 
@@ -236,10 +323,48 @@
     ui.download(name, new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
 
-  async function runnerText() {
-    const res = await fetch("tools/ksach-runner.js?v=" + Date.now());
-    if (!res.ok) throw new Error("تعذّر تحميل الوكيل");
-    return res.text();
+  async function refreshStatus() {
+    if (App.centerAgent && App.centerAgent.isReady()) {
+      // إضافة المتصفح موصولة: لا حاجة للخادم المحلي
+      state.agentStatus = { ready: true, loggedIn: true, message: "إضافة «وكيل تمكين» متصلة ✓ — عند التنفيذ يفتح نظام المركز في متصفحك؛ سجّل دخولك فيه إن طُلب." };
+    } else {
+      try {
+        const res = await fetch("/api/status", { cache: "no-store" });
+        state.agentStatus = await res.json();
+      } catch (err) { state.agentStatus = { ready: false, loggedIn: false, message: "لا وكيل متصل. ثبّت إضافة «وكيل تمكين» في Chrome، أو شغّل الوكيل المحلي (تشغيل.bat)." }; }
+    }
+    const el = $("cc-status");
+    if (el) {
+      el.textContent = state.thinking ? "أحلل صياغة طلبك…" : state.busy ? (state.progress || "الوكيل ينفّذ طلبك الآن…") : state.agentStatus.message;
+      el.className = state.thinking || state.busy || state.agentStatus.loggedIn ? "conv-hint" : "conv-error";
+    }
+  }
+
+  async function executeCommand(command) {
+    state.busy = true; state.autoRunRegister = false; state.resultError = ""; state.results = null; state.adding = ""; state.proposal = null;
+    state.progress = ""; state.plan = null; state.planResolve = null;
+    render(); refreshStatus();
+    try {
+      let result;
+      if (App.centerAgent && await App.centerAgent.ready(500)) {
+        // إضافة المتصفح: تفتح نظام المركز وتنفّذ، والموافقة على الكتابة هنا في الصفحة
+        const out = await App.centerAgent.run([command], {
+          onProgress: (t) => { state.progress = t; const el = $("cc-status"); if (el && !state.plan) el.textContent = t; },
+          onPlan: (plan) => new Promise((resolve) => { state.plan = plan; state.planResolve = resolve; render(); }),
+        });
+        result = (out.results || [])[0];
+        if (!result || result.error) throw new Error((result && result.error) || "لم تصل نتيجة من الوكيل.");
+      } else {
+        const res = await fetch("/api/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) });
+        const body = await res.json();
+        if (!res.ok || !body.ok) throw new Error(body.error || "تعذّر تنفيذ الأمر.");
+        result = body.result;
+      }
+      state.results = { results: [result] };
+      state.requestText = "";
+      state.reg = null;
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; state.plan = null; state.planResolve = null; render(); refreshStatus(); }
   }
 
   /* ===== الأحداث ===== */
@@ -247,6 +372,9 @@
     const box = $("cc-body");
     if (!box) return;
     render();
+    refreshStatus();
+    window.setInterval(refreshStatus, 8000);
+    if (App.centerAgent) App.centerAgent.ready(1500).then((ok) => { if (ok) { refreshStatus(); if (!state.busy && !state.thinking && !state.plan) render(); } });
 
     box.addEventListener("click", async (e) => {
       const b = e.target.closest("[data-cc]");
@@ -254,35 +382,33 @@
       const act = b.dataset.cc;
       const i = Number(b.dataset.i);
       try {
-        if (act === "add-register") { state.adding = "register"; state.reg = null; }
-        else if (act === "add-lookup") { state.adding = "lookup"; }
-        else if (act === "add-list") { state.adding = "list"; state.listParams = {}; }
-        else if (act === "cancel") { state.adding = ""; state.reg = null; }
-        else if (act === "del") state.cmds.splice(i, 1);
-        else if (act === "reg-add") {
-          const { ok } = buildRegister();
-          state.cmds.push({ type: "register", label: state.reg.fileName, rows: ok });
-          state.adding = ""; state.reg = null;
-        } else if (act === "lookup-add") {
-          const items = ($("cc-lookup").value || "").split(/\r?\n/).map(clean).filter(Boolean).map((q) => ({ q }));
-          if (!items.length) return ui.toast("اكتب سطراً واحداً على الأقل");
-          state.cmds.push({ type: "lookup", label: "استعلام", items });
-          state.adding = ""; state.lookupText = "";
-        } else if (act === "list-add") {
-          const params = {};
-          Object.keys(state.listParams).forEach((k) => { if (state.listParams[k]) params[k] = state.listParams[k]; });
-          state.cmds.push({ type: "list", label: "قائمة الطلاب", params });
-          state.adding = "";
-        } else if (act === "pack") {
-          const pack = { v: 1, created: new Date().toISOString(), commands: state.cmds };
-          ui.download("ksach-commands.json", JSON.stringify(pack, null, 2), "application/json");
-          return ui.toast("نُزّل ملف الأوامر — يحوي بيانات طلبة، فاحتفظ به عندك فقط");
-        } else if (act === "bundle") {
-          const pack = { v: 1, created: new Date().toISOString(), commands: state.cmds };
-          ui.copyText("window.__KX_PACK = " + JSON.stringify(pack) + ";" + String.fromCharCode(10) + (await runnerText()));
-          return ui.toast("نُسخ الوكيل مع أوامرك — الصقه في Console نظام المركز (يحوي بيانات طلبة)");
-        } else if (act === "runner-dl") { ui.download("ksach-runner.js", await runnerText(), "text/javascript"); return; }
-        else if (act === "runner-copy") { ui.copyText(await runnerText()); return; }
+        if (act === "interpret") {
+          state.requestText = $("cc-request").value;
+          state.thinking = true; state.proposal = null; state.needsAiKey = false; state.resultError = "";
+          render();
+          let command;
+          try { command = await interpretRequest(state.requestText); }
+          catch (err) {
+            state.needsAiKey = err.message === "NO_KEY";
+            command = { error: state.needsAiKey ? "فعّل Gemini أو Claude أولاً كي يفهم الوكيل الصياغة العامية." : err.message };
+          }
+          state.thinking = false;
+          if (command.error) { state.proposal = command; render(); return; }
+          if (command.type === "register-needed") { state.proposal = command; state.adding = "register"; state.autoRunRegister = true; render(); return; }
+          await executeCommand(command); return;
+        } else if (act === "ai-settings") {
+          if (App.letters && App.letters.openAiSettings) App.letters.openAiSettings();
+          else ui.toast("افتح إعدادات الذكاء الاصطناعي من صفحة المراسلات");
+          return;
+        } else if (act === "register-run") {
+          const { ok, bad } = buildRegister();
+          if (bad.length || !ok.length) return ui.toast("صحّح ربط الحقول قبل إرسال الملف");
+          if (ok.length > 80) return ui.toast("الحد الأقصى للإرسال الواحد 80 طالباً");
+          await executeCommand({ type: "register", rows: ok }); return;
+        } else if (act === "plan-ok" || act === "plan-no") {
+          const r = state.planResolve; state.plan = null; state.planResolve = null;
+          if (r) r(act === "plan-ok");
+        } else if (act === "cancel") { state.adding = ""; state.reg = null; state.proposal = null; state.autoRunRegister = false; }
         else if (act === "export-reg") {
           const r = state.results.results[i];
           return exportBook("نتائج التسجيل.xlsx", ["الاسم", "الهوية", "النتيجة", "ملاحظة"], r.rows.map((x) => [x.name, x.nid, x.status, x.message || ""]));
@@ -309,36 +435,39 @@
           // الحالة الافتراضية للطالب الجديد: نشط
           if (!map.status) map.status = { src: "fixed", fixed: "active" };
           state.reg = { fileName: f.name, headers: d.headers, rows: d.rows, map };
-          render();
+          if (!maybeAutoRegister()) render();
         } catch (err) { ui.toast(err.message); }
       } else if (t.dataset.ccSrc) {
         const m = (state.reg.map[t.dataset.ccSrc] = state.reg.map[t.dataset.ccSrc] || {});
         m.src = t.value;
         if (t.value === "fixed" && m.fixed == null) m.fixed = "";
-        render();
+        if (!maybeAutoRegister()) render();
       } else if (t.dataset.ccFixed) {
         (state.reg.map[t.dataset.ccFixed] = state.reg.map[t.dataset.ccFixed] || {}).fixed = t.value;
-        render();
-      } else if (t.dataset.ccLp) {
-        state.listParams[t.dataset.ccLp] = t.value;
-      } else if (t.id === "cc-results") {
-        const f = t.files[0];
-        if (!f) return;
-        try {
-          const j = JSON.parse(await f.text());
-          if (!j || !Array.isArray(j.results)) throw new Error("ملف نتائج غير صالح");
-          state.results = j;
-          render();
-        } catch (err) { ui.toast(err.message); }
+        if (!maybeAutoRegister()) render();
       }
     });
     box.addEventListener("input", (e) => {
-      if (e.target.id === "cc-lookup") state.lookupText = e.target.value;
-      if (e.target.dataset && e.target.dataset.ccLp && e.target.tagName === "INPUT") state.listParams[e.target.dataset.ccLp] = e.target.value;
+      if (e.target.id === "cc-request") {
+        state.requestText = e.target.value;
+        state.proposal = null;
+        state.needsAiKey = false;
+        const preview = box.querySelector("[data-cc-preview]");
+        if (preview) preview.replaceChildren();
+      }
     });
   }
 
-  App.centerCmd = { init, render, state, buildRegister, toOption };
+  function maybeAutoRegister() {
+    if (!state.autoRunRegister || !state.reg || state.busy) return false;
+    const { ok, bad } = buildRegister();
+    if (bad.length || !ok.length) return false;
+    if (ok.length > 80) { state.resultError = "قسّم الملف؛ الحد الأقصى 80 طالباً في المرة الواحدة."; return false; }
+    executeCommand({ type: "register", rows: ok });
+    return true;
+  }
+
+  App.centerCmd = { init, render, state, buildRegister, toOption, execute: executeCommand };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});

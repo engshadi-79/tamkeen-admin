@@ -1,13 +1,33 @@
 @echo off
-title Tamkeen - http://localhost:4180
+setlocal
+title Tamkeen Agent - http://localhost:4180
 cd /d "%~dp0"
-set PY=python
-where python >nul 2>nul || set PY=py
-echo Tamkeen is running at http://localhost:4180
-echo Keep this window open while you work. Close it to stop.
+
+where node >nul 2>nul
+if errorlevel 1 (
+  echo Node.js is required to run the automatic agent.
+  echo Install Node.js, then run this file again.
+  pause
+  exit /b 1
+)
+
+if not exist "%~dp0node_modules\playwright-core\package.json" (
+  echo Installing the local browser driver...
+  call npm install --prefix "%~dp0" --save-exact playwright-core@1.64.1
+  if errorlevel 1 (
+    echo Could not install the browser driver.
+    pause
+    exit /b 1
+  )
+)
+
+echo Starting the local Tamkeen agent at http://localhost:4180
+echo Edge will open the center system in a separate window.
+echo Keep this window open. Close it to stop the agent.
+echo If port 4180 is already in use, close the older Tamkeen window and try again.
 echo.
-start "" /b powershell -NoProfile -Command "for($i=0;$i -lt 40;$i++){try{$c=New-Object Net.Sockets.TcpClient('127.0.0.1',4180);$c.Close();break}catch{Start-Sleep -Milliseconds 250}};Start-Process 'http://localhost:4180/'"
-%PY% -m http.server 4180 --bind 127.0.0.1
+node "%~dp0tools\ksach-agent-server.js"
+
 echo.
-echo Server stopped. If it failed: make sure Python is installed and port 4180 is free.
+echo Tamkeen agent stopped.
 pause
