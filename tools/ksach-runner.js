@@ -280,14 +280,19 @@
   }
 
   /* ===== التشغيل ===== */
-  say("اختر ملف الأوامر (ksach-commands.json) الذي أنشأه تمكين");
-  const pick = h("input", { type: "file", accept: ".json" });
-  actEl.replaceChildren(pick, stopBtn);
-  const pack = await new Promise((resolve) => {
-    pick.onchange = async () => {
-      try { resolve(JSON.parse(await pick.files[0].text())); } catch (e) { say("الملف غير صالح"); }
-    };
-  });
+  /* الأوامر إما مدمجة مع الوكيل (نسخة «الوكيل مع الأوامر») أو تُختار من ملف */
+  let pack = window.__KX_PACK;
+  try { delete window.__KX_PACK; } catch (e) { window.__KX_PACK = undefined; }   // لا تبقى بيانات الطلبة في الصفحة
+  if (!pack) {
+    say("اختر ملف الأوامر (ksach-commands.json) الذي أنشأه تمكين");
+    const pick = h("input", { type: "file", accept: ".json" });
+    actEl.replaceChildren(pick, stopBtn);
+    pack = await new Promise((resolve) => {
+      pick.onchange = async () => {
+        try { resolve(JSON.parse(await pick.files[0].text())); } catch (e) { say("الملف غير صالح — اختر ksach-commands.json"); }
+      };
+    });
+  }
   if (!pack || !Array.isArray(pack.commands)) { say("ملف أوامر غير صالح."); return; }
   actEl.replaceChildren(stopBtn);
   log("الأوامر: " + pack.commands.length);

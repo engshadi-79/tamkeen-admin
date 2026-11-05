@@ -207,14 +207,17 @@
       ${adding}
       ${state.cmds.length ? `<div class="conv-grade-note"><b class="conv-label">الأوامر (${ui.fmt(state.cmds.length)})</b>
         ${state.cmds.map((c, i) => `<p>${i + 1}. ${esc(cmdSummary(c))} <button type="button" class="conv-link danger" data-cc="del" data-i="${i}">حذف</button></p>`).join("")}
-        <div class="btn-row"><button type="button" class="btn navy" data-cc="pack">⬇ أنشئ ملف الأوامر</button></div></div>` : ""}
+        <div class="btn-row"><button type="button" class="btn navy" data-cc="bundle">📋 انسخ الوكيل مع أوامري (الأسهل)</button>
+          <button type="button" class="conv-link" data-cc="pack">أو نزّل ملف الأوامر منفصلاً</button></div></div>` : ""}
       <div class="cc-step"><span class="cv-step-tag">٢</span> <b>شغّل الوكيل في نظام المركز</b></div>
       <ol class="cc-how">
-        <li>نزّل <b>ملف الأوامر</b> أعلاه، ثم <button type="button" class="conv-link" data-cc="runner-dl">نزّل الوكيل</button> أو <button type="button" class="conv-link" data-cc="runner-copy">انسخه</button>.</li>
-        <li>افتح نظام المركز وأنت <b>مسجّل دخولك</b>، واضغط F12 ← Console، والصق الوكيل ثم Enter.</li>
-        <li>اختر ملف الأوامر في اللوحة التي تظهر. سترى <b>معاينة</b> بما سيُكتب، ولا يُكتب شيء حتى تضغط «نفّذ».</li>
-        <li>ينزل ملف <b>ksach-results.json</b>؛ ارفعه هنا.</li>
+        <li>اضغط <b>«انسخ الوكيل مع أوامري»</b> أعلاه (ينسخ سكربتاً واحداً فيه كل شيء).</li>
+        <li>افتح نظام المركز وأنت <b>مسجّل دخولك</b>، ثم F12 ← <b>Console</b>، والصق (Ctrl+V) ثم <b>Enter</b>.</li>
+        <li>تظهر لوحة فيها <b>معاينة</b> بما سيُكتب. لا يُكتب شيء حتى تضغط «نفّذ».</li>
+        <li>ينزل ملف <b>ksach-results.json</b> عند الانتهاء؛ ارفعه في الأسفل.</li>
       </ol>
+      <p class="conv-hint">⚠ لا تلصق ملف <b>ksach-commands.json</b> في Console — هو ملف بيانات لا سكربت. استعمله فقط إن نزّلت الوكيل منفصلاً (فيُختار من نافذته).
+        <button type="button" class="conv-link" data-cc="runner-dl">نزّل الوكيل منفصلاً</button></p>
       <p class="conv-hint">🔒 لا كلمة مرور ولا رمز جلسة يمرّان بتمكين؛ الوكيل يعمل في جلستك أنت، ولا يرسل إلا: قراءة قائمة الطلاب، وفتح نموذج الإضافة، وإضافة طالب. ويتجاوز المسجّل أصلاً (بالبحث برقم الهوية) ويتوقف بعد ثلاثة إخفاقات متتالية.</p>
       <div class="cc-step"><span class="cv-step-tag">٣</span> <b>النتائج</b></div>
       <label class="field"><span>ملف النتائج (ksach-results.json)</span><input type="file" id="cc-results" accept=".json"></label>
@@ -274,6 +277,10 @@
           const pack = { v: 1, created: new Date().toISOString(), commands: state.cmds };
           ui.download("ksach-commands.json", JSON.stringify(pack, null, 2), "application/json");
           return ui.toast("نُزّل ملف الأوامر — يحوي بيانات طلبة، فاحتفظ به عندك فقط");
+        } else if (act === "bundle") {
+          const pack = { v: 1, created: new Date().toISOString(), commands: state.cmds };
+          ui.copyText("window.__KX_PACK = " + JSON.stringify(pack) + ";" + String.fromCharCode(10) + (await runnerText()));
+          return ui.toast("نُسخ الوكيل مع أوامرك — الصقه في Console نظام المركز (يحوي بيانات طلبة)");
         } else if (act === "runner-dl") { ui.download("ksach-runner.js", await runnerText(), "text/javascript"); return; }
         else if (act === "runner-copy") { ui.copyText(await runnerText()); return; }
         else if (act === "export-reg") {
