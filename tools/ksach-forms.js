@@ -64,7 +64,16 @@
         seen.add(name + type);
         const o = { name, type, label: labelOf(el, doc), required: el.hasAttribute("required") };
         if (el.tagName === "SELECT") {
-          o.options = [...el.options].slice(0, 80).map((op) => ({ v: op.value, t: clean(op.textContent).slice(0, 60) }));
+          const all = [...el.options];
+          // قائمة أشخاص (فيها أرقام هوية) أو طويلة جداً: يُسجَّل عددها فقط، لا أسماؤها
+          const people = all.some((op) => /\d{8,}/.test(clean(op.textContent).replace(/\s/g, "")));
+          if (people || all.length > 120) {
+            o.options = [];
+            o.omitted = people ? "قائمة أشخاص — لم تُسجَّل" : "قائمة طويلة — لم تُسجَّل";
+            o.count = all.length;
+          } else {
+            o.options = all.map((op) => ({ v: op.value, t: clean(op.textContent).slice(0, 60) }));
+          }
         } else if (type === "radio" || type === "checkbox") {
           o.options = [...f.querySelectorAll('input[name="' + CSS.escape(name) + '"]')].slice(0, 20).map((i) => ({
             v: i.value, t: labelOf(i, doc) || i.value,

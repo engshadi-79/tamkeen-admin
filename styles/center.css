@@ -924,3 +924,14 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 .cv-tab.active b, .cv-tab.active small { color: #fff; }
 .cv-pane[hidden] { display: none; }
 @media (max-width: 640px) { .cv-tab { flex-basis: 100%; } }
+
+/* أوامر نظام المركز */
+.cc-step { margin: 16px 0 8px; display: flex; align-items: center; gap: 8px; }
+.cc-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin: 6px 0; }
+.cc-table th, .cc-table td { padding: 5px 8px; border-bottom: 1px solid var(--line, #e1e5ec); text-align: right; vertical-align: middle; }
+.cc-table th { background: #f3f5f9; font-weight: 700; }
+.cc-table select, .cc-table input { max-width: 100%; }
+.cc-scroll { max-height: 340px; overflow: auto; border: 1px solid var(--line, #e1e5ec); border-radius: 8px; }
+.cc-how { margin: 6px 0 10px; padding-inline-start: 22px; line-height: 2; }
+.cc-how li { font-size: .92rem; }
+.cc-req { color: #c0392b; font-weight: 700; }
