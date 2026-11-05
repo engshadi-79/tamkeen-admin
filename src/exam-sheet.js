@@ -375,6 +375,8 @@
     "مدير مركز مسارات التمكين للتدريب",
     "د. عصام أبو خليل"];
   /* خط موحَّد لأسماء المدربين وسطري التوقيع والاعتماد */
+  const NAME_FONT = { name: "Sakkal Majalla", half: "24", bold: false };
+  const SIGN_SHIFT = 0.58;   // نسبة الإزاحة من عرض النص؛ الأكبر أقرب لأقصى اليسار
   const SIG_FONT = { name: "Sakkal Majalla", half: "24", bold: true };   // 12 نقطة
   function applyFont(doc, r, f) {
     let rPr = tag(r, "rPr")[0];
@@ -390,6 +392,7 @@
     };
     put("rFonts", { ascii: f.name, hAnsi: f.name, cs: f.name });
     if (f.bold) { put("b", {}); put("bCs", {}); }
+    else [...rPr.children].filter((c) => c.localName === "b" || c.localName === "bCs").forEach((c) => rPr.removeChild(c));
     put("sz", { val: f.half });
     put("szCs", { val: f.half });
   }
@@ -415,7 +418,7 @@
     /* الكتلة في يسار الصفحة وأسطرها متوسّطة بعضها تحت بعض: تُزاح بدايتها
        (وهي اليمين في العربية) نصفَ عرض النص، ثم تُتوسّط فيما بقي. */
     setBidi(doc, p);
-    setIndent(doc, p, Math.round(usableTwips(doc) / 2));
+    setIndent(doc, p, Math.round(usableTwips(doc) * SIGN_SHIFT));
     setJcPara(doc, p, "center");
   }
 
@@ -715,6 +718,8 @@
         const v = valueFor(heads[ci] || "", s, i, ctx);
         setCell(tc, v, donor);
         if (!ci || !v) return;
+        // كشوف التقييم: اسم الطالب بـ Sakkal Majalla 12 عادي
+        if (ctx.lean && isName(heads[ci])) tag(tc, "r").forEach((r) => applyFont(doc, r, NAME_FONT));
         // اسم الطالب يُحاذى يميناً كبقية النصّ العربي، وما عداه يُتوسّط
         // «البداية» في الخلية العربية هي اليمين الفيزيائي
         setJc(doc, tc, isName(heads[ci]) ? "left" : "center");
