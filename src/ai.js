@@ -133,7 +133,7 @@
     if (signal) signal.addEventListener("abort", () => { clearTimeout(t); reject(new DOMException("Aborted", "AbortError")); }, { once: true });
   });
 
-  async function generateGemini({ key, userContent, onText, signal }) {
+  async function generateGemini({ key, userContent, onText, signal, systemPrompt }) {
     const candidates = await geminiModels(key, signal);
     let res = null;
     let lastStatus = 0;
@@ -144,7 +144,7 @@
         `${GEMINI_BASE}/models/${encodeURIComponent(candidates[i])}:streamGenerateContent?alt=sse`,
         { "content-type": "application/json", "x-goog-api-key": key },
         {
-          systemInstruction: { parts: [{ text: SYSTEM }] },
+          systemInstruction: { parts: [{ text: systemPrompt || SYSTEM }] },
           contents: [{ role: "user", parts: [{ text: userContent }] }],
           generationConfig: { maxOutputTokens: 8192 },
         },
@@ -189,7 +189,7 @@
     return "تعذّر إتمام الطلب" + apiMsg;
   }
 
-  async function generateClaude({ key, userContent, onText, signal, model }) {
+  async function generateClaude({ key, userContent, onText, signal, model, systemPrompt }) {
     const res = await post(
       "https://api.anthropic.com/v1/messages",
       {
@@ -205,7 +205,7 @@
         stream: true,
         fallbacks: "default",
         output_config: { effort: "low" },
-        system: SYSTEM,
+        system: systemPrompt || SYSTEM,
         messages: [{ role: "user", content: userContent }],
       },
       signal
@@ -222,7 +222,7 @@
   }
 
   /* يرسل الطلب ويستدعي onText مع كل جزء نصي يصل. يُرجع سبب التوقف: refusal | max_tokens | غير ذلك */
-  async function generate({ request, context, onText, signal, provider }) {
+  async function generate({ request, context, onText, signal, provider, systemPrompt }) {
     const s = loadSettings();
     const use = provider || s.provider; // يمكن اختيار الخدمة لكل طلب (مثل تحليل ملفات التقرير)
     const key = use === "claude" ? s.claudeKey : s.geminiKey;
@@ -235,7 +235,7 @@
     const userContent = `${contextText ? `${asText ? "المحتوى" : "بيانات المراسلة"}:\n${contextText}\n\n` : ""}المطلوب كتابته:\n${request}`;
 
     const run = use === "claude" ? generateClaude : generateGemini;
-    return run({ key, userContent, onText, signal, model: s.claudeModel });
+    return run({ key, userContent, onText, signal, model: s.claudeModel, systemPrompt });
   }
 
   /* ترحيل المفتاح القديم المحفوظ على هذا الجهاز إلى إعدادات المركز، ليعمل عند الجميع */
