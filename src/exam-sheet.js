@@ -374,6 +374,27 @@
   const SIGN = ["رئيس المركز السعودي للثقافة والتراث",
     "مدير مركز مسارات التمكين للتدريب",
     "د. عصام أبو خليل"];
+  /* خط موحَّد لأسماء المدربين وسطري التوقيع والاعتماد */
+  const SIG_FONT = { name: "Sakkal Majalla", half: "24", bold: true };   // 12 نقطة
+  function applyFont(doc, r, f) {
+    let rPr = tag(r, "rPr")[0];
+    if (!rPr || rPr.parentNode !== r) {
+      rPr = doc.createElementNS(W, "w:rPr");
+      r.insertBefore(rPr, r.firstChild);
+    }
+    const put = (name, attrs) => {
+      [...rPr.children].filter((c) => c.localName === name).forEach((c) => rPr.removeChild(c));
+      const el = doc.createElementNS(W, "w:" + name);
+      Object.keys(attrs || {}).forEach((k) => el.setAttribute("w:" + k, attrs[k]));
+      rPr.appendChild(el);
+    };
+    put("rFonts", { ascii: f.name, hAnsi: f.name, cs: f.name });
+    if (f.bold) { put("b", {}); put("bCs", {}); }
+    put("sz", { val: f.half });
+    put("szCs", { val: f.half });
+  }
+  const fontPara = (doc, p) => tag(p, "r").forEach((r) => applyFont(doc, r, SIG_FONT));
+
   function signature(doc, p, runs, styleRun) {
     const proto = styleRun ? styleRun.cloneNode(true) : runs[0];
     if (!proto) return;
@@ -388,14 +409,43 @@
       }
       p.appendChild(r);
     };
-    // سطر تحت سطر، بلا جدولة ولا حشو مسافات، ومحاذاة لأقصى اليسار
+    // سطر تحت سطر، بلا جدولة ولا حشو مسافات
     SIGN.forEach((t, i) => { if (i) piece(null, "br"); piece(t); });
-    setIndentZero(doc, p);
-    /* الموضع لا يُترك لاتجاه فقرة القالب: يُثبَّت الاتجاه العربي (فيبقى
-       ترتيب الكلمات سليماً) وتُحاذى الفقرة إلى «النهاية» — وهي في العربية
-       اليسار الفيزيائي. فيخرج السطر يساراً في كل قالب مهما كان أصله. */
+    fontPara(doc, p);
+    /* الكتلة في يسار الصفحة وأسطرها متوسّطة بعضها تحت بعض: تُزاح بدايتها
+       (وهي اليمين في العربية) نصفَ عرض النص، ثم تُتوسّط فيما بقي. */
     setBidi(doc, p);
-    setJcPara(doc, p, "right");
+    setIndent(doc, p, Math.round(usableTwips(doc) / 2));
+    setJcPara(doc, p, "center");
+  }
+
+  /* عرض النص من إعدادات المقطع، بالتويب */
+  function usableTwips(doc) {
+    const sect = tag(doc.documentElement, "sectPr")[0];
+    const sz = sect && tag(sect, "pgSz")[0];
+    const mar = sect && tag(sect, "pgMar")[0];
+    const n = (el, a) => (el ? Number(el.getAttribute("w:" + a)) || 0 : 0);
+    const w = n(sz, "w") || 12240;
+    const left = n(mar, "left") || 1440;
+    const right = n(mar, "right") || 1440;
+    return Math.max(2000, w - left - right);
+  }
+
+  function setIndent(doc, p, start) {
+    let pPr = tag(p, "pPr")[0];
+    if (!pPr || pPr.parentNode !== p) {
+      pPr = doc.createElementNS(W, "w:pPr");
+      p.insertBefore(pPr, p.firstChild);
+    }
+    [...pPr.children].filter((c) => c.localName === "ind").forEach((c) => pPr.removeChild(c));
+    const ind = doc.createElementNS(W, "w:ind");
+    ind.setAttribute("w:start", String(start));
+    ind.setAttribute("w:left", String(start));
+    ind.setAttribute("w:end", "0");
+    ind.setAttribute("w:right", "0");
+    ind.setAttribute("w:firstLine", "0");
+    const after = [...pPr.children].find((c) => ["jc", "textDirection", "textAlignment", "rPr", "sectPr"].includes(c.localName));
+    pPr.insertBefore(ind, after || null);
   }
 
   function setBidi(doc, p) {
@@ -559,8 +609,12 @@
             || setTrainerSlot(runs, ctx.trainers[seq.t++] || "");
           if (r && r.nodeType && !seq.nameRun) seq.nameRun = r;
         }
+        fontPara(doc, k);
       } else if (/^\s*2-/.test(txt)) {
         if (!subbed) setTrainer(runs, 2, ctx.trainers[1] || "");
+        fontPara(doc, k);
+      } else if (/^\s*التوقيع/.test(txt)) {
+        fontPara(doc, k);
       }
     });
     // خطّ سطر الاعتماد خطّ اسم المدرب نفسه
@@ -577,6 +631,7 @@
       ctx.trainers.slice(2).forEach((name, i) => {
         const p = second.cloneNode(true);
         setTrainer(tag(p, "r"), 2, name, i + 3);
+        fontPara(doc, p);
         out.push(p);
       });
     });
