@@ -488,6 +488,45 @@
     }
   }
 
+  /* جدول النظام يدمج عدة بيانات في خلية واحدة (الطالب، المسار/الدورة، المجموعة/المدرب).
+     نفصلها هنا إلى أعمدة مستقلة، لكل نوع بيانات عموده، ونحتفظ بنص الدورة الأصلي لأغراض التصفية. */
+  function splitStudentCell(raw) {
+    let t = clean(raw);
+    const stu = (t.match(/STU-[\d-]+/) || [""])[0];
+    if (stu) t = t.replace(stu, " ");
+    const phone = (t.match(/(?<!\d)0\d{9}(?!\d)/) || [""])[0];
+    if (phone) t = t.replace(phone, " ");
+    const NO_EN = "لا يوجد اسم إنجليزي";
+    let name, en = "";
+    const k = t.indexOf(NO_EN);
+    if (k >= 0) { name = t.slice(0, k); t = t.slice(k + NO_EN.length); }
+    else {
+      const m = t.match(/[A-Za-z][A-Za-z .'\-]*[A-Za-z]/);
+      if (m) { const at = t.indexOf(m[0]); name = t.slice(0, at); en = m[0]; t = t.slice(at + m[0].length); }
+      else { const d = t.search(/\d/); name = d < 0 ? t : t.slice(0, d); t = d < 0 ? "" : t.slice(d); }
+    }
+    return [clean(name).replace(/[-–]\s*$/, "").trim(), en, stu, digits(t), phone];
+  }
+  function expandResult(r) {
+    if (!r || !Array.isArray(r.heads) || !Array.isArray(r.rows)) return r;
+    const at = (rx) => r.heads.findIndex((h) => rx.test(clean(h)));
+    const iS = at(/^الطالب$/), iC = at(/^المسار\s*\/\s*الدورة$/), iG = at(/^المجموعة\s*\/\s*المدرب$/);
+    if (iS < 0 && iC < 0 && iG < 0) return r;
+    const heads = [], plan = [];
+    r.heads.forEach((h, i) => {
+      if (i === iS) { heads.push("الاسم", "الاسم الإنجليزي", "رقم الطالب", "رقم الهوية", "الجوال"); plan.push((c) => splitStudentCell(c)); }
+      else if (i === iC) {
+        heads.push("المسار", "المرحلة");
+        plan.push((c) => { const t = clean(c); const m = t.match(/المرحلة\s*\S+/); return [clean(m ? t.replace(m[0], "") : t), m ? m[0] : ""]; });
+      } else if (i === iG) {
+        heads.push("المجموعة", "المدرب");
+        plan.push((c) => { const parts = clean(c).split(/\s+-\s*/); return [clean(parts[0]), clean(parts.slice(1).join(" - "))]; });
+      } else { heads.push(h); plan.push((c) => [c]); }
+    });
+    const rows = r.rows.map((x) => ({ cells: [].concat(...plan.map((f, i) => f(x.cells[i]))), course: iC >= 0 ? clean(x.cells[iC]) : "" }));
+    return Object.assign({}, r, { heads, rows });
+  }
+
   async function runCommands(commands) {
     let results;
     if (App.centerAgent && await App.centerAgent.ready(500)) {
@@ -506,7 +545,10 @@
         results.push(body.result);
       }
     }
-    return results;
+    return results.map((r) => {
+      if (r && r.type === "lookup" && Array.isArray(r.items)) return Object.assign({}, r, { items: r.items.map((it) => expandResult(it)) });
+      return expandResult(r);
+    });
   }
 
   /* ===== تحميل كل البيانات مرة واحدة (اختياري) =====
@@ -547,9 +589,11 @@
     const lack = (what) => { cacheWhy = `لا يوجد في الجدول عمود «${what}» للتصفية به. الأعمدة المتاحة: ${heads.join("، ")}`; return null; };
     const tests = [];
     if (q.training_course_id) {
+      const hasCourse = items.some((it) => it.rows.some((x) => x.course));
       const i = col(/دور|مرحل/);
-      if (i < 0 || !course) return lack("الدورة/المرحلة");
-      tests.push((cells) => norm(cells[i]).includes(norm(course.t)));
+      if (!course || (!hasCourse && i < 0)) return lack("الدورة/المرحلة");
+      const flat = (v) => norm(v).replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+      tests.push((cells, row) => flat(hasCourse ? (row.course || "") : cells[i]).includes(flat(course.t)));
     }
     if (q.status) {
       const i = col(/حال/);
@@ -569,7 +613,7 @@
       const map = heads.map((h) => it.heads.indexOf(h));
       for (const r of it.rows) {
         const cells = it === items[0] ? r.cells : map.map((k) => (k < 0 ? "" : r.cells[k]));
-        if (tests.every((f) => f(cells))) rows.push({ cells });
+        if (tests.every((f) => f(cells, r))) rows.push({ cells, course: r.course });
       }
     }
     return { type: "list", heads, rows };
@@ -736,7 +780,7 @@
     return true;
   }
 
-  App.centerCmd = { init, render, state, buildRegister, toOption, execute: executeCommand, localIntent };
+  App.centerCmd = { init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
