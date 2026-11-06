@@ -815,7 +815,12 @@
           const { headers, rows } = feedData();
           if (!rows.length) return ui.toast("لا صفوف لإخراجها");
           const label = (state.labels[0] || "بيانات نظام المركز") + (state.results.results.length > 1 ? " وغيرها" : "");
-          App.converter.useData(headers, rows, label, { templateIds: state.tplPick.slice(), autoParse: true });
+          // التقسيم الافتراضي: المجموعة، ويسبقها المسار إن اجتمع أكثر من مسار (رمز المجموعة يتكرر بين المسارات)
+          const distinct = (h) => new Set(rows.map((o) => clean(o[h])).filter(Boolean)).size;
+          const groupBy = [];
+          if (headers.includes("المسار") && distinct("المسار") > 1) groupBy.push("المسار");
+          if (headers.includes("المجموعة")) groupBy.push("المجموعة");
+          App.converter.useData(headers, rows, label, { templateIds: state.tplPick.slice(), autoParse: true, groupBy });
           return;
         } else if (act === "cols-empty") { emptyHeads().forEach((h) => state.hiddenCols.add(h));
         } else if (act === "cols-none") { state.hiddenCols = new Set(resultHeads());

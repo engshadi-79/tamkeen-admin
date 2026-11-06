@@ -1413,6 +1413,9 @@
       const usable = defaults.map((h) => core().resolveDefaultColumn(h, data.headers)).filter(Boolean);
       state.groupBy1 = usable[0] || "";
       state.groupBy2 = usable[1] || "";
+      // بيانات «أوامر المركز»: إن لم يحدد القالب تقسيماً افتراضياً نقسّم بالمجموعة (وبالمسار قبلها عند تعدد المسارات)
+      const hint = ((state.mergedData && state.mergedData.groupHint) || []).filter((h) => data.headers.includes(h));
+      if (!state.groupBy1 && hint.length) { state.groupBy1 = hint[0]; state.groupBy2 = hint[1] || ""; }
       state.autoNumberHeader = "";
       state.sortRowsBy = "";
       state.groupWeekdays = {};
@@ -2282,7 +2285,7 @@
 
   /* بيانات جاهزة من صفحة «جداول البيانات» تُعتمد ملفَ بيانات هنا */
   async function useData(headers, rows, label, opts) {
-    state.mergedData = { headers: headers.slice(), rows: rows.map((r) => Object.assign({}, r)), count: rows.length, label };
+    state.mergedData = { headers: headers.slice(), rows: rows.map((r) => Object.assign({}, r)), count: rows.length, label, groupHint: (opts && opts.groupBy) || [] };
     $("conv-data-file").value = "";
     renderMergedChip();
     // من «أوامر المركز»: القالب (أو القوالب) محدد مسبقاً فنفتح خطوة المطابقة مباشرة
