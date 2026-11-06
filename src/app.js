@@ -98,8 +98,11 @@
   /* رقم النسخة التي يشغّلها هذا المتصفح فعلاً، وزر يمسح المخزَّن ويجلب الأحدث.
      بدونه لا يعرف المستخدم (ولا نحن) أنه ما زال على إصدار قديم. */
   function showVersion() {
-    const src = (document.querySelector('script[src*="src/app.js"]') || {}).src || "";
-    const v = (src.match(/[?&]v=(\d+)/) || [])[1];
+    // أعلى رقم إصدار بين كل ملفات الصفحة: كل ملف يُرفع رقمه حين يتغيّر وحده
+    const nums = [...document.querySelectorAll("script[src],link[rel=stylesheet][href]")]
+      .map((el) => ((el.getAttribute("src") || el.getAttribute("href") || "").match(/[?&]v=(\d+)/) || [])[1])
+      .filter(Boolean).map(Number);
+    const v = nums.length ? Math.max(...nums) : "";
     const out = document.getElementById("foot-version");
     if (out && v) out.textContent = `النسخة ${v}`;
     const btn = document.getElementById("foot-refresh");
