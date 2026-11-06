@@ -25,6 +25,8 @@
     sel: { tracks: [], stages: [], status: "", group_status: "", details: false, extra: {} }, // «تقارير جاهزة»
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
+    mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
+    open: { adv: false, cols: false, forms: true }, // حالة الأقسام القابلة للطي
     extraNote: "",
     tpls: null,          // القوالب المحفوظة في المحوّل
     tplPick: [],         // القوالب المختارة لإخراج النماذج
@@ -97,26 +99,53 @@
     return out;
   }
 
+  /* ملخص الاختيار بجملة واحدة تظهر بجانب زر التنفيذ */
+  function selSummary() {
+    const s = state.sel, parts = [];
+    if (s.tracks.length) parts.push("المسارات: " + s.tracks.map((id) => optLabel("track_id", id).replace(/^مسار\s*/, "")).join("، "));
+    if (s.stages.length) parts.push("المراحل: " + s.stages.map((k) => (STAGES.find((g) => g.k === k) || {}).t).filter(Boolean).join("، "));
+    if (s.status) parts.push(optLabel("status", s.status));
+    if (s.group_status) parts.push(optLabel("group_status", s.group_status));
+    const ex = extraActive().length;
+    if (ex) parts.push(ui.fmt(ex) + " تصفية متقدمة");
+    return parts.length ? parts.join(" · ") : "كل الطلاب (بلا تصفية)";
+  }
+
   function scriptsView() {
     const s = state.sel;
     const chk = (kind, v, text, on) => `<label class="cc-chk"><input type="checkbox" data-sel="${kind}" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(text)}</span></label>`;
-    const sel = (name) => `<label class="field"><span>${esc(filterField(name).label || name)}</span><select data-sel="${name}">${filterField(name).options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === s[name] ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>`;
-    let n = "";
-    try { n = buildSelection().length; } catch (e) { n = 0; }
-    return `<div class="conv-grade-note cc-scripts" id="cc-scripts"><b class="conv-label">تقارير جاهزة — اختر ثم نفّذ</b>
-      <p class="conv-hint">اترك أي قائمة دون اختيار لتشمل الكل. يُنفَّذ أمر قراءة لكل (مسار أو مرحلة) تختارها، ولا يُكتب شيء في نظام المركز.</p>
-      <div class="cc-pick"><b>المسارات</b><div class="cc-chips">${trackOpts().map((o) => chk("tracks", o.v, o.t.replace(/^مسار\s*/, ""), s.tracks.includes(String(o.v)))).join("")}</div></div>
-      <div class="cc-pick"><b>المراحل</b><div class="cc-chips">${STAGES.map((g) => chk("stages", g.k, g.t, s.stages.includes(g.k))).join("")}</div></div>
-      <div class="cc-pick cc-two">${sel("status")}${sel("group_status")}</div>
-      <div class="cc-pick"><b>تصفية إضافية بحقول الطالب <span class="conv-hint">(تفعّل «كل بيانات الطالب» تلقائياً)</span></b>
-        <div class="cc-three">${extraFields().map((f) => `<label class="field"><span>${esc(f.label)}</span><select data-sel="x:${esc(f.name)}"><option value="">الكل</option>${f.options.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String((s.extra || {})[f.name]) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>`).join("")}</div></div>
-      <div class="cc-pick">${chk("details", "1", "كل بيانات الطالب (الجنس، الميلاد، العنوان…) — أبطأ، حتى 400 طالب لكل أمر", s.details)}</div>
-      <div class="cc-pick cc-cache">${state.cache
-        ? `<span class="conv-hint">⚡ البيانات محمّلة: ${ui.fmt(state.cache.items.reduce((n, it) => n + it.rows.length, 0))} طالباً${state.cache.details ? " ببياناتهم الكاملة" : ""} (${state.cache.at.toLocaleTimeString("ar")}) — التقارير تظهر فوراً. </span><button type="button" class="conv-link" data-cc="preload" ${state.busy ? "disabled" : ""}>تحديث</button> <button type="button" class="conv-link" data-cc="drop-cache">مسح الذاكرة</button>`
-        : `<button type="button" class="btn secondary small" data-cc="preload" ${state.busy ? "disabled" : ""}>⚡ حمّل كل البيانات مرة واحدة (اختياري)</button> <span class="conv-hint">تُحفظ في هذه الصفحة فقط فتصير التقارير فورية. تُحمَّل «كل بيانات الطالب» إن فعّلت خيارها.</span>`}</div>
-      ${state.extraNote ? `<p class="conv-error" role="status">${esc(state.extraNote)}</p>` : ""}${state.fallbackNote ? `<p class="conv-error" role="status">نُفِّذ من الموقع لا من الذاكرة — ${esc(state.fallbackNote)}</p>${state.fallbackNote.includes("بدون") ? '<button type="button" class="btn secondary small" data-cc="preload-details">⚡ أعد التحميل ببيانات كاملة الآن</button>' : ""}` : ""}
-      <div class="btn-row"><button type="button" class="btn navy" data-cc="run-selection" ${state.busy || !n ? "disabled" : ""}>نفّذ التقرير${n > 1 ? ` (${ui.fmt(n)} أوامر)` : ""}</button>
-        <button type="button" class="conv-link" data-cc="clear-selection">مسح الاختيار</button></div></div>`;
+    const sel = (name) => `<label class="cc-field"><span>${esc(filterField(name).label || name)}</span><select data-sel="${name}">${filterField(name).options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === s[name] ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>`;
+    let n = 0, err = "";
+    try { n = buildSelection().length; } catch (e) { n = 0; err = e.message; }
+    const exN = extraActive().length;
+    const cacheRows = state.cache ? state.cache.items.reduce((a, it) => a + it.rows.length, 0) : 0;
+    return `<section class="cc-card" id="cc-scripts">
+      <header class="cc-card-h"><h3>تقرير جاهز</h3><p>اترك أي قائمة بلا اختيار لتشمل الكل. للقراءة فقط — لا يُكتب شيء في نظام المركز.</p></header>
+      <div class="cc-card-b">
+        <div class="cc-grid">
+          <fieldset class="cc-fs"><legend>المسارات${s.tracks.length ? ` <em>${ui.fmt(s.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk("tracks", o.v, o.t.replace(/^مسار\s*/, ""), s.tracks.includes(String(o.v)))).join("")}</div></fieldset>
+          <fieldset class="cc-fs"><legend>المراحل${s.stages.length ? ` <em>${ui.fmt(s.stages.length)}</em>` : ""}</legend><div class="cc-chips">${STAGES.map((g) => chk("stages", g.k, g.t, s.stages.includes(g.k))).join("")}</div></fieldset>
+          <fieldset class="cc-fs cc-wide"><legend>الحالة والتوزيع</legend><div class="cc-two">${sel("status")}${sel("group_status")}</div></fieldset>
+        </div>
+        <details class="cc-adv" data-open="adv" ${state.open.adv || exN ? "open" : ""}>
+          <summary><span>تصفية متقدمة بحقول الطالب</span>${exN ? `<span class="cc-badge on">${ui.fmt(exN)}</span>` : ""}<small>الجنس، الوضع الصحي، المحافظة…</small></summary>
+          <p class="cc-note">اختيار أي حقل هنا يفعّل «كل بيانات الطالب» تلقائياً.</p>
+          <div class="cc-three">${extraFields().map((f) => `<label class="cc-field"><span>${esc(f.label)}</span><select data-sel="x:${esc(f.name)}"><option value="">الكل</option>${f.options.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String((s.extra || {})[f.name]) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>`).join("")}</div>
+        </details>
+        <div class="cc-opts">
+          <div class="cc-opt">${chk("details", "1", "كل بيانات الطالب (الميلاد، العنوان…) — أبطأ، حتى 400 طالب لكل أمر", s.details)}</div>
+          <div class="cc-opt cc-cache">${state.cache
+            ? `<span class="cc-badge ok">⚡ محمّل</span><span class="cc-note">${ui.fmt(cacheRows)} طالباً${state.cache.details ? " ببياناتهم الكاملة" : ""} · ${esc(state.cache.at.toLocaleTimeString("ar"))} — التقارير فورية</span><button type="button" class="cc-link" data-cc="preload" ${state.busy ? "disabled" : ""}>تحديث</button><button type="button" class="cc-link" data-cc="drop-cache">مسح</button>`
+            : `<button type="button" class="btn secondary small" data-cc="preload" ${state.busy ? "disabled" : ""}>⚡ حمّل كل البيانات مرة واحدة</button><span class="cc-note">اختياري — تُحفظ في هذه الصفحة فقط فتصير التقارير فورية.</span>`}</div>
+        </div>
+        ${err ? `<p class="cc-alert warn" role="status">${esc(err)}</p>` : ""}
+        ${state.extraNote ? `<p class="cc-alert warn" role="status">${esc(state.extraNote)}</p>` : ""}
+        ${state.fallbackNote ? `<p class="cc-alert warn" role="status">نُفِّذ من الموقع لا من الذاكرة — ${esc(state.fallbackNote)}</p>${state.fallbackNote.includes("بدون") ? '<button type="button" class="btn secondary small" data-cc="preload-details">⚡ أعد التحميل ببيانات كاملة الآن</button>' : ""}` : ""}
+      </div>
+      <footer class="cc-actions">
+        <div class="cc-sum"><b>${n ? `سيُنفَّذ ${n === 1 ? "أمر واحد" : n === 2 ? "أمران" : ui.fmt(n) + (n < 11 ? " أوامر" : " أمراً")}` : "لا شيء للتنفيذ"}</b><span>${esc(selSummary())}</span></div>
+        <div class="cc-act"><button type="button" class="cc-link" data-cc="clear-selection">مسح الاختيار</button><button type="button" class="btn navy" data-cc="run-selection" ${state.busy || !n ? "disabled" : ""}>${state.busy ? "جارٍ التنفيذ…" : "نفّذ التقرير"}</button></div>
+      </footer></section>`;
   }
 
   /* ===== أسماء الأعمدة المحتملة لكل حقل ===== */
@@ -408,18 +437,18 @@
   function assistantView() {
     const p = state.proposal;
     let preview = "";
-    if (p && p.type === "register-needed") preview = `<p class="conv-hint">${esc(p.message)}</p>`;
-    else if (p && p.error) preview = `<p class="conv-error" role="status">${esc(p.error)}</p>${state.needsAiKey ? '<button type="button" class="btn secondary small" data-cc="ai-settings">إعداد الذكاء الاصطناعي</button>' : ""}`;
-    const status = state.agentStatus;
-    const statusText = state.thinking ? "أحلل صياغة طلبك…" : state.busy ? (state.progress || "الوكيل ينفّذ طلبك الآن…") : status ? status.message : "جارٍ الاتصال بالوكيل المحلي…";
-    const statusClass = state.thinking || state.busy || (status && status.loggedIn) ? "conv-hint" : "conv-error";
-    return `<div class="conv-grade-note cc-assistant"><b class="conv-label">اكتب طلبك بالعربية</b>
-      <p id="cc-status" class="${statusClass}" role="status">${esc(statusText)}</p>
-      <label class="field"><span>اكتبها بطريقتك، مثلاً: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار التسويق»</span>
-        <textarea id="cc-request" rows="3" placeholder="ماذا تريد من الوكيل؟">${esc(state.requestText)}</textarea></label>
-      <p class="conv-hint">يحلّل الطلب مزوّد الذكاء الاصطناعي المحدد في إعداداتك. يحاول الوكيل حجب هدف البحث والأرقام قبل الإرسال؛ لا يرسل نتائج النظام أو ملف Excel.</p>
-      <div class="btn-row"><button type="button" class="btn navy" data-cc="interpret" ${state.busy || state.thinking ? "disabled" : ""}>${state.thinking ? "جارٍ الفهم…" : "نفّذ الأمر"}</button></div>
-      <div data-cc-preview>${preview}</div>${state.resultError ? `<p class="conv-error" role="alert">${esc(state.resultError)}</p>` : ""}</div>`;
+    if (p && p.type === "register-needed") preview = `<p class="cc-note">${esc(p.message)}</p>`;
+    else if (p && p.error) preview = `<p class="cc-alert warn" role="status">${esc(p.error)}</p>${state.needsAiKey ? '<button type="button" class="btn secondary small" data-cc="ai-settings">إعداد الذكاء الاصطناعي</button>' : ""}`;
+    return `<section class="cc-card cc-assistant">
+      <header class="cc-card-h"><h3>اكتب طلبك بالعربية</h3><p>بحث عن طالب، قوائم، أو تسجيل طلاب من ملف Excel.</p></header>
+      <div class="cc-card-b">
+        <label class="cc-field"><span>مثلاً: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار التسويق»</span>
+          <textarea id="cc-request" rows="3" placeholder="ماذا تريد من الوكيل؟">${esc(state.requestText)}</textarea></label>
+        <p class="cc-note">الأوامر الشائعة تُفهم داخل المتصفح دون إرسال شيء. وما عداها يحلّله مزوّد الذكاء الاصطناعي المحدد في إعداداتك، بعد حجب هدف البحث والأرقام؛ ولا تُرسل نتائج النظام أو ملف Excel.</p>
+        <div data-cc-preview>${preview}</div>
+      </div>
+      <footer class="cc-actions"><div class="cc-sum"><span>اكتب الطلب ثم اضغط «نفّذ الأمر»</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="interpret" ${state.busy || state.thinking ? "disabled" : ""}>${state.thinking ? "جارٍ الفهم…" : "نفّذ الأمر"}</button></div></footer></section>`;
   }
 
   /* خطة التسجيل القادمة من الوكيل: تُراجَع هنا ولا يُكتب شيء قبل «نفّذ» */
@@ -427,11 +456,10 @@
     const p = state.plan;
     if (!p) return "";
     const L = { create: "سيُسجَّل", exists: "موجود أصلاً — سيُتجاوز", invalid: "غير صالح — لن يُرسل" };
-    return `<div class="conv-grade-note cc-plan"><b class="conv-label">معاينة قبل الكتابة في نظام المركز</b>
-      <p class="conv-hint">سيُسجَّل <b>${ui.fmt(p.create)}</b> · مسجّل أصلاً ${ui.fmt(p.exists)} · غير صالح ${ui.fmt(p.invalid)} — من ${ui.fmt(p.total)}.</p>
-      <div class="cc-scroll"><table class="cc-table"><tbody>${p.rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.nid)}</td><td>${esc(L[r.state] || r.state)}${r.why ? " — " + esc(r.why) : ""}</td></tr>`).join("")}</tbody></table></div>
-      <div class="btn-row"><button type="button" class="btn navy" data-cc="plan-ok" ${p.create ? "" : "disabled"}>نفّذ تسجيل ${ui.fmt(p.create)} طالباً</button>
-        <button type="button" class="conv-link" data-cc="plan-no">إلغاء</button></div></div>`;
+    return `<section class="cc-card cc-plan"><header class="cc-card-h"><h3>معاينة قبل الكتابة في نظام المركز</h3>
+      <p>سيُسجَّل <b>${ui.fmt(p.create)}</b> · مسجّل أصلاً ${ui.fmt(p.exists)} · غير صالح ${ui.fmt(p.invalid)} — من ${ui.fmt(p.total)}. لا يُكتب شيء قبل موافقتك.</p></header>
+      <div class="cc-card-b"><div class="cc-scroll"><table class="cc-table"><tbody>${p.rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.nid)}</td><td>${esc(L[r.state] || r.state)}${r.why ? " — " + esc(r.why) : ""}</td></tr>`).join("")}</tbody></table></div></div>
+      <footer class="cc-actions"><div class="cc-sum"></div><div class="cc-act"><button type="button" class="cc-link" data-cc="plan-no">إلغاء</button><button type="button" class="btn navy" data-cc="plan-ok" ${p.create ? "" : "disabled"}>نفّذ تسجيل ${ui.fmt(p.create)} طالباً</button></div></footer></section>`;
   }
 
   /* ===== اختيار الأعمدة: تنطبق على الجدول المعروض وعلى كل ملفات Excel ===== */
@@ -463,11 +491,13 @@
     const heads = resultHeads();
     if (!heads.length) return "";
     const on = heads.filter((h) => !state.hiddenCols.has(h)).length;
-    return `<div class="conv-grade-note cc-cols"><b class="conv-label">الأعمدة التي تظهر في الجدول وملف Excel (${ui.fmt(on)} من ${ui.fmt(heads.length)})</b>
+    const e = emptyHeads().filter((h) => !state.hiddenCols.has(h));
+    return `<details class="cc-adv" data-open="cols" ${state.open.cols ? "open" : ""}>
+      <summary><span>الأعمدة الظاهرة</span><span class="cc-badge">${ui.fmt(on)} من ${ui.fmt(heads.length)}</span><small>تنطبق على الجدول وملفات Excel</small></summary>
       <div class="cc-chips">${heads.map((h) => `<label class="cc-chk"><input type="checkbox" data-col="${esc(h)}" ${state.hiddenCols.has(h) ? "" : "checked"}> <span>${esc(h)}</span></label>`).join("")}</div>
-      ${(() => { const e = emptyHeads().filter((h) => !state.hiddenCols.has(h)); return e.length ? `<p class="conv-hint">${ui.fmt(e.length)} عموداً فارغ عند كل الطلاب المعروضين: ${esc(e.join("، "))}. إما أنها غير مُعبَّأة في النظام، أو لا يحملها نموذج التعديل.</p>` : ""; })()}
-      <div class="btn-row"><button type="button" class="conv-link" data-cc="cols-all">إظهار الكل</button><button type="button" class="conv-link" data-cc="cols-none">إخفاء الكل</button><button type="button" class="conv-link" data-cc="cols-empty">إخفاء الأعمدة الفارغة</button></div>
-      ${on === 0 ? '<p class="conv-hint">لم تبقِ عموداً؛ سيُعرض كل شيء حتى تختار.</p>' : ""}</div>`;
+      ${e.length ? `<p class="cc-note">${ui.fmt(e.length)} عموداً فارغ عند كل الطلاب المعروضين: ${esc(e.join("، "))}. إما أنها غير مُعبَّأة في النظام، أو لا يحملها نموذج التعديل.</p>` : ""}
+      <div class="cc-row"><button type="button" class="cc-link" data-cc="cols-all">إظهار الكل</button><button type="button" class="cc-link" data-cc="cols-none">إخفاء الكل</button><button type="button" class="cc-link" data-cc="cols-empty">إخفاء الأعمدة الفارغة</button></div>
+      ${on === 0 ? '<p class="cc-note">لم تبقِ عموداً؛ سيُعرض كل شيء حتى تختار.</p>' : ""}</details>`;
   }
 
   /* ===== إخراج النماذج من البيانات المجلوبة =====
@@ -498,13 +528,14 @@
   }
   function formsCard() {
     if (!((state.results && state.results.results) || []).some((r) => r.type === "list")) return "";
-    if (state.tpls == null) { loadTemplates(); return `<div class="conv-grade-note cc-forms"><b class="conv-label">إخراج النماذج</b><p class="conv-hint">جارٍ تحميل القوالب المحفوظة…</p></div>`; }
+    if (state.tpls == null) { loadTemplates(); return `<details class="cc-adv" data-open="forms" ${state.open.forms ? "open" : ""}><summary><span>إخراج النماذج</span></summary><p class="cc-note">جارٍ تحميل القوالب المحفوظة…</p></details>`; }
     const { rows } = feedData();
-    return `<div class="conv-grade-note cc-forms"><b class="conv-label">إخراج النماذج من هذه البيانات (${ui.fmt(rows.length)} صفاً)</b>
-      ${state.tpls.length ? `<p class="conv-hint">اختر القالب (أو عدة قوالب فيخرج ملف لكل واحد). تنتقل البيانات إلى «تحويل حسب قالب» بدل رفع Excel، وتخرج النماذج بالتنسيق المحفوظ نفسه.</p>
-        <div class="cc-chips">${state.tpls.map((t) => `<label class="cc-chk"><input type="checkbox" data-tpl="${esc(t.id)}" ${state.tplPick.includes(t.id) ? "checked" : ""}> <span>${esc(t.name)} (${t.format === "docx" ? "Word" : "Excel"})</span></label>`).join("")}</div>
-        <div class="btn-row"><button type="button" class="btn navy" data-cc="to-forms" ${state.tplPick.length && rows.length ? "" : "disabled"}>جهّز النماذج${state.tplPick.length > 1 ? ` (${ui.fmt(state.tplPick.length)} قوالب)` : ""} ←</button></div>`
-      : '<p class="conv-hint">لا قوالب محفوظة بعد. احفظ قالباً من «تحويل حسب قالب» أولاً.</p>'}</div>`;
+    return `<details class="cc-adv" data-open="forms" ${state.open.forms ? "open" : ""}>
+      <summary><span>إخراج النماذج من هذه البيانات</span><span class="cc-badge">${ui.fmt(rows.length)} صفاً</span><small>بدل رفع ملف Excel</small></summary>
+      ${state.tpls.length ? `<p class="cc-note">اختر قالباً أو عدة قوالب (ملف لكل قالب). تنتقل البيانات إلى «تحويل حسب قالب» وتخرج النماذج بتنسيقها المحفوظ نفسه.</p>
+        <div class="cc-chips">${state.tpls.map((t) => `<label class="cc-chk"><input type="checkbox" data-tpl="${esc(t.id)}" ${state.tplPick.includes(t.id) ? "checked" : ""}> <span>${esc(t.name)} <small>${t.format === "docx" ? "Word" : "Excel"}</small></span></label>`).join("")}</div>
+        <div class="cc-row"><button type="button" class="btn navy small" data-cc="to-forms" ${state.tplPick.length && rows.length ? "" : "disabled"}>جهّز النماذج${state.tplPick.length > 1 ? ` (${ui.fmt(state.tplPick.length)} قوالب)` : ""} ←</button></div>`
+      : '<p class="cc-note">لا قوالب محفوظة بعد. احفظ قالباً من «تحويل حسب قالب» أولاً.</p>'}</details>`;
   }
 
   function resultsView() {
@@ -512,26 +543,31 @@
     if (!res) return "";
     const tbl = (heads, rows) => `<div class="cc-scroll"><table class="cc-table"><thead><tr>${heads.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
     const STATUS = { created: "✓ سُجّل", exists: "موجود أصلاً", invalid: "غير صالح", failed: "✗ فشل", unverified: "؟ تحقق يدوياً", skipped: "لم يُنفَّذ" };
-    return colsBar() + formsCard() + res.results.map((r, i) => {
-      if (r.error) return `<div class="conv-grade-note"><b>أمر ${i + 1}</b> <span class="conv-error">${esc(r.error)}</span></div>`;
+    const dnote = (d) => d && d.error ? `<p class="cc-alert warn">${esc(d.error)}</p>` : d ? `<p class="cc-note">بيانات كاملة لـ${ui.fmt(d.read)} من ${ui.fmt(d.of)}${d.capped ? " (الحد الأقصى للقراءة الكاملة؛ قسّم الطلب)" : ""}.</p>` : "";
+    const lists = res.results.filter((r) => r.type === "list");
+    const total = lists.reduce((a, r) => a + visibleRows(r).length, 0);
+    const head = lists.length ? `<div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(total)}</b> صفاً</span><span class="cc-stat"><b>${ui.fmt(lists.length)}</b> ${lists.length === 1 ? "جدول" : "جداول"}</span>${lists.length > 1 ? '<button type="button" class="btn secondary small" data-cc="export-all">تنزيل الكل في ملف واحد</button>' : ""}</div>` : "";
+    const tools = colsBar() + formsCard();
+    const body = res.results.map((r, i) => {
+      if (r.error) return `<article class="cc-res"><header class="cc-res-h"><h4>أمر ${i + 1}</h4></header><p class="cc-alert warn">${esc(r.error)}</p></article>`;
       if (r.type === "register") {
         const cnt = (s) => r.rows.filter((x) => x.status === s).length;
-        return `<div class="conv-grade-note"><b>تسجيل — ${esc(r.label)}</b>
-          <p class="conv-hint">سُجّل ${ui.fmt(cnt("created"))} · موجود أصلاً ${ui.fmt(cnt("exists"))} · غير صالح ${ui.fmt(cnt("invalid"))} · فشل ${ui.fmt(cnt("failed"))} · تحقق يدوياً ${ui.fmt(cnt("unverified"))} · لم يُنفَّذ ${ui.fmt(cnt("skipped"))}</p>
-          ${tbl(["الاسم", "الهوية", "النتيجة", "ملاحظة"], r.rows.map((x) => [x.name, x.nid, STATUS[x.status] || x.status, x.message || ""]))}
-          <div class="btn-row"><button type="button" class="conv-link" data-cc="export-reg" data-i="${i}">تنزيل Excel</button></div></div>`;
+        return `<article class="cc-res"><header class="cc-res-h"><h4>تسجيل — ${esc(r.label)}</h4><div class="cc-res-act"><button type="button" class="btn secondary small" data-cc="export-reg" data-i="${i}">تنزيل Excel</button></div></header>
+          <div class="cc-stats"><span class="cc-stat ok"><b>${ui.fmt(cnt("created"))}</b> سُجّل</span><span class="cc-stat"><b>${ui.fmt(cnt("exists"))}</b> موجود أصلاً</span><span class="cc-stat"><b>${ui.fmt(cnt("invalid"))}</b> غير صالح</span><span class="cc-stat bad"><b>${ui.fmt(cnt("failed"))}</b> فشل</span><span class="cc-stat"><b>${ui.fmt(cnt("unverified"))}</b> تحقق يدوياً</span><span class="cc-stat"><b>${ui.fmt(cnt("skipped"))}</b> لم يُنفَّذ</span></div>
+          ${tbl(["الاسم", "الهوية", "النتيجة", "ملاحظة"], r.rows.map((x) => [x.name, x.nid, STATUS[x.status] || x.status, x.message || ""]))}</article>`;
       }
-      const dnote = (d) => d && d.error ? `<p class="conv-error">${esc(d.error)}</p>` : d ? `<p class="conv-hint">بيانات كاملة لـ${ui.fmt(d.read)} من ${ui.fmt(d.of)}${d.capped ? " (الحد الأقصى للقراءة الكاملة؛ قسّم الطلب)" : ""}.</p>` : "";
       if (r.type === "lookup") {
-        return `<div class="conv-grade-note"><b>استعلام</b>${r.items.map((it) => `<p class="conv-hint"><b>${esc(it.q)}</b> — ${it.count ? ui.fmt(it.count) + " نتيجة" : "لا نتيجة"}</p>${dnote(it.details)}${it.count ? tbl(...shown(it.heads, it.rows.map((x) => x.cells))) : ""}`).join("")}</div>`;
+        return `<article class="cc-res"><header class="cc-res-h"><h4>استعلام</h4></header>${r.items.map((it) => `<p class="cc-note"><b>${esc(it.q)}</b> — ${it.count ? ui.fmt(it.count) + " نتيجة" : "لا نتيجة"}</p>${dnote(it.details)}${it.count ? tbl(...shown(it.heads, it.rows.map((x) => x.cells))) : ""}`).join("")}</article>`;
       }
       const gi = groupCol(r);
       const rows = visibleRows(r);
-      const gsel = gi < 0 ? "" : `<label class="field cc-group"><span>المجموعة</span><select data-sel="groupFilter"><option value="">كل المجموعات</option>${groupValues(r, gi).map((g) => `<option value="${esc(g)}" ${g === state.groupFilter ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></label>`;
-      return `<div class="conv-grade-note"><b>${esc(state.labels[i] || "قائمة الطلاب")}</b> <span class="conv-hint">${ui.fmt(rows.length)}${rows.length !== r.rows.length ? " من " + ui.fmt(r.rows.length) : ""} صفاً</span>${dnote(r.details)}${gsel}
-        ${tbl(...shown(r.heads, rows.slice(0, 100).map((x) => x.cells)))}
-        <div class="btn-row"><button type="button" class="conv-link" data-cc="export-list" data-i="${i}">تنزيل ${rows.length > 100 ? "كل الصفوف " : ""}Excel</button></div></div>`;
-    }).join("") + (res.results.filter((r) => r.type === "list").length > 1 ? `<div class="btn-row"><button type="button" class="btn secondary" data-cc="export-all">تنزيل الكل في ملف واحد (ورقة لكل أمر)</button></div>` : "");
+      const gsel = gi < 0 ? "" : `<label class="cc-field cc-group"><span>المجموعة</span><select data-sel="groupFilter"><option value="">كل المجموعات</option>${groupValues(r, gi).map((g) => `<option value="${esc(g)}" ${g === state.groupFilter ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></label>`;
+      return `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(state.labels[i] || "قائمة الطلاب")}</h4><span class="cc-badge">${ui.fmt(rows.length)}${rows.length !== r.rows.length ? " من " + ui.fmt(r.rows.length) : ""} صفاً</span></div>
+        <div class="cc-res-act">${gsel}<button type="button" class="btn secondary small" data-cc="export-list" data-i="${i}">تنزيل ${rows.length > 100 ? "كل الصفوف " : ""}Excel</button></div></header>
+        ${dnote(r.details)}${rows.length > 100 ? '<p class="cc-note">يُعرض أول 100 صف؛ الملف المنزَّل يشمل الكل.</p>' : ""}
+        ${tbl(...shown(r.heads, rows.slice(0, 100).map((x) => x.cells)))}</article>`;
+    }).join("");
+    return head + (tools ? `<div class="cc-tools">${tools}</div>` : "") + body;
   }
 
   /* عمود «المجموعة» إن وُجد في جدول النظام: يتيح تصفية العرض والتنزيل بمجموعة */
@@ -542,22 +578,37 @@
     return gi < 0 || !state.groupFilter ? r.rows : r.rows.filter((x) => clean(x.cells[gi]) === state.groupFilter);
   }
 
+  /* حالة الوكيل في جملة ولون واحدين: busy | ok | bad */
+  function statusInfo() {
+    const st = state.agentStatus;
+    if (state.thinking) return { st: "busy", text: "أحلل صياغة طلبك…" };
+    if (state.busy) return { st: "busy", text: state.progress || "الوكيل ينفّذ طلبك الآن…" };
+    if (!st) return { st: "bad", text: "جارٍ الاتصال بالوكيل…" };
+    return { st: st.loggedIn ? "ok" : "bad", text: st.message };
+  }
+
   function render() {
     const box = $("cc-body");
     if (!box) return;
-    if (!SCHEMA()) { box.innerHTML = '<p class="conv-error">مخطط نظام المركز غير محمَّل.</p>'; return; }
-    const adding = state.adding === "register" ? registerBuilder() : "";
-    box.innerHTML = `
-      <div class="cc-step"><span class="cv-step-tag">١</span> <b>ما الذي تريد من الوكيل أن يفعله؟</b></div>
-      ${scriptsView()}
-      ${assistantView()}
+    if (!SCHEMA()) { box.innerHTML = '<p class="cc-alert warn">مخطط نظام المركز غير محمَّل.</p>'; return; }
+    const mode = state.adding || state.proposal ? "ask" : state.mode;
+    const info = statusInfo();
+    const viaExt = App.centerAgent && App.centerAgent.isReady();
+    box.innerHTML = `<div class="cc-app">
+      <div class="cc-top" data-st="${info.st}"><span class="cc-dot" aria-hidden="true"></span><span id="cc-status" role="status">${esc(info.text)}</span></div>
+      ${state.busy ? '<div class="cc-progress" aria-hidden="true"><i></i></div>' : ""}
+      <nav class="cc-modes" role="tablist" aria-label="نوع الأمر">
+        <button type="button" role="tab" class="${mode === "report" ? "on" : ""}" aria-selected="${mode === "report"}" data-cc="mode" data-m="report"><b>تقرير جاهز</b><small>اختر المسار والمرحلة ثم نفّذ</small></button>
+        <button type="button" role="tab" class="${mode === "ask" ? "on" : ""}" aria-selected="${mode === "ask"}" data-cc="mode" data-m="ask"><b>اكتب طلبك</b><small>بحث، أو تسجيل طلاب من Excel</small></button>
+      </nav>
+      ${mode === "report" ? scriptsView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${adding}
-      ${App.centerAgent && App.centerAgent.isReady()
-        ? '<p class="conv-hint">تعمل الأوامر في متصفحك عبر إضافة «وكيل تمكين». سجّل دخولك في نظام المركز مرة واحدة؛ والبحث والقوائم تُنفَّذ مباشرة، أما التسجيل فتراجع معاينته هنا وتوافق قبل أن يُكتب شيء.</p>'
-        : '<p class="conv-hint">تعمل الجلسة في نافذة Edge المحلية. سجّل الدخول فيها مرة واحدة؛ بعدها ينفّذ الوكيل البحث والقوائم والتسجيل ويعرض النتيجة هنا. أو ثبّت إضافة «وكيل تمكين» في Chrome لتعمل دون خادم محلي.</p>'}
-      <div class="cc-step"><span class="cv-step-tag">٢</span> <b>النتيجة</b></div>
-      ${resultsView()}`;
+      ${state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
+        ? "تعمل الأوامر في متصفحك عبر إضافة «وكيل تمكين». سجّل دخولك في نظام المركز مرة واحدة؛ والبحث والقوائم تُنفَّذ مباشرة، أما التسجيل فتراجع معاينته هنا وتوافق قبل أن يُكتب شيء. لا تصل كلمة مرورك أو جلستك إلى تمكين."
+        : "تعمل الجلسة في نافذة Edge المحلية. سجّل الدخول فيها مرة واحدة؛ بعدها ينفّذ الوكيل البحث والقوائم والتسجيل ويعرض النتيجة هنا. أو ثبّت إضافة «وكيل تمكين» في Chrome لتعمل دون خادم محلي."}</p></details>
+    </div>`;
   }
 
   /* ===== التنزيل ===== */
@@ -584,8 +635,9 @@
     }
     const el = $("cc-status");
     if (el) {
-      el.textContent = state.thinking ? "أحلل صياغة طلبك…" : state.busy ? (state.progress || "الوكيل ينفّذ طلبك الآن…") : state.agentStatus.message;
-      el.className = state.thinking || state.busy || state.agentStatus.loggedIn ? "conv-hint" : "conv-error";
+      const info = statusInfo();
+      el.textContent = info.text;
+      if (el.parentElement) el.parentElement.dataset.st = info.st;
     }
   }
 
@@ -813,6 +865,8 @@
             render(); return;
           }
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
+        } else if (act === "mode") {
+          state.mode = b.dataset.m; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
         } else if (act === "cols-all") { state.hiddenCols = new Set();
         } else if (act === "to-forms") {
           const { headers, rows } = feedData();
@@ -836,6 +890,11 @@
         render();
       } catch (err) { ui.toast(err.message); }
     });
+
+    box.addEventListener("toggle", (e) => {
+      const d = e.target;
+      if (d && d.dataset && d.dataset.open) state.open[d.dataset.open] = d.open;
+    }, true);
 
     box.addEventListener("change", async (e) => {
       const t = e.target;
