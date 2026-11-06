@@ -26,6 +26,8 @@
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
     extraNote: "",
+    tpls: null,          // القوالب المحفوظة في المحوّل
+    tplPick: [],         // القوالب المختارة لإخراج النماذج
     fallbackNote: "",    // سبب عدم استعمال الذاكرة في آخر تنفيذ
     cache: null,         // نسخة محمّلة من كل البيانات في ذاكرة الصفحة فقط: { at, details, items:[{trackId,heads,rows}] }
     groupFilter: "",     // تصفية العرض بعمود «المجموعة» إن وُجد في النتائج
@@ -468,12 +470,46 @@
       ${on === 0 ? '<p class="conv-hint">لم تبقِ عموداً؛ سيُعرض كل شيء حتى تختار.</p>' : ""}</div>`;
   }
 
+  /* ===== إخراج النماذج من البيانات المجلوبة =====
+     بدل رفع ملف Excel: تُسلَّم الصفوف الظاهرة إلى «تحويل حسب قالب» كملف بيانات، مع القالب
+     المحفوظ المختار، فيخرج النموذج بتنسيقه نفسه. تُرسل الأعمدة الأصلية للجدول (الطالب،
+     المسار / الدورة…) والأعمدة المفصولة معاً كي يجد القالب ما يطابقه. */
+  function feedData() {
+    const headers = [], rows = [];
+    ((state.results && state.results.results) || []).filter((r) => r.type === "list").forEach((r) => {
+      const raw = r.rawHeads || r.heads;
+      [...raw, ...r.heads].forEach((h) => { if (!headers.includes(h)) headers.push(h); });
+      visibleRows(r).forEach((x) => {
+        const o = {};
+        raw.forEach((h, i) => { o[h] = (x.raw || x.cells)[i]; });
+        r.heads.forEach((h, i) => { if (!(h in o)) o[h] = x.cells[i]; });
+        rows.push(o);
+      });
+    });
+    return { headers, rows };
+  }
+  async function loadTemplates() {
+    try { state.tpls = (await App.converterStore.list()).filter((t) => t.kind !== "exam"); }
+    catch (e) { state.tpls = []; }
+    if (state.results) render();
+  }
+  function formsCard() {
+    if (!((state.results && state.results.results) || []).some((r) => r.type === "list")) return "";
+    if (state.tpls == null) { loadTemplates(); return `<div class="conv-grade-note cc-forms"><b class="conv-label">إخراج النماذج</b><p class="conv-hint">جارٍ تحميل القوالب المحفوظة…</p></div>`; }
+    const { rows } = feedData();
+    return `<div class="conv-grade-note cc-forms"><b class="conv-label">إخراج النماذج من هذه البيانات (${ui.fmt(rows.length)} صفاً)</b>
+      ${state.tpls.length ? `<p class="conv-hint">اختر القالب (أو عدة قوالب فيخرج ملف لكل واحد). تنتقل البيانات إلى «تحويل حسب قالب» بدل رفع Excel، وتخرج النماذج بالتنسيق المحفوظ نفسه.</p>
+        <div class="cc-chips">${state.tpls.map((t) => `<label class="cc-chk"><input type="checkbox" data-tpl="${esc(t.id)}" ${state.tplPick.includes(t.id) ? "checked" : ""}> <span>${esc(t.name)} (${t.format === "docx" ? "Word" : "Excel"})</span></label>`).join("")}</div>
+        <div class="btn-row"><button type="button" class="btn navy" data-cc="to-forms" ${state.tplPick.length && rows.length ? "" : "disabled"}>جهّز النماذج${state.tplPick.length > 1 ? ` (${ui.fmt(state.tplPick.length)} قوالب)` : ""} ←</button></div>`
+      : '<p class="conv-hint">لا قوالب محفوظة بعد. احفظ قالباً من «تحويل حسب قالب» أولاً.</p>'}</div>`;
+  }
+
   function resultsView() {
     const res = state.results;
     if (!res) return "";
     const tbl = (heads, rows) => `<div class="cc-scroll"><table class="cc-table"><thead><tr>${heads.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
     const STATUS = { created: "✓ سُجّل", exists: "موجود أصلاً", invalid: "غير صالح", failed: "✗ فشل", unverified: "؟ تحقق يدوياً", skipped: "لم يُنفَّذ" };
-    return colsBar() + res.results.map((r, i) => {
+    return colsBar() + formsCard() + res.results.map((r, i) => {
       if (r.error) return `<div class="conv-grade-note"><b>أمر ${i + 1}</b> <span class="conv-error">${esc(r.error)}</span></div>`;
       if (r.type === "register") {
         const cnt = (s) => r.rows.filter((x) => x.status === s).length;
@@ -585,8 +621,8 @@
         plan.push((c) => { const parts = clean(c).split(/\s+-\s*/); return [clean(parts[0]), clean(parts.slice(1).join(" - "))]; });
       } else { heads.push(h); plan.push((c) => [c]); }
     });
-    const rows = r.rows.map((x) => ({ cells: [].concat(...plan.map((f, i) => f(x.cells[i]))), course: iC >= 0 ? clean(x.cells[iC]) : "" }));
-    return Object.assign({}, r, { heads, rows });
+    const rows = r.rows.map((x) => ({ cells: [].concat(...plan.map((f, i) => f(x.cells[i]))), course: iC >= 0 ? clean(x.cells[iC]) : "", raw: x.cells }));
+    return Object.assign({}, r, { heads, rows, rawHeads: r.heads });
   }
 
   async function runCommands(commands) {
@@ -625,7 +661,7 @@
     try {
       const results = await runCommands(tracks.map((o) => Object.assign({ type: "list", label: o.t, params: { track_id: String(o.v) } }, details ? { details: true } : {})));
       const items = [];
-      results.forEach((r, k) => { if (r && r.type === "list") items.push({ trackId: String(tracks[k].v), heads: r.heads, rows: r.rows, details: r.details }); });
+      results.forEach((r, k) => { if (r && r.type === "list") items.push({ trackId: String(tracks[k].v), heads: r.heads, rawHeads: r.rawHeads, rows: r.rows, details: r.details }); });
       if (!items.length) throw new Error("لم تصل بيانات من الوكيل.");
       state.cache = { at: new Date(), details, items };
     } catch (err) { state.resultError = err.message || String(err); }
@@ -675,10 +711,10 @@
       const map = heads.map((h) => it.heads.indexOf(h));
       for (const r of it.rows) {
         const cells = it === items[0] ? r.cells : map.map((k) => (k < 0 ? "" : r.cells[k]));
-        if (tests.every((f) => f(cells, r))) rows.push({ cells, course: r.course });
+        if (tests.every((f) => f(cells, r))) rows.push({ cells, course: r.course, raw: r.raw });
       }
     }
-    return { type: "list", heads, rows };
+    return { type: "list", heads, rows, rawHeads: items[0].rawHeads };
   }
 
   const executeCommand = (command) => executeBatch([command], []);
@@ -775,6 +811,12 @@
           }
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
         } else if (act === "cols-all") { state.hiddenCols = new Set();
+        } else if (act === "to-forms") {
+          const { headers, rows } = feedData();
+          if (!rows.length) return ui.toast("لا صفوف لإخراجها");
+          const label = (state.labels[0] || "بيانات نظام المركز") + (state.results.results.length > 1 ? " وغيرها" : "");
+          App.converter.useData(headers, rows, label, { templateIds: state.tplPick.slice(), autoParse: true });
+          return;
         } else if (act === "cols-empty") { emptyHeads().forEach((h) => state.hiddenCols.add(h));
         } else if (act === "cols-none") { state.hiddenCols = new Set(resultHeads());
         } else if (act === "preload") { return preloadAll();
@@ -789,6 +831,11 @@
 
     box.addEventListener("change", async (e) => {
       const t = e.target;
+      if (t.dataset.tpl) {
+        const a = state.tplPick, at = a.indexOf(t.dataset.tpl);
+        if (t.checked && at < 0) a.push(t.dataset.tpl); else if (!t.checked && at >= 0) a.splice(at, 1);
+        render(); return;
+      }
       if (t.dataset.col != null) {
         if (t.checked) state.hiddenCols.delete(t.dataset.col); else state.hiddenCols.add(t.dataset.col);
         render(); return;

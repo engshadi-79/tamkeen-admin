@@ -2281,10 +2281,23 @@
   }
 
   /* بيانات جاهزة من صفحة «جداول البيانات» تُعتمد ملفَ بيانات هنا */
-  function useData(headers, rows, label) {
+  async function useData(headers, rows, label, opts) {
     state.mergedData = { headers: headers.slice(), rows: rows.map((r) => Object.assign({}, r)), count: rows.length, label };
     $("conv-data-file").value = "";
     renderMergedChip();
+    // من «أوامر المركز»: القالب (أو القوالب) محدد مسبقاً فنفتح خطوة المطابقة مباشرة
+    const want = (opts && opts.templateIds) || [];
+    if (want.some((id) => !state.savedTemplates.some((t) => t.id === id))) await refreshSaved();
+    const ids = want.filter((id) => state.savedTemplates.some((t) => t.id === id));
+    if (ids.length) {
+      state.mode = "saved";
+      state.selectedSavedId = ids[0];
+      state.extraSavedIds = ids.slice(1);
+      renderSource();
+      const tab = document.querySelector('[data-cv-tab="tpl"]');
+      if (tab) tab.click();
+      if (opts.autoParse) { handleParse(); return; }
+    }
     ui.toast("اختر القالب ثم اضغط «تحليل الملفين»");
     $("conv-parse").scrollIntoView({ behavior: "smooth", block: "center" });
   }
