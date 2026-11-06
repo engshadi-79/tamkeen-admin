@@ -935,3 +935,14 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 .cc-how { margin: 6px 0 10px; padding-inline-start: 22px; line-height: 2; }
 .cc-how li { font-size: .92rem; }
 .cc-req { color: #c0392b; font-weight: 700; }
+
+/* تقارير جاهزة */
+.cc-scripts { margin-bottom: 12px; }
+.cc-pick { margin: 10px 0; }
+.cc-pick > b { display: block; margin-bottom: 4px; font-size: .9rem; }
+.cc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cc-chk { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--line, #e1e5ec); border-radius: 999px; background: #fff; cursor: pointer; font-size: .88rem; }
+.cc-chk:has(input:checked) { background: #e8eefc; border-color: #5b7be0; font-weight: 700; }
+.cc-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cc-group { max-width: 280px; margin: 6px 0; }
+@media (max-width: 560px) { .cc-two { grid-template-columns: 1fr; } }

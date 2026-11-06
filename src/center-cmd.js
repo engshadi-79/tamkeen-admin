@@ -22,7 +22,68 @@
     autoRunRegister: false,
     needsAiKey: false,
     agentStatus: null,
+    sel: { tracks: [], stages: [], status: "", group_status: "", details: false }, // «تقارير جاهزة»
+    labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
+    groupFilter: "",     // تصفية العرض بعمود «المجموعة» إن وُجد في النتائج
   };
+
+  /* ===== تقارير جاهزة: اختيار مسارات/مراحل/حالة ثم تنفيذ =====
+     المسارات والدورات من مخطط النظام. «المرحلة» = دورة تدريبية (مسار + مرحلة)،
+     فنربط كل دورة بمسارها ومرحلتها من نصها. */
+  const STAGES = [{ k: "الاولى", t: "المرحلة الأولى" }, { k: "الثان", t: "المرحلة الثانية" }, { k: "الثالث", t: "المرحلة الثالثة" }];
+  const filterField = (name) => ((SCHEMA().studentFilters.fields || []).find((f) => f.name === name) || { options: [] });
+  const trackOpts = () => filterField("track_id").options.filter((o) => o.v);
+  function courseOpts() {
+    const tracks = trackOpts();
+    return filterField("training_course_id").options.filter((o) => o.v).map((o) => {
+      const t = norm(o.t);
+      const track = tracks.filter((k) => t.startsWith(norm(k.t))).sort((a, b) => b.t.length - a.t.length)[0];
+      const stage = STAGES.find((s) => t.includes(norm(s.k)));
+      return { v: String(o.v), t: o.t, track: track ? String(track.v) : "", stage: stage ? stage.k : "" };
+    });
+  }
+  const optLabel = (field, v) => ((filterField(field).options.find((o) => String(o.v) === String(v)) || {}).t) || v;
+
+  /* يحوّل الاختيار إلى أوامر: دورة لكل (مسار × مرحلة) حين تُختار مراحل، وإلا أمر لكل مسار */
+  function buildSelection() {
+    const s = state.sel;
+    const common = {};
+    if (s.status) common.status = s.status;
+    if (s.group_status) common.group_status = s.group_status;
+    const extra = [s.status && optLabel("status", s.status), s.group_status && optLabel("group_status", s.group_status)].filter(Boolean).join(" · ");
+    const mk = (params, label) => ({
+      command: Object.assign({ type: "list", label, params: Object.assign({}, params, common) }, s.details ? { details: true } : {}),
+      label: label + (extra ? " — " + extra : ""),
+    });
+    let out;
+    if (s.stages.length) {
+      const courses = courseOpts().filter((c) => s.stages.includes(c.stage) && (!s.tracks.length || s.tracks.includes(c.track)));
+      if (!courses.length) throw new Error("لا توجد دورة تجمع المسار والمرحلة المختارين.");
+      out = courses.map((c) => mk({ training_course_id: c.v }, c.t));
+    } else if (s.tracks.length) {
+      out = s.tracks.map((id) => mk({ track_id: id }, optLabel("track_id", id)));
+    } else {
+      if (!Object.keys(common).length) out = [mk({}, "كل الطلاب")];
+      else out = [mk({}, "الطلاب")];
+    }
+    return out;
+  }
+
+  function scriptsView() {
+    const s = state.sel;
+    const chk = (kind, v, text, on) => `<label class="cc-chk"><input type="checkbox" data-sel="${kind}" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(text)}</span></label>`;
+    const sel = (name) => `<label class="field"><span>${esc(filterField(name).label || name)}</span><select data-sel="${name}">${filterField(name).options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === s[name] ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>`;
+    let n = "";
+    try { n = buildSelection().length; } catch (e) { n = 0; }
+    return `<div class="conv-grade-note cc-scripts" id="cc-scripts"><b class="conv-label">تقارير جاهزة — اختر ثم نفّذ</b>
+      <p class="conv-hint">اترك أي قائمة دون اختيار لتشمل الكل. يُنفَّذ أمر قراءة لكل (مسار أو مرحلة) تختارها، ولا يُكتب شيء في نظام المركز.</p>
+      <div class="cc-pick"><b>المسارات</b><div class="cc-chips">${trackOpts().map((o) => chk("tracks", o.v, o.t.replace(/^مسار\s*/, ""), s.tracks.includes(String(o.v)))).join("")}</div></div>
+      <div class="cc-pick"><b>المراحل</b><div class="cc-chips">${STAGES.map((g) => chk("stages", g.k, g.t, s.stages.includes(g.k))).join("")}</div></div>
+      <div class="cc-pick cc-two">${sel("status")}${sel("group_status")}</div>
+      <div class="cc-pick">${chk("details", "1", "كل بيانات الطالب (الجنس، الميلاد، العنوان…) — أبطأ، حتى 400 طالب لكل أمر", s.details)}</div>
+      <div class="btn-row"><button type="button" class="btn navy" data-cc="run-selection" ${state.busy || !n ? "disabled" : ""}>نفّذ التقرير${n > 1 ? ` (${ui.fmt(n)} أوامر)` : ""}</button>
+        <button type="button" class="conv-link" data-cc="clear-selection">مسح الاختيار</button></div></div>`;
+  }
 
   /* ===== أسماء الأعمدة المحتملة لكل حقل ===== */
   const GUESS = {
@@ -357,10 +418,21 @@
       if (r.type === "lookup") {
         return `<div class="conv-grade-note"><b>استعلام</b>${r.items.map((it) => `<p class="conv-hint"><b>${esc(it.q)}</b> — ${it.count ? ui.fmt(it.count) + " نتيجة" : "لا نتيجة"}</p>${dnote(it.details)}${it.count ? tbl(it.heads, it.rows.map((x) => x.cells)) : ""}`).join("")}</div>`;
       }
-      return `<div class="conv-grade-note"><b>قائمة الطلاب</b> <span class="conv-hint">${ui.fmt(r.rows.length)} صفاً</span>${dnote(r.details)}
-        ${tbl(r.heads, r.rows.slice(0, 100).map((x) => x.cells))}
-        <div class="btn-row"><button type="button" class="conv-link" data-cc="export-list" data-i="${i}">تنزيل كل الصفوف Excel</button></div></div>`;
-    }).join("");
+      const gi = groupCol(r);
+      const rows = visibleRows(r);
+      const gsel = gi < 0 ? "" : `<label class="field cc-group"><span>المجموعة</span><select data-sel="groupFilter"><option value="">كل المجموعات</option>${groupValues(r, gi).map((g) => `<option value="${esc(g)}" ${g === state.groupFilter ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></label>`;
+      return `<div class="conv-grade-note"><b>${esc(state.labels[i] || "قائمة الطلاب")}</b> <span class="conv-hint">${ui.fmt(rows.length)}${rows.length !== r.rows.length ? " من " + ui.fmt(r.rows.length) : ""} صفاً</span>${dnote(r.details)}${gsel}
+        ${tbl(r.heads, rows.slice(0, 100).map((x) => x.cells))}
+        <div class="btn-row"><button type="button" class="conv-link" data-cc="export-list" data-i="${i}">تنزيل ${rows.length > 100 ? "كل الصفوف " : ""}Excel</button></div></div>`;
+    }).join("") + (res.results.filter((r) => r.type === "list").length > 1 ? `<div class="btn-row"><button type="button" class="btn secondary" data-cc="export-all">تنزيل الكل في ملف واحد (ورقة لكل أمر)</button></div>` : "");
+  }
+
+  /* عمود «المجموعة» إن وُجد في جدول النظام: يتيح تصفية العرض والتنزيل بمجموعة */
+  const groupCol = (r) => (r.heads || []).findIndex((h) => /مجموع/.test(h));
+  const groupValues = (r, gi) => [...new Set(r.rows.map((x) => clean(x.cells[gi])).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
+  function visibleRows(r) {
+    const gi = groupCol(r);
+    return gi < 0 || !state.groupFilter ? r.rows : r.rows.filter((x) => clean(x.cells[gi]) === state.groupFilter);
   }
 
   function render() {
@@ -370,6 +442,7 @@
     const adding = state.adding === "register" ? registerBuilder() : "";
     box.innerHTML = `
       <div class="cc-step"><span class="cv-step-tag">١</span> <b>ما الذي تريد من الوكيل أن يفعله؟</b></div>
+      ${scriptsView()}
       ${assistantView()}
       ${planView()}
       ${adding}
@@ -409,27 +482,34 @@
     }
   }
 
-  async function executeCommand(command) {
+  const executeCommand = (command) => executeBatch([command], []);
+
+  /* ينفّذ أمراً أو عدة أوامر بالتتابع. labels: عنوان كل نتيجة (اختياري) */
+  async function executeBatch(commands, labels) {
     state.busy = true; state.autoRunRegister = false; state.resultError = ""; state.results = null; state.adding = ""; state.proposal = null;
-    state.progress = ""; state.plan = null; state.planResolve = null;
+    state.progress = ""; state.plan = null; state.planResolve = null; state.labels = labels || []; state.groupFilter = "";
     render(); refreshStatus();
     try {
-      let result;
+      let results;
       if (App.centerAgent && await App.centerAgent.ready(500)) {
         // إضافة المتصفح: تفتح نظام المركز وتنفّذ، والموافقة على الكتابة هنا في الصفحة
-        const out = await App.centerAgent.run([command], {
+        const out = await App.centerAgent.run(commands, {
           onProgress: (t) => { state.progress = t; const el = $("cc-status"); if (el && !state.plan) el.textContent = t; },
           onPlan: (plan) => new Promise((resolve) => { state.plan = plan; state.planResolve = resolve; render(); }),
         });
-        result = (out.results || [])[0];
-        if (!result || result.error) throw new Error((result && result.error) || "لم تصل نتيجة من الوكيل.");
+        results = out.results || [];
       } else {
-        const res = await fetch("/api/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) });
-        const body = await res.json();
-        if (!res.ok || !body.ok) throw new Error(body.error || "تعذّر تنفيذ الأمر.");
-        result = body.result;
+        results = [];
+        for (const command of commands) {
+          const res = await fetch("/api/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) });
+          const body = await res.json();
+          if (!res.ok || !body.ok) throw new Error(body.error || "تعذّر تنفيذ الأمر.");
+          results.push(body.result);
+        }
       }
-      state.results = { results: [result] };
+      if (!results.length) throw new Error("لم تصل نتيجة من الوكيل.");
+      if (commands.length === 1 && results[0].error) throw new Error(results[0].error);
+      state.results = { results };
       state.requestText = "";
       state.reg = null;
     } catch (err) { state.resultError = err.message || String(err); }
@@ -483,7 +563,27 @@
           return exportBook("نتائج التسجيل.xlsx", ["الاسم", "الهوية", "النتيجة", "ملاحظة"], r.rows.map((x) => [x.name, x.nid, x.status, x.message || ""]));
         } else if (act === "export-list") {
           const r = state.results.results[i];
-          return exportBook("قائمة الطلاب.xlsx", r.heads, r.rows.map((x) => x.cells));
+          return exportBook((state.labels[i] || "قائمة الطلاب").replace(/[\\/:*?"<>|]/g, " ").slice(0, 80) + ".xlsx", r.heads, visibleRows(r).map((x) => x.cells));
+        } else if (act === "export-all") {
+          const wb = new ExcelJS.Workbook();
+          const used = new Set();
+          state.results.results.forEach((r, k) => {
+            if (r.type !== "list") return;
+            let name = (state.labels[k] || "قائمة " + (k + 1)).replace(/^مسار\s*/, "").replace(/[\\/?*[\]:]/g, " ").slice(0, 28).trim() || "ورقة";
+            while (used.has(name)) name = name.slice(0, 26) + " " + (used.size + 1);
+            used.add(name);
+            const ws = wb.addWorksheet(name);
+            ws.views = [{ rightToLeft: true }];
+            ws.addRow(r.heads); ws.getRow(1).font = { bold: true };
+            visibleRows(r).forEach((x) => ws.addRow(x.cells));
+            ws.columns.forEach((c) => { c.width = 22; });
+          });
+          return ui.download("تقرير المركز.xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        } else if (act === "run-selection") {
+          const plan = buildSelection();
+          return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label));
+        } else if (act === "clear-selection") {
+          state.sel = { tracks: [], stages: [], status: "", group_status: "", details: false };
         }
         render();
       } catch (err) { ui.toast(err.message); }
@@ -491,6 +591,18 @@
 
     box.addEventListener("change", async (e) => {
       const t = e.target;
+      if (t.dataset.sel) {
+        const k = t.dataset.sel;
+        if (k === "groupFilter") { state.groupFilter = t.value; render(); return; }
+        if (k === "tracks" || k === "stages") {
+          const a = state.sel[k], v = String(t.value), at = a.indexOf(v);
+          if (t.checked && at < 0) a.push(v); else if (!t.checked && at >= 0) a.splice(at, 1);
+        } else if (k === "details") state.sel.details = t.checked;
+        else state.sel[k] = t.value;
+        const holder = $("cc-scripts");
+        if (holder) holder.outerHTML = scriptsView();
+        return;
+      }
       if (t.id === "cc-reg-file") {
         const f = t.files[0];
         if (!f) return;
