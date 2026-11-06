@@ -400,6 +400,12 @@
     return `<p class="conv-grade-note">⚙ طُبِّقت الإعدادات الافتراضية المحفوظة لهذا القالب${prof.by ? ` (${esc(prof.by)}${when ? "، " + esc(when) : ""})` : ""}: الربط، والتجميع، والترقيم، والترتيب، ومصدر التقدير والمدربين. ما تغيّره الآن لهذا الكشف فقط حتى تحفظه. <button type="button" class="conv-link danger" id="conv-profile-delete">حذفها</button></p>`;
   }
 
+  /* آخر اختيار للترقيم التلقائي وترتيب الصفوف يبقى ثابتاً بين المرات (في هذا المتصفح)،
+     ويُطبَّق متى وُجد العمود، ما لم تحدد الإعدادات الافتراضية للقالب غير ذلك. */
+  const STICKY_KEY = "tamkeen-admin:conv-sticky";
+  const getSticky = () => { try { return JSON.parse(localStorage.getItem(STICKY_KEY)) || {}; } catch (e) { return {}; } };
+  const setSticky = (k, v) => { try { const o = getSticky(); o[k] = v; localStorage.setItem(STICKY_KEY, JSON.stringify(o)); } catch (e) { /* وضع التصفح الخاص */ } };
+
   const tracksList = () => ((App.store.get() || {}).tracks || []).filter((t) => t && t.name);
 
   /* المدربون من صفحة المسارات: يظهر إن كان في القالب عمود أو حقل ترويسة فيه «مدرب» */
@@ -1421,6 +1427,9 @@
       state.groupWeekdays = {};
       state.datesWeekdays = [];
       applyProfile();
+      const sticky = getSticky();
+      if (!state.autoNumberHeader && sticky.auto && templateHeaders.includes(sticky.auto)) state.autoNumberHeader = sticky.auto;
+      if (!state.sortRowsBy && sticky.sort) state.sortRowsBy = data.headers.includes(sticky.sort) ? sticky.sort : (core().resolveDefaultColumn(sticky.sort, data.headers) || "");
       core().preferTrackData(state.mapping, templateHeaders.filter((h) => !state.userMappings?.[h] && !String(state.constants[h] || "").trim()), data.headers, data.rows, true);
       state.trackDataAutoMapped = Object.fromEntries(templateHeaders.filter((h) => core().trackDataFieldFor(h) && state.mapping[h] === core().trackDataFieldFor(h)).map((h) => [h, state.mapping[h]]));
       refreshTrackPlaceholders();
@@ -2032,8 +2041,8 @@
       case "conv-dates": state.datesEnabled = t.checked; break;
       case "conv-dates-start": state.datesStart = t.value; return;
       case "conv-dates-end": state.datesEnd = t.value; return;
-      case "conv-autonum": state.autoNumberHeader = t.value; break;
-      case "conv-sort": state.sortRowsBy = t.value; return;
+      case "conv-autonum": state.autoNumberHeader = t.value; setSticky("auto", t.value); break;
+      case "conv-sort": state.sortRowsBy = t.value; setSticky("sort", t.value); return;
       default:
         if (t.dataset.gday != null) {
           const key = lastDistinctGroups[Number(t.dataset.gday)].key;
