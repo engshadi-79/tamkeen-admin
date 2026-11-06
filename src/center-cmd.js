@@ -483,6 +483,9 @@
         const o = {};
         raw.forEach((h, i) => { o[h] = (x.raw || x.cells)[i]; });
         r.heads.forEach((h, i) => { if (!(h in o)) o[h] = x.cells[i]; });
+        // عمود «الطالب» الأصلي يجمع الاسم والاسم الإنجليزي والأرقام؛ القوالب تريد الاسم وحده
+        const iName = r.heads.indexOf("الاسم");
+        if (iName >= 0 && "الطالب" in o && raw.includes("الطالب")) o["الطالب"] = x.cells[iName];
         rows.push(o);
       });
     });
