@@ -422,13 +422,24 @@
     if (!idx.length) idx = heads.map((h, i) => i);
     return [idx.map((i) => heads[i]), cellRows.map((c) => idx.map((i) => c[i]))];
   }
+  /* أعمدة فارغة في كل الصفوف المعروضة (لا قيمة فيها لأي طالب) */
+  function emptyHeads() {
+    const filled = new Set();
+    const all = resultHeads();
+    ((state.results && state.results.results) || []).forEach((r) => {
+      const lists = r.type === "lookup" ? (r.items || []) : r.type === "list" ? [r] : [];
+      lists.forEach((l) => (l.rows || []).forEach((x) => (l.heads || []).forEach((h, i) => { if (clean(x.cells[i])) filled.add(h); })));
+    });
+    return all.filter((h) => !filled.has(h));
+  }
   function colsBar() {
     const heads = resultHeads();
     if (!heads.length) return "";
     const on = heads.filter((h) => !state.hiddenCols.has(h)).length;
     return `<div class="conv-grade-note cc-cols"><b class="conv-label">الأعمدة التي تظهر في الجدول وملف Excel (${ui.fmt(on)} من ${ui.fmt(heads.length)})</b>
       <div class="cc-chips">${heads.map((h) => `<label class="cc-chk"><input type="checkbox" data-col="${esc(h)}" ${state.hiddenCols.has(h) ? "" : "checked"}> <span>${esc(h)}</span></label>`).join("")}</div>
-      <div class="btn-row"><button type="button" class="conv-link" data-cc="cols-all">إظهار الكل</button><button type="button" class="conv-link" data-cc="cols-none">إخفاء الكل</button></div>
+      ${(() => { const e = emptyHeads().filter((h) => !state.hiddenCols.has(h)); return e.length ? `<p class="conv-hint">${ui.fmt(e.length)} عموداً فارغ عند كل الطلاب المعروضين: ${esc(e.join("، "))}. إما أنها غير مُعبَّأة في النظام، أو لا يحملها نموذج التعديل.</p>` : ""; })()}
+      <div class="btn-row"><button type="button" class="conv-link" data-cc="cols-all">إظهار الكل</button><button type="button" class="conv-link" data-cc="cols-none">إخفاء الكل</button><button type="button" class="conv-link" data-cc="cols-empty">إخفاء الأعمدة الفارغة</button></div>
       ${on === 0 ? '<p class="conv-hint">لم تبقِ عموداً؛ سيُعرض كل شيء حتى تختار.</p>' : ""}</div>`;
   }
 
@@ -739,6 +750,7 @@
           }
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label));
         } else if (act === "cols-all") { state.hiddenCols = new Set();
+        } else if (act === "cols-empty") { emptyHeads().forEach((h) => state.hiddenCols.add(h));
         } else if (act === "cols-none") { state.hiddenCols = new Set(resultHeads());
         } else if (act === "preload") { return preloadAll();
         } else if (act === "preload-details") { state.sel.details = true; state.fallbackNote = ""; return preloadAll();
