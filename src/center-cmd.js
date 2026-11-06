@@ -24,6 +24,7 @@
     agentStatus: null,
     sel: { tracks: [], stages: [], status: "", group_status: "", details: false }, // «تقارير جاهزة»
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
+    hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
     fallbackNote: "",    // سبب عدم استعمال الذاكرة في آخر تنفيذ
     cache: null,         // نسخة محمّلة من كل البيانات في ذاكرة الصفحة فقط: { at, details, items:[{trackId,heads,rows}] }
     groupFilter: "",     // تصفية العرض بعمود «المجموعة» إن وُجد في النتائج
@@ -406,12 +407,37 @@
         <button type="button" class="conv-link" data-cc="plan-no">إلغاء</button></div></div>`;
   }
 
+  /* ===== اختيار الأعمدة: تنطبق على الجدول المعروض وعلى كل ملفات Excel ===== */
+  function resultHeads() {
+    const seen = [];
+    ((state.results && state.results.results) || []).forEach((r) => {
+      const lists = r.type === "lookup" ? (r.items || []) : r.type === "list" ? [r] : [];
+      lists.forEach((l) => (l.heads || []).forEach((h) => { if (!seen.includes(h)) seen.push(h); }));
+    });
+    return seen;
+  }
+  /* يعيد [أعمدة، صفوف] بعد حذف المخفي؛ إن أُخفيت كلها نُظهرها كلها بدل ملف فارغ */
+  function shown(heads, cellRows) {
+    let idx = heads.map((h, i) => i).filter((i) => !state.hiddenCols.has(heads[i]));
+    if (!idx.length) idx = heads.map((h, i) => i);
+    return [idx.map((i) => heads[i]), cellRows.map((c) => idx.map((i) => c[i]))];
+  }
+  function colsBar() {
+    const heads = resultHeads();
+    if (!heads.length) return "";
+    const on = heads.filter((h) => !state.hiddenCols.has(h)).length;
+    return `<div class="conv-grade-note cc-cols"><b class="conv-label">الأعمدة التي تظهر في الجدول وملف Excel (${ui.fmt(on)} من ${ui.fmt(heads.length)})</b>
+      <div class="cc-chips">${heads.map((h) => `<label class="cc-chk"><input type="checkbox" data-col="${esc(h)}" ${state.hiddenCols.has(h) ? "" : "checked"}> <span>${esc(h)}</span></label>`).join("")}</div>
+      <div class="btn-row"><button type="button" class="conv-link" data-cc="cols-all">إظهار الكل</button><button type="button" class="conv-link" data-cc="cols-none">إخفاء الكل</button></div>
+      ${on === 0 ? '<p class="conv-hint">لم تبقِ عموداً؛ سيُعرض كل شيء حتى تختار.</p>' : ""}</div>`;
+  }
+
   function resultsView() {
     const res = state.results;
     if (!res) return "";
     const tbl = (heads, rows) => `<div class="cc-scroll"><table class="cc-table"><thead><tr>${heads.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
     const STATUS = { created: "✓ سُجّل", exists: "موجود أصلاً", invalid: "غير صالح", failed: "✗ فشل", unverified: "؟ تحقق يدوياً", skipped: "لم يُنفَّذ" };
-    return res.results.map((r, i) => {
+    return colsBar() + res.results.map((r, i) => {
       if (r.error) return `<div class="conv-grade-note"><b>أمر ${i + 1}</b> <span class="conv-error">${esc(r.error)}</span></div>`;
       if (r.type === "register") {
         const cnt = (s) => r.rows.filter((x) => x.status === s).length;
@@ -422,13 +448,13 @@
       }
       const dnote = (d) => d && d.error ? `<p class="conv-error">${esc(d.error)}</p>` : d ? `<p class="conv-hint">بيانات كاملة لـ${ui.fmt(d.read)} من ${ui.fmt(d.of)}${d.capped ? " (الحد الأقصى للقراءة الكاملة؛ قسّم الطلب)" : ""}.</p>` : "";
       if (r.type === "lookup") {
-        return `<div class="conv-grade-note"><b>استعلام</b>${r.items.map((it) => `<p class="conv-hint"><b>${esc(it.q)}</b> — ${it.count ? ui.fmt(it.count) + " نتيجة" : "لا نتيجة"}</p>${dnote(it.details)}${it.count ? tbl(it.heads, it.rows.map((x) => x.cells)) : ""}`).join("")}</div>`;
+        return `<div class="conv-grade-note"><b>استعلام</b>${r.items.map((it) => `<p class="conv-hint"><b>${esc(it.q)}</b> — ${it.count ? ui.fmt(it.count) + " نتيجة" : "لا نتيجة"}</p>${dnote(it.details)}${it.count ? tbl(...shown(it.heads, it.rows.map((x) => x.cells))) : ""}`).join("")}</div>`;
       }
       const gi = groupCol(r);
       const rows = visibleRows(r);
       const gsel = gi < 0 ? "" : `<label class="field cc-group"><span>المجموعة</span><select data-sel="groupFilter"><option value="">كل المجموعات</option>${groupValues(r, gi).map((g) => `<option value="${esc(g)}" ${g === state.groupFilter ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></label>`;
       return `<div class="conv-grade-note"><b>${esc(state.labels[i] || "قائمة الطلاب")}</b> <span class="conv-hint">${ui.fmt(rows.length)}${rows.length !== r.rows.length ? " من " + ui.fmt(r.rows.length) : ""} صفاً</span>${dnote(r.details)}${gsel}
-        ${tbl(r.heads, rows.slice(0, 100).map((x) => x.cells))}
+        ${tbl(...shown(r.heads, rows.slice(0, 100).map((x) => x.cells)))}
         <div class="btn-row"><button type="button" class="conv-link" data-cc="export-list" data-i="${i}">تنزيل ${rows.length > 100 ? "كل الصفوف " : ""}Excel</button></div></div>`;
     }).join("") + (res.results.filter((r) => r.type === "list").length > 1 ? `<div class="btn-row"><button type="button" class="btn secondary" data-cc="export-all">تنزيل الكل في ملف واحد (ورقة لكل أمر)</button></div>` : "");
   }
@@ -684,7 +710,7 @@
           return exportBook("نتائج التسجيل.xlsx", ["الاسم", "الهوية", "النتيجة", "ملاحظة"], r.rows.map((x) => [x.name, x.nid, x.status, x.message || ""]));
         } else if (act === "export-list") {
           const r = state.results.results[i];
-          return exportBook((state.labels[i] || "قائمة الطلاب").replace(/[\\/:*?"<>|]/g, " ").slice(0, 80) + ".xlsx", r.heads, visibleRows(r).map((x) => x.cells));
+          return exportBook((state.labels[i] || "قائمة الطلاب").replace(/[\\/:*?"<>|]/g, " ").slice(0, 80) + ".xlsx", ...shown(r.heads, visibleRows(r).map((x) => x.cells)));
         } else if (act === "export-all") {
           const wb = new ExcelJS.Workbook();
           const used = new Set();
@@ -695,8 +721,9 @@
             used.add(name);
             const ws = wb.addWorksheet(name);
             ws.views = [{ rightToLeft: true }];
-            ws.addRow(r.heads); ws.getRow(1).font = { bold: true };
-            visibleRows(r).forEach((x) => ws.addRow(x.cells));
+            const [hh, rr] = shown(r.heads, visibleRows(r).map((x) => x.cells));
+            ws.addRow(hh); ws.getRow(1).font = { bold: true };
+            rr.forEach((c) => ws.addRow(c));
             ws.columns.forEach((c) => { c.width = 22; });
           });
           return ui.download("تقرير المركز.xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
@@ -711,6 +738,8 @@
             render(); return;
           }
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label));
+        } else if (act === "cols-all") { state.hiddenCols = new Set();
+        } else if (act === "cols-none") { state.hiddenCols = new Set(resultHeads());
         } else if (act === "preload") { return preloadAll();
         } else if (act === "preload-details") { state.sel.details = true; state.fallbackNote = ""; return preloadAll();
         } else if (act === "drop-cache") { state.cache = null;
@@ -723,6 +752,10 @@
 
     box.addEventListener("change", async (e) => {
       const t = e.target;
+      if (t.dataset.col != null) {
+        if (t.checked) state.hiddenCols.delete(t.dataset.col); else state.hiddenCols.add(t.dataset.col);
+        render(); return;
+      }
       if (t.dataset.sel) {
         const k = t.dataset.sel;
         if (k === "groupFilter") { state.groupFilter = t.value; render(); return; }
