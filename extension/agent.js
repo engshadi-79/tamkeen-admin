@@ -19,6 +19,7 @@ window.__kxStart = async () => {
   const ALLOW = [
     ["GET", /^\/admin\/students(\?[^#]*)?$/],     // قائمة الطلاب والبحث
     ["GET", /^\/admin\/students\/create$/],       // نموذج الإضافة (لجلب رمز الحماية طازجاً)
+    ["GET", /^\/admin\/students\/\d+\/edit$/],   // بيانات طالب كاملة — قراءة فقط، لا يُرسَل منها شيء
     ["POST", /^\/admin\/students$/],              // إضافة طالب
   ];
   const guard = (method, path) => {
@@ -33,7 +34,7 @@ window.__kxStart = async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const parse = (html) => new DOMParser().parseFromString(html, "text/html");
   const digits = (s) => String(s == null ? "" : s).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, "");
-  const GET_GAP = 700, POST_GAP = 1500, MAX_ROWS = 300, MAX_FAILS = 3;
+  const GET_GAP = 700, POST_GAP = 1500, MAX_ROWS = 300, MAX_FAILS = 3, MAX_DETAILS = 400;
 
   /* ===== اللوحة ===== */
   let stopped = false;
@@ -78,6 +79,8 @@ window.__kxStart = async () => {
     const res = await fetch(path, { method, body, credentials: "same-origin", redirect: "follow" });
     if (/\/login/i.test(new URL(res.url).pathname)) throw new Error("انتهت الجلسة — سجّل الدخول ثم أعد التشغيل");
     if (res.status === 419) throw new Error("انتهى رمز الحماية (419) — أعد المحاولة");
+    if (res.status === 404) throw new Error("الصفحة غير موجودة (404)");
+    if (res.status === 403) throw new Error("ليست لديك صلاحية لهذه الصفحة (403)");
     if (res.status >= 500) throw new Error("خطأ من الخادم HTTP " + res.status);
     return { res, doc: parse(await res.text()) };
   }
@@ -121,6 +124,51 @@ window.__kxStart = async () => {
     .map((k) => encodeURIComponent(k) + "=" + encodeURIComponent(o[k])).join("&");
 
   /* ===== الأوامر ===== */
+  /* بيانات الطالب من نموذج تعديله: لكل حقل عنوانه وقيمته كما تُعرض (نص الخيار المحدَّد
+     لا رمزه). لا كلمات مرور ولا رموز حماية ولا ملفات. */
+  const SKIP_FIELD = /^(_token|_method|password|password_confirmation|must_change_password|clear_password)$/;
+  function fieldLabel(el, doc) {
+    const id = el.getAttribute("id");
+    let t = "";
+    if (id) { const l = doc.querySelector('label[for="' + CSS.escape(id) + '"]'); if (l) t = clean(l.textContent); }
+    if (!t) { const l = el.closest("label"); if (l && !l.querySelector("select,textarea")) t = clean(l.textContent); }
+    if (!t) {
+      const row = el.closest(".form-group, .mb-3, .col, td, div");
+      const l = row && row.querySelector("label, .form-label, th");
+      if (l) t = clean(l.textContent);
+    }
+    return t.replace(/\s*\*\s*$/, "").slice(0, 60);
+  }
+  function readStudentForm(doc) {
+    const form = [...doc.querySelectorAll("form")].find((f) => f.querySelector('[name="full_name"]'));
+    const out = {};
+    if (!form) return out;
+    const seenRadio = new Set();
+    form.querySelectorAll("input,select,textarea").forEach((el) => {
+      const name = el.getAttribute("name");
+      const type = (el.getAttribute("type") || el.tagName).toLowerCase();
+      if (!name || SKIP_FIELD.test(name) || ["hidden", "file", "submit", "button", "image", "password"].includes(type)) return;
+      const key = fieldLabel(el, doc) || name;
+      let v = "";
+      if (el.tagName === "SELECT") {
+        const o = el.options[el.selectedIndex];
+        v = o && o.value !== "" ? clean(o.textContent) : "";
+      } else if (type === "checkbox") {
+        v = el.checked ? "نعم" : "لا";
+      } else if (type === "radio") {
+        if (seenRadio.has(name)) return;
+        seenRadio.add(name);
+        const on = form.querySelector('input[type="radio"][name="' + CSS.escape(name) + '"]:checked');
+        v = on ? clean((on.closest("label") || {}).textContent || on.value) : "";
+      } else {
+        v = clean(el.value);
+      }
+      if (key in out && out[key]) return;
+      out[key] = v;
+    });
+    return out;
+  }
+
   const results = [];
   const save = () => {
     const blob = new Blob([JSON.stringify({ v: 1, at: new Date().toISOString(), results }, null, 2)], { type: "application/json" });
@@ -135,6 +183,39 @@ window.__kxStart = async () => {
     return t.rows.filter((r) => digits(r.cells.join(" ")).includes(nid));
   }
 
+  /* «كل البيانات»: صفحة تعديل كل طالب تُقرأ (GET فقط) وتُلحَق أعمدتها بالجدول.
+     out = { heads, rows:[{id, cells}] }؛ يُعدَّل في مكانه ويُضاف out.details. */
+  async function addDetails(out, max) {
+    const targets = out.rows.filter((r) => r.id).slice(0, max);
+    const extra = [];
+    let fails = 0;
+    for (let i = 0; i < targets.length && !stopped; i++) {
+      say("قراءة بيانات الطالب " + (i + 1) + " من " + targets.length);
+      try {
+        await sleep(GET_GAP);
+        const { doc } = await http("GET", "/admin/students/" + targets[i].id + "/edit");
+        targets[i].detail = readStudentForm(doc);
+        if (!Object.keys(targets[i].detail).length) { delete targets[i].detail; throw new Error("لا نموذج بيانات في الصفحة"); }
+        Object.keys(targets[i].detail).forEach((k) => { if (!extra.includes(k)) extra.push(k); });
+        fails = 0;
+      } catch (e) {
+        if (/الجلسة/.test(e.message)) throw e;
+        fails++;
+        log("تعذّرت بيانات الطالب " + targets[i].id + ": " + e.message);
+        if (fails >= MAX_FAILS) { log("توقّفت القراءة بعد " + MAX_FAILS + " إخفاقات متتالية."); break; }
+      }
+    }
+    // أعمدة التفاصيل بعد أعمدة الجدول، دون تكرار عنوان موجود فيه
+    const read = targets.filter((r) => r.detail).length;
+    const have = new Set(out.heads);
+    const cols = extra.filter((k) => !have.has(k));
+    out.heads = out.heads.concat(cols);
+    out.rows.forEach((r) => { r.cells = r.cells.concat(cols.map((k) => (r.detail && r.detail[k]) || "")); delete r.detail; });
+    out.details = { read, of: out.rows.length, capped: out.rows.length > max };
+    if (!read && targets.length) out.details.error = "تعذّرت قراءة صفحات بيانات الطلاب (تحقق من صلاحياتك).";
+    log("بيانات كاملة لـ" + read + " طالباً.");
+  }
+
   async function cmdLookup(cmd, index) {
     const out = { index, type: "lookup", label: cmd.label || "", items: [] };
     for (const it of cmd.items || []) {
@@ -145,7 +226,9 @@ window.__kxStart = async () => {
       const t = tableRows(doc);
       const isNid = digits(it.q).length >= 9 && digits(it.q) === String(it.q).replace(/\s/g, "");
       const rows = isNid ? t.rows.filter((r) => digits(r.cells.join(" ")).includes(digits(it.q))) : t.rows;
-      out.items.push({ q: it.q, count: rows.length, heads: t.heads, rows: rows.slice(0, 30) });
+      const item = { q: it.q, count: rows.length, heads: t.heads, rows: rows.slice(0, 30) };
+      if (cmd.details && item.rows.length && !stopped) await addDetails(item, 10);
+      out.items.push(item);
       log((rows.length ? "وُجد " + rows.length : "لا نتيجة") + " ← " + it.q);
     }
     return out;
@@ -164,6 +247,8 @@ window.__kxStart = async () => {
       path = nextPath(doc);
     }
     log("القائمة: " + out.rows.length + " صفاً");
+
+    if (cmd.details && !stopped) await addDetails(out, MAX_DETAILS);
     return out;
   }
 
