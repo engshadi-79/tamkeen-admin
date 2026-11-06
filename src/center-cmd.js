@@ -24,6 +24,7 @@
     agentStatus: null,
     sel: { tracks: [], stages: [], status: "", group_status: "", details: false }, // «تقارير جاهزة»
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
+    fallbackNote: "",    // سبب عدم استعمال الذاكرة في آخر تنفيذ
     cache: null,         // نسخة محمّلة من كل البيانات في ذاكرة الصفحة فقط: { at, details, items:[{trackId,heads,rows}] }
     groupFilter: "",     // تصفية العرض بعمود «المجموعة» إن وُجد في النتائج
   };
@@ -85,6 +86,7 @@
       <div class="cc-pick cc-cache">${state.cache
         ? `<span class="conv-hint">⚡ البيانات محمّلة: ${ui.fmt(state.cache.items.reduce((n, it) => n + it.rows.length, 0))} طالباً${state.cache.details ? " ببياناتهم الكاملة" : ""} (${state.cache.at.toLocaleTimeString("ar")}) — التقارير تظهر فوراً. </span><button type="button" class="conv-link" data-cc="preload" ${state.busy ? "disabled" : ""}>تحديث</button> <button type="button" class="conv-link" data-cc="drop-cache">مسح الذاكرة</button>`
         : `<button type="button" class="btn secondary small" data-cc="preload" ${state.busy ? "disabled" : ""}>⚡ حمّل كل البيانات مرة واحدة (اختياري)</button> <span class="conv-hint">تُحفظ في هذه الصفحة فقط فتصير التقارير فورية. تُحمَّل «كل بيانات الطالب» إن فعّلت خيارها.</span>`}</div>
+      ${state.fallbackNote ? `<p class="conv-error" role="status">نُفِّذ من الموقع لا من الذاكرة — ${esc(state.fallbackNote)}</p>` : ""}
       <div class="btn-row"><button type="button" class="btn navy" data-cc="run-selection" ${state.busy || !n ? "disabled" : ""}>نفّذ التقرير${n > 1 ? ` (${ui.fmt(n)} أوامر)` : ""}</button>
         <button type="button" class="conv-link" data-cc="clear-selection">مسح الاختيار</button></div></div>`;
   }
@@ -527,34 +529,37 @@
   }
 
   /* يحاول حساب أمر قائمة من الذاكرة؛ يعيد null إن تعذّر (فيُنفَّذ مباشرة) */
+  let cacheWhy = "";
   function localList(p) {
+    cacheWhy = "";
     const c = state.cache;
     if (!c) return null;
     const cmd = p.command, q = cmd.params || {};
-    if (cmd.details && !c.details) return null;
+    if (cmd.details && !c.details) { cacheWhy = "الذاكرة محمّلة بدون «كل بيانات الطالب»؛ فعّل الخيار وأعد التحميل."; return null; }
     let items = c.items;
     let course = null;
     if (q.training_course_id) course = courseOpts().find((x) => x.v === q.training_course_id);
     const wantTrack = q.track_id || (course && course.track);
     if (wantTrack) items = items.filter((it) => it.trackId === String(wantTrack));
-    if (!items.length) return null;
+    if (!items.length) { cacheWhy = "لم يُحمَّل هذا المسار في الذاكرة."; return null; }
     const heads = items[0].heads;
-    const col = (rx) => heads.findIndex((h) => rx.test(h));
+    const col = (rx) => heads.findIndex((h) => rx.test(norm(h)));
+    const lack = (what) => { cacheWhy = `لا يوجد في الجدول عمود «${what}» للتصفية به. الأعمدة المتاحة: ${heads.join("، ")}`; return null; };
     const tests = [];
     if (q.training_course_id) {
-      const i = col(/دورة|مرحلة/);
-      if (i < 0 || !course) return null;
+      const i = col(/دور|مرحل/);
+      if (i < 0 || !course) return lack("الدورة/المرحلة");
       tests.push((cells) => norm(cells[i]).includes(norm(course.t)));
     }
     if (q.status) {
       const i = col(/حال/);
-      if (i < 0) return null;
+      if (i < 0) return lack("الحالة");
       const t = norm(optLabel("status", q.status));
-      tests.push((cells) => norm(cells[i]) === t);
+      tests.push((cells) => norm(cells[i]) === t || norm(cells[i]).includes(t));
     }
     if (q.group_status) {
       const i = col(/مجموع/);
-      if (i < 0) return null;
+      if (i < 0) return lack("المجموعة/التوزيع");
       const unassigned = (cells) => { const v = clean(cells[i]); return !v || /^[-–—]+$/.test(v) || /غير\s*موزع|لا يوجد/.test(v); };
       tests.push((cells) => (q.group_status === "unassigned" ? unassigned(cells) : !unassigned(cells)));
     }
@@ -653,8 +658,10 @@
           return ui.download("تقرير المركز.xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         } else if (act === "run-selection") {
           const plan = buildSelection();
-          const local = state.cache ? plan.map(localList) : [];
-          if (local.length && local.every(Boolean)) {
+          state.fallbackNote = "";
+          const local = [];
+          if (state.cache) for (const x of plan) { const r = localList(x); if (!r) { state.fallbackNote = cacheWhy; break; } local.push(r); }
+          if (local.length && local.length === plan.length) {
             state.resultError = ""; state.groupFilter = ""; state.labels = plan.map((x) => x.label + " ⚡");
             state.results = { results: local };
             render(); return;
