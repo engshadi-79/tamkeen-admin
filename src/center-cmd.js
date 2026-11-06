@@ -86,7 +86,7 @@
       <div class="cc-pick cc-cache">${state.cache
         ? `<span class="conv-hint">⚡ البيانات محمّلة: ${ui.fmt(state.cache.items.reduce((n, it) => n + it.rows.length, 0))} طالباً${state.cache.details ? " ببياناتهم الكاملة" : ""} (${state.cache.at.toLocaleTimeString("ar")}) — التقارير تظهر فوراً. </span><button type="button" class="conv-link" data-cc="preload" ${state.busy ? "disabled" : ""}>تحديث</button> <button type="button" class="conv-link" data-cc="drop-cache">مسح الذاكرة</button>`
         : `<button type="button" class="btn secondary small" data-cc="preload" ${state.busy ? "disabled" : ""}>⚡ حمّل كل البيانات مرة واحدة (اختياري)</button> <span class="conv-hint">تُحفظ في هذه الصفحة فقط فتصير التقارير فورية. تُحمَّل «كل بيانات الطالب» إن فعّلت خيارها.</span>`}</div>
-      ${state.fallbackNote ? `<p class="conv-error" role="status">نُفِّذ من الموقع لا من الذاكرة — ${esc(state.fallbackNote)}</p>` : ""}
+      ${state.fallbackNote ? `<p class="conv-error" role="status">نُفِّذ من الموقع لا من الذاكرة — ${esc(state.fallbackNote)}</p>${state.fallbackNote.includes("بدون") ? '<button type="button" class="btn secondary small" data-cc="preload-details">⚡ أعد التحميل ببيانات كاملة الآن</button>' : ""}` : ""}
       <div class="btn-row"><button type="button" class="btn navy" data-cc="run-selection" ${state.busy || !n ? "disabled" : ""}>نفّذ التقرير${n > 1 ? ` (${ui.fmt(n)} أوامر)` : ""}</button>
         <button type="button" class="conv-link" data-cc="clear-selection">مسح الاختيار</button></div></div>`;
   }
@@ -668,6 +668,7 @@
           }
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label));
         } else if (act === "preload") { return preloadAll();
+        } else if (act === "preload-details") { state.sel.details = true; state.fallbackNote = ""; return preloadAll();
         } else if (act === "drop-cache") { state.cache = null;
         } else if (act === "clear-selection") {
           state.sel = { tracks: [], stages: [], status: "", group_status: "", details: false };
