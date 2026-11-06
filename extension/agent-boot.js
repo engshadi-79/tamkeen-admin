@@ -11,12 +11,17 @@
 
   const bind = (remote) => {
     if (!remote) { window.__kxProgress = window.__kxApprove = window.__kxDone = undefined; return; }
-    let last = 0;
+    // لا نغرق الصفحة بتحديثات: رسالة كل 150ms على الأكثر، لكن **آخر** رسالة تصل دائماً
+    let last = 0, timer = null, latest = "";
+    const flush = () => {
+      timer = null; last = Date.now();
+      chrome.runtime.sendMessage({ type: "progress", text: latest }).catch(() => {});
+    };
     window.__kxProgress = (text) => {
-      const now = Date.now();
-      if (now - last < 150) return;                 // لا نغرق الصفحة بتحديثات
-      last = now;
-      chrome.runtime.sendMessage({ type: "progress", text }).catch(() => {});
+      latest = text;
+      const wait = 150 - (Date.now() - last);
+      if (wait <= 0) flush();
+      else if (!timer) timer = setTimeout(flush, wait);
     };
     window.__kxApprove = (plan) => new Promise((resolve) => {
       approvalResolve = resolve;

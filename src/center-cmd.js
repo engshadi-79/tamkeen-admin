@@ -166,6 +166,7 @@
       || raw.match(/(?:شو|كيف|وين|ايش|إيش)\s+(?:(?:وضع|حاله|حالة|بيانات)\s+)?(.+)$/iu);
     if (!match) return [];
     let target = clean(match[1]);
+    target = target.replace(/^(?:(?:كل|جميع|كامل)\s+)?(?:ال)?(?:بيانات|معلومات|تفاصيل)\s*/iu, "");     // قبل فحص «قائمة أم شخص؟»
     if (/^(?:قائمه|القائمه|لسته|اللسته|كشف|كشوف|تقرير|سجل|كل|جميع|طلاب|الطلاب|طلبه|الطلبه|طالبات|الطالبات|المتدربين|المتدربات|المستفيدين|المستفيدات|المتخرجين|المتخرجات|الخريجين|الخريجات|المسجلين|المسجلات|الناجحين|الناجحات|المنسحبين|المنسحبات|النشطين|النشطات)(?:\s|$)/iu.test(norm(target))) return [];
     target = target.replace(/^(?:اذا|إذا|هل|لو|ان|إن)\s+/iu, "");
     for (let i = 0; i < 3; i++) target = target.replace(/^(?:(?:ال)?(?:طالب|طالبه|متدرب|متدربه|مستفيد|مستفيده)|اسم|بيانات|معلومات|ملف|حاله|حالة|هويه|هوية|رقم\s*(?:الهويه|الهوية|الجوال|التواصل))\s*[:：-]?\s*/iu, "");
@@ -225,7 +226,10 @@
     const targets = privateSearchTarget(raw);
     const searchVerb = /(دور|فتش|ابحث|بحث|اشوف|شوف|اجيب|جيب|هات|اطلع|طلع|لقي|اعرف|عرفني|خبرني|احكيلي|سيرش|search|استعلم|تحقق|اعثر)/.test(n);
     const askAbout = /(شو|ايش|كيف|وين)\s+(وضع|حاله|بيانات|معلومات|رقم)/.test(n);
-    if (targets.length && (searchVerb || askAbout)) return { type: "lookup", label: "استعلام من الطلب", items: targets.map((q) => ({ q })) };
+    const wantsDetails = /(بيانات|معلومات|تفاصيل|تفصيل)/.test(n);       // «كل بيانات …» لا أعمدة الجدول فقط
+    if (targets.length && (searchVerb || askAbout)) {
+      return Object.assign({ type: "lookup", label: "استعلام من الطلب", items: targets.map((q) => ({ q })) }, wantsDetails ? { details: true } : {});
+    }
     // قائمة طلاب
     if (!/(طلاب|طلبه|طالبات|متدرب|متخرج|خريج|منسحب|نشط|مسجل|موقوف|مستفيد|قائمه|لسته|كشف)/.test(n)) return null;
     const f = SCHEMA().studentFilters.fields;
@@ -259,7 +263,7 @@
     if (!Object.keys(params).length && !all) {
       return { error: "هل تريد قائمة كل الطلاب؟ حدّد المسار أو الحالة، أو قل صراحة «كل الطلاب»." };
     }
-    return { type: "list", label: "قائمة من الطلب", params };
+    return Object.assign({ type: "list", label: "قائمة من الطلب", params }, wantsDetails ? { details: true } : {});
   }
 
   async function interpretRequest(raw) {
@@ -349,10 +353,11 @@
           ${tbl(["الاسم", "الهوية", "النتيجة", "ملاحظة"], r.rows.map((x) => [x.name, x.nid, STATUS[x.status] || x.status, x.message || ""]))}
           <div class="btn-row"><button type="button" class="conv-link" data-cc="export-reg" data-i="${i}">تنزيل Excel</button></div></div>`;
       }
+      const dnote = (d) => d && d.error ? `<p class="conv-error">${esc(d.error)}</p>` : d ? `<p class="conv-hint">بيانات كاملة لـ${ui.fmt(d.read)} من ${ui.fmt(d.of)}${d.capped ? " (الحد الأقصى للقراءة الكاملة؛ قسّم الطلب)" : ""}.</p>` : "";
       if (r.type === "lookup") {
-        return `<div class="conv-grade-note"><b>استعلام</b>${r.items.map((it) => `<p class="conv-hint"><b>${esc(it.q)}</b> — ${it.count ? ui.fmt(it.count) + " نتيجة" : "لا نتيجة"}</p>${it.count ? tbl(it.heads, it.rows.map((x) => x.cells)) : ""}`).join("")}</div>`;
+        return `<div class="conv-grade-note"><b>استعلام</b>${r.items.map((it) => `<p class="conv-hint"><b>${esc(it.q)}</b> — ${it.count ? ui.fmt(it.count) + " نتيجة" : "لا نتيجة"}</p>${dnote(it.details)}${it.count ? tbl(it.heads, it.rows.map((x) => x.cells)) : ""}`).join("")}</div>`;
       }
-      return `<div class="conv-grade-note"><b>قائمة الطلاب</b> <span class="conv-hint">${ui.fmt(r.rows.length)} صفاً</span>
+      return `<div class="conv-grade-note"><b>قائمة الطلاب</b> <span class="conv-hint">${ui.fmt(r.rows.length)} صفاً</span>${dnote(r.details)}
         ${tbl(r.heads, r.rows.slice(0, 100).map((x) => x.cells))}
         <div class="btn-row"><button type="button" class="conv-link" data-cc="export-list" data-i="${i}">تنزيل كل الصفوف Excel</button></div></div>`;
     }).join("");
