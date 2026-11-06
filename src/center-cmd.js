@@ -24,6 +24,7 @@
     agentStatus: null,
     sel: { tracks: [], stages: [], status: "", group_status: "", details: false }, // «تقارير جاهزة»
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
+    cache: null,         // نسخة محمّلة من كل البيانات في ذاكرة الصفحة فقط: { at, details, items:[{trackId,heads,rows}] }
     groupFilter: "",     // تصفية العرض بعمود «المجموعة» إن وُجد في النتائج
   };
 
@@ -81,6 +82,9 @@
       <div class="cc-pick"><b>المراحل</b><div class="cc-chips">${STAGES.map((g) => chk("stages", g.k, g.t, s.stages.includes(g.k))).join("")}</div></div>
       <div class="cc-pick cc-two">${sel("status")}${sel("group_status")}</div>
       <div class="cc-pick">${chk("details", "1", "كل بيانات الطالب (الجنس، الميلاد، العنوان…) — أبطأ، حتى 400 طالب لكل أمر", s.details)}</div>
+      <div class="cc-pick cc-cache">${state.cache
+        ? `<span class="conv-hint">⚡ البيانات محمّلة: ${ui.fmt(state.cache.items.reduce((n, it) => n + it.rows.length, 0))} طالباً${state.cache.details ? " ببياناتهم الكاملة" : ""} (${state.cache.at.toLocaleTimeString("ar")}) — التقارير تظهر فوراً. </span><button type="button" class="conv-link" data-cc="preload" ${state.busy ? "disabled" : ""}>تحديث</button> <button type="button" class="conv-link" data-cc="drop-cache">مسح الذاكرة</button>`
+        : `<button type="button" class="btn secondary small" data-cc="preload" ${state.busy ? "disabled" : ""}>⚡ حمّل كل البيانات مرة واحدة (اختياري)</button> <span class="conv-hint">تُحفظ في هذه الصفحة فقط فتصير التقارير فورية. تُحمَّل «كل بيانات الطالب» إن فعّلت خيارها.</span>`}</div>
       <div class="btn-row"><button type="button" class="btn navy" data-cc="run-selection" ${state.busy || !n ? "disabled" : ""}>نفّذ التقرير${n > 1 ? ` (${ui.fmt(n)} أوامر)` : ""}</button>
         <button type="button" class="conv-link" data-cc="clear-selection">مسح الاختيار</button></div></div>`;
   }
@@ -482,6 +486,90 @@
     }
   }
 
+  async function runCommands(commands) {
+    let results;
+    if (App.centerAgent && await App.centerAgent.ready(500)) {
+      // إضافة المتصفح: تفتح نظام المركز وتنفّذ، والموافقة على الكتابة هنا في الصفحة
+      const out = await App.centerAgent.run(commands, {
+        onProgress: (t) => { state.progress = t; const el = $("cc-status"); if (el && !state.plan) el.textContent = t; },
+        onPlan: (plan) => new Promise((resolve) => { state.plan = plan; state.planResolve = resolve; render(); }),
+      });
+      results = out.results || [];
+    } else {
+      results = [];
+      for (const command of commands) {
+        const res = await fetch("/api/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) });
+        const body = await res.json();
+        if (!res.ok || !body.ok) throw new Error(body.error || "تعذّر تنفيذ الأمر.");
+        results.push(body.result);
+      }
+    }
+    return results;
+  }
+
+  /* ===== تحميل كل البيانات مرة واحدة (اختياري) =====
+     يجلب طلاب كل مسار (أمر لكل مسار) ويحفظهم في ذاكرة الصفحة فقط — لا على القرص ولا في
+     أي خدمة — ثم تُحسب التقارير بالتصفية محلياً فتظهر فوراً. إن لم تكفِ أعمدة الجدول
+     للتصفية المطلوبة (مثل المرحلة أو المجموعة) يُنفَّذ الأمر مباشرة على النظام. */
+  async function preloadAll() {
+    const details = state.sel.details;
+    const tracks = trackOpts();
+    state.busy = true; state.resultError = ""; state.results = null; state.progress = ""; state.labels = [];
+    render(); refreshStatus();
+    try {
+      const results = await runCommands(tracks.map((o) => Object.assign({ type: "list", label: o.t, params: { track_id: String(o.v) } }, details ? { details: true } : {})));
+      const items = [];
+      results.forEach((r, k) => { if (r && r.type === "list") items.push({ trackId: String(tracks[k].v), heads: r.heads, rows: r.rows, details: r.details }); });
+      if (!items.length) throw new Error("لم تصل بيانات من الوكيل.");
+      state.cache = { at: new Date(), details, items };
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+
+  /* يحاول حساب أمر قائمة من الذاكرة؛ يعيد null إن تعذّر (فيُنفَّذ مباشرة) */
+  function localList(p) {
+    const c = state.cache;
+    if (!c) return null;
+    const cmd = p.command, q = cmd.params || {};
+    if (cmd.details && !c.details) return null;
+    let items = c.items;
+    let course = null;
+    if (q.training_course_id) course = courseOpts().find((x) => x.v === q.training_course_id);
+    const wantTrack = q.track_id || (course && course.track);
+    if (wantTrack) items = items.filter((it) => it.trackId === String(wantTrack));
+    if (!items.length) return null;
+    const heads = items[0].heads;
+    const col = (rx) => heads.findIndex((h) => rx.test(h));
+    const tests = [];
+    if (q.training_course_id) {
+      const i = col(/دورة|مرحلة/);
+      if (i < 0 || !course) return null;
+      tests.push((cells) => norm(cells[i]).includes(norm(course.t)));
+    }
+    if (q.status) {
+      const i = col(/حال/);
+      if (i < 0) return null;
+      const t = norm(optLabel("status", q.status));
+      tests.push((cells) => norm(cells[i]) === t);
+    }
+    if (q.group_status) {
+      const i = col(/مجموع/);
+      if (i < 0) return null;
+      const unassigned = (cells) => { const v = clean(cells[i]); return !v || /^[-–—]+$/.test(v) || /غير\s*موزع|لا يوجد/.test(v); };
+      tests.push((cells) => (q.group_status === "unassigned" ? unassigned(cells) : !unassigned(cells)));
+    }
+    const rows = [];
+    for (const it of items) {
+      // أعمدة العناصر قد تختلف إن اختلفت حقول النموذج: نعيد ترتيبها على أعمدة الأول بالاسم
+      const map = heads.map((h) => it.heads.indexOf(h));
+      for (const r of it.rows) {
+        const cells = it === items[0] ? r.cells : map.map((k) => (k < 0 ? "" : r.cells[k]));
+        if (tests.every((f) => f(cells))) rows.push({ cells });
+      }
+    }
+    return { type: "list", heads, rows };
+  }
+
   const executeCommand = (command) => executeBatch([command], []);
 
   /* ينفّذ أمراً أو عدة أوامر بالتتابع. labels: عنوان كل نتيجة (اختياري) */
@@ -490,23 +578,7 @@
     state.progress = ""; state.plan = null; state.planResolve = null; state.labels = labels || []; state.groupFilter = "";
     render(); refreshStatus();
     try {
-      let results;
-      if (App.centerAgent && await App.centerAgent.ready(500)) {
-        // إضافة المتصفح: تفتح نظام المركز وتنفّذ، والموافقة على الكتابة هنا في الصفحة
-        const out = await App.centerAgent.run(commands, {
-          onProgress: (t) => { state.progress = t; const el = $("cc-status"); if (el && !state.plan) el.textContent = t; },
-          onPlan: (plan) => new Promise((resolve) => { state.plan = plan; state.planResolve = resolve; render(); }),
-        });
-        results = out.results || [];
-      } else {
-        results = [];
-        for (const command of commands) {
-          const res = await fetch("/api/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) });
-          const body = await res.json();
-          if (!res.ok || !body.ok) throw new Error(body.error || "تعذّر تنفيذ الأمر.");
-          results.push(body.result);
-        }
-      }
+      const results = await runCommands(commands);
       if (!results.length) throw new Error("لم تصل نتيجة من الوكيل.");
       if (commands.length === 1 && results[0].error) throw new Error(results[0].error);
       state.results = { results };
@@ -581,7 +653,15 @@
           return ui.download("تقرير المركز.xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         } else if (act === "run-selection") {
           const plan = buildSelection();
+          const local = state.cache ? plan.map(localList) : [];
+          if (local.length && local.every(Boolean)) {
+            state.resultError = ""; state.groupFilter = ""; state.labels = plan.map((x) => x.label + " ⚡");
+            state.results = { results: local };
+            render(); return;
+          }
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label));
+        } else if (act === "preload") { return preloadAll();
+        } else if (act === "drop-cache") { state.cache = null;
         } else if (act === "clear-selection") {
           state.sel = { tracks: [], stages: [], status: "", group_status: "", details: false };
         }
