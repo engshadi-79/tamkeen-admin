@@ -22,9 +22,10 @@
     autoRunRegister: false,
     needsAiKey: false,
     agentStatus: null,
-    sel: { tracks: [], stages: [], status: "", group_status: "", details: false }, // «تقارير جاهزة»
+    sel: { tracks: [], stages: [], status: "", group_status: "", details: false, extra: {} }, // «تقارير جاهزة»
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
+    extraNote: "",
     fallbackNote: "",    // سبب عدم استعمال الذاكرة في آخر تنفيذ
     cache: null,         // نسخة محمّلة من كل البيانات في ذاكرة الصفحة فقط: { at, details, items:[{trackId,heads,rows}] }
     groupFilter: "",     // تصفية العرض بعمود «المجموعة» إن وُجد في النتائج
@@ -47,6 +48,26 @@
   }
   const optLabel = (field, v) => ((filterField(field).options.find((o) => String(o.v) === String(v)) || {}).t) || v;
 
+  /* تصفية إضافية بحقول الطالب (الجنس، الوضع الصحي…): من حقول نموذج التسجيل ذات الخيارات.
+     تُطبَّق على صفوف النتيجة بأعمدتها، لذلك تتطلب «كل بيانات الطالب» وتُفعَّل تلقائياً. */
+  const EXTRA_SKIP = new Set(["track_id", "status"]);
+  const extraFields = () => (SCHEMA().createStudent.fields || []).filter((f) => f.type === "select" && !EXTRA_SKIP.has(f.name) && (f.options || []).filter((o) => o.v !== "").length);
+  const extraActive = () => Object.entries(state.sel.extra || {}).filter(([, v]) => v);
+  function applyExtras(r) {
+    const act = extraActive();
+    if (!act.length || !r || r.type !== "list") return r;
+    let rows = r.rows;
+    for (const [name, v] of act) {
+      const f = extraFields().find((x) => x.name === name);
+      const o = f && f.options.find((x) => String(x.v) === String(v));
+      if (!f || !o) continue;
+      const i = r.heads.findIndex((h) => norm(h) === norm(f.label));
+      if (i < 0) { state.extraNote = `لم أجد عمود «${f.label}» في النتيجة فلم تُطبَّق هذه التصفية. تأكد أن «كل بيانات الطالب» محمّلة.`; continue; }
+      rows = rows.filter((x) => norm(x.cells[i]) === norm(o.t));
+    }
+    return Object.assign({}, r, { rows });
+  }
+
   /* يحوّل الاختيار إلى أوامر: دورة لكل (مسار × مرحلة) حين تُختار مراحل، وإلا أمر لكل مسار */
   function buildSelection() {
     const s = state.sel;
@@ -54,9 +75,11 @@
     if (s.status) common.status = s.status;
     if (s.group_status) common.group_status = s.group_status;
     const extra = [s.status && optLabel("status", s.status), s.group_status && optLabel("group_status", s.group_status)].filter(Boolean).join(" · ");
+    const ex = extraActive().map(([k, v]) => { const f = extraFields().find((x) => x.name === k); const o = f && f.options.find((x) => String(x.v) === String(v)); return f && o ? f.label + ": " + o.t : ""; }).filter(Boolean).join(" · ");
+    const needDetails = s.details || extraActive().length > 0;
     const mk = (params, label) => ({
-      command: Object.assign({ type: "list", label, params: Object.assign({}, params, common) }, s.details ? { details: true } : {}),
-      label: label + (extra ? " — " + extra : ""),
+      command: Object.assign({ type: "list", label, params: Object.assign({}, params, common) }, needDetails ? { details: true } : {}),
+      label: label + (extra ? " — " + extra : "") + (ex ? " — " + ex : ""),
     });
     let out;
     if (s.stages.length) {
@@ -83,11 +106,13 @@
       <div class="cc-pick"><b>المسارات</b><div class="cc-chips">${trackOpts().map((o) => chk("tracks", o.v, o.t.replace(/^مسار\s*/, ""), s.tracks.includes(String(o.v)))).join("")}</div></div>
       <div class="cc-pick"><b>المراحل</b><div class="cc-chips">${STAGES.map((g) => chk("stages", g.k, g.t, s.stages.includes(g.k))).join("")}</div></div>
       <div class="cc-pick cc-two">${sel("status")}${sel("group_status")}</div>
+      <div class="cc-pick"><b>تصفية إضافية بحقول الطالب <span class="conv-hint">(تفعّل «كل بيانات الطالب» تلقائياً)</span></b>
+        <div class="cc-three">${extraFields().map((f) => `<label class="field"><span>${esc(f.label)}</span><select data-sel="x:${esc(f.name)}"><option value="">الكل</option>${f.options.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String((s.extra || {})[f.name]) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>`).join("")}</div></div>
       <div class="cc-pick">${chk("details", "1", "كل بيانات الطالب (الجنس، الميلاد، العنوان…) — أبطأ، حتى 400 طالب لكل أمر", s.details)}</div>
       <div class="cc-pick cc-cache">${state.cache
         ? `<span class="conv-hint">⚡ البيانات محمّلة: ${ui.fmt(state.cache.items.reduce((n, it) => n + it.rows.length, 0))} طالباً${state.cache.details ? " ببياناتهم الكاملة" : ""} (${state.cache.at.toLocaleTimeString("ar")}) — التقارير تظهر فوراً. </span><button type="button" class="conv-link" data-cc="preload" ${state.busy ? "disabled" : ""}>تحديث</button> <button type="button" class="conv-link" data-cc="drop-cache">مسح الذاكرة</button>`
         : `<button type="button" class="btn secondary small" data-cc="preload" ${state.busy ? "disabled" : ""}>⚡ حمّل كل البيانات مرة واحدة (اختياري)</button> <span class="conv-hint">تُحفظ في هذه الصفحة فقط فتصير التقارير فورية. تُحمَّل «كل بيانات الطالب» إن فعّلت خيارها.</span>`}</div>
-      ${state.fallbackNote ? `<p class="conv-error" role="status">نُفِّذ من الموقع لا من الذاكرة — ${esc(state.fallbackNote)}</p>${state.fallbackNote.includes("بدون") ? '<button type="button" class="btn secondary small" data-cc="preload-details">⚡ أعد التحميل ببيانات كاملة الآن</button>' : ""}` : ""}
+      ${state.extraNote ? `<p class="conv-error" role="status">${esc(state.extraNote)}</p>` : ""}${state.fallbackNote ? `<p class="conv-error" role="status">نُفِّذ من الموقع لا من الذاكرة — ${esc(state.fallbackNote)}</p>${state.fallbackNote.includes("بدون") ? '<button type="button" class="btn secondary small" data-cc="preload-details">⚡ أعد التحميل ببيانات كاملة الآن</button>' : ""}` : ""}
       <div class="btn-row"><button type="button" class="btn navy" data-cc="run-selection" ${state.busy || !n ? "disabled" : ""}>نفّذ التقرير${n > 1 ? ` (${ui.fmt(n)} أوامر)` : ""}</button>
         <button type="button" class="conv-link" data-cc="clear-selection">مسح الاختيار</button></div></div>`;
   }
@@ -659,7 +684,7 @@
   const executeCommand = (command) => executeBatch([command], []);
 
   /* ينفّذ أمراً أو عدة أوامر بالتتابع. labels: عنوان كل نتيجة (اختياري) */
-  async function executeBatch(commands, labels) {
+  async function executeBatch(commands, labels, useExtras) {
     state.busy = true; state.autoRunRegister = false; state.resultError = ""; state.results = null; state.adding = ""; state.proposal = null;
     state.progress = ""; state.plan = null; state.planResolve = null; state.labels = labels || []; state.groupFilter = "";
     render(); refreshStatus();
@@ -667,7 +692,7 @@
       const results = await runCommands(commands);
       if (!results.length) throw new Error("لم تصل نتيجة من الوكيل.");
       if (commands.length === 1 && results[0].error) throw new Error(results[0].error);
-      state.results = { results };
+      state.results = { results: useExtras ? results.map(applyExtras) : results };
       state.requestText = "";
       state.reg = null;
     } catch (err) { state.resultError = err.message || String(err); }
@@ -740,15 +765,15 @@
           return ui.download("تقرير المركز.xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         } else if (act === "run-selection") {
           const plan = buildSelection();
-          state.fallbackNote = "";
+          state.fallbackNote = ""; state.extraNote = "";
           const local = [];
           if (state.cache) for (const x of plan) { const r = localList(x); if (!r) { state.fallbackNote = cacheWhy; break; } local.push(r); }
           if (local.length && local.length === plan.length) {
             state.resultError = ""; state.groupFilter = ""; state.labels = plan.map((x) => x.label + " ⚡");
-            state.results = { results: local };
+            state.results = { results: local.map(applyExtras) };
             render(); return;
           }
-          return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label));
+          return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
         } else if (act === "cols-all") { state.hiddenCols = new Set();
         } else if (act === "cols-empty") { emptyHeads().forEach((h) => state.hiddenCols.add(h));
         } else if (act === "cols-none") { state.hiddenCols = new Set(resultHeads());
@@ -756,7 +781,7 @@
         } else if (act === "preload-details") { state.sel.details = true; state.fallbackNote = ""; return preloadAll();
         } else if (act === "drop-cache") { state.cache = null;
         } else if (act === "clear-selection") {
-          state.sel = { tracks: [], stages: [], status: "", group_status: "", details: false };
+          state.sel = { tracks: [], stages: [], status: "", group_status: "", details: false, extra: {} }; state.extraNote = "";
         }
         render();
       } catch (err) { ui.toast(err.message); }
@@ -771,6 +796,7 @@
       if (t.dataset.sel) {
         const k = t.dataset.sel;
         if (k === "groupFilter") { state.groupFilter = t.value; render(); return; }
+        if (k.startsWith("x:")) { state.sel.extra = state.sel.extra || {}; state.sel.extra[k.slice(2)] = t.value; const h = $("cc-scripts"); if (h) h.outerHTML = scriptsView(); return; }
         if (k === "tracks" || k === "stages") {
           const a = state.sel[k], v = String(t.value), at = a.indexOf(v);
           if (t.checked && at < 0) a.push(v); else if (!t.checked && at >= 0) a.splice(at, 1);
