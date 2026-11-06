@@ -647,8 +647,6 @@
     let t = clean(raw);
     const stu = (t.match(/STU-[\d-]+/) || [""])[0];
     if (stu) t = t.replace(stu, " ");
-    const phone = (t.match(/(?<!\d)0\d{9}(?!\d)/) || [""])[0];
-    if (phone) t = t.replace(phone, " ");
     const NO_EN = "لا يوجد اسم إنجليزي";
     let name, en = "";
     const k = t.indexOf(NO_EN);
@@ -658,7 +656,13 @@
       if (m) { const at = t.indexOf(m[0]); name = t.slice(0, at); en = m[0]; t = t.slice(at + m[0].length); }
       else { const d = t.search(/\d/); name = d < 0 ? t : t.slice(0, d); t = d < 0 ? "" : t.slice(d); }
     }
-    return [clean(name).replace(/[-–]\s*$/, "").trim(), en, stu, digits(t), phone];
+    // ما بقي: «الهوية - الجوال» بفاصل بينهما. نقسمه بالفواصل لا بشكل الرقم، فالجوال قد يأتي بلا صفر أوله
+    const parts = t.split(/\s*[-–—]\s*/).map(digits).filter(Boolean);
+    let id = "", phone = "";
+    if (parts.length >= 2) { id = parts[0]; phone = parts[parts.length - 1]; }
+    else if (parts.length === 1) { if (/^0?5\d{8}$/.test(parts[0])) phone = parts[0]; else id = parts[0]; }
+    if (/^5\d{8}$/.test(phone)) phone = "0" + phone;
+    return [clean(name).replace(/[-–]\s*$/, "").trim(), en, stu, id, phone];
   }
   function expandResult(r) {
     if (!r || !Array.isArray(r.heads) || !Array.isArray(r.rows)) return r;
