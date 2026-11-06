@@ -946,3 +946,8 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 .cc-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .cc-group { max-width: 280px; margin: 6px 0; }
 @media (max-width: 560px) { .cc-two { grid-template-columns: 1fr; } }
+.cc-scripts { overflow: hidden; }
+.cc-chk { max-width: 100%; box-sizing: border-box; white-space: normal; line-height: 1.5; border-radius: 16px; }
+.cc-pick .cc-chk > span { min-width: 0; overflow-wrap: anywhere; }
+.cc-cache { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cc-cache .conv-hint { flex: 1 1 220px; min-width: 0; }
