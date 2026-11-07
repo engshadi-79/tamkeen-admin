@@ -10,6 +10,9 @@
   const norm = (v) => core().normalizeHeader(clean(v)).replace(/^مسار\s*/, "");
   const digits = (v) => String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, "");
 
+  /* الوضع الافتراضي لكل تقرير: الطلاب النشطون الموزَّعون على مجموعات */
+  const defaultSel = () => ({ tracks: [], stages: [], status: "active", group_status: "assigned", details: false, extra: {} });
+
   const state = {
     adding: "",          // register
     reg: null,           // مُنشئ أمر التسجيل: { fileName, headers, rows, map }
@@ -22,7 +25,7 @@
     autoRunRegister: false,
     needsAiKey: false,
     agentStatus: null,
-    sel: { tracks: [], stages: [], status: "", group_status: "", details: false, extra: {} }, // «تقارير جاهزة»
+    sel: defaultSel(), // «تقارير جاهزة»
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
@@ -889,7 +892,7 @@
         } else if (act === "preload-details") { state.sel.details = true; state.fallbackNote = ""; return preloadAll();
         } else if (act === "drop-cache") { state.cache = null;
         } else if (act === "clear-selection") {
-          state.sel = { tracks: [], stages: [], status: "", group_status: "", details: false, extra: {} }; state.extraNote = "";
+          state.sel = defaultSel(); state.extraNote = "";
         }
         render();
       } catch (err) { ui.toast(err.message); }
