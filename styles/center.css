@@ -1052,3 +1052,6 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
   .cc-three, .cc-two, .cc-modes { grid-template-columns: 1fr; }
   .cc-act { width: 100%; justify-content: space-between; }
 }
+
+.cc-modes { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 640px) { .cc-modes { grid-template-columns: 1fr; } }
