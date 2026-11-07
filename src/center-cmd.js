@@ -30,7 +30,7 @@
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
     cmp: { tracks: [], status: "", multiOnly: true, out: null }, // مقارنة المراحل
     sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, out: null }, // مقارنة الإخوة
-    mis: { kind: "pre", tracks: [], stages: [], status: "active", out: null }, // استبيانات وتعهدات
+    mis: { kind: "pre", tracks: [], stages: [], status: "active", verify: true, out: null }, // استبيانات وتعهدات
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true }, // حالة الأقسام القابلة للطي
     extraNote: "",
@@ -777,6 +777,7 @@
   const MIS_KINDS = [{ k: "pre", t: "استبيان قبلي" }, { k: "post", t: "استبيان بعدي" }, { k: "impact", t: "استبيان قياس الأثر" }, { k: "pledge", t: "تعهد الطالب" }];
   const misHeads = () => ["الاسم", "رقم الهوية", "رقم الطالب", "الجوال", "المسار", "المرحلة", "المجموعة", "ملاحظة"];
   const stageOf = (text) => { const t = norm(text || ""); const g = STAGES.find((x) => t.includes(norm(x.k))); return g ? g.t : ""; };
+  const stageFromGroup = (g) => /^S3/i.test(g) ? "المرحلة الثالثة" : /^G\d/i.test(g) ? "المرحلة الثانية" : /المجموعة|الاولى|الأولى/.test(g) ? "المرحلة الأولى" : "";
   const misCell = (r, x, h) => { const i = r.heads.indexOf(h); return i < 0 ? "" : clean(x.cells[i]); };
 
   async function runMissing() {
@@ -800,12 +801,34 @@
         results.forEach((r) => {
           if (!r || r.type !== "list") return;
           r.rows.forEach((x) => {
-            const row = { name: misCell(r, x, "الاسم") || misCell(r, x, "الطالب"), id: misCell(r, x, "رقم الهوية"), stu: misCell(r, x, "رقم الطالب"), phone: misCell(r, x, "الجوال"), track: misCell(r, x, "المسار").replace(/^مسار\s*/, ""), stage: stageOf(misCell(r, x, "الدورة")), group: misCell(r, x, "المجموعة"), note: [misCell(r, x, "الاستبيان"), misCell(r, x, "حالة تعبئة الاستبيان")].filter(Boolean).join(" — ") };
+            const row = { name: misCell(r, x, "الاسم") || misCell(r, x, "الطالب"), id: misCell(r, x, "رقم الهوية"), stu: misCell(r, x, "رقم الطالب"), phone: misCell(r, x, "الجوال"), track: misCell(r, x, "المسار").replace(/^مسار\s*/, ""), stage: stageOf(misCell(r, x, "الدورة")) || stageFromGroup(misCell(r, x, "المجموعة")), group: misCell(r, x, "المجموعة"), note: [misCell(r, x, "الاستبيان"), misCell(r, x, "حالة تعبئة الاستبيان")].filter(Boolean).join(" — ") };
             const key = row.id || row.stu || row.name + "|" + row.track + "|" + row.stage + "|" + row.note;
             if (!row.name || seen.has(key)) return;
             seen.add(key); rows.push(row);
           });
         });
+        // التحقق: من عدّه التقرير ناقصاً لكن له إرسال من هذا النوع في «نتائج الاستبيانات» يُستبعد
+        if (c.verify && rows.length) {
+          const need = trackOpts().filter((o) => rows.some((x) => norm(x.track) === norm(o.t))).map((o) => String(o.v));
+          const ids = need.length ? need : trackIds;
+          const subs = await runCommands(ids.map((id) => ({ type: "list", source: "submissions", label: "إرسالات " + optLabel("track_id", id), params: { track_id: id } })));
+          const doneStu = new Set(), doneName = new Set(); let failedSubs = 0, seenSubs = 0;
+          subs.forEach((r) => {
+            if (!r || r.type !== "list") { failedSubs++; return; }
+            r.rows.forEach((x) => {
+              const form = misCell(r, x, "النموذج");
+              const kind = /قبلي/.test(form) ? "pre" : /بعدي/.test(form) ? "post" : "impact";
+              if (kind !== c.kind) return;
+              seenSubs++;
+              const stu = misCell(r, x, "رقم الطالب"); if (stu) doneStu.add(stu);
+              doneName.add(normName(misCell(r, x, "الاسم")) + "|" + norm(misCell(r, x, "المسار")));
+            });
+          });
+          const reported = rows.length;
+          rows = rows.filter((x) => !(x.stu ? doneStu.has(x.stu) : doneName.has(normName(x.name) + "|" + norm(x.track))));
+          extra = { reported, excluded: reported - rows.length, submissions: seenSubs };
+          if (failedSubs) note = "تعذّرت قراءة إرسالات " + ui.fmt(failedSubs) + " مسار للتحقق؛ قد تظهر أسماء عبّأت فعلاً. ";
+        }
         // إن لم يعرض التقرير رقم الهوية نكمله من قائمة الطلاب (بالمطابقة برقم الطالب ثم بالاسم)
         if (rows.length && rows.every((x) => !x.id)) {
           const sl = await runCommands(trackIds.map((id) => ({ type: "list", label: optLabel("track_id", id), params: { track_id: id } })));
@@ -821,7 +844,7 @@
             });
           });
           rows.forEach((x) => { x.id = (x.stu && byStu.get(x.stu)) || byName.get(normName(x.name)) || ""; });
-          note = "لم يعرض التقرير رقم الهوية، فأُكمل من قائمة الطلاب (بمطابقة رقم الطالب أو الاسم).";
+          note += "لم يعرض التقرير رقم الهوية، فأُكمل من قائمة الطلاب (بمطابقة رقم الطالب أو الاسم).";
         }
       } else {
         const cmds = trackIds.map((id) => ({ type: "list", label: optLabel("track_id", id), params: Object.assign({ track_id: id }, c.status ? { status: c.status } : {}) }));
@@ -871,6 +894,7 @@
           <fieldset class="cc-fs"><legend>المراحل${c.stages.length ? ` <em>${ui.fmt(c.stages.length)}</em>` : ""}</legend><div class="cc-chips">${STAGES.map((g) => chk("stages", g.k, g.t, c.stages.includes(g.k))).join("")}</div>
             <label class="cc-field" style="margin-top:10px"><span>حالة الطالب</span><select data-mis="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></fieldset>
         </div>
+        ${c.kind === "pledge" ? "" : `<label class="cc-chk"><input type="checkbox" data-mis="verify" ${c.verify ? "checked" : ""}> <span>تحقّق من الإرسالات الفعلية (يستبعد من عبّأ ولم يحتسبه التقرير) — أدق وأبطأ</span></label>`}
         <p class="cc-note">${c.kind === "pledge" ? "التعهد: يقرأ قائمة الطلاب وقائمة التعهدات ويطابقها برقم الهوية؛ والباقي هم من لم يوقّعوا." : "الاستبيان: يقرأ تقرير النظام «الطلاب الذين لم يعبئوا الاستبيان» بالمسار والمرحلة المختارين."}</p>
       </div>
       <footer class="cc-actions"><div class="cc-sum"><b>${esc(kindT || "")}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.stages.length ? " · " + esc(c.stages.map((k) => (STAGES.find((g) => g.k === k) || {}).t).join("، ")) : ""} · ${esc(optLabel("status", c.status) || "كل الحالات")} · ${ui.fmt(n)} ${n === 1 ? "طلب قراءة" : "طلبات قراءة"}</span></div>
@@ -884,6 +908,7 @@
     const title = (MIS_KINDS.find((x) => x.k === o.kind) || {}).t || "";
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> لم يُكمل: ${esc(title)}</h3>
       <div class="cc-stats"><span class="cc-stat bad"><b>${ui.fmt(rows.length)}</b> طالباً لم يُكمل</span>
+        ${o.kind !== "pledge" && o.extra.reported != null ? `<span class="cc-stat"><b>${ui.fmt(o.extra.reported)}</b> عدّهم تقرير النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.excluded)}</b> استُبعدوا (لهم إرسال فعلي)</span>` : ""}
         ${o.kind === "pledge" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.targets)}</b> طالباً في النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.pledged)}</b> وقّعوا</span>` : ""}
         ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-mis">تنزيل Excel</button>' : ""}</div>
       ${o.note ? `<p class="cc-alert warn">${esc(o.note)}</p>` : ""}
@@ -1237,6 +1262,7 @@
       if (t.dataset.mis) {
         const k = t.dataset.mis, c = state.mis;
         if (k === "kind") c.kind = t.value;
+        else if (k === "verify") c.verify = t.checked;
         else if (k === "status") c.status = t.value;
         else { const a = c[k], v = String(t.value), at = a.indexOf(v); if (t.checked && at < 0) a.push(v); else if (!t.checked && at >= 0) a.splice(at, 1); }
         render(); return;
