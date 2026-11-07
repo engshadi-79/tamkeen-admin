@@ -780,11 +780,29 @@
   const stageFromGroup = (g) => /^S3/i.test(g) ? "المرحلة الثالثة" : /^G\d/i.test(g) ? "المرحلة الثانية" : /المجموعة|الاولى|الأولى/.test(g) ? "المرحلة الأولى" : "";
   const misCell = (r, x, h) => { const i = r.heads.indexOf(h); return i < 0 ? "" : clean(x.cells[i]); };
 
+  /* التقارير الجديدة (التعهدات والإرسالات وتقرير النواقص) تحتاج وكيل الإضافة 1.2.0 فأحدث.
+     الوكيل القديم لا يرفض المصدر الجديد بل يتجاهله ويقرأ قائمة الطلاب، فنمنع ذلك صراحةً. */
+  function requireAgent12() {
+    const v = String((App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || "");
+    const n = v.split(".").map(Number);
+    const ok = n.length >= 2 && (n[0] > 1 || (n[0] === 1 && n[1] >= 2));
+    if (!ok) throw new Error(v
+      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.2.0) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
+      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.2.0 فأحدث) ولا تدعمه الجلسة المحلية.");
+  }
+  /* يتأكد أن ما وصل هو القائمة المطلوبة (لها العمود المميِّز) لا قائمة طلاب متنكّرة */
+  function needHead(r, head, what) {
+    if (r && r.type === "list" && !r.heads.some((x) => clean(x) === head)) {
+      throw new Error(`وصلت قائمة غير متوقعة لـ«${what}» (لا عمود «${head}»). غالباً إضافة «وكيل تمكين» قديمة؛ حدّثها إلى 1.2.0.`);
+    }
+  }
+
   async function runMissing() {
     const c = state.mis;
     state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
     render(); refreshStatus();
     try {
+      requireAgent12();
       const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id));
       const statusOk = ["active", "withdrawn", "graduated", "suspended"].includes(c.status) ? c.status : "all";
       let rows = [], note = "", extra = {};
@@ -800,10 +818,11 @@
         const seen = new Set();
         results.forEach((r) => {
           if (!r || r.type !== "list") return;
+          needHead(r, "حالة تعبئة الاستبيان", "تقرير الطلاب الذين لم يعبئوا الاستبيان");
           r.rows.forEach((x) => {
             const row = { name: misCell(r, x, "الاسم") || misCell(r, x, "الطالب"), id: misCell(r, x, "رقم الهوية"), stu: misCell(r, x, "رقم الطالب"), phone: misCell(r, x, "الجوال"), track: misCell(r, x, "المسار").replace(/^مسار\s*/, ""), stage: stageOf(misCell(r, x, "الدورة")) || stageFromGroup(misCell(r, x, "المجموعة")), group: misCell(r, x, "المجموعة"), note: [misCell(r, x, "الاستبيان"), misCell(r, x, "حالة تعبئة الاستبيان")].filter(Boolean).join(" — ") };
             const key = row.id || row.stu || row.name + "|" + row.track + "|" + row.stage + "|" + row.note;
-            if (!row.name || seen.has(key)) return;
+            if (!row.name || /^(لا يوجد|اختر)/.test(row.name) || seen.has(key)) return;     // صف الرسالة حين لا نواقص
             seen.add(key); rows.push(row);
           });
         });
@@ -816,6 +835,7 @@
           const anyByStu = new Map(), anyByName = new Map(), sample = []; let subHeads = [];
           subs.forEach((r) => {
             if (!r || r.type !== "list") { failedSubs++; return; }
+            needHead(r, "النموذج", "إرسالات الاستبيانات");
             if (!subHeads.length) subHeads = r.heads.slice();
             r.rows.forEach((x) => {
               allSubs++;
@@ -868,6 +888,7 @@
         const res = await runCommands(cmds);
         const pl = res[res.length - 1];
         if (!pl || pl.type !== "list") throw new Error((pl && pl.error) || "تعذّرت قراءة قائمة التعهدات.");
+        needHead(pl, "تاريخ الاعتماد", "التعهدات");
         const iPI = pl.heads.indexOf("رقم الهوية");
         if (iPI < 0) throw new Error("تعذّر تحديد رقم الهوية في قائمة التعهدات.");
         const pledged = new Set(pl.rows.map((x) => digits(x.cells[iPI])).filter(Boolean));
