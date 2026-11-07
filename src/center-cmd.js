@@ -29,7 +29,7 @@
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
     cmp: { tracks: [], status: "", multiOnly: true, goal: "multi", out: null }, // مقارنة المراحل
-    sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, out: null }, // مقارنة الإخوة
+    sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, baseStage: "المرحلة الثالثة", cmpStages: [], out: null }, // مقارنة الإخوة
     mis: { kind: "pre", tracks: [], stages: [], status: "active", verify: true, out: null }, // استبيانات وتعهدات
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true }, // حالة الأقسام القابلة للطي
@@ -650,7 +650,9 @@
           <fieldset class="cc-fs cc-wide"><legend>ما المطلوب؟</legend><div class="cc-chips">
             <label class="cc-chk"><input type="radio" name="cmp-goal" data-cmp="goal" value="multi" ${c.goal === "multi" ? "checked" : ""}> <span>طلاب سجّلوا في أكثر من مرحلة</span></label>
             <label class="cc-chk"><input type="radio" name="cmp-goal" data-cmp="goal" value="siblings" ${c.goal === "siblings" ? "checked" : ""}> <span>إخوة: المرحلة الأخيرة مقابل المراحل السابقة</span></label></div>
-            ${c.goal === "siblings" ? `<div class="cc-chips" style="margin-top:8px">${["phone:نفس رقم الهاتف", "name:نفس الاسم بعد الاسم الأول", "loose:الأب والعائلة فقط (أوسع)", "both:يجب تحقق الهاتف والاسم معاً (أدق)"].map((x) => { const [k, t] = x.split(":"); return `<label class="cc-chk"><input type="checkbox" data-sib="${k}" ${state.sib[k] ? "checked" : ""}> <span>${esc(t)}</span></label>`; }).join("")}</div>
+            ${c.goal === "siblings" ? `<div class="cc-pick"><b>طلاب المرحلة</b><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="radio" name="sib-base" data-sib="baseStage" value="${esc(g.t)}" ${state.sib.baseStage === g.t ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}</div></div>
+            <div class="cc-pick"><b>هل لهم إخوة في</b><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="checkbox" data-sib="cmpStages" value="${esc(g.t)}" ${state.sib.cmpStages.includes(g.t) ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}</div><p class="cc-note">اترك الخيارات فارغة لتشمل كل المراحل الأخرى غير المرحلة المختارة أعلاه.</p></div>
+            <div class="cc-chips" style="margin-top:8px">${["phone:نفس رقم الهاتف", "name:نفس الاسم بعد الاسم الأول", "loose:الأب والعائلة فقط (أوسع)", "both:يجب تحقق الهاتف والاسم معاً (أدق)"].map((x) => { const [k, t] = x.split(":"); return `<label class="cc-chk"><input type="checkbox" data-sib="${k}" ${state.sib[k] ? "checked" : ""}> <span>${esc(t)}</span></label>`; }).join("")}</div>
             <p class="cc-note">معيار الربط بين الإخوة. الهاتف وحده قد يجمع غير الإخوة؛ و«معاً» أدق. تبقى العائلات التي فيها طالب بالمرحلة الأخيرة وأخ أو أخت في مرحلة سابقة.</p>` : ""}</fieldset>
           <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk(o.v, o.t.replace(/^مسار\s*/, ""), c.tracks.includes(String(o.v)))).join("")}</div></fieldset>
           <fieldset class="cc-fs"><legend>تصفية</legend>
@@ -736,19 +738,22 @@
       const groups = new Map();
       list.forEach((p, i) => { const r = find(i); (groups.get(r) || groups.set(r, []).get(r)).push(p); });
       let fams = [...groups.values()].filter((g) => g.length > 1);
-      const LAST = STAGES[STAGES.length - 1].t;
       let stageStats = null;
       if (c.stageMode) {
-        // عائلة فيها طالب بالمرحلة الأخيرة وأخ/أخت (شخص آخر) سُجّل في مرحلة سابقة
+        // طلاب «المرحلة المرجعية» الذين لهم أخ/أخت (شخص آخر) في المراحل المختارة للمقارنة (الافتراضي: كل المراحل الأخرى)
+        const base = c.baseStage || STAGES[STAGES.length - 1].t;
+        const targets = new Set(c.cmpStages.length ? c.cmpStages : STAGES.map((g) => g.t).filter((t) => t !== base));
+        const inTarget = (p) => [...p.stages].some((x) => targets.has(x));
         fams = fams.filter((g) => {
-          const last = g.filter((p) => p.stages.has(LAST));
-          const early = g.filter((p) => [...p.stages].some((x) => x !== LAST));
-          return last.some((a) => early.some((b) => b !== a));
+          const mine = g.filter((p) => p.stages.has(base));
+          const others = g.filter(inTarget);
+          return mine.some((a) => others.some((b) => b !== a));
         });
-        fams.forEach((g) => g.sort((a, b) => Number(b.stages.has(LAST)) - Number(a.stages.has(LAST))));
-        const lastSet = new Set(), earlySet = new Set();
-        fams.forEach((g) => g.forEach((p) => { if (p.stages.has(LAST)) lastSet.add(p); if ([...p.stages].some((x) => x !== LAST)) earlySet.add(p); }));
-        stageStats = { last: lastSet.size, early: earlySet.size, lastLabel: LAST };
+        fams.forEach((g) => g.sort((a, b) => Number(b.stages.has(base)) - Number(a.stages.has(base))));
+        const mineSet = new Set(), otherSet = new Set();
+        fams.forEach((g) => g.forEach((p) => { if (p.stages.has(base)) mineSet.add(p); if (inTarget(p)) otherSet.add(p); }));
+        const cmpLabel = c.cmpStages.length ? c.cmpStages.join(" و") : "باقي المراحل";
+        stageStats = { last: mineSet.size, early: otherSet.size, lastLabel: base, cmpLabel };
       }
       fams = fams.sort((a, b) => b.length - a.length || a[0].name.localeCompare(b[0].name, "ar"));
       const rows = [];
@@ -791,8 +796,8 @@
     const o = state.sib.out;
     // نتيجة وضع «المرحلة الأخيرة مقابل السابقة» تظهر في تبويب مقارنة المراحل فقط، ونتيجة الإخوة العامة في تبويبها
     if (!o || !!o.stageStats !== !!fromCompare) return "";
-    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة مقارنة الإخوة${o.stageStats ? " — " + esc(o.stageStats.lastLabel) + " مقابل المراحل السابقة" : ""}</h3>
-      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(o.families)}</b> عائلة</span><span class="cc-stat ok"><b>${ui.fmt(o.siblings)}</b> طالباً لهم إخوة</span><span class="cc-stat"><b>${ui.fmt(o.largest)}</b> أكبر عائلة</span>${o.stageStats ? `<span class="cc-stat ok"><b>${ui.fmt(o.stageStats.last)}</b> طالباً في ${esc(o.stageStats.lastLabel)} لهم إخوة في مراحل سابقة</span><span class="cc-stat"><b>${ui.fmt(o.stageStats.early)}</b> من الإخوة في المراحل السابقة</span>` : ""}
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة مقارنة الإخوة${o.stageStats ? " — " + esc(o.stageStats.lastLabel) + " مقابل " + esc(o.stageStats.cmpLabel) : ""}</h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(o.families)}</b> عائلة</span><span class="cc-stat ok"><b>${ui.fmt(o.siblings)}</b> طالباً لهم إخوة</span><span class="cc-stat"><b>${ui.fmt(o.largest)}</b> أكبر عائلة</span>${o.stageStats ? `<span class="cc-stat ok"><b>${ui.fmt(o.stageStats.last)}</b> طالباً في ${esc(o.stageStats.lastLabel)} لهم إخوة في ${esc(o.stageStats.cmpLabel)}</span><span class="cc-stat"><b>${ui.fmt(o.stageStats.early)}</b> من الإخوة في ${esc(o.stageStats.cmpLabel)}</span>` : ""}
         ${Object.keys(o.sizes).sort((a, b) => a - b).map((k) => `<span class="cc-stat"><b>${ui.fmt(o.sizes[k])}</b> من ${ui.fmt(k)}</span>`).join("")}
         ${o.rows.length ? '<button type="button" class="btn secondary small" data-cc="export-sib">تنزيل Excel</button>' : ""}</div>
       ${o.rows.length ? "" : '<p class="cc-alert warn">لم أجد طلاباً يجمعهم المعيار المختار. جرّب إلغاء «معاً» أو تفعيل المعيار الأوسع.</p>'}
@@ -1336,7 +1341,8 @@
       }
       if (t.dataset.sib) {
         const k = t.dataset.sib, c = state.sib;
-        if (k === "tracks") { const v = String(t.value), at = c.tracks.indexOf(v); if (t.checked && at < 0) c.tracks.push(v); else if (!t.checked && at >= 0) c.tracks.splice(at, 1); }
+        if (k === "tracks" || k === "cmpStages") { const v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); }
+        else if (k === "baseStage") { c.baseStage = t.value; c.cmpStages = c.cmpStages.filter((x) => x !== t.value); }
         else if (k === "status") c.status = t.value;
         else c[k] = t.checked;
         render(); return;
