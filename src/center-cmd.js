@@ -28,6 +28,7 @@
     sel: defaultSel(), // «تقارير جاهزة»
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
+    cmp: { tracks: [], status: "", multiOnly: true, out: null }, // مقارنة المراحل
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true }, // حالة الأقسام القابلة للطي
     extraNote: "",
@@ -581,6 +582,91 @@
     return gi < 0 || !state.groupFilter ? r.rows : r.rows.filter((x) => clean(x.cells[gi]) === state.groupFilter);
   }
 
+  /* ===== مقارنة المراحل: من سجّل في أكثر من مرحلة =====
+     يُجلب طلاب كل دورة على حدة (أمر قراءة لكل دورة) ثم يُطابَقون برقم الهوية. */
+  async function runCompare() {
+    const c = state.cmp;
+    state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
+    render(); refreshStatus();
+    try {
+      const courses = courseOpts().filter((x) => x.stage && (!c.tracks.length || c.tracks.includes(x.track)));
+      if (!courses.length) throw new Error("لا دورات للمسارات المختارة.");
+      const results = await runCommands(courses.map((x) => ({ type: "list", label: x.t, params: Object.assign({ training_course_id: x.v }, c.status ? { status: c.status } : {}) })));
+      const people = new Map();
+      const failed = [];
+      results.forEach((r, i) => {
+        const course = courses[i];
+        if (!r || r.error || r.type !== "list") { failed.push(course.t + (r && r.error ? " — " + r.error : "")); return; }
+        const at = (h) => r.heads.indexOf(h);
+        const iId = at("رقم الهوية"), iName = at("الاسم"), iPhone = at("الجوال"), iGroup = at("المجموعة"), iNo = at("رقم الطالب");
+        if (iId < 0 || iName < 0) throw new Error("تعذّر تحديد عمودي الاسم والهوية في جدول النظام؛ لا يمكن المطابقة.");
+        r.rows.forEach((x) => {
+          const id = digits(x.cells[iId]), no = clean(x.cells[iNo]), name = clean(x.cells[iName]);
+          const key = id || no || name;
+          if (!key) return;
+          const p = people.get(key) || { name, id, phone: "", enr: [] };
+          if (!p.phone && iPhone >= 0) p.phone = clean(x.cells[iPhone]);
+          if (!p.id) p.id = id;
+          if (!p.enr.some((e) => e.course === course.v)) p.enr.push({ course: course.v, stage: course.stage, track: course.track, group: iGroup >= 0 ? clean(x.cells[iGroup]) : "" });
+          people.set(key, p);
+        });
+      });
+      const list = [...people.values()].map((p) => Object.assign(p, { stages: [...new Set(p.enr.map((e) => e.stage))] }));
+      const dist = {}; list.forEach((p) => { dist[p.stages.length] = (dist[p.stages.length] || 0) + 1; });
+      const perStage = STAGES.map((g) => ({ k: g.k, t: g.t, n: list.filter((p) => p.stages.includes(g.k)).length }));
+      const pairs = [];
+      for (let i = 0; i < STAGES.length; i++) for (let j = i + 1; j < STAGES.length; j++) pairs.push({ a: STAGES[i], b: STAGES[j], n: list.filter((p) => p.stages.includes(STAGES[i].k) && p.stages.includes(STAGES[j].k)).length });
+      c.out = { list, dist, perStage, pairs, failed, courses: courses.length, total: list.length, at: new Date() };
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+
+  const trackShort = (id) => optLabel("track_id", id).replace(/^مسار\s*/, "");
+  const cmpCell = (p, g) => p.enr.filter((e) => e.stage === g.k).map((e) => trackShort(e.track) + (e.group && e.group !== "-" ? " — " + e.group : "")).join(" + ");
+  const cmpRows = () => {
+    const o = state.cmp.out;
+    const base = state.cmp.multiOnly ? o.list.filter((p) => p.stages.length > 1) : o.list;
+    return base.slice().sort((a, b) => b.stages.length - a.stages.length || a.name.localeCompare(b.name, "ar"));
+  };
+  const cmpHeads = () => ["الاسم", "رقم الهوية", "الجوال", "عدد المراحل"].concat(STAGES.map((g) => g.t));
+  const cmpTable = () => cmpRows().map((p) => [p.name, p.id, p.phone, String(p.stages.length)].concat(STAGES.map((g) => cmpCell(p, g))));
+
+  function compareView() {
+    const c = state.cmp;
+    const chk = (v, text, on) => `<label class="cc-chk"><input type="checkbox" data-cmp="tracks" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(text)}</span></label>`;
+    const n = courseOpts().filter((x) => x.stage && (!c.tracks.length || c.tracks.includes(x.track))).length;
+    return `<section class="cc-card" id="cc-compare">
+      <header class="cc-card-h"><h3>مقارنة المراحل</h3><p>من سجّل في أكثر من مرحلة؟ تُقرأ قائمة كل دورة ثم يُطابَق الطلاب برقم الهوية. للقراءة فقط.</p></header>
+      <div class="cc-card-b">
+        <div class="cc-grid">
+          <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk(o.v, o.t.replace(/^مسار\s*/, ""), c.tracks.includes(String(o.v)))).join("")}</div></fieldset>
+          <fieldset class="cc-fs"><legend>تصفية</legend>
+            <label class="cc-field"><span>حالة الطالب</span><select data-cmp="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>
+            <label class="cc-chk" style="margin-top:8px"><input type="checkbox" data-cmp="multi" ${c.multiOnly ? "checked" : ""}> <span>المسجلون في أكثر من مرحلة فقط</span></label></fieldset>
+        </div>
+        ${state.resultError ? "" : ""}
+      </div>
+      <footer class="cc-actions"><div class="cc-sum"><b>سيُقرأ ${ui.fmt(n)} ${n === 1 ? "دورة" : n === 2 ? "دورتان" : n < 11 ? "دورات" : "دورة"}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.status ? " · " + esc(optLabel("status", c.status)) : " · كل الحالات"}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-compare" ${state.busy || !n ? "disabled" : ""}>${state.busy ? "جارٍ الجلب والمقارنة…" : "اجلب وقارن"}</button></div></footer></section>`;
+  }
+
+  function compareResult() {
+    const o = state.cmp.out;
+    if (!o) return "";
+    const rows = cmpTable();
+    const multi = o.list.filter((p) => p.stages.length > 1).length;
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة المقارنة</h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(multi)}</b> في أكثر من مرحلة</span>${o.perStage.map((g) => `<span class="cc-stat"><b>${ui.fmt(g.n)}</b> ${esc(g.t)}</span>`).join("")}
+        ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-cmp">تنزيل Excel</button>' : ""}</div>
+      <div class="cc-tools"><div class="cc-res"><header class="cc-res-h"><h4>التقاطع بين المراحل</h4></header>
+        <div class="cc-stats">${o.pairs.map((x) => `<span class="cc-stat"><b>${ui.fmt(x.n)}</b> في ${esc(x.a.t)} و${esc(x.b.t)}</span>`).join("")}
+          ${Object.keys(o.dist).sort().map((k) => `<span class="cc-stat"><b>${ui.fmt(o.dist[k])}</b> في ${k === "1" ? "مرحلة واحدة" : ui.fmt(k) + " مراحل"}</span>`).join("")}</div></div></div>
+      ${o.failed.length ? `<p class="cc-alert warn">تعذّرت قراءة ${ui.fmt(o.failed.length)} دورة: ${esc(o.failed.join("؛ "))}</p>` : ""}
+      ${!multi ? '<p class="cc-alert warn">لم يظهر أي طالب في أكثر من مرحلة. إما لا يوجد تكرار فعلاً، أو أن قائمة النظام تعرض الطالب تحت دورته الحالية فقط، فتحقق من طالب تعرف أنه سُجّل في مرحلتين.</p>' : ""}
+      <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${state.cmp.multiOnly ? "المسجلون في أكثر من مرحلة" : "كل الطلاب"}</h4><span class="cc-badge">${ui.fmt(rows.length)} صفاً</span></div></header>
+        ${rows.length ? `<div class="cc-scroll"><table class="cc-table"><thead><tr>${cmpHeads().map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.slice(0, 300).map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${rows.length > 300 ? '<p class="cc-note">يُعرض أول 300 صف؛ الملف المنزَّل يشمل الكل.</p>' : ""}` : '<p class="cc-note">لا صفوف.</p>'}</article></section>`;
+  }
+
   /* حالة الوكيل في جملة ولون واحدين: busy | ok | bad */
   function statusInfo() {
     const st = state.agentStatus;
@@ -602,12 +688,13 @@
       ${state.busy ? '<div class="cc-progress" aria-hidden="true"><i></i></div>' : ""}
       <nav class="cc-modes" role="tablist" aria-label="نوع الأمر">
         <button type="button" role="tab" class="${mode === "report" ? "on" : ""}" aria-selected="${mode === "report"}" data-cc="mode" data-m="report"><b>تقرير جاهز</b><small>اختر المسار والمرحلة ثم نفّذ</small></button>
+        <button type="button" role="tab" class="${mode === "compare" ? "on" : ""}" aria-selected="${mode === "compare"}" data-cc="mode" data-m="compare"><b>مقارنة المراحل</b><small>من سجّل في أكثر من مرحلة</small></button>
         <button type="button" role="tab" class="${mode === "ask" ? "on" : ""}" aria-selected="${mode === "ask"}" data-cc="mode" data-m="ask"><b>اكتب طلبك</b><small>بحث، أو تسجيل طلاب من Excel</small></button>
       </nav>
-      ${mode === "report" ? scriptsView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
         ? "تعمل الأوامر في متصفحك عبر إضافة «وكيل تمكين». سجّل دخولك في نظام المركز مرة واحدة؛ والبحث والقوائم تُنفَّذ مباشرة، أما التسجيل فتراجع معاينته هنا وتوافق قبل أن يُكتب شيء. لا تصل كلمة مرورك أو جلستك إلى تمكين."
         : "تعمل الجلسة في نافذة Edge المحلية. سجّل الدخول فيها مرة واحدة؛ بعدها ينفّذ الوكيل البحث والقوائم والتسجيل ويعرض النتيجة هنا. أو ثبّت إضافة «وكيل تمكين» في Chrome لتعمل دون خادم محلي."}</p></details>
@@ -874,6 +961,9 @@
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
         } else if (act === "mode") {
           state.mode = b.dataset.m; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
+        } else if (act === "run-compare") { return runCompare();
+        } else if (act === "export-cmp") {
+          return exportBook("مقارنة المراحل.xlsx", cmpHeads(), cmpTable());
         } else if (act === "cols-all") { state.hiddenCols = new Set();
         } else if (act === "to-forms") {
           const { headers, rows } = feedData();
@@ -905,6 +995,13 @@
 
     box.addEventListener("change", async (e) => {
       const t = e.target;
+      if (t.dataset.cmp) {
+        const k = t.dataset.cmp, c = state.cmp;
+        if (k === "tracks") { const v = String(t.value), at = c.tracks.indexOf(v); if (t.checked && at < 0) c.tracks.push(v); else if (!t.checked && at >= 0) c.tracks.splice(at, 1); }
+        else if (k === "status") c.status = t.value;
+        else if (k === "multi") c.multiOnly = t.checked;
+        render(); return;
+      }
       if (t.dataset.tpl) {
         const a = state.tplPick, at = a.indexOf(t.dataset.tpl);
         if (t.checked && at < 0) a.push(t.dataset.tpl); else if (!t.checked && at >= 0) a.splice(at, 1);
