@@ -651,7 +651,7 @@
             <label class="cc-chk"><input type="radio" name="cmp-goal" data-cmp="goal" value="multi" ${c.goal === "multi" ? "checked" : ""}> <span>طلاب سجّلوا في أكثر من مرحلة</span></label>
             <label class="cc-chk"><input type="radio" name="cmp-goal" data-cmp="goal" value="siblings" ${c.goal === "siblings" ? "checked" : ""}> <span>إخوة: المرحلة الأخيرة مقابل المراحل السابقة</span></label></div>
             ${c.goal === "siblings" ? `<div class="cc-pick"><b>طلاب المرحلة</b><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="radio" name="sib-base" data-sib="baseStage" value="${esc(g.t)}" ${state.sib.baseStage === g.t ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}</div></div>
-            <div class="cc-pick"><b>هل لهم إخوة في</b><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="checkbox" data-sib="cmpStages" value="${esc(g.t)}" ${state.sib.cmpStages.includes(g.t) ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}</div><p class="cc-note">اترك الخيارات فارغة لتشمل كل المراحل الأخرى غير المرحلة المختارة أعلاه.</p></div>
+            <div class="cc-pick"><b>هل لهم إخوة في</b><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="checkbox" data-sib="cmpStages" value="${esc(g.t)}" ${state.sib.cmpStages.includes(g.t) ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}<label class="cc-chk"><input type="checkbox" data-sib="cmpStages" value="__same" ${state.sib.cmpStages.includes("__same") ? "checked" : ""}> <span>نفس المرحلة (بين طلابها)</span></label></div><p class="cc-note">اترك الخيارات فارغة لتشمل كل المراحل الأخرى غير المرحلة المختارة أعلاه. وللمقارنة داخل مرحلة واحدة اختر «نفس المرحلة».</p></div>
             <div class="cc-chips" style="margin-top:8px">${["phone:نفس رقم الهاتف", "name:نفس الاسم بعد الاسم الأول", "loose:الأب والعائلة فقط (أوسع)", "both:يجب تحقق الهاتف والاسم معاً (أدق)"].map((x) => { const [k, t] = x.split(":"); return `<label class="cc-chk"><input type="checkbox" data-sib="${k}" ${state.sib[k] ? "checked" : ""}> <span>${esc(t)}</span></label>`; }).join("")}</div>
             <p class="cc-note">معيار الربط بين الإخوة. الهاتف وحده قد يجمع غير الإخوة؛ و«معاً» أدق. تبقى العائلات التي فيها طالب بالمرحلة الأخيرة وأخ أو أخت في مرحلة سابقة.</p>` : ""}</fieldset>
           <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk(o.v, o.t.replace(/^مسار\s*/, ""), c.tracks.includes(String(o.v)))).join("")}</div></fieldset>
@@ -742,7 +742,10 @@
       if (c.stageMode) {
         // طلاب «المرحلة المرجعية» الذين لهم أخ/أخت (شخص آخر) في المراحل المختارة للمقارنة (الافتراضي: كل المراحل الأخرى)
         const base = c.baseStage || STAGES[STAGES.length - 1].t;
-        const targets = new Set(c.cmpStages.length ? c.cmpStages : STAGES.map((g) => g.t).filter((t) => t !== base));
+        const picked = c.cmpStages.filter((x) => x !== "__same");
+        const sameOn = c.cmpStages.includes("__same");           // «نفس المرحلة»: إخوة داخل مرحلة واحدة
+        const targets = new Set(picked.length || sameOn ? picked : STAGES.map((g) => g.t).filter((t) => t !== base));
+        if (sameOn) targets.add(base);
         const inTarget = (p) => [...p.stages].some((x) => targets.has(x));
         fams = fams.filter((g) => {
           const mine = g.filter((p) => p.stages.has(base));
@@ -752,7 +755,7 @@
         fams.forEach((g) => g.sort((a, b) => Number(b.stages.has(base)) - Number(a.stages.has(base))));
         const mineSet = new Set(), otherSet = new Set();
         fams.forEach((g) => g.forEach((p) => { if (p.stages.has(base)) mineSet.add(p); if (inTarget(p)) otherSet.add(p); }));
-        const cmpLabel = c.cmpStages.length ? c.cmpStages.join(" و") : "باقي المراحل";
+        const cmpLabel = c.cmpStages.length ? c.cmpStages.map((x) => x === "__same" ? "نفس المرحلة" : x).join(" و") : "باقي المراحل";
         stageStats = { last: mineSet.size, early: otherSet.size, lastLabel: base, cmpLabel };
       }
       fams = fams.sort((a, b) => b.length - a.length || a[0].name.localeCompare(b[0].name, "ar"));
