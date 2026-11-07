@@ -37,6 +37,7 @@
     tpls: null,          // القوالب المحفوظة في المحوّل
     tplPick: [],         // القوالب المختارة لإخراج النماذج
     fallbackNote: "",    // سبب عدم استعمال الذاكرة في آخر تنفيذ
+    progStart: 0,        // وقت بدء التنفيذ الجاري (للعدّاد)
     cache: null,         // نسخة محمّلة من كل البيانات في ذاكرة الصفحة فقط: { at, details, items:[{trackId,heads,rows}] }
     groupFilter: "",     // تصفية العرض بعمود «المجموعة» إن وُجد في النتائج
   };
@@ -993,11 +994,45 @@
         ${rows.length ? `<div class="cc-scroll"><table class="cc-table"><thead><tr>${misHeads().map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.slice(0, 400).map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${rows.length > 400 ? '<p class="cc-note">يُعرض أول 400 صف؛ الملف المنزَّل يشمل الكل.</p>' : ""}` : ""}</article></section>`;
   }
 
+  /* ===== شريط التقدّم: يبقى المستخدم على شاشة تمكين ويرى أن العمل جارٍ =====
+     الوكيل يبدأ رسائله بـ [رقم/عدد] حين تتعدد الأوامر، وبعضها يحمل «س من ص» (قراءة بيانات الطالب 12 من 46). */
+  function progressInfo() {
+    const t = state.progress || "";
+    const m = t.match(/^\[(\d+)\/(\d+)\]\s*/);
+    const i = m ? Number(m[1]) : 1, n = m ? Number(m[2]) : 1;
+    const text = m ? t.slice(m[0].length) : t;
+    const d = text.match(/(\d+)\s*من\s*(\d+)/);
+    const inner = d && Number(d[2]) ? Math.min(1, Number(d[1]) / Number(d[2])) : null;
+    let pct = null;
+    if (n > 1) pct = Math.max(3, ((i - 1 + (inner == null ? 0 : inner)) / n) * 100);
+    else if (inner != null) pct = Math.max(3, inner * 100);
+    return { i, n, text, pct };
+  }
+  const fmtElapsed = (ms) => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+  function busyBanner() {
+    const pi = progressInfo();
+    const viaExt = App.centerAgent && App.centerAgent.isReady();
+    return `<div class="cc-busy" id="cc-busy" role="status" aria-live="polite">
+      <div class="cc-busy-h"><span class="cc-spin" aria-hidden="true"></span><b>جارٍ جلب البيانات من نظام المركز…</b><span class="cc-elapsed" id="cc-elapsed">${fmtElapsed(Date.now() - (state.progStart || Date.now()))}</span></div>
+      <div class="cc-bar ${pi.pct == null ? "ind" : ""}"><i id="cc-bar-i" style="${pi.pct == null ? "" : "width:" + pi.pct.toFixed(1) + "%"}"></i></div>
+      <div class="cc-busy-t" id="cc-busy-t">${esc(busyLine(pi))}</div>
+      <p class="cc-note">${!viaExt ? "ينفّذ الوكيل المحلي الأمر؛ سيظهر الناتج هنا." : bgSupported() ? "أنت باقٍ في هذه الشاشة: يعمل الوكيل في تبويب خلفي ولا تحتاج الانتقال إليه." : "إضافتك أقدم من 1.3.0 فقد يفتح التنفيذ شاشة النظام. حدّثها (أعد تنزيلها من صفحة الإضافة) ليعمل في الخلفية وتبقى هنا."}</p></div>`;
+  }
+  const bgSupported = () => { const n = String((App.centerAgent && App.centerAgent.version && App.centerAgent.version()) || "").split(".").map(Number); return n.length >= 2 && (n[0] > 1 || (n[0] === 1 && n[1] >= 3)); };
+  const busyLine = (pi) => (pi.n > 1 ? "الأمر " + pi.i + " من " + pi.n + " · " : "") + (pi.text || "يجهّز الوكيل الطلب…");
+  /* تحديث الشريط دون إعادة رسم الصفحة */
+  function updateProgressUI() {
+    const pi = progressInfo();
+    const bar = $("cc-bar-i"), t = $("cc-busy-t");
+    if (bar) { bar.parentElement.classList.toggle("ind", pi.pct == null); bar.style.width = pi.pct == null ? "" : pi.pct.toFixed(1) + "%"; }
+    if (t) t.textContent = busyLine(pi);
+  }
+
   /* حالة الوكيل في جملة ولون واحدين: busy | ok | bad */
   function statusInfo() {
     const st = state.agentStatus;
     if (state.thinking) return { st: "busy", text: "أحلل صياغة طلبك…" };
-    if (state.busy) return { st: "busy", text: state.progress || "الوكيل ينفّذ طلبك الآن…" };
+    if (state.busy) return { st: "busy", text: (state.progress || "").replace(/^\[\d+\/\d+\]\s*/, "") || "الوكيل ينفّذ طلبك الآن…" };
     if (!st) return { st: "bad", text: "جارٍ الاتصال بالوكيل…" };
     return { st: st.loggedIn ? "ok" : "bad", text: st.message };
   }
@@ -1009,9 +1044,11 @@
     const mode = state.adding || state.proposal ? "ask" : state.mode;
     const info = statusInfo();
     const viaExt = App.centerAgent && App.centerAgent.isReady();
+    if (state.busy && !state.progStart) state.progStart = Date.now();
+    if (!state.busy) state.progStart = 0;
     box.innerHTML = `<div class="cc-app">
       <div class="cc-top" data-st="${info.st}"><span class="cc-dot" aria-hidden="true"></span><span id="cc-status" role="status">${esc(info.text)}</span></div>
-      ${state.busy ? '<div class="cc-progress" aria-hidden="true"><i></i></div>' : ""}
+      ${state.busy ? busyBanner() : ""}
       <nav class="cc-modes" role="tablist" aria-label="نوع الأمر">
         <button type="button" role="tab" class="${mode === "report" ? "on" : ""}" aria-selected="${mode === "report"}" data-cc="mode" data-m="report"><b>تقرير جاهز</b><small>اختر المسار والمرحلة ثم نفّذ</small></button>
         <button type="button" role="tab" class="${mode === "compare" ? "on" : ""}" aria-selected="${mode === "compare"}" data-cc="mode" data-m="compare"><b>مقارنة المراحل</b><small>من سجّل في أكثر من مرحلة</small></button>
@@ -1111,7 +1148,7 @@
     if (App.centerAgent && await App.centerAgent.ready(500)) {
       // إضافة المتصفح: تفتح نظام المركز وتنفّذ، والموافقة على الكتابة هنا في الصفحة
       const out = await App.centerAgent.run(commands, {
-        onProgress: (t) => { state.progress = t; const el = $("cc-status"); if (el && !state.plan) el.textContent = t; },
+        onProgress: (t) => { state.progress = t; const el = $("cc-status"); if (el && !state.plan) el.textContent = t.replace(/^\[\d+\/\d+\]\s*/, ""); updateProgressUI(); },
         onPlan: (plan) => new Promise((resolve) => { state.plan = plan; state.planResolve = resolve; render(); }),
       });
       results = out.results || [];
@@ -1220,6 +1257,7 @@
   function init() {
     const box = $("cc-body");
     if (!box) return;
+    window.setInterval(() => { const e = $("cc-elapsed"); if (e && state.busy && state.progStart) e.textContent = fmtElapsed(Date.now() - state.progStart); }, 1000);
     render();
     refreshStatus();
     window.setInterval(refreshStatus, 8000);

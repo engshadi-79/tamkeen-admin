@@ -33,7 +33,15 @@
   };
 
   const clean = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  /* في تبويب خلفي تُبطئ Chrome مؤقتات الصفحة (حتى مرة في الدقيقة بعد خمس دقائق)، فمع الإضافة
+     يُنفَّذ الانتظار في خلفية الإضافة التي لا تُبطَّأ. وفي Console العادي يبقى setTimeout. */
+  const sleep = (ms) => {
+    const local = () => new Promise((r) => setTimeout(r, ms));
+    if (window.__kxRemote && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+      try { return Promise.resolve(chrome.runtime.sendMessage({ type: "sleep", ms })).then(() => {}, local); } catch (e) { return local(); }
+    }
+    return local();
+  };
   const parse = (html) => new DOMParser().parseFromString(html, "text/html");
   const digits = (s) => String(s == null ? "" : s).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, "");
   const GET_GAP = 700, POST_GAP = 1500, MAX_ROWS = 300, MAX_FAILS = 3, MAX_DETAILS = 400;
@@ -59,7 +67,12 @@
   const actEl = h("div"); actEl.style.marginTop = "10px";
   box.append(title, sayEl, bodyEl, logEl, actEl);
   document.body.appendChild(box);
-  const say = (t) => { sayEl.textContent = t; if (typeof window.__kxProgress === "function") window.__kxProgress(t); };
+  // مع أكثر من أمر نبدأ الرسالة بـ [رقم/عدد] ليعرض تمكين شريط التقدّم الكلي
+  const say = (t) => {
+    sayEl.textContent = t;
+    const c = window.__kxCmd;
+    if (typeof window.__kxProgress === "function") window.__kxProgress(c && c.n > 1 ? "[" + c.i + "/" + c.n + "] " + t : t);
+  };
   const log = (t) => { const d = h("div", { textContent: t }); logEl.prepend(d); };
   const btn = (label, fn, kind) => {
     const b = h("button", { textContent: label });
@@ -400,6 +413,7 @@
 
   for (let i = 0; i < pack.commands.length && !stopped; i++) {
     const cmd = pack.commands[i];
+    window.__kxCmd = { i: i + 1, n: pack.commands.length };
     try {
       const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister }[cmd.type];
       if (!fn) { results.push({ index: i, type: cmd.type, error: "نوع أمر غير معروف" }); continue; }
