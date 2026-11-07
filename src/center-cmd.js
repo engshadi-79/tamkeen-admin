@@ -30,6 +30,7 @@
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
     cmp: { tracks: [], status: "", multiOnly: true, out: null }, // مقارنة المراحل
     sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, out: null }, // مقارنة الإخوة
+    mis: { kind: "pre", tracks: [], stages: [], status: "active", out: null }, // استبيانات وتعهدات
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true }, // حالة الأقسام القابلة للطي
     extraNote: "",
@@ -770,6 +771,128 @@
         ${o.rows.length ? `<div class="cc-scroll"><table class="cc-table"><thead><tr>${sibHeads().map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${o.rows.slice(0, 400).map((r, i, a) => `<tr${i && a[i - 1][0] !== r[0] ? ' class="cc-sep"' : ""}>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${o.rows.length > 400 ? '<p class="cc-note">يُعرض أول 400 صف؛ الملف المنزَّل يشمل الكل.</p>' : ""}` : ""}</article></section>`;
   }
 
+  /* ===== استبيانات وتعهدات: من لم يعبّئ ولم يوقّع =====
+     الاستبيانات: تقرير النظام نفسه «الطلاب الذين لم يعبئوا الاستبيان» (قراءة فقط).
+     التعهدات: لا تقرير «من لم يوقّع» في النظام، فيُحسب: طلاب النظام ناقص الموقّعين، بالهوية. */
+  const MIS_KINDS = [{ k: "pre", t: "استبيان قبلي" }, { k: "post", t: "استبيان بعدي" }, { k: "impact", t: "استبيان قياس الأثر" }, { k: "pledge", t: "تعهد الطالب" }];
+  const misHeads = () => ["الاسم", "رقم الهوية", "رقم الطالب", "الجوال", "المسار", "المرحلة", "المجموعة", "ملاحظة"];
+  const stageOf = (text) => { const t = norm(text || ""); const g = STAGES.find((x) => t.includes(norm(x.k))); return g ? g.t : ""; };
+  const misCell = (r, x, h) => { const i = r.heads.indexOf(h); return i < 0 ? "" : clean(x.cells[i]); };
+
+  async function runMissing() {
+    const c = state.mis;
+    state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
+    render(); refreshStatus();
+    try {
+      const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id));
+      const statusOk = ["active", "withdrawn", "graduated", "suspended"].includes(c.status) ? c.status : "all";
+      let rows = [], note = "", extra = {};
+      if (c.kind !== "pledge") {
+        let cmds;
+        if (c.stages.length) {
+          const courses = courseOpts().filter((x) => c.stages.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track)));
+          if (!courses.length) throw new Error("لا دورة تجمع المسار والمرحلة المختارين.");
+          cmds = courses.map((x) => ({ label: x.t, params: { training_course_id: x.v } }));
+        } else if (c.tracks.length) cmds = c.tracks.map((id) => ({ label: optLabel("track_id", id), params: { track_id: id } }));
+        else cmds = [{ label: "كل المسارات", params: {} }];
+        const results = await runCommands(cmds.map((x) => ({ type: "list", source: "missing", label: x.label, params: Object.assign({ evaluation_type: c.kind, student_status: statusOk }, x.params) })));
+        const seen = new Set();
+        results.forEach((r) => {
+          if (!r || r.type !== "list") return;
+          r.rows.forEach((x) => {
+            const row = { name: misCell(r, x, "الاسم") || misCell(r, x, "الطالب"), id: misCell(r, x, "رقم الهوية"), stu: misCell(r, x, "رقم الطالب"), phone: misCell(r, x, "الجوال"), track: misCell(r, x, "المسار").replace(/^مسار\s*/, ""), stage: stageOf(misCell(r, x, "الدورة")), group: misCell(r, x, "المجموعة"), note: [misCell(r, x, "الاستبيان"), misCell(r, x, "حالة تعبئة الاستبيان")].filter(Boolean).join(" — ") };
+            const key = row.id || row.stu || row.name + "|" + row.track + "|" + row.stage + "|" + row.note;
+            if (!row.name || seen.has(key)) return;
+            seen.add(key); rows.push(row);
+          });
+        });
+        // إن لم يعرض التقرير رقم الهوية نكمله من قائمة الطلاب (بالمطابقة برقم الطالب ثم بالاسم)
+        if (rows.length && rows.every((x) => !x.id)) {
+          const sl = await runCommands(trackIds.map((id) => ({ type: "list", label: optLabel("track_id", id), params: { track_id: id } })));
+          const byStu = new Map(), byName = new Map();
+          sl.forEach((r) => {
+            if (!r || r.type !== "list") return;
+            const iS = r.heads.indexOf("رقم الطالب"), iI = r.heads.indexOf("رقم الهوية"), iN = r.heads.indexOf("الاسم");
+            if (iI < 0) return;
+            r.rows.forEach((x) => {
+              const id = digits(x.cells[iI]);
+              if (iS >= 0 && clean(x.cells[iS])) byStu.set(clean(x.cells[iS]), id);
+              const nk = normName(x.cells[iN]); byName.set(nk, byName.has(nk) ? "" : id);
+            });
+          });
+          rows.forEach((x) => { x.id = (x.stu && byStu.get(x.stu)) || byName.get(normName(x.name)) || ""; });
+          note = "لم يعرض التقرير رقم الهوية، فأُكمل من قائمة الطلاب (بمطابقة رقم الطالب أو الاسم).";
+        }
+      } else {
+        const cmds = trackIds.map((id) => ({ type: "list", label: optLabel("track_id", id), params: Object.assign({ track_id: id }, c.status ? { status: c.status } : {}) }));
+        cmds.push({ type: "list", source: "pledges", label: "التعهدات", params: {} });
+        const res = await runCommands(cmds);
+        const pl = res[res.length - 1];
+        if (!pl || pl.type !== "list") throw new Error((pl && pl.error) || "تعذّرت قراءة قائمة التعهدات.");
+        const iPI = pl.heads.indexOf("رقم الهوية");
+        if (iPI < 0) throw new Error("تعذّر تحديد رقم الهوية في قائمة التعهدات.");
+        const pledged = new Set(pl.rows.map((x) => digits(x.cells[iPI])).filter(Boolean));
+        const seen = new Set(); let targets = 0;
+        res.slice(0, -1).forEach((r, i) => {
+          if (!r || r.type !== "list") return;
+          const iI = r.heads.indexOf("رقم الهوية");
+          if (iI < 0) throw new Error("تعذّر تحديد رقم الهوية في قائمة الطلاب.");
+          r.rows.forEach((x) => {
+            const id = digits(x.cells[iI]);
+            const stage = stageOf(x.course || misCell(r, x, "المسار / الدورة"));
+            if (c.stages.length && !c.stages.some((k) => (STAGES.find((g) => g.k === k) || {}).t === stage)) return;
+            if (!id || seen.has(id)) return;
+            seen.add(id); targets++;
+            if (pledged.has(id)) return;
+            rows.push({ name: misCell(r, x, "الاسم"), id, stu: misCell(r, x, "رقم الطالب"), phone: misCell(r, x, "الجوال"), track: trackShort(trackIds[i]), stage, group: misCell(r, x, "المجموعة").replace(/^[-–—]$/, "") || "غير موزع", note: "" });
+          });
+        });
+        extra = { targets, pledged: pledged.size };
+      }
+      const per = {}; rows.forEach((x) => { const k = (x.track || "—") + (x.stage ? " · " + x.stage : ""); per[k] = (per[k] || 0) + 1; });
+      rows.sort((a, b) => (a.track + a.stage + a.group).localeCompare(b.track + b.stage + b.group, "ar") || a.name.localeCompare(b.name, "ar"));
+      c.out = { kind: c.kind, rows, per, note, extra, at: new Date() };
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  const misTable = () => ((state.mis.out && state.mis.out.rows) || []).map((x) => [x.name, x.id, x.stu, x.phone, x.track, x.stage, x.group, x.note]);
+
+  function missingView() {
+    const c = state.mis;
+    const chk = (k, v, text, on) => `<label class="cc-chk"><input type="checkbox" data-mis="${k}" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(text)}</span></label>`;
+    const kindT = (MIS_KINDS.find((x) => x.k === c.kind) || {}).t;
+    const n = c.kind === "pledge" ? trackOpts().filter((o) => !c.tracks.length || c.tracks.includes(String(o.v))).length + 1 : (c.stages.length ? courseOpts().filter((x) => c.stages.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track))).length : Math.max(1, c.tracks.length));
+    return `<section class="cc-card" id="cc-mis">
+      <header class="cc-card-h"><h3>استبيانات وتعهدات — من لم يُكمل؟</h3><p>يستخرج الطلاب الذين لم يعبّئوا الاستبيان أو لم يوقّعوا التعهد، باسمهم وهويتهم ومسارهم ومجموعتهم. للقراءة فقط.</p></header>
+      <div class="cc-card-b">
+        <div class="cc-grid">
+          <fieldset class="cc-fs cc-wide"><legend>ما المطلوب؟</legend><div class="cc-chips">${MIS_KINDS.map((x) => `<label class="cc-chk"><input type="radio" name="mis-kind" data-mis="kind" value="${x.k}" ${c.kind === x.k ? "checked" : ""}> <span>${esc(x.t)}</span></label>`).join("")}</div></fieldset>
+          <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk("tracks", o.v, o.t.replace(/^مسار\s*/, ""), c.tracks.includes(String(o.v)))).join("")}</div></fieldset>
+          <fieldset class="cc-fs"><legend>المراحل${c.stages.length ? ` <em>${ui.fmt(c.stages.length)}</em>` : ""}</legend><div class="cc-chips">${STAGES.map((g) => chk("stages", g.k, g.t, c.stages.includes(g.k))).join("")}</div>
+            <label class="cc-field" style="margin-top:10px"><span>حالة الطالب</span><select data-mis="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></fieldset>
+        </div>
+        <p class="cc-note">${c.kind === "pledge" ? "التعهد: يقرأ قائمة الطلاب وقائمة التعهدات ويطابقها برقم الهوية؛ والباقي هم من لم يوقّعوا." : "الاستبيان: يقرأ تقرير النظام «الطلاب الذين لم يعبئوا الاستبيان» بالمسار والمرحلة المختارين."}</p>
+      </div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${esc(kindT || "")}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.stages.length ? " · " + esc(c.stages.map((k) => (STAGES.find((g) => g.k === k) || {}).t).join("، ")) : ""} · ${esc(optLabel("status", c.status) || "كل الحالات")} · ${ui.fmt(n)} ${n === 1 ? "طلب قراءة" : "طلبات قراءة"}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-mis" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ الاستخراج…" : "استخرج التقرير"}</button></div></footer></section>`;
+  }
+
+  function missingResult() {
+    const o = state.mis.out;
+    if (!o) return "";
+    const rows = misTable();
+    const title = (MIS_KINDS.find((x) => x.k === o.kind) || {}).t || "";
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> لم يُكمل: ${esc(title)}</h3>
+      <div class="cc-stats"><span class="cc-stat bad"><b>${ui.fmt(rows.length)}</b> طالباً لم يُكمل</span>
+        ${o.kind === "pledge" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.targets)}</b> طالباً في النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.pledged)}</b> وقّعوا</span>` : ""}
+        ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-mis">تنزيل Excel</button>' : ""}</div>
+      ${o.note ? `<p class="cc-alert warn">${esc(o.note)}</p>` : ""}
+      ${Object.keys(o.per).length > 1 ? `<div class="cc-stats">${Object.keys(o.per).map((k) => `<span class="cc-stat"><b>${ui.fmt(o.per[k])}</b> ${esc(k)}</span>`).join("")}</div>` : ""}
+      ${!rows.length ? '<p class="cc-alert warn">لا طلاب بهذا الشرط. إما أن الجميع أكمل، أو أن الاختيار لا يطابق شيئاً.</p>' : ""}
+      <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الطلاب الذين لم يُكملوا</h4><span class="cc-badge">${ui.fmt(rows.length)} صفاً</span></div></header>
+        ${rows.length ? `<div class="cc-scroll"><table class="cc-table"><thead><tr>${misHeads().map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.slice(0, 400).map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${rows.length > 400 ? '<p class="cc-note">يُعرض أول 400 صف؛ الملف المنزَّل يشمل الكل.</p>' : ""}` : ""}</article></section>`;
+  }
+
   /* حالة الوكيل في جملة ولون واحدين: busy | ok | bad */
   function statusInfo() {
     const st = state.agentStatus;
@@ -793,12 +916,13 @@
         <button type="button" role="tab" class="${mode === "report" ? "on" : ""}" aria-selected="${mode === "report"}" data-cc="mode" data-m="report"><b>تقرير جاهز</b><small>اختر المسار والمرحلة ثم نفّذ</small></button>
         <button type="button" role="tab" class="${mode === "compare" ? "on" : ""}" aria-selected="${mode === "compare"}" data-cc="mode" data-m="compare"><b>مقارنة المراحل</b><small>من سجّل في أكثر من مرحلة</small></button>
         <button type="button" role="tab" class="${mode === "siblings" ? "on" : ""}" aria-selected="${mode === "siblings"}" data-cc="mode" data-m="siblings"><b>مقارنة الإخوة</b><small>طلاب يجمعهم هاتف أو عائلة</small></button>
+        <button type="button" role="tab" class="${mode === "missing" ? "on" : ""}" aria-selected="${mode === "missing"}" data-cc="mode" data-m="missing"><b>استبيانات وتعهدات</b><small>من لم يعبّئ أو يوقّع</small></button>
         <button type="button" role="tab" class="${mode === "ask" ? "on" : ""}" aria-selected="${mode === "ask"}" data-cc="mode" data-m="ask"><b>اكتب طلبك</b><small>بحث، أو تسجيل طلاب من Excel</small></button>
       </nav>
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
         ? "تعمل الأوامر في متصفحك عبر إضافة «وكيل تمكين». سجّل دخولك في نظام المركز مرة واحدة؛ والبحث والقوائم تُنفَّذ مباشرة، أما التسجيل فتراجع معاينته هنا وتوافق قبل أن يُكتب شيء. لا تصل كلمة مرورك أو جلستك إلى تمكين."
         : "تعمل الجلسة في نافذة Edge المحلية. سجّل الدخول فيها مرة واحدة؛ بعدها ينفّذ الوكيل البحث والقوائم والتسجيل ويعرض النتيجة هنا. أو ثبّت إضافة «وكيل تمكين» في Chrome لتعمل دون خادم محلي."}</p></details>
@@ -851,7 +975,7 @@
       else { const d = t.search(/\d/); name = d < 0 ? t : t.slice(0, d); t = d < 0 ? "" : t.slice(d); }
     }
     // ما بقي: «الهوية - الجوال» بفاصل بينهما. نقسمه بالفواصل لا بشكل الرقم، فالجوال قد يأتي بلا صفر أوله
-    const parts = t.split(/\s*[-–—]\s*/).map(digits).filter(Boolean);
+    const parts = t.split(/\s*[-–—·]\s*/).map(digits).filter(Boolean);
     let id = "", phone = "";
     if (parts.length >= 2) { id = parts[0]; phone = parts[parts.length - 1]; }
     else if (parts.length === 1) { if (/^0?5\d{8}$/.test(parts[0])) phone = parts[0]; else id = parts[0]; }
@@ -865,7 +989,11 @@
     if (iS < 0 && iC < 0 && iG < 0) return r;
     const heads = [], plan = [];
     r.heads.forEach((h, i) => {
-      if (i === iS) { heads.push("الاسم", "الاسم الإنجليزي", "رقم الطالب", "رقم الهوية", "الجوال"); plan.push((c) => splitStudentCell(c)); }
+      if (i === iS) {
+        const hasPhone = r.heads.some((x) => clean(x) === "الجوال");   // تقرير له عمود جوال خاص: لا نكرره
+        heads.push("الاسم", "الاسم الإنجليزي", "رقم الطالب", "رقم الهوية"); if (!hasPhone) heads.push("الجوال");
+        plan.push((c) => { const v = splitStudentCell(c); return hasPhone ? v.slice(0, 4) : v; });
+      }
       else if (i === iC) {
         heads.push("المسار", "المرحلة");
         plan.push((c) => { const t = clean(c); const m = t.match(/المرحلة\s*\S+/); return [clean(m ? t.replace(m[0], "") : t), m ? m[0] : ""]; });
@@ -1065,6 +1193,10 @@
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
         } else if (act === "mode") {
           state.mode = b.dataset.m; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
+        } else if (act === "run-mis") { return runMissing();
+        } else if (act === "export-mis") {
+          const o = state.mis.out; const t = (MIS_KINDS.find((x) => x.k === o.kind) || {}).t || "";
+          return exportBook("لم يُكمل - " + t + ".xlsx", misHeads(), misTable());
         } else if (act === "run-sib") { return runSiblings();
         } else if (act === "export-sib") {
           return exportBook("مقارنة الإخوة.xlsx", sibHeads(), state.sib.out.rows);
@@ -1102,6 +1234,13 @@
 
     box.addEventListener("change", async (e) => {
       const t = e.target;
+      if (t.dataset.mis) {
+        const k = t.dataset.mis, c = state.mis;
+        if (k === "kind") c.kind = t.value;
+        else if (k === "status") c.status = t.value;
+        else { const a = c[k], v = String(t.value), at = a.indexOf(v); if (t.checked && at < 0) a.push(v); else if (!t.checked && at >= 0) a.splice(at, 1); }
+        render(); return;
+      }
       if (t.dataset.sib) {
         const k = t.dataset.sib, c = state.sib;
         if (k === "tracks") { const v = String(t.value), at = c.tracks.indexOf(v); if (t.checked && at < 0) c.tracks.push(v); else if (!t.checked && at >= 0) c.tracks.splice(at, 1); }

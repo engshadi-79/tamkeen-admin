@@ -21,6 +21,9 @@ window.__kxStart = async () => {
     ["GET", /^\/admin\/students\/create$/],       // نموذج الإضافة (لجلب رمز الحماية طازجاً)
     ["GET", /^\/admin\/students\/\d+\/edit$/],   // بيانات طالب كاملة — قراءة فقط، لا يُرسَل منها شيء
     ["POST", /^\/admin\/students$/],              // إضافة طالب
+    ["GET", /^\/admin\/student-pledges(\?[^#]*)?$/],         // قائمة تعهدات الطلاب (قراءة فقط)
+    ["GET", /^\/admin\/evaluation-submissions(\?[^#]*)?$/],  // قائمة إرسالات الاستبيانات (قراءة فقط)
+    ["GET", /^\/admin\/reports\/evaluation-missing-submissions(\?[^#]*)?$/],  // تقرير «لم يعبئوا الاستبيان» (قراءة فقط)
   ];
   const guard = (method, path) => {
     const u = new URL(path, location.origin);
@@ -236,7 +239,11 @@ window.__kxStart = async () => {
 
   async function cmdList(cmd, index) {
     const out = { index, type: "list", label: cmd.label || "", params: cmd.params || {}, heads: [], rows: [] };
-    let path = "/admin/students?" + qs(Object.assign({ per_page: "100" }, cmd.params || {}));
+    // المصدر: الطلاب (الافتراضي) أو التعهدات أو إرسالات الاستبيانات. الأخيران لا يُرسَل لهما per_page.
+    const SOURCES = { students: "/admin/students", pledges: "/admin/student-pledges", submissions: "/admin/evaluation-submissions", missing: "/admin/reports/evaluation-missing-submissions" };
+    const base = SOURCES[cmd.source || "students"];
+    if (!base) throw new Error("مصدر قائمة غير معروف");
+    let path = base + "?" + qs(Object.assign(base === SOURCES.students ? { per_page: "100" } : {}, cmd.params || {}));
     for (let page = 1; path && page <= 60 && !stopped; page++) {
       say("قراءة القائمة — صفحة " + page + " (" + out.rows.length + " صفاً)");
       await sleep(GET_GAP);
