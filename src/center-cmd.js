@@ -29,7 +29,7 @@
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
     cmp: { tracks: [], status: "", multiOnly: true, out: null }, // مقارنة المراحل
-    sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, out: null }, // مقارنة الإخوة
+    sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, out: null }, // مقارنة الإخوة
     mis: { kind: "pre", tracks: [], stages: [], status: "active", verify: true, out: null }, // استبيانات وتعهدات
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true }, // حالة الأقسام القابلة للطي
@@ -695,7 +695,8 @@
           const id = iId >= 0 ? digits(x.cells[iId]) : "", name = clean(x.cells[iName]);
           const key = id || name; if (!key) return;
           const stage = (STAGES.find((g) => norm(x.course || "").includes(norm(g.k))) || {}).t || "";
-          const p = people.get(key) || { name, id, phones: new Set(), places: [] };
+          const p = people.get(key) || { name, id, phones: new Set(), places: [], stages: new Set() };
+          if (stage) p.stages.add(stage);
           [iPhone, iP2].forEach((i) => { if (i >= 0) { const k = phoneKey(x.cells[i]); if (k) p.phones.add(k); } });
           const place = [iTrack >= 0 ? clean(x.cells[iTrack]).replace(/^مسار\s*/, "") : "", stage, iGroup >= 0 && clean(x.cells[iGroup]) !== "-" ? clean(x.cells[iGroup]) : ""].filter(Boolean).join(" · ");
           if (place && !p.places.includes(place)) p.places.push(place);
@@ -722,22 +723,37 @@
       });
       const groups = new Map();
       list.forEach((p, i) => { const r = find(i); (groups.get(r) || groups.set(r, []).get(r)).push(p); });
-      const fams = [...groups.values()].filter((g) => g.length > 1).sort((a, b) => b.length - a.length || a[0].name.localeCompare(b[0].name, "ar"));
+      let fams = [...groups.values()].filter((g) => g.length > 1);
+      const LAST = STAGES[STAGES.length - 1].t;
+      let stageStats = null;
+      if (c.stageMode) {
+        // عائلة فيها طالب بالمرحلة الأخيرة وأخ/أخت (شخص آخر) سُجّل في مرحلة سابقة
+        fams = fams.filter((g) => {
+          const last = g.filter((p) => p.stages.has(LAST));
+          const early = g.filter((p) => [...p.stages].some((x) => x !== LAST));
+          return last.some((a) => early.some((b) => b !== a));
+        });
+        fams.forEach((g) => g.sort((a, b) => Number(b.stages.has(LAST)) - Number(a.stages.has(LAST))));
+        const lastSet = new Set(), earlySet = new Set();
+        fams.forEach((g) => g.forEach((p) => { if (p.stages.has(LAST)) lastSet.add(p); if ([...p.stages].some((x) => x !== LAST)) earlySet.add(p); }));
+        stageStats = { last: lastSet.size, early: earlySet.size, lastLabel: LAST };
+      }
+      fams = fams.sort((a, b) => b.length - a.length || a[0].name.localeCompare(b[0].name, "ar"));
       const rows = [];
       fams.forEach((g, gi) => {
         const cnt = (f) => { const m = new Map(); g.forEach((p) => f(p).forEach((k) => m.set(k, (m.get(k) || 0) + 1))); return m; };
         const ph = cnt((p) => p.phoneKeys), nm = cnt((p) => p.nameKeys);
         g.forEach((p) => {
           const why = [p.phoneKeys.some((k) => ph.get(k) > 1) ? "هاتف" : "", p.nameKeys.some((k) => nm.get(k) > 1) ? "اسم" : ""].filter(Boolean).join(" + ");
-          rows.push([String(gi + 1), p.name, p.id, [...p.phones].map((k) => "0" + k).join(" / "), p.places.join(" ؛ "), why]);
+          rows.push([String(gi + 1), p.name, p.id, [...p.phones].map((k) => "0" + k).join(" / "), [...p.stages].join("، "), p.places.join(" ؛ "), why]);
         });
       });
       const sizes = {}; fams.forEach((g) => { sizes[g.length] = (sizes[g.length] || 0) + 1; });
-      c.out = { rows, families: fams.length, siblings: fams.reduce((a, g) => a + g.length, 0), total: list.length, largest: fams[0] ? fams[0].length : 0, sizes, at: new Date() };
+      c.out = { rows, families: fams.length, siblings: fams.reduce((a, g) => a + g.length, 0), total: list.length, largest: fams[0] ? fams[0].length : 0, sizes, stageStats, at: new Date() };
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
   }
-  const sibHeads = () => ["العائلة", "الاسم", "رقم الهوية", "الهاتف", "المسار · المرحلة · المجموعة", "سبب الربط"];
+  const sibHeads = () => ["العائلة", "الاسم", "رقم الهوية", "الهاتف", "المرحلة", "المسار · المرحلة · المجموعة", "سبب الربط"];
 
   function siblingsView() {
     const c = state.sib;
@@ -752,6 +768,7 @@
           <fieldset class="cc-fs"><legend>تصفية</legend><label class="cc-field"><span>حالة الطالب</span><select data-sib="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></fieldset>
           <fieldset class="cc-fs cc-wide"><legend>معيار الربط</legend><div class="cc-chips">
             ${opt("phone", "نفس رقم الهاتف", c.phone)}${opt("name", "نفس الاسم بعد الاسم الأول (الأب والجد والعائلة)", c.name)}${opt("loose", "الأب والعائلة فقط (أوسع، أخطاؤه أكثر)", c.loose)}${opt("both", "يجب تحقق الهاتف والاسم معاً (أدق)", c.both)}</div>
+            <div class="cc-chips" style="margin-top:8px">${opt("stageMode", "قارن المرحلة الأخيرة بالمراحل السابقة: من له أخ أو أخت سُجّل في مرحلة سابقة", c.stageMode)}</div>
             <p class="cc-note">الهاتف وحده قد يجمع غير الإخوة (هاتف مشترك لجهة أو قريب). و«معاً» يُظهر الأرجح فقط. عمود «سبب الربط» في النتيجة يبيّن ما جمعهم.</p></fieldset>
         </div>
       </div>
@@ -762,8 +779,8 @@
   function siblingsResult() {
     const o = state.sib.out;
     if (!o) return "";
-    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة مقارنة الإخوة</h3>
-      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(o.families)}</b> عائلة</span><span class="cc-stat ok"><b>${ui.fmt(o.siblings)}</b> طالباً لهم إخوة</span><span class="cc-stat"><b>${ui.fmt(o.largest)}</b> أكبر عائلة</span>
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة مقارنة الإخوة${o.stageStats ? " — " + esc(o.stageStats.lastLabel) + " مقابل المراحل السابقة" : ""}</h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(o.families)}</b> عائلة</span><span class="cc-stat ok"><b>${ui.fmt(o.siblings)}</b> طالباً لهم إخوة</span><span class="cc-stat"><b>${ui.fmt(o.largest)}</b> أكبر عائلة</span>${o.stageStats ? `<span class="cc-stat ok"><b>${ui.fmt(o.stageStats.last)}</b> طالباً في ${esc(o.stageStats.lastLabel)} لهم إخوة في مراحل سابقة</span><span class="cc-stat"><b>${ui.fmt(o.stageStats.early)}</b> من الإخوة في المراحل السابقة</span>` : ""}
         ${Object.keys(o.sizes).sort((a, b) => a - b).map((k) => `<span class="cc-stat"><b>${ui.fmt(o.sizes[k])}</b> من ${ui.fmt(k)}</span>`).join("")}
         ${o.rows.length ? '<button type="button" class="btn secondary small" data-cc="export-sib">تنزيل Excel</button>' : ""}</div>
       ${o.rows.length ? "" : '<p class="cc-alert warn">لم أجد طلاباً يجمعهم المعيار المختار. جرّب إلغاء «معاً» أو تفعيل المعيار الأوسع.</p>'}
