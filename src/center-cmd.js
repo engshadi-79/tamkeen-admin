@@ -28,7 +28,7 @@
     sel: defaultSel(), // «تقارير جاهزة»
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
-    cmp: { tracks: [], status: "", multiOnly: true, out: null }, // مقارنة المراحل
+    cmp: { tracks: [], status: "", multiOnly: true, goal: "multi", out: null }, // مقارنة المراحل
     sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, out: null }, // مقارنة الإخوة
     mis: { kind: "pre", tracks: [], stages: [], status: "active", verify: true, out: null }, // استبيانات وتعهدات
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
@@ -588,6 +588,12 @@
      يُجلب طلاب كل دورة على حدة (أمر قراءة لكل دورة) ثم يُطابَقون برقم الهوية. */
   async function runCompare() {
     const c = state.cmp;
+    if (c.goal === "siblings") {
+      // الإخوة: المرحلة الأخيرة مقابل السابقة — يستعمل محرك الإخوة بمسارات المقارنة وحالتها
+      const sb = state.sib;
+      sb.tracks = c.tracks.slice(); sb.status = c.status; sb.stageMode = true;
+      return runSiblings();
+    }
     state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
     render(); refreshStatus();
     try {
@@ -638,21 +644,27 @@
     const chk = (v, text, on) => `<label class="cc-chk"><input type="checkbox" data-cmp="tracks" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(text)}</span></label>`;
     const n = courseOpts().filter((x) => x.stage && (!c.tracks.length || c.tracks.includes(x.track))).length;
     return `<section class="cc-card" id="cc-compare">
-      <header class="cc-card-h"><h3>مقارنة المراحل</h3><p>من سجّل في أكثر من مرحلة؟ تُقرأ قائمة كل دورة ثم يُطابَق الطلاب برقم الهوية. للقراءة فقط.</p></header>
+      <header class="cc-card-h"><h3>مقارنة المراحل</h3><p>${c.goal === "siblings" ? "من له أخ أو أخت سُجّل في مرحلة سابقة؟ يُقارَن طلاب المرحلة الأخيرة بإخوتهم في المراحل الأولى." : "من سجّل في أكثر من مرحلة؟ تُقرأ قائمة كل دورة ثم يُطابَق الطلاب برقم الهوية."} للقراءة فقط.</p></header>
       <div class="cc-card-b">
         <div class="cc-grid">
+          <fieldset class="cc-fs cc-wide"><legend>ما المطلوب؟</legend><div class="cc-chips">
+            <label class="cc-chk"><input type="radio" name="cmp-goal" data-cmp="goal" value="multi" ${c.goal === "multi" ? "checked" : ""}> <span>طلاب سجّلوا في أكثر من مرحلة</span></label>
+            <label class="cc-chk"><input type="radio" name="cmp-goal" data-cmp="goal" value="siblings" ${c.goal === "siblings" ? "checked" : ""}> <span>إخوة: المرحلة الأخيرة مقابل المراحل السابقة</span></label></div>
+            ${c.goal === "siblings" ? `<div class="cc-chips" style="margin-top:8px">${["phone:نفس رقم الهاتف", "name:نفس الاسم بعد الاسم الأول", "loose:الأب والعائلة فقط (أوسع)", "both:يجب تحقق الهاتف والاسم معاً (أدق)"].map((x) => { const [k, t] = x.split(":"); return `<label class="cc-chk"><input type="checkbox" data-sib="${k}" ${state.sib[k] ? "checked" : ""}> <span>${esc(t)}</span></label>`; }).join("")}</div>
+            <p class="cc-note">معيار الربط بين الإخوة. الهاتف وحده قد يجمع غير الإخوة؛ و«معاً» أدق. تبقى العائلات التي فيها طالب بالمرحلة الأخيرة وأخ أو أخت في مرحلة سابقة.</p>` : ""}</fieldset>
           <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk(o.v, o.t.replace(/^مسار\s*/, ""), c.tracks.includes(String(o.v)))).join("")}</div></fieldset>
           <fieldset class="cc-fs"><legend>تصفية</legend>
             <label class="cc-field"><span>حالة الطالب</span><select data-cmp="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>
-            <label class="cc-chk" style="margin-top:8px"><input type="checkbox" data-cmp="multi" ${c.multiOnly ? "checked" : ""}> <span>المسجلون في أكثر من مرحلة فقط</span></label></fieldset>
+            ${c.goal === "siblings" ? "" : `<label class="cc-chk" style="margin-top:8px"><input type="checkbox" data-cmp="multi" ${c.multiOnly ? "checked" : ""}> <span>المسجلون في أكثر من مرحلة فقط</span></label>`}</fieldset>
         </div>
         ${state.resultError ? "" : ""}
       </div>
-      <footer class="cc-actions"><div class="cc-sum"><b>سيُقرأ ${ui.fmt(n)} ${n === 1 ? "دورة" : n === 2 ? "دورتان" : n < 11 ? "دورات" : "دورة"}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.status ? " · " + esc(optLabel("status", c.status)) : " · كل الحالات"}</span></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${c.goal === "siblings" ? "قائمة الطلاب لكل مسار" : `سيُقرأ ${ui.fmt(n)} ${n === 1 ? "دورة" : n === 2 ? "دورتان" : n < 11 ? "دورات" : "دورة"}`}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.status ? " · " + esc(optLabel("status", c.status)) : " · كل الحالات"}</span></div>
         <div class="cc-act"><button type="button" class="btn navy" data-cc="run-compare" ${state.busy || !n ? "disabled" : ""}>${state.busy ? "جارٍ الجلب والمقارنة…" : "اجلب وقارن"}</button></div></footer></section>`;
   }
 
   function compareResult() {
+    if (state.cmp.goal === "siblings") return siblingsResult(true);
     const o = state.cmp.out;
     if (!o) return "";
     const rows = cmpTable();
@@ -768,7 +780,6 @@
           <fieldset class="cc-fs"><legend>تصفية</legend><label class="cc-field"><span>حالة الطالب</span><select data-sib="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></fieldset>
           <fieldset class="cc-fs cc-wide"><legend>معيار الربط</legend><div class="cc-chips">
             ${opt("phone", "نفس رقم الهاتف", c.phone)}${opt("name", "نفس الاسم بعد الاسم الأول (الأب والجد والعائلة)", c.name)}${opt("loose", "الأب والعائلة فقط (أوسع، أخطاؤه أكثر)", c.loose)}${opt("both", "يجب تحقق الهاتف والاسم معاً (أدق)", c.both)}</div>
-            <div class="cc-chips" style="margin-top:8px">${opt("stageMode", "قارن المرحلة الأخيرة بالمراحل السابقة: من له أخ أو أخت سُجّل في مرحلة سابقة", c.stageMode)}</div>
             <p class="cc-note">الهاتف وحده قد يجمع غير الإخوة (هاتف مشترك لجهة أو قريب). و«معاً» يُظهر الأرجح فقط. عمود «سبب الربط» في النتيجة يبيّن ما جمعهم.</p></fieldset>
         </div>
       </div>
@@ -776,9 +787,10 @@
         <div class="cc-act"><button type="button" class="btn navy" data-cc="run-sib" ${state.busy || !n ? "disabled" : ""}>${state.busy ? "جارٍ الجلب والمقارنة…" : "اجلب وقارن"}</button></div></footer></section>`;
   }
 
-  function siblingsResult() {
+  function siblingsResult(fromCompare) {
     const o = state.sib.out;
-    if (!o) return "";
+    // نتيجة وضع «المرحلة الأخيرة مقابل السابقة» تظهر في تبويب مقارنة المراحل فقط، ونتيجة الإخوة العامة في تبويبها
+    if (!o || !!o.stageStats !== !!fromCompare) return "";
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة مقارنة الإخوة${o.stageStats ? " — " + esc(o.stageStats.lastLabel) + " مقابل المراحل السابقة" : ""}</h3>
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(o.families)}</b> عائلة</span><span class="cc-stat ok"><b>${ui.fmt(o.siblings)}</b> طالباً لهم إخوة</span><span class="cc-stat"><b>${ui.fmt(o.largest)}</b> أكبر عائلة</span>${o.stageStats ? `<span class="cc-stat ok"><b>${ui.fmt(o.stageStats.last)}</b> طالباً في ${esc(o.stageStats.lastLabel)} لهم إخوة في مراحل سابقة</span><span class="cc-stat"><b>${ui.fmt(o.stageStats.early)}</b> من الإخوة في المراحل السابقة</span>` : ""}
         ${Object.keys(o.sizes).sort((a, b) => a - b).map((k) => `<span class="cc-stat"><b>${ui.fmt(o.sizes[k])}</b> من ${ui.fmt(k)}</span>`).join("")}
@@ -1277,7 +1289,7 @@
         } else if (act === "export-mis") {
           const o = state.mis.out; const t = (MIS_KINDS.find((x) => x.k === o.kind) || {}).t || "";
           return exportBook("لم يُكمل - " + t + ".xlsx", misHeads(), misTable());
-        } else if (act === "run-sib") { return runSiblings();
+        } else if (act === "run-sib") { state.sib.stageMode = false; return runSiblings();
         } else if (act === "export-sib") {
           return exportBook("مقارنة الإخوة.xlsx", sibHeads(), state.sib.out.rows);
         } else if (act === "run-compare") { return runCompare();
@@ -1334,6 +1346,7 @@
         if (k === "tracks") { const v = String(t.value), at = c.tracks.indexOf(v); if (t.checked && at < 0) c.tracks.push(v); else if (!t.checked && at >= 0) c.tracks.splice(at, 1); }
         else if (k === "status") c.status = t.value;
         else if (k === "multi") c.multiOnly = t.checked;
+        else if (k === "goal") { c.goal = t.value; state.resultError = ""; }
         render(); return;
       }
       if (t.dataset.tpl) {
