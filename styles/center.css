@@ -1055,3 +1055,7 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 
 .cc-modes { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 640px) { .cc-modes { grid-template-columns: 1fr; } }
+.cc-modes { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 900px) { .cc-modes { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 480px) { .cc-modes { grid-template-columns: 1fr; } }
+.cc-table tr.cc-sep td { border-top: 3px solid var(--line); }
