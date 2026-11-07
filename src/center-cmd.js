@@ -812,22 +812,38 @@
           const need = trackOpts().filter((o) => rows.some((x) => norm(x.track) === norm(o.t))).map((o) => String(o.v));
           const ids = need.length ? need : trackIds;
           const subs = await runCommands(ids.map((id) => ({ type: "list", source: "submissions", label: "إرسالات " + optLabel("track_id", id), params: { track_id: id } })));
-          const doneStu = new Set(), doneName = new Set(); let failedSubs = 0, seenSubs = 0;
+          const doneStu = new Set(), doneName = new Set(); let failedSubs = 0, seenSubs = 0, allSubs = 0;
+          const anyByStu = new Map(), anyByName = new Map(), sample = []; let subHeads = [];
           subs.forEach((r) => {
             if (!r || r.type !== "list") { failedSubs++; return; }
+            if (!subHeads.length) subHeads = r.heads.slice();
             r.rows.forEach((x) => {
+              allSubs++;
               const form = misCell(r, x, "النموذج");
               const kind = /قبلي/.test(form) ? "pre" : /بعدي/.test(form) ? "post" : "impact";
+              const stu = misCell(r, x, "رقم الطالب"), nk = normName(misCell(r, x, "الاسم")) + "|" + norm(misCell(r, x, "المسار"));
+              const info = ({ pre: "قبلي", post: "بعدي", impact: "قياس أثر" })[kind] + (misCell(r, x, "الدورة") ? " (" + misCell(r, x, "الدورة") + ")" : "");
+              if (stu) anyByStu.set(stu, (anyByStu.get(stu) || []).concat(info));
+              anyByName.set(nk, (anyByName.get(nk) || []).concat(info));
+              if (sample.length < 3) sample.push((stu || "بلا رقم طالب") + " ← " + (form || "؟").slice(0, 60) + " ← " + kind);
               if (kind !== c.kind) return;
               seenSubs++;
-              const stu = misCell(r, x, "رقم الطالب"); if (stu) doneStu.add(stu);
-              doneName.add(normName(misCell(r, x, "الاسم")) + "|" + norm(misCell(r, x, "المسار")));
+              if (stu) doneStu.add(stu);
+              doneName.add(nk);
             });
           });
           const reported = rows.length;
           rows = rows.filter((x) => !(x.stu ? doneStu.has(x.stu) : doneName.has(normName(x.name) + "|" + norm(x.track))));
-          extra = { reported, excluded: reported - rows.length, submissions: seenSubs };
-          if (failedSubs) note = "تعذّرت قراءة إرسالات " + ui.fmt(failedSubs) + " مسار للتحقق؛ قد تظهر أسماء عبّأت فعلاً. ";
+          // بجانب كل من بقي: ما وجدناه من إرساله (أي نوع) ليظهر لك سبب بقائه
+          let withOther = 0;
+          rows.forEach((x) => {
+            const f = (x.stu && anyByStu.get(x.stu)) || anyByName.get(normName(x.name) + "|" + norm(x.track));
+            if (f && f.length) { withOther++; x.note = (x.note ? x.note + " | " : "") + "له إرسال: " + [...new Set(f)].join("، "); }
+          });
+          extra = { reported, excluded: reported - rows.length, submissions: seenSubs, allSubs, withOther, subHeads, sample };
+          if (!allSubs) note += "لم تُقرأ أي إرسالات من «نتائج الاستبيانات»، فالتحقق غير فعّال. ";
+          else if (!seenSubs) note += "قُرئ " + ui.fmt(allSubs) + " إرسالاً لكن لا شيء منها من نوع «" + ((MIS_KINDS.find((k) => k.k === c.kind) || {}).t || "") + "» حسب اسم النموذج؛ التحقق غير فعّال. ";
+          if (failedSubs) note += "تعذّرت قراءة إرسالات " + ui.fmt(failedSubs) + " مسار للتحقق؛ قد تظهر أسماء عبّأت فعلاً. ";
         }
         // إن لم يعرض التقرير رقم الهوية نكمله من قائمة الطلاب (بالمطابقة برقم الطالب ثم بالاسم)
         if (rows.length && rows.every((x) => !x.id)) {
@@ -908,10 +924,11 @@
     const title = (MIS_KINDS.find((x) => x.k === o.kind) || {}).t || "";
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> لم يُكمل: ${esc(title)}</h3>
       <div class="cc-stats"><span class="cc-stat bad"><b>${ui.fmt(rows.length)}</b> طالباً لم يُكمل</span>
-        ${o.kind !== "pledge" && o.extra.reported != null ? `<span class="cc-stat"><b>${ui.fmt(o.extra.reported)}</b> عدّهم تقرير النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.excluded)}</b> استُبعدوا (لهم إرسال فعلي)</span>` : ""}
+        ${o.kind !== "pledge" && o.extra.reported != null ? `<span class="cc-stat"><b>${ui.fmt(o.extra.reported)}</b> عدّهم تقرير النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.excluded)}</b> استُبعدوا (لهم إرسال فعلي)</span><span class="cc-stat"><b>${ui.fmt(o.extra.allSubs || 0)}</b> إرسالاً قُرئ (${ui.fmt(o.extra.submissions || 0)} من هذا النوع)</span>${o.extra.withOther ? `<span class="cc-stat"><b>${ui.fmt(o.extra.withOther)}</b> منهم لهم إرسال من نوع آخر</span>` : ""}` : ""}
         ${o.kind === "pledge" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.targets)}</b> طالباً في النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.pledged)}</b> وقّعوا</span>` : ""}
         ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-mis">تنزيل Excel</button>' : ""}</div>
       ${o.note ? `<p class="cc-alert warn">${esc(o.note)}</p>` : ""}
+      ${o.extra && o.extra.sample ? `<details class="cc-adv"><summary><span>تشخيص التحقق</span><small>ماذا قُرئ من «نتائج الاستبيانات»</small></summary><p class="cc-note">أعمدة صفحة الإرسالات كما وصلت: ${esc((o.extra.subHeads || []).join("، ") || "—")}</p><p class="cc-note">عيّنة من الإرسالات المقروءة (رقم الطالب ← اسم النموذج ← النوع المستنتج):<br>${(o.extra.sample || []).map(esc).join("<br>") || "لا شيء"}</p></details>` : ""}
       ${Object.keys(o.per).length > 1 ? `<div class="cc-stats">${Object.keys(o.per).map((k) => `<span class="cc-stat"><b>${ui.fmt(o.per[k])}</b> ${esc(k)}</span>`).join("")}</div>` : ""}
       ${!rows.length ? '<p class="cc-alert warn">لا طلاب بهذا الشرط. إما أن الجميع أكمل، أو أن الاختيار لا يطابق شيئاً.</p>' : ""}
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الطلاب الذين لم يُكملوا</h4><span class="cc-badge">${ui.fmt(rows.length)} صفاً</span></div></header>
