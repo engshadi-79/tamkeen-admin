@@ -29,6 +29,7 @@
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
     cmp: { tracks: [], status: "", multiOnly: true, out: null }, // مقارنة المراحل
+    sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, out: null }, // مقارنة الإخوة
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true }, // حالة الأقسام القابلة للطي
     extraNote: "",
@@ -667,6 +668,108 @@
         ${rows.length ? `<div class="cc-scroll"><table class="cc-table"><thead><tr>${cmpHeads().map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.slice(0, 300).map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${rows.length > 300 ? '<p class="cc-note">يُعرض أول 300 صف؛ الملف المنزَّل يشمل الكل.</p>' : ""}` : '<p class="cc-note">لا صفوف.</p>'}</article></section>`;
   }
 
+  /* ===== مقارنة الإخوة =====
+     لا يوجد في النظام عمود «إخوة»، فيُستدل عليهم بالتطابق: رقم الهاتف نفسه، و/أو الاسم بعد
+     الاسم الأول (الأب والجد والعائلة). تُجمَّع كل سلسلة طلاب متصلين بهذه الروابط في «عائلة». */
+  const normName = (v) => clean(v).replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
+  const phoneKey = (v) => { const d = digits(v); return d.length >= 9 ? d.slice(-9) : ""; };
+
+  async function runSiblings() {
+    const c = state.sib;
+    state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
+    render(); refreshStatus();
+    try {
+      if (!c.phone && !c.name && !c.loose) throw new Error("اختر معياراً واحداً على الأقل للمقارنة.");
+      const tracks = trackOpts().filter((o) => !c.tracks.length || c.tracks.includes(String(o.v)));
+      // الذاكرة المحمّلة تغني عن الجلب؛ إلا مع تصفية بالحالة فنجلب (لا عمود حالة في الجدول)
+      let lists;
+      if (state.cache && !c.status) lists = state.cache.items.filter((it) => tracks.some((o) => String(o.v) === it.trackId));
+      else lists = (await runCommands(tracks.map((o) => ({ type: "list", label: o.t, params: Object.assign({ track_id: String(o.v) }, c.status ? { status: c.status } : {}) })))).filter((r) => r && r.type === "list");
+      const people = new Map();
+      lists.forEach((r) => {
+        const at = (h) => r.heads.indexOf(h);
+        const iId = at("رقم الهوية"), iName = at("الاسم"), iPhone = at("الجوال"), iP2 = r.heads.findIndex((h) => /تواصل\s*2|جوال\s*2/.test(h)), iGroup = at("المجموعة"), iTrack = at("المسار");
+        if (iName < 0) throw new Error("تعذّر تحديد عمود الاسم في جدول النظام.");
+        r.rows.forEach((x) => {
+          const id = iId >= 0 ? digits(x.cells[iId]) : "", name = clean(x.cells[iName]);
+          const key = id || name; if (!key) return;
+          const stage = (STAGES.find((g) => norm(x.course || "").includes(norm(g.k))) || {}).t || "";
+          const p = people.get(key) || { name, id, phones: new Set(), places: [] };
+          [iPhone, iP2].forEach((i) => { if (i >= 0) { const k = phoneKey(x.cells[i]); if (k) p.phones.add(k); } });
+          const place = [iTrack >= 0 ? clean(x.cells[iTrack]).replace(/^مسار\s*/, "") : "", stage, iGroup >= 0 && clean(x.cells[iGroup]) !== "-" ? clean(x.cells[iGroup]) : ""].filter(Boolean).join(" · ");
+          if (place && !p.places.includes(place)) p.places.push(place);
+          people.set(key, p);
+        });
+      });
+      const list = [...people.values()];
+      // مفاتيح الاسم
+      list.forEach((p) => {
+        const t = normName(p.name).split(" ").filter(Boolean);
+        p.nameKeys = [];
+        if (c.name && t.length >= 3) p.nameKeys.push("s:" + t.slice(1).join(" "));
+        if (c.loose && t.length >= 3) p.nameKeys.push("l:" + t[1] + " " + t[t.length - 1]);
+        p.phoneKeys = c.phone ? [...p.phones] : [];
+      });
+      // اتحاد-بحث: كل مفتاح مشترك يربط أصحابه (أو، في وضع «كلاهما»، مفتاح الهاتف مع الاسم معاً)
+      const par = list.map((_, i) => i);
+      const find = (x) => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+      const buckets = new Map();
+      const bind = (k, i) => { if (buckets.has(k)) par[find(i)] = find(buckets.get(k)); else buckets.set(k, i); };
+      list.forEach((p, i) => {
+        if (c.both && c.phone && (c.name || c.loose)) { p.phoneKeys.forEach((pk) => p.nameKeys.forEach((nk) => bind(pk + "|" + nk, i))); }
+        else { p.phoneKeys.forEach((k) => bind("p:" + k, i)); p.nameKeys.forEach((k) => bind(k, i)); }
+      });
+      const groups = new Map();
+      list.forEach((p, i) => { const r = find(i); (groups.get(r) || groups.set(r, []).get(r)).push(p); });
+      const fams = [...groups.values()].filter((g) => g.length > 1).sort((a, b) => b.length - a.length || a[0].name.localeCompare(b[0].name, "ar"));
+      const rows = [];
+      fams.forEach((g, gi) => {
+        const cnt = (f) => { const m = new Map(); g.forEach((p) => f(p).forEach((k) => m.set(k, (m.get(k) || 0) + 1))); return m; };
+        const ph = cnt((p) => p.phoneKeys), nm = cnt((p) => p.nameKeys);
+        g.forEach((p) => {
+          const why = [p.phoneKeys.some((k) => ph.get(k) > 1) ? "هاتف" : "", p.nameKeys.some((k) => nm.get(k) > 1) ? "اسم" : ""].filter(Boolean).join(" + ");
+          rows.push([String(gi + 1), p.name, p.id, [...p.phones].map((k) => "0" + k).join(" / "), p.places.join(" ؛ "), why]);
+        });
+      });
+      const sizes = {}; fams.forEach((g) => { sizes[g.length] = (sizes[g.length] || 0) + 1; });
+      c.out = { rows, families: fams.length, siblings: fams.reduce((a, g) => a + g.length, 0), total: list.length, largest: fams[0] ? fams[0].length : 0, sizes, at: new Date() };
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  const sibHeads = () => ["العائلة", "الاسم", "رقم الهوية", "الهاتف", "المسار · المرحلة · المجموعة", "سبب الربط"];
+
+  function siblingsView() {
+    const c = state.sib;
+    const chk = (v, text, on) => `<label class="cc-chk"><input type="checkbox" data-sib="tracks" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(text)}</span></label>`;
+    const opt = (k, text, on) => `<label class="cc-chk"><input type="checkbox" data-sib="${k}" ${on ? "checked" : ""}> <span>${esc(text)}</span></label>`;
+    const n = trackOpts().filter((o) => !c.tracks.length || c.tracks.includes(String(o.v))).length;
+    return `<section class="cc-card" id="cc-sib">
+      <header class="cc-card-h"><h3>مقارنة الإخوة</h3><p>يجمع الطلاب الذين تربطهم قرابة محتملة: رقم هاتف واحد، أو الاسم نفسه بعد الاسم الأول. للقراءة فقط.</p></header>
+      <div class="cc-card-b">
+        <div class="cc-grid">
+          <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk(o.v, o.t.replace(/^مسار\s*/, ""), c.tracks.includes(String(o.v)))).join("")}</div></fieldset>
+          <fieldset class="cc-fs"><legend>تصفية</legend><label class="cc-field"><span>حالة الطالب</span><select data-sib="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></fieldset>
+          <fieldset class="cc-fs cc-wide"><legend>معيار الربط</legend><div class="cc-chips">
+            ${opt("phone", "نفس رقم الهاتف", c.phone)}${opt("name", "نفس الاسم بعد الاسم الأول (الأب والجد والعائلة)", c.name)}${opt("loose", "الأب والعائلة فقط (أوسع، أخطاؤه أكثر)", c.loose)}${opt("both", "يجب تحقق الهاتف والاسم معاً (أدق)", c.both)}</div>
+            <p class="cc-note">الهاتف وحده قد يجمع غير الإخوة (هاتف مشترك لجهة أو قريب). و«معاً» يُظهر الأرجح فقط. عمود «سبب الربط» في النتيجة يبيّن ما جمعهم.</p></fieldset>
+        </div>
+      </div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${state.cache && !c.status ? "⚡ من الذاكرة المحمّلة" : `سيُقرأ ${ui.fmt(n)} ${n === 1 ? "مسار" : n === 2 ? "مساران" : n < 11 ? "مسارات" : "مساراً"}`}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.status ? " · " + esc(optLabel("status", c.status)) : " · كل الحالات"}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-sib" ${state.busy || !n ? "disabled" : ""}>${state.busy ? "جارٍ الجلب والمقارنة…" : "اجلب وقارن"}</button></div></footer></section>`;
+  }
+
+  function siblingsResult() {
+    const o = state.sib.out;
+    if (!o) return "";
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة مقارنة الإخوة</h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(o.families)}</b> عائلة</span><span class="cc-stat ok"><b>${ui.fmt(o.siblings)}</b> طالباً لهم إخوة</span><span class="cc-stat"><b>${ui.fmt(o.largest)}</b> أكبر عائلة</span>
+        ${Object.keys(o.sizes).sort((a, b) => a - b).map((k) => `<span class="cc-stat"><b>${ui.fmt(o.sizes[k])}</b> من ${ui.fmt(k)}</span>`).join("")}
+        ${o.rows.length ? '<button type="button" class="btn secondary small" data-cc="export-sib">تنزيل Excel</button>' : ""}</div>
+      ${o.rows.length ? "" : '<p class="cc-alert warn">لم أجد طلاباً يجمعهم المعيار المختار. جرّب إلغاء «معاً» أو تفعيل المعيار الأوسع.</p>'}
+      <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>العائلات المحتملة</h4><span class="cc-badge">${ui.fmt(o.rows.length)} صفاً</span></div></header>
+        ${o.rows.length ? `<div class="cc-scroll"><table class="cc-table"><thead><tr>${sibHeads().map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${o.rows.slice(0, 400).map((r, i, a) => `<tr${i && a[i - 1][0] !== r[0] ? ' class="cc-sep"' : ""}>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${o.rows.length > 400 ? '<p class="cc-note">يُعرض أول 400 صف؛ الملف المنزَّل يشمل الكل.</p>' : ""}` : ""}</article></section>`;
+  }
+
   /* حالة الوكيل في جملة ولون واحدين: busy | ok | bad */
   function statusInfo() {
     const st = state.agentStatus;
@@ -689,12 +792,13 @@
       <nav class="cc-modes" role="tablist" aria-label="نوع الأمر">
         <button type="button" role="tab" class="${mode === "report" ? "on" : ""}" aria-selected="${mode === "report"}" data-cc="mode" data-m="report"><b>تقرير جاهز</b><small>اختر المسار والمرحلة ثم نفّذ</small></button>
         <button type="button" role="tab" class="${mode === "compare" ? "on" : ""}" aria-selected="${mode === "compare"}" data-cc="mode" data-m="compare"><b>مقارنة المراحل</b><small>من سجّل في أكثر من مرحلة</small></button>
+        <button type="button" role="tab" class="${mode === "siblings" ? "on" : ""}" aria-selected="${mode === "siblings"}" data-cc="mode" data-m="siblings"><b>مقارنة الإخوة</b><small>طلاب يجمعهم هاتف أو عائلة</small></button>
         <button type="button" role="tab" class="${mode === "ask" ? "on" : ""}" aria-selected="${mode === "ask"}" data-cc="mode" data-m="ask"><b>اكتب طلبك</b><small>بحث، أو تسجيل طلاب من Excel</small></button>
       </nav>
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${mode === "compare" ? compareResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
         ? "تعمل الأوامر في متصفحك عبر إضافة «وكيل تمكين». سجّل دخولك في نظام المركز مرة واحدة؛ والبحث والقوائم تُنفَّذ مباشرة، أما التسجيل فتراجع معاينته هنا وتوافق قبل أن يُكتب شيء. لا تصل كلمة مرورك أو جلستك إلى تمكين."
         : "تعمل الجلسة في نافذة Edge المحلية. سجّل الدخول فيها مرة واحدة؛ بعدها ينفّذ الوكيل البحث والقوائم والتسجيل ويعرض النتيجة هنا. أو ثبّت إضافة «وكيل تمكين» في Chrome لتعمل دون خادم محلي."}</p></details>
@@ -961,6 +1065,9 @@
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
         } else if (act === "mode") {
           state.mode = b.dataset.m; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
+        } else if (act === "run-sib") { return runSiblings();
+        } else if (act === "export-sib") {
+          return exportBook("مقارنة الإخوة.xlsx", sibHeads(), state.sib.out.rows);
         } else if (act === "run-compare") { return runCompare();
         } else if (act === "export-cmp") {
           return exportBook("مقارنة المراحل.xlsx", cmpHeads(), cmpTable());
@@ -995,6 +1102,13 @@
 
     box.addEventListener("change", async (e) => {
       const t = e.target;
+      if (t.dataset.sib) {
+        const k = t.dataset.sib, c = state.sib;
+        if (k === "tracks") { const v = String(t.value), at = c.tracks.indexOf(v); if (t.checked && at < 0) c.tracks.push(v); else if (!t.checked && at >= 0) c.tracks.splice(at, 1); }
+        else if (k === "status") c.status = t.value;
+        else c[k] = t.checked;
+        render(); return;
+      }
       if (t.dataset.cmp) {
         const k = t.dataset.cmp, c = state.cmp;
         if (k === "tracks") { const v = String(t.value), at = c.tracks.indexOf(v); if (t.checked && at < 0) c.tracks.push(v); else if (!t.checked && at >= 0) c.tracks.splice(at, 1); }
