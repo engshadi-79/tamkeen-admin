@@ -50,6 +50,8 @@
       const rows = [...tb.querySelectorAll("tbody tr")].filter(visible);
       L.push("", "الجدول (" + rows.length + " صفاً" + (rows.length > 8 ? "، أول 8" : "") + "):");
       rows.slice(0, 8).forEach((r) => {
+        /* خلية «ناقص»: نكتب اسم عمودها (قبلي/بعدي/تعهد…) بدل كلمة ناقص المجردة */
+        const lack = [];
         const cells = [...r.children].map((c, i) => {
           if (skip[i]) return "";
           const k = c.cloneNode(true);
@@ -58,9 +60,13 @@
           if (live.length) return clean(live.join(" ") + " " + k.textContent);
           const t = clean(k.textContent);
           /* رقم الطالب (STU-…) لا يُرسَل أبداً ولو لم يُعرف عنوان عموده */
+          if (/^(ناقص|لم يعبّئ|لم يوقّع|لم يعبئ|لم يوقع|نعم)$/.test(t) && heads[i] && !/^(نعم)$/.test(t)) { lack.push(heads[i].replace(/^(ال)?(استبيان|استمارة)\s*/, "") || heads[i]); return ""; }
           return t === "—" || t === "-" || /^STU-\d/i.test(t) ? "" : t;
         }).filter(Boolean);
-        if (cells.length) L.push("- " + cells.join(" · ").slice(0, 160));
+        /* عمود عدد النواقص: رقم مجرد في آخر الصف بعد أن عرفنا النواقص، فيصبح مكرراً */
+        if (lack.length && /^\d+$/.test(cells[cells.length - 1] || "")) cells.pop();
+        if (lack.length) cells.push("ينقصه: " + lack.join("، "));
+        if (cells.length) L.push("- " + cells.join(" · ").slice(0, 200));
       });
     }
     /* لا بطاقات ولا جدول: نأخذ النص الظاهر للصفحة مختصراً بلا أزرار */
