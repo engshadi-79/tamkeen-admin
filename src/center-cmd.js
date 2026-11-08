@@ -1119,7 +1119,9 @@
     if (parts.length >= 2) { id = parts[0]; phone = parts[parts.length - 1]; }
     else if (parts.length === 1) { if (/^0?5\d{8}$/.test(parts[0])) phone = parts[0]; else id = parts[0]; }
     if (/^5\d{8}$/.test(phone)) phone = "0" + phone;
-    return [clean(name).replace(/[-–]\s*$/, "").trim(), en, stu, id, phone];
+    // الاسم العربي يفصله النظام عمّا بعده بـ « / » أو شرطة: نزيل الفواصل من طرفيه (والإنجليزي كذلك)
+    const trimSep = (v) => clean(v).replace(/^[\s\/\|·\-–—،,:]+|[\s\/\|·\-–—،,:]+$/g, "");
+    return [trimSep(name), trimSep(en), stu, id, phone];
   }
   function expandResult(r) {
     if (!r || !Array.isArray(r.heads) || !Array.isArray(r.rows)) return r;
