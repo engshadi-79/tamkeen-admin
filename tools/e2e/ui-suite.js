@@ -152,10 +152,13 @@ async function suite() {
   b.querySelector('[data-cc="run-selection"]').click(); await wait(900);
   ok("النتائج التدريجية: تنتهي بنتيجتين", c.state.results && c.state.results.results.length === 2 && c.state.results.results.every((r) => r.type === "list"));
   PARTIAL = false;
-  let release; const hold = new Promise((r) => { release = r; }); const prevRun = agent.run; agent.run = async (cmds) => { await hold; return { results: cmds.map(() => ({ type: "list", heads: SH, rows: [] })) }; };
+  let release, held = 0; const hold = new Promise((r) => { release = r; }); const prevRun = agent.run; agent.run = async (cmds) => { held++; await hold; return { results: cmds.map(() => ({ type: "list", heads: SH, rows: [] })) }; };
   c.state.mode = "report"; c.render(); b.querySelector('[data-cc="run-selection"]').click(); await wait(300);
   const stopBtn = b.querySelector('[data-cc="stop-run"]');
   ok("زر الإيقاف ومربع الإشعار يظهران أثناء التنفيذ", !!stopBtn && !!b.querySelector("[data-cc-notify]"));
+  const fake = document.createElement("button"); fake.dataset.cc = "run-dq"; b.appendChild(fake);
+  const heldBefore = held; fake.click(); await wait(150); fake.remove();
+  ok("لا تبدأ عملية ثانية أثناء تنفيذ جارٍ", held === heldBefore && heldBefore === 1);
   calls.length = 0; stopBtn.click(); ok("زر الإيقاف يستدعي الإضافة", calls.includes("stop"));
   release(); await wait(400); agent.run = prevRun;
 
