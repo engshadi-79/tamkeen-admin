@@ -46,7 +46,7 @@
     const tb = [...view.querySelectorAll("table")].find(visible);
     if (tb) {
       const heads = [...tb.querySelectorAll("thead th")].map((x) => clean(x.textContent));
-      const skip = heads.map((x) => /هوية|جوال|هاتف|id/i.test(x));
+      const skip = heads.map((x) => /هوية|جوال|هاتف|رقم الطالب|رقم الطلب|^id$/i.test(x));
       const rows = [...tb.querySelectorAll("tbody tr")].filter(visible);
       L.push("", "الجدول (" + rows.length + " صفاً" + (rows.length > 8 ? "، أول 8" : "") + "):");
       rows.slice(0, 8).forEach((r) => {
@@ -57,7 +57,8 @@
           k.querySelectorAll("button, .material-symbols-outlined, .ico, input, select, textarea, script, style").forEach((n) => n.remove());
           if (live.length) return clean(live.join(" ") + " " + k.textContent);
           const t = clean(k.textContent);
-          return t === "—" || t === "-" ? "" : t;
+          /* رقم الطالب (STU-…) لا يُرسَل أبداً ولو لم يُعرف عنوان عموده */
+          return t === "—" || t === "-" || /^STU-\d/i.test(t) ? "" : t;
         }).filter(Boolean);
         if (cells.length) L.push("- " + cells.join(" · ").slice(0, 160));
       });
