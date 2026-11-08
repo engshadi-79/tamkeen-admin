@@ -8,7 +8,7 @@
   const App = (window.App = window.App || {});
   const CONTACT_KEY = "tamkeen-admin:cc-contacts", CC = "970";
   const providers = {};
-  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "" };
+  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "", limit: 25, total: 0 };
 
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
@@ -32,6 +32,23 @@
   }
   const clean = (s) => String(s || "").replace(/\s+/g, " ").trim();
 
+  /* عناوين وصفوف جدول: من بيانات أوامر المركز الكاملة إن وُجدت، وإلا من الصفحة المعروضة */
+  function tableData(tb) {
+    const box = tb.closest("[data-tblbox]");
+    if (box && App.centerCmd && App.centerCmd.tableRows) {
+      const d = App.centerCmd.tableRows(box.dataset.tblbox);
+      if (d) return { heads: d.heads.map(clean), rows: d.rows.map((r) => r.map((c) => clean(c))) };
+    }
+    const heads = [...tb.querySelectorAll("thead th")].map((x) => clean(x.textContent));
+    const rows = [...tb.querySelectorAll("tbody tr")].filter(visible).map((r) => [...r.children].map((c) => {
+      const live = [...c.querySelectorAll("input, select, textarea")].map((n) => (n.tagName === "SELECT" ? (n.selectedOptions[0] || {}).textContent : n.value) || "");
+      const k = c.cloneNode(true);
+      k.querySelectorAll("button, .material-symbols-outlined, .ico, input, select, textarea, script, style").forEach((n) => n.remove());
+      return clean((live.length ? live.join(" ") + " " : "") + k.textContent);
+    }));
+    return { heads, rows };
+  }
+
   /* نص عام من الصفحة المعروضة */
   function genericText(view) {
     if (!view) return "";
@@ -42,25 +59,20 @@
     /* بطاقات الأرقام: عنصر فيه رقم وتسمية */
     const stats = [...view.querySelectorAll(".stat, .kpi, .card-stat, .cc-stat, [data-stat]")].filter(visible).slice(0, 10);
     stats.forEach((s) => { const k = s.cloneNode(true); k.querySelectorAll("button, .material-symbols-outlined").forEach((n) => n.remove()); const t = clean(k.textContent); if (t && t.length < 80) L.push("• " + t); });
-    /* أول جدول ظاهر: أول 8 صفوف، بلا أعمدة الهوية والجوال */
+    /* أول جدول ظاهر. جداول أوامر المركز نأخذ بياناتها كاملة (كل الصفحات والبحث الحالي)، وغيرها من الصفحة المعروضة */
     const tb = [...view.querySelectorAll("table")].find(visible);
     if (tb) {
-      const heads = [...tb.querySelectorAll("thead th")].map((x) => clean(x.textContent));
+      const td = tableData(tb), heads = td.heads;
       const skip = heads.map((x) => /هوية|جوال|هاتف|رقم الطالب|رقم الطلب|^id$/i.test(x));
-      const rows = [...tb.querySelectorAll("tbody tr")].filter(visible);
-      L.push("", "الجدول (" + rows.length + " صفاً" + (rows.length > 8 ? "، أول 8" : "") + "):");
-      rows.slice(0, 8).forEach((r) => {
+      const total = td.rows.length, lim = st.limit > 0 ? Math.min(st.limit, total) : total;
+      L.push("", "الجدول (" + total + " صفاً" + (lim < total ? "، المعروض أول " + lim : "") + "):");
+      td.rows.slice(0, lim).forEach((r) => {
         /* خلية «ناقص»: نكتب اسم عمودها (قبلي/بعدي/تعهد…) بدل كلمة ناقص المجردة */
         const lack = [];
-        const cells = [...r.children].map((c, i) => {
+        const cells = r.map((t, i) => {
           if (skip[i]) return "";
-          const k = c.cloneNode(true);
-          const live = [...c.querySelectorAll("input, select, textarea")].map((n) => (n.tagName === "SELECT" ? (n.selectedOptions[0] || {}).textContent : n.value) || "");
-          k.querySelectorAll("button, .material-symbols-outlined, .ico, input, select, textarea, script, style").forEach((n) => n.remove());
-          if (live.length) return clean(live.join(" ") + " " + k.textContent);
-          const t = clean(k.textContent);
+          if (/^(ناقص|لم يعبّئ|لم يوقّع|لم يعبئ|لم يوقع)$/.test(t) && heads[i]) { lack.push(heads[i].replace(/^(ال)?(استبيان|استمارة)\s*/, "") || heads[i]); return ""; }
           /* رقم الطالب (STU-…) لا يُرسَل أبداً ولو لم يُعرف عنوان عموده */
-          if (/^(ناقص|لم يعبّئ|لم يوقّع|لم يعبئ|لم يوقع|نعم)$/.test(t) && heads[i] && !/^(نعم)$/.test(t)) { lack.push(heads[i].replace(/^(ال)?(استبيان|استمارة)\s*/, "") || heads[i]); return ""; }
           return t === "—" || t === "-" || /^STU-\d/i.test(t) ? "" : t;
         }).filter(Boolean);
         /* عمود عدد النواقص: رقم مجرد في آخر الصف بعد أن عرفنا النواقص، فيصبح مكرراً */
@@ -68,7 +80,8 @@
         if (lack.length) cells.push("ينقصه: " + lack.join("، "));
         if (cells.length) L.push("- " + cells.join(" · ").slice(0, 200));
       });
-    }
+      st.total = total;
+    } else st.total = 0;
     /* لا بطاقات ولا جدول: نأخذ النص الظاهر للصفحة مختصراً بلا أزرار */
     if (L.length === 1) {
       const k = view.cloneNode(true);
@@ -102,14 +115,33 @@
 #wa-box .wa-r{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid #9993;border-radius:8px}
 #wa-box .wa-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 #wa-box .wa-warn{background:#fff3cd;color:#664d03;padding:8px;border-radius:8px;font-size:.85rem}
-#wa-box button{cursor:pointer}`;
+#wa-box button{cursor:pointer}
+#wa-box .wa-parts{display:flex;gap:4px;flex-wrap:wrap}`;
     document.head.appendChild(s);
   }
 
+  /* رابط واتساب محدود الطول، فنقسم الرسالة الطويلة إلى أجزاء عند حدود الأسطر */
+  const PART_MAX = 1400;
+  function parts() {
+    const t = st.text.trim();
+    if (t.length <= PART_MAX) return [t];
+    const out = []; let cur = "";
+    t.split("\n").forEach((line) => {
+      if (cur && (cur + "\n" + line).length > PART_MAX) { out.push(cur); cur = line; } else cur = cur ? cur + "\n" + line : line;
+    });
+    if (cur) out.push(cur);
+    return out.map((x, i) => "(" + (i + 1) + "/" + out.length + ")\n" + x);
+  }
+
+  function goBtns(id) {
+    const n = parts().length;
+    if (n === 1) return `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="0">${st.opened.has(id + "#0") ? "✓ فُتح" : "فتح واتساب"}</button>`;
+    return `<span class="wa-parts">${Array.from({ length: n }, (_, i) => `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="${i}">${st.opened.has(id + "#" + i) ? "✓ " : ""}جزء ${i + 1}</button>`).join("")}</span>`;
+  }
   function listHtml() {
     const cs = contacts();
     if (!cs.length) return '<p class="wa-note">لا جهات محفوظة بعد. أضف جهة أو اكتب رقماً أدناه.</p>';
-    return cs.map((c) => `<label class="wa-r"><span><input type="checkbox" data-wa-sel="${esc(c.id)}" ${st.sel.has(c.id) ? "checked" : ""}> ${esc(c.name)}${c.role ? " — " + esc(c.role) : ""}</span>${st.sel.has(c.id) ? `<button type="button" class="btn small" data-wa-go="${esc(c.id)}">${st.opened.has(c.id) ? "✓ فُتح" : "فتح واتساب"}</button>` : ""}</label>`).join("");
+    return cs.map((c) => `<label class="wa-r"><span><input type="checkbox" data-wa-sel="${esc(c.id)}" ${st.sel.has(c.id) ? "checked" : ""}> ${esc(c.name)}${c.role ? " — " + esc(c.role) : ""}</span>${st.sel.has(c.id) ? goBtns(c.id) : ""}</label>`).join("");
   }
   function render() {
     const d = document.getElementById("wa-dlg");
@@ -120,7 +152,9 @@
       <h3>إرسال عبر واتساب</h3>
       <div class="wa-note">الصفحة: ${esc(st.view || "—")} — يفتح واتساب برسالة جاهزة وترسلها أنت.</div>
       <div class="wa-list">${listHtml()}</div>
-      <div class="wa-row"><input type="tel" inputmode="tel" data-wa-extra placeholder="أو رقم آخر 059xxxxxxx" value="${esc(st.extra)}" style="flex:1;min-width:160px">${extraNum ? `<button type="button" class="btn small" data-wa-go="__extra">${st.opened.has("__extra") ? "✓ فُتح" : "فتح واتساب"}</button>` : ""}<button type="button" class="btn small secondary" data-wa-add>＋ جهة اتصال</button></div>
+      <div class="wa-row"><input type="tel" inputmode="tel" data-wa-extra placeholder="أو رقم آخر 059xxxxxxx" value="${esc(st.extra)}" style="flex:1;min-width:160px">${extraNum ? goBtns("__extra") : ""}<button type="button" class="btn small secondary" data-wa-add>＋ جهة اتصال</button></div>
+      ${st.total > 0 ? `<label class="wa-row">عدد الصفوف في الرسالة (الجدول فيه ${st.total}): <select data-wa-limit>${[10, 25, 50, 100, 0].map((n) => `<option value="${n}" ${st.limit === n ? "selected" : ""}>${n === 0 ? "الكل" : n}</option>`).join("")}</select></label>` : ""}
+      ${parts().length > 1 ? `<p class="wa-note">الرسالة طويلة (${st.text.length} حرفاً) فقُسّمت إلى ${parts().length} أجزاء لأن رابط واتساب لا يحمل أكثر من نحو ${PART_MAX} حرفاً. افتح كل جزء بالترتيب وأرسله.</p>` : ""}
       <label>نص الرسالة (يمكنك تعديله)<textarea rows="9" data-wa-text>${esc(st.text)}</textarea></label>
       <p class="wa-warn">قد يتضمن النص أسماء أو بيانات طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع عليها.</p>
       <div class="wa-row"><button type="button" class="btn small secondary" data-wa-regen>إعادة توليد من الصفحة</button><button type="button" class="btn small secondary" data-wa-copy>نسخ النص</button><button type="button" class="btn small" data-wa-close>إغلاق</button></div>
@@ -131,8 +165,8 @@
     if (!st.text) return toast("لا محتوى في هذه الصفحة لإرساله");
     st.open = true; st.opened = new Set(); render();
   }
-  function go(id) {
-    const text = st.text.trim();
+  function go(id, part) {
+    const text = (parts()[part || 0] || "").trim();
     if (!text) return toast("لا نص لإرساله");
     let num = "";
     if (id === "__extra") num = intl(st.extra, CC);
@@ -141,7 +175,7 @@
     const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(text);
     if (url.length > 1900) toast("الرسالة طويلة؛ قد لا تُحمَّل كاملة. اختصرها أو انسخها.");
     window.open(url, "_blank", "noopener");
-    st.opened.add(id); render();
+    st.opened.add(id + "#" + (part || 0)); render();
   }
 
   function init() {
@@ -158,7 +192,7 @@
     dlg.addEventListener("click", (e) => {
       const t = e.target;
       if (t === dlg || t.closest("[data-wa-close]")) { st.open = false; return render(); }
-      const g = t.closest("[data-wa-go]"); if (g) return go(g.dataset.waGo);
+      const g = t.closest("[data-wa-go]"); if (g) return go(g.dataset.waGo, +g.dataset.waPart || 0);
       if (t.closest("[data-wa-regen]")) { st.text = buildText(); return render(); }
       if (t.closest("[data-wa-copy]")) { (navigator.clipboard ? navigator.clipboard.writeText(st.text) : Promise.reject()).then(() => toast("نُسخ النص"), () => toast("تعذّر النسخ")); return; }
       if (t.closest("[data-wa-add]")) {
@@ -172,6 +206,7 @@
       }
     });
     dlg.addEventListener("change", (e) => {
+      if (e.target.matches && e.target.matches("[data-wa-limit]")) { st.limit = +e.target.value; st.text = buildText(); st.opened = new Set(); return render(); }
       const s = e.target.closest && e.target.closest("[data-wa-sel]");
       if (s) { s.checked ? st.sel.add(s.dataset.waSel) : st.sel.delete(s.dataset.waSel); render(); }
     });
