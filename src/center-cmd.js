@@ -1468,7 +1468,10 @@
   /* تقرير المدير بنقرة: يشغّل التقرير الشامل (إن لم تكن نتيجته حاضرة) ثم يطبع/يصدّر Word على الترويسة */
   async function managerReport(how) {
     const c = state.mis;
-    if (!(c.out && c.out.extra && c.out.extra.targetsBy)) {
+    if (state.busy) return ui.toast("هناك عملية جارية الآن؛ انتظر انتهاءها.");
+    if (c.out && c.out.extra && c.out.extra.targetsBy) ui.toast("يُعدّ الموجز من النتيجة الظاهرة دون إعادة جلب");
+    else {
+      ui.toast("لا نتيجة شاملة جاهزة: سأشغّل التقرير الشامل أولاً ثم أفتح الموجز");
       c.kind = "all"; c.verify = c.verify !== false;
       await runMissing();
       if (state.resultError || !(c.out && c.out.extra && c.out.extra.targetsBy)) return;
@@ -2053,6 +2056,10 @@
       if (!b) return;
       const act = b.dataset.cc;
       const i = Number(b.dataset.i);
+      // لا يبدأ تنفيذ جديد أثناء تنفيذ جارٍ (يمنع عمليتين متداخلتين على الوكيل)
+      if (state.busy && ["run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "run-stu", "stu-pick", "manager-print", "manager-word", "preload", "preload-details", "interpret", "bundle-run", "register-run"].includes(act)) {
+        return ui.toast("هناك عملية جارية الآن؛ انتظر انتهاءها أو اضغط «إيقاف».");
+      }
       try {
         if (act === "interpret") {
           state.requestText = $("cc-request").value;
