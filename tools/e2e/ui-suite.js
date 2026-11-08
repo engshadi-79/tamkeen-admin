@@ -104,6 +104,27 @@ async function suite() {
   b.querySelector('[data-cc="manager-print"]').click(); await wait(1600); window.print = wp;
   ok("«تقرير المدير» من بطاقة بلا نتيجة: يشغّل الشامل ثم يطبع", printed === 1 && c.state.mis.kind === "all" && !!c.state.mis.out);
 
+  // ===== 6ب) موجز المدير من نتيجة نوع واحد + واتساب =====
+  c.state.mis = Object.assign(c.state.mis, { kind: "post", tracks: ["1"], stages: [], status: "active", verify: false, out: null });
+  await run("missing", "run-mis", 1000);
+  calls.length = 0; printed = 0; window.print = () => { printed++; };
+  b.querySelector('[data-cc="manager-print"]').click(); await wait(800); window.print = wp;
+  ok("تقرير المدير من نتيجة «بعدي» ظاهرة: بلا إعادة جلب", calls.length === 0 && printed === 1 && c.state.mis.kind === "post" && /لم يعبّئوا/.test(document.getElementById("print-root").textContent));
+  const wd = b.querySelector("[data-open=wa]"); if (wd) { wd.open = true; wd.dispatchEvent(new Event("toggle")); c.render(); }
+  const op2 = window.prompt, ans = ["مدير المركز", "المدير", "0599123456"]; let ai = 0; window.prompt = () => ans[ai++];
+  b.querySelector('[data-cc="wa-addc"]').click(); window.prompt = op2;
+  ok("واتساب: تُحفظ جهة اتصال وتُختار", c.state.contacts.length === 1 && c.state.wa.contact === c.state.contacts[0].id && JSON.parse(localStorage.getItem("tamkeen-admin:cc-contacts")).length === 1);
+  let waUrl = ""; const wo = window.open; window.open = (u) => { waUrl = u; return null; };
+  b.querySelector('[data-cc="wa-open"]').click(); window.open = wo;
+  const waTxt = decodeURIComponent(waUrl.split("?text=")[1] || "");
+  ok("واتساب: رابط wa.me برقم دولي ونص يحوي الإجمالي بلا أسماء", /^https:\/\/wa\.me\/970599123456\?text=/.test(waUrl) && /الإجمالي/.test(waTxt) && !/بسمة|جلال/.test(waTxt), waTxt.split(String.fromCharCode(10))[0]);
+  const waNames = b.querySelector("[data-wa=names]"); waNames.checked = true; waNames.dispatchEvent(new Event("change", { bubbles: true }));
+  const cf = window.confirm; window.confirm = () => true; window.open = (u) => { waUrl = u; return null; };
+  b.querySelector('[data-cc="wa-open"]').click(); window.open = wo; window.confirm = cf;
+  ok("واتساب: خيار الأسماء يضيفها بعد تأكيد", /بسمة|جلال/.test(decodeURIComponent(waUrl)));
+  const ed = b.querySelector("[data-wa-text]"); ed.value = "نص معدّل بيدي"; ed.dispatchEvent(new Event("input", { bubbles: true }));
+  c.render(); ok("واتساب: تعديل النص يُحفظ ولا يُستبدل عند إعادة الرسم", /نص معدّل بيدي/.test(b.querySelector("[data-wa-text]").value));
+
   // ===== 7) المجموعات والمدربون =====
   DATA = [mk("طالب أول رباعي كامل", "401000001", "0591000001", "1", S2, "G1 مدرب أحمد"), mk("طالب ثان رباعي كامل", "401000002", "0591000002", "2", S2, "G1 مدرب أحمد"), mk("طالب ثالث رباعي كامل", "401000003", "0591000003", "3", S2, "G1 مدرب أحمد"), mk("طالب رابع رباعي كامل", "401000004", "0591000004", "4", S2, "G2 مدربة سلمى"), mk("وليد غير موزع رباعي", "401000005", "0591000005", "5", S2, " - "), mk("هدى غير موزعة رباعي", "401000006", "0591000006", "6", S2, "-")];
   c.state.grp = Object.assign(c.state.grp, { tracks: ["1"], stages: [], status: "active", out: null });
