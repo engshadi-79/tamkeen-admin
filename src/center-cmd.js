@@ -36,9 +36,10 @@
     grp: { tracks: [], stages: [], status: "active", out: null },
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
+    wa: { contact: "", phone: "", breakdown: true, names: false, texts: {}, dirty: {}, cc: "970" }, contacts: [],
     saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
-    open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false, sec: false, errs: false }, // حالة الأقسام القابلة للطي
+    open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false, sec: false, errs: false, wa: false }, // حالة الأقسام القابلة للطي
     extraNote: "",
     tpls: null,          // القوالب المحفوظة في المحوّل
     tplPick: [],         // القوالب المختارة لإخراج النماذج
@@ -735,6 +736,7 @@
       <div class="cc-tools"><div class="cc-res"><header class="cc-res-h"><h4>التقاطع بين المراحل</h4></header>
         <div class="cc-stats">${o.pairs.map((x) => `<span class="cc-stat"><b>${ui.fmt(x.n)}</b> في ${esc(x.a.t)} و${esc(x.b.t)}</span>`).join("")}
           ${Object.keys(o.dist).sort().map((k) => `<span class="cc-stat"><b>${ui.fmt(o.dist[k])}</b> في ${k === "1" ? "مرحلة واحدة" : ui.fmt(k) + " مراحل"}</span>`).join("")}</div></div></div>
+      ${waCard("compare")}
       ${o.failed.length ? `<p class="cc-alert warn">تعذّرت قراءة ${ui.fmt(o.failed.length)} دورة: ${esc(o.failed.join("؛ "))}</p>` : ""}
       ${!multi ? '<p class="cc-alert warn">لم يظهر أي طالب في أكثر من مرحلة. إما لا يوجد تكرار فعلاً، أو أن قائمة النظام تعرض الطالب تحت دورته الحالية فقط، فتحقق من طالب تعرف أنه سُجّل في مرحلتين.</p>' : ""}
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${state.cmp.multiOnly ? "المسجلون في أكثر من مرحلة" : "كل الطلاب"}</h4><span class="cc-badge">${ui.fmt(rows.length)} صفاً</span></div></header>
@@ -863,6 +865,7 @@
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(o.families)}</b> عائلة</span><span class="cc-stat ok"><b>${ui.fmt(o.siblings)}</b> طالباً لهم إخوة</span><span class="cc-stat"><b>${ui.fmt(o.largest)}</b> أكبر عائلة</span>${o.stageStats ? `<span class="cc-stat ok"><b>${ui.fmt(o.stageStats.last)}</b> طالباً في ${esc(o.stageStats.lastLabel)} لهم إخوة في ${esc(o.stageStats.cmpLabel)}</span><span class="cc-stat"><b>${ui.fmt(o.stageStats.early)}</b> من الإخوة في ${esc(o.stageStats.cmpLabel)}</span>` : ""}
         ${Object.keys(o.sizes).sort((a, b) => a - b).map((k) => `<span class="cc-stat"><b>${ui.fmt(o.sizes[k])}</b> من ${ui.fmt(k)}</span>`).join("")}
         ${o.rows.length ? '<button type="button" class="btn secondary small" data-cc="export-sib">تنزيل Excel</button>' : ""}</div>
+      ${waCard("siblings")}
       ${o.rows.length ? "" : '<p class="cc-alert warn">لم أجد طلاباً يجمعهم المعيار المختار. جرّب إلغاء «معاً» أو تفعيل المعيار الأوسع.</p>'}
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>العائلات المحتملة</h4><span class="cc-badge">${ui.fmt(o.rows.length)} صفاً</span></div></header>
         ${o.rows.length ? dataTable("sib", sibHeads(), o.rows) : ""}</article></section>`;
@@ -1129,7 +1132,7 @@
         <p class="cc-note">${c.kind === "pledge" ? "التعهد: يقرأ قائمة الطلاب وقائمة التعهدات ويطابقها برقم الهوية؛ والباقي هم من لم يوقّعوا." : c.kind === "risk" ? "أولوية المتابعة: التقرير الشامل مع إشارتين من قائمة الطلاب (بلا مجموعة، جوال غير صالح)، مرتّباً بعدد النواقص تنازلياً فتتابع الأخطر أولاً." : c.kind === "all" ? "الشامل: يقرأ تقرير النظام للاستبيانات الثلاثة (قبلي وبعدي وقياس الأثر) ويحسب التعهد، ويجمعها في صف لكل طالب ينقصه شيء. أبطأ لأنه يقرأ أكثر." : "الاستبيان: يقرأ تقرير النظام «الطلاب الذين لم يعبئوا الاستبيان» بالمسار والمرحلة المختارين."}</p>
       </div>
       <footer class="cc-actions"><div class="cc-sum"><b>${esc(kindT || "")}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.stages.length ? " · " + esc(c.stages.map((k) => (STAGES.find((g) => g.k === k) || {}).t).join("، ")) : ""} · ${esc(optLabel("status", c.status) || "كل الحالات")} · ${c.kind === "all" || c.kind === "risk" ? "عدة طلبات قراءة" : ui.fmt(n) + " " + (n === 1 ? "طلب قراءة" : "طلبات قراءة")}</span></div>
-        <div class="cc-act"><button type="button" class="btn secondary" data-cc="manager-print" ${state.busy ? "disabled" : ""} title="يشغّل التقرير الشامل ثم يطبع موجزاً على ترويسة المركز">تقرير المدير ← طباعة / PDF</button><button type="button" class="btn secondary" data-cc="manager-word" ${state.busy ? "disabled" : ""} title="يشغّل التقرير الشامل ثم يصدّر Word على ترويسة المركز">Word</button><button type="button" class="btn navy" data-cc="run-mis" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ الاستخراج…" : "استخرج التقرير"}</button></div></footer></section>`;
+        <div class="cc-act"><button type="button" class="btn secondary" data-cc="manager-print" ${state.busy ? "disabled" : ""} title="يعدّ موجزاً من النتيجة الظاهرة (أو يشغّل الشامل إن لم تكن هناك نتيجة) ويطبعه على ترويسة المركز">تقرير المدير ← طباعة / PDF</button><button type="button" class="btn secondary" data-cc="manager-word" ${state.busy ? "disabled" : ""} title="موجز Word على ترويسة المركز من النتيجة الظاهرة">Word</button><button type="button" class="btn navy" data-cc="run-mis" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ الاستخراج…" : "استخرج التقرير"}</button></div></footer></section>`;
   }
 
   function remindCard() {
@@ -1153,12 +1156,13 @@
       <div class="cc-stats"><span class="cc-stat bad"><b>${ui.fmt(rows.length)}</b> طالباً لم يُكمل</span>
         ${o.kind === "all" || o.kind === "risk" ? SURVEY_KINDS.concat("pledge").map((k) => `<span class="cc-stat"><b>${ui.fmt(o.extra.counts[k])}</b> ناقصهم ${esc(KIND_SHORT[k])}</span>`).join("") : ""}
         ${o.kind === "risk" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.counts.noGroup)}</b> بلا مجموعة</span><span class="cc-stat"><b>${ui.fmt(o.extra.counts.noPhone)}</b> جوال غير صالح</span>` : ""}
-        ${o.kind === "all" || o.kind === "risk" ? '<button type="button" class="btn secondary small" data-cc="print-summary" title="يُطبع على ترويسة المركز الرسمية">طباعة / PDF موجز المدير</button><button type="button" class="btn secondary small" data-cc="word-summary" title="ملف Word على ترويسة المركز الرسمية">Word على الترويسة</button>' : ""}
+        ${rows.length ? '<button type="button" class="btn secondary small" data-cc="print-summary" title="يُطبع على ترويسة المركز الرسمية">طباعة / PDF موجز المدير</button><button type="button" class="btn secondary small" data-cc="word-summary" title="ملف Word على ترويسة المركز الرسمية">Word على الترويسة</button>' : ""}
         ${o.kind !== "pledge" && o.kind !== "all" && o.kind !== "risk" && o.extra.reported != null ? `<span class="cc-stat"><b>${ui.fmt(o.extra.reported)}</b> عدّهم تقرير النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.excluded)}</b> استُبعدوا (لهم إرسال فعلي)</span><span class="cc-stat"><b>${ui.fmt(o.extra.allSubs || 0)}</b> إرسالاً قُرئ (${ui.fmt(o.extra.submissions || 0)} من هذا النوع)</span>${o.extra.withOther ? `<span class="cc-stat"><b>${ui.fmt(o.extra.withOther)}</b> منهم لهم إرسال من نوع آخر</span>` : ""}` : ""}
         ${o.kind === "pledge" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.targets)}</b> طالباً في النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.pledged)}</b> وقّعوا</span>` : ""}
         ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-mis">تنزيل Excel</button>' : ""}</div>
       ${o.note ? `<p class="cc-alert warn">${esc(o.note)}</p>` : ""}
       ${rows.length ? remindCard() : ""}
+      ${rows.length ? waCard("missing") : ""}
       ${o.extra && o.extra.sample ? `<details class="cc-adv"><summary><span>تشخيص التحقق</span><small>ماذا قُرئ من «نتائج الاستبيانات»</small></summary><p class="cc-note">أعمدة صفحة الإرسالات كما وصلت: ${esc((o.extra.subHeads || []).join("، ") || "—")}</p><p class="cc-note">عيّنة من الإرسالات المقروءة (رقم الطالب ← اسم النموذج ← النوع المستنتج):<br>${(o.extra.sample || []).map(esc).join("<br>") || "لا شيء"}</p></details>` : ""}
       ${Object.keys(o.per).length > 1 ? `<div class="cc-stats">${Object.keys(o.per).map((k) => `<span class="cc-stat"><b>${ui.fmt(o.per[k])}</b> ${esc(k)}</span>`).join("")}</div>` : ""}
       ${!rows.length ? '<p class="cc-alert warn">لا طلاب بهذا الشرط. إما أن الجميع أكمل، أو أن الاختيار لا يطابق شيئاً.</p>' : ""}
@@ -1356,6 +1360,7 @@
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً فُحص</span><span class="cc-stat ${rows.length ? "bad" : "ok"}"><b>${ui.fmt(rows.length)}</b> ملاحظة</span>
         ${DQ_CHECKS.filter(([k]) => o.byType[k]).map(([k, t]) => `<span class="cc-stat"><b>${ui.fmt(o.byType[k])}</b> ${esc(t)}</span>`).join("")}
         ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-dq">تنزيل Excel</button>' : ""}</div>
+      ${waCard("dq")}
       ${!rows.length ? '<p class="cc-alert warn">لا ملاحظات بحسب الفحوص المختارة.</p>' : `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الملاحظات</h4><span class="cc-badge">${ui.fmt(rows.length)} صفاً</span></div></header>${dataTable("dq", dqHeads(), rows)}</article>`}
       <details class="cc-adv" data-open="snap" ${state.open.snap ? "open" : ""}><summary><span>لقطة البيانات ومقارنتها</span><small>تغيّر منذ آخر لقطة</small></summary>
         <p class="cc-note">${snap ? "آخر لقطة محفوظة: " + esc(new Date(snap.at).toLocaleString("ar")) + " (" + ui.fmt(snap.rows.length) + " طالباً)." : "لا لقطة محفوظة بعد."} اللقطة تُحفظ في هذا المتصفح فقط.</p>
@@ -1377,7 +1382,7 @@
   const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.cache || state.grp.out || state.stu.out);
   function wipeData(why) {
     state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null;
-    state.cache = null; state.grp.out = null; state.stu.out = null; state.stu.pick = null;
+    state.cache = null; state.grp.out = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
     Object.keys(tblData).forEach((k) => delete tblData[k]); Object.keys(tblState).forEach((k) => delete tblState[k]);
     render();
     if (why) ui.toast(why);
@@ -1421,7 +1426,8 @@
   /* موجز المدير على الترويسة الرسمية للمركز: كتل تُرسَم بمحرك المستندات المشترك (طباعة/PDF وWord) */
   function summaryBlocks() {
     const o = state.mis.out;
-    if (!o || !o.extra || !o.extra.targetsBy) return null;
+    if (!o) return null;
+    if (!(o.extra && o.extra.targetsBy)) return singleSummaryBlocks(o);          // نتيجة من نوع واحد: لا إعادة جلب
     const by = new Map();
     Object.keys(o.extra.targetsBy).forEach((k) => by.set(k, { total: o.extra.targetsBy[k], pre: 0, post: 0, impact: 0, pledge: 0, any: 0 }));
     o.rows.forEach((x) => {
@@ -1449,17 +1455,38 @@
       { kind: "para", text: "«مكتملون تماماً» = لا ينقصهم استبيان قبلي ولا بعدي ولا قياس أثر ولا تعهد. وقد لا يكون كل نوع مطلوباً من كل مرحلة، فتُقرأ النسب إرشاداً لا حكماً. مصدر البيانات: نظام المركز." },
     ];
   }
+  /* موجز من نتيجة نوع واحد (قبلي/بعدي/قياس أثر/تعهد): أعداد المتأخرين لكل مسار ومرحلة */
+  function singleSummaryBlocks(o) {
+    const by = new Map();
+    o.rows.forEach((x) => { const k = (x.track || "—") + (x.stage ? " · " + x.stage : ""); by.set(k, (by.get(k) || 0) + 1); });
+    const keys = [...by.keys()].sort((a, b) => a.localeCompare(b, "ar"));
+    const total = o.rows.length, label = KIND_SHORT[o.kind] || "";
+    const verb = o.kind === "pledge" ? "لم يوقّعوا" : "لم يعبّئوا";
+    const scope = (state.mis.tracks.length ? state.mis.tracks.map(trackShort).join("، ") : "كل المسارات") + " · " + (optLabel("status", state.mis.status) || "كل الحالات");
+    const out = [
+      { kind: "title", text: "موجز متابعة الطلاب — " + (KIND_ITEM[o.kind] || "") },
+      { kind: "meta", text: "التاريخ: " + (ui.formatDate(ui.todayISO()) || ui.todayISO()), sizePt: 12 },
+      { kind: "para", text: "" },
+      { kind: "bold", text: "نطاق الموجز: " + scope },
+      { kind: "para", text: "" },
+      { kind: "table", headers: ["المسار · المرحلة", "عدد الذين " + verb + " (" + label + ")"], widths: [0.62, 0.38], align: [null, "center"], rows: keys.map((k) => [k, ui.fmt(by.get(k))]).concat([["المجموع", ui.fmt(total)]]) },
+      { kind: "para", text: "" },
+    ];
+    if (o.kind === "pledge" && o.extra && o.extra.targets != null) out.push({ kind: "para", text: "من أصل " + ui.fmt(o.extra.targets) + " طالباً في النظام، وقّع منهم " + ui.fmt(o.extra.pledged) + "." });
+    out.push({ kind: "para", text: "لتقرير أشمل (الاستبيانات الثلاثة والتعهد معاً) اختر «تقرير شامل». مصدر البيانات: نظام المركز." });
+    return out;
+  }
   /* الترويسة الرسمية غير متاحة: صفحة طباعة بسيطة بديلة */
   function printSummary() {
     const list = summaryBlocks();
-    if (!list) return ui.toast("نفّذ التقرير الشامل أو أولوية المتابعة أولاً");
+    if (!list) return ui.toast("نفّذ تقريراً أولاً");
     if (App.docRender && App.docRender.print) return App.docRender.print(list, "موجز متابعة الطلاب", false);
     const t = list.find((x) => x.kind === "table");
     printHtml("موجز متابعة الطلاب", `<h1>${esc(list[0].text)}</h1><table><thead><tr>${t.headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${t.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
   }
   async function wordSummary() {
     const list = summaryBlocks();
-    if (!list) return ui.toast("نفّذ التقرير الشامل أو أولوية المتابعة أولاً");
+    if (!list) return ui.toast("نفّذ تقريراً أولاً");
     if (!(App.docRender && App.docRender.exportWord)) return ui.toast("محرك المستندات غير متاح");
     try { if (App.docx && App.docx.load) await App.docx.load(); } catch (e) { /* يُحمَّل عند الحاجة */ }
     App.docRender.exportWord(list, "موجز متابعة الطلاب " + ui.todayISO());
@@ -1469,12 +1496,14 @@
   async function managerReport(how) {
     const c = state.mis;
     if (state.busy) return ui.toast("هناك عملية جارية الآن؛ انتظر انتهاءها.");
-    if (c.out && c.out.extra && c.out.extra.targetsBy) ui.toast("يُعدّ الموجز من النتيجة الظاهرة دون إعادة جلب");
-    else {
-      ui.toast("لا نتيجة شاملة جاهزة: سأشغّل التقرير الشامل أولاً ثم أفتح الموجز");
+    if (c.out && c.out.rows) {
+      // نتيجة ظاهرة من أي نوع: يُبنى الموجز منها دون إعادة جلب
+      ui.toast("يُعدّ الموجز من النتيجة الظاهرة (" + ((MIS_KINDS.find((k) => k.k === c.out.kind) || {}).t || "") + ") دون إعادة جلب");
+    } else {
+      ui.toast("لا نتيجة ظاهرة: سأشغّل التقرير الشامل أولاً ثم أفتح الموجز");
       c.kind = "all"; c.verify = c.verify !== false;
       await runMissing();
-      if (state.resultError || !(c.out && c.out.extra && c.out.extra.targetsBy)) return;
+      if (state.resultError || !c.out) return;
     }
     return how === "word" ? wordSummary() : printSummary();
   }
@@ -1571,6 +1600,7 @@
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> المجموعات والمدربون</h3>
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً</span><span class="cc-stat"><b>${ui.fmt(o.groups.length)}</b> مجموعة</span><span class="cc-stat"><b>${ui.fmt(o.trainers.filter((t) => t.name !== "(بلا مدرب)").length)}</b> مدرباً</span><span class="cc-stat ${o.unassigned ? "bad" : "ok"}"><b>${ui.fmt(o.unassigned)}</b> غير موزع</span>
         <button type="button" class="btn secondary small" data-cc="export-grp">تنزيل Excel</button></div>
+      ${waCard("groups")}
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>المجموعات</h4><span class="cc-badge">${ui.fmt(gt.length)}</span></div></header>${gt.length ? dataTable("grp-g", grpGroupHeads(), gt) : '<p class="cc-note">لا مجموعات.</p>'}</article>
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>حمل المدربين</h4><span class="cc-badge">${ui.fmt(tt.length)}</span></div></header>${tt.length ? dataTable("grp-t", grpTrainerHeads(), tt) : ""}</article>
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>اقتراح توزيع غير الموزعين</h4></div><div class="cc-res-act"><button type="button" class="btn secondary small" data-cc="grp-propose" ${o.unassigned ? "" : "disabled"}>اقترح توزيعاً</button></div></header>
@@ -1761,6 +1791,83 @@
     ui.download("حزمة التقارير " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
     render();
     ui.toast("نُزّلت الحزمة: " + ui.fmt(sheets.length) + " ورقة" + (notes.length ? "، وفيها ملاحظات" : ""));
+  }
+
+  /* ===== رسالة واتساب: تُفتح جاهزة في واتساب ويرسلها المستخدم بنفسه (رابط wa.me) =====
+     لا حساب ولا مفتاح ولا إرسال تلقائي: الضغط على «إرسال» في واتساب يبقى بيدك. */
+  const CONTACT_KEY = "tamkeen-admin:cc-contacts", CC_KEY = "tamkeen-admin:cc-cc";
+  /* رقم دولي لرابط wa.me: 059… ← 97059… ، ويُبقى الرقم الذي يبدأ بـ + أو 00 كما هو */
+  const waIntl = (raw, cc) => {
+    const t = String(raw || "").trim(), d = digits(t);
+    if (!d) return "";
+    if (t.startsWith("+")) return d;
+    if (d.startsWith("00")) return d.slice(2);
+    if (d.startsWith(cc) && d.length >= cc.length + 8) return d;
+    return d.startsWith("0") ? cc + d.slice(1) : cc + d;
+  };
+  const waScope = () => (state.mis.tracks.length ? state.mis.tracks.map(trackShort).join("، ") : "كل المسارات") + " · " + (optLabel("status", state.mis.status) || "كل الحالات");
+  function waBuild(mode) {
+    const w = state.wa, today = ui.formatDate(ui.todayISO()) || ui.todayISO(), L = [];
+    const NAMES_MAX = 12;
+    if (mode === "missing") {
+      const o = state.mis.out; if (!o) return "";
+      const title = (MIS_KINDS.find((k) => k.k === o.kind) || {}).t || "";
+      L.push("📋 " + title + " — " + today, "النطاق: " + waScope(), "الإجمالي: " + ui.fmt(o.rows.length) + " طالباً " + (o.kind === "pledge" ? "لم يوقّعوا" : o.kind === "all" || o.kind === "risk" ? "ينقصهم شيء" : "لم يعبّئوا"));
+      if (w.breakdown) {
+        const by = new Map();
+        o.rows.forEach((x) => { const k = (x.track || "—") + (x.stage ? " · " + x.stage : ""); const e = by.get(k) || by.set(k, { n: 0, pre: 0, post: 0, impact: 0, pledge: 0 }).get(k); e.n++; ["pre", "post", "impact", "pledge"].forEach((f) => { if (x.flags && x.flags[f]) e[f]++; }); });
+        [...by.entries()].sort((a, b) => b[1].n - a[1].n).forEach(([k, e]) => L.push("• " + k + ": " + ui.fmt(e.n) + (o.kind === "all" || o.kind === "risk" ? " (قبلي " + e.pre + "، بعدي " + e.post + "، أثر " + e.impact + "، تعهد " + e.pledge + ")" : "")));
+      }
+      if (w.names) { L.push("", "الأسماء (أول " + Math.min(NAMES_MAX, o.rows.length) + "):"); o.rows.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.name + (o.kind === "all" || o.kind === "risk" ? " (" + itemsOf(x, o.kind) + ")" : ""))); }
+    } else if (mode === "dq") {
+      const o = state.dq.out; if (!o) return "";
+      L.push("🔎 فحص جودة البيانات — " + today, "الفحص: " + ui.fmt(o.total) + " طالباً · الملاحظات: " + ui.fmt(o.issues.length));
+      if (w.breakdown) DQ_CHECKS.filter(([k]) => o.byType[k]).forEach(([k, t]) => L.push("• " + t + ": " + ui.fmt(o.byType[k])));
+      if (w.names) { L.push("", "أمثلة:"); o.issues.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.s.name + ": " + DQ_LABEL[x.type])); }
+    } else if (mode === "groups") {
+      const o = state.grp.out; if (!o) return "";
+      L.push("👥 المجموعات والمدربون — " + today, ui.fmt(o.total) + " طالباً في " + ui.fmt(o.groups.length) + " مجموعة · غير موزعين: " + ui.fmt(o.unassigned));
+      if (w.breakdown) { [...o.unBy.entries()].forEach(([k, n]) => L.push("• غير موزعين " + k.replace("|", " · ").replace(/ · $/, "") + ": " + ui.fmt(n))); o.groups.filter((g) => g.note).forEach((g) => L.push("• " + g.track + " · " + g.group + ": " + ui.fmt(g.n) + " (" + g.note + ")")); }
+    } else if (mode === "siblings") {
+      const o = state.sib.out; if (!o) return "";
+      L.push("👨‍👩‍👧 مقارنة الإخوة — " + today, ui.fmt(o.families) + " عائلة، " + ui.fmt(o.siblings) + " طالباً من " + ui.fmt(o.total));
+      if (o.stageStats) L.push(o.stageStats.lastLabel + " مقابل " + o.stageStats.cmpLabel + ": " + ui.fmt(o.stageStats.last) + " طالباً لهم إخوة");
+    } else if (mode === "compare") {
+      const o = state.cmp.out; if (!o) return "";
+      L.push("📊 مقارنة المراحل — " + today, ui.fmt(o.total) + " طالباً، منهم " + ui.fmt(o.list.filter((p) => p.stages.length > 1).length) + " سجّلوا في أكثر من مرحلة");
+      if (w.breakdown) o.perStage.forEach((g) => L.push("• " + g.t + ": " + ui.fmt(g.n)));
+    }
+    return L.join("\n");
+  }
+  const waText = (mode) => { const w = state.wa; if (!w.dirty[mode]) w.texts[mode] = waBuild(mode); return w.texts[mode] || ""; };
+  function waCard(mode) {
+    const w = state.wa, text = waText(mode);
+    if (!text) return "";
+    const cur = state.contacts.find((c) => c.id === w.contact);
+    const hasNames = mode === "missing" || mode === "dq";
+    return `<details class="cc-adv" data-open="wa" ${state.open.wa ? "open" : ""}>
+      <summary><span>إرسال عبر واتساب</span><small>يفتح واتساب برسالة جاهزة وترسلها أنت</small></summary>
+      <div class="cc-two">
+        <label class="cc-field"><span>المستلم (جهة اتصال محفوظة)</span><select data-wa="contact"><option value="">— اختر، أو اكتب رقماً —</option>${state.contacts.map((c) => `<option value="${esc(c.id)}" ${c.id === w.contact ? "selected" : ""}>${esc(c.name)}${c.role ? " — " + esc(c.role) : ""}</option>`).join("")}</select></label>
+        <label class="cc-field"><span>أو رقم آخر</span><input type="tel" inputmode="tel" data-wa="phone" value="${esc(w.phone)}" placeholder="059xxxxxxx" ${cur ? "disabled" : ""}></label>
+      </div>
+      <div class="cc-chips"><label class="cc-chk"><input type="checkbox" data-wa="breakdown" ${w.breakdown ? "checked" : ""}> <span>أرقام لكل مسار / تفصيل</span></label>${hasNames ? `<label class="cc-chk"><input type="checkbox" data-wa="names" ${w.names ? "checked" : ""}> <span>أسماء الطلاب (أول 12) — بيانات شخصية</span></label>` : ""}</div>
+      <label class="cc-field"><span>نص الرسالة (يمكنك تعديله قبل الفتح)</span><textarea rows="8" data-wa-text="${mode}">${esc(text)}</textarea></label>
+      ${w.names && hasNames ? '<p class="cc-alert warn">النص يتضمن أسماء طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع على هذه البيانات.</p>' : ""}
+      <div class="cc-row"><button type="button" class="btn navy small" data-cc="wa-open" data-mode="${mode}">افتح واتساب بالرسالة</button><button type="button" class="cc-link" data-cc="wa-copy" data-mode="${mode}">نسخ النص</button><button type="button" class="cc-link" data-cc="wa-regen" data-mode="${mode}">إعادة توليد النص</button><button type="button" class="cc-link" data-cc="wa-addc">＋ جهة اتصال</button>${cur ? '<button type="button" class="cc-link danger" data-cc="wa-delc">حذف هذه الجهة</button>' : ""}</div>
+      <p class="cc-note">لا يُرسَل شيء تلقائياً: يفتح واتساب (ويب أو تطبيق) والرسالة جاهزة، وتضغط أنت «إرسال». الأرقام دولية تلقائياً بإضافة ${esc(w.cc)} إن بدأ الرقم بصفر. جهات الاتصال تُحفظ في هذا المتصفح فقط.</p>
+    </details>`;
+  }
+  function waOpen(mode) {
+    const w = state.wa, text = (w.texts[mode] || waText(mode)).trim();
+    if (!text) return ui.toast("لا نص لإرساله");
+    const cur = state.contacts.find((c) => c.id === w.contact);
+    const num = waIntl(cur ? cur.phone : w.phone, (cur && cur.cc) || w.cc);
+    if (!num && (cur || w.phone)) return ui.toast("رقم غير صالح");
+    if (w.names && !confirm("الرسالة تتضمن أسماء طلاب. هل تريد فتح واتساب بها؟")) return;
+    const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(text);
+    if (url.length > 1900) ui.toast("الرسالة طويلة؛ قد لا تُحمَّل كاملة في واتساب. اختصرها أو انسخها ثم الصقها.");
+    window.open(url, "_blank", "noopener");
   }
 
   /* حالة الوكيل في جملة ولون واحدين: busy | ok | bad */
@@ -2034,7 +2141,8 @@
     const box = $("cc-body");
     if (!box) return;
     try { const m = localStorage.getItem("tamkeen-admin:cc-msg"); if (m) state.mis.msg = m; } catch (e) { /* خاص */ }
-    state.saved = lsGet(SV_KEY, []); state.runLog = lsGet(LOG_KEY, []); state.errors = lsGet(ERR_KEY, []);
+    state.saved = lsGet(SV_KEY, []); state.runLog = lsGet(LOG_KEY, []); state.errors = lsGet(ERR_KEY, []); state.contacts = lsGet(CONTACT_KEY, []);
+    try { const cc = localStorage.getItem(CC_KEY); if (cc) state.wa.cc = cc; } catch (e) { /* خاص */ }
     try { state.mask = localStorage.getItem(MASK_KEY) === "1"; const im = localStorage.getItem(IDLE_KEY); if (im !== null && im !== "") state.idleMin = Number(im); } catch (e) { /* خاص */ }
     ["click", "keydown", "input", "change"].forEach((ev) => box.addEventListener(ev, () => { state.lastAct = Date.now(); }, true));
     window.setInterval(() => {                                      // مسح النتائج بعد خمول (لا أثناء تنفيذ)
@@ -2135,6 +2243,21 @@
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
         } else if (act === "grp-propose") { state.grp.out.prop = proposeDistribution(state.grp.out);
+        } else if (act === "wa-open") { waOpen(b.dataset.mode); return;
+        } else if (act === "wa-copy") {
+          try { await navigator.clipboard.writeText(state.wa.texts[b.dataset.mode] || waText(b.dataset.mode)); ui.toast("نُسخ نص الرسالة"); } catch (err) { ui.toast("تعذّر النسخ"); }
+          return;
+        } else if (act === "wa-regen") { state.wa.dirty[b.dataset.mode] = false; state.open.wa = true;
+        } else if (act === "wa-addc") {
+          const name = (window.prompt("اسم جهة الاتصال (مثال: مدير المركز):", "") || "").trim(); if (!name) return;
+          const role = (window.prompt("الصفة (اختياري، مثال: مسؤول البيانات):", "") || "").trim();
+          const phone = (window.prompt("رقم الجوال (مثال 0599xxxxxx أو +970599xxxxxx):", "") || "").trim();
+          if (!waIntl(phone, state.wa.cc)) return ui.toast("رقم غير صالح");
+          const id = String(Date.now());
+          state.contacts.push({ id, name: name.slice(0, 40), role: role.slice(0, 40), phone, cc: state.wa.cc }); lsSet(CONTACT_KEY, state.contacts);
+          state.wa.contact = id; state.open.wa = true;
+        } else if (act === "wa-delc") {
+          state.contacts = state.contacts.filter((x) => x.id !== state.wa.contact); lsSet(CONTACT_KEY, state.contacts); state.wa.contact = ""; state.open.wa = true;
         } else if (act === "manager-print") { return managerReport("print");
         } else if (act === "manager-word") { return managerReport("word");
         } else if (act === "print-summary") { return printSummary();
@@ -2217,7 +2340,12 @@
       } catch (err) { ui.toast(err.message); }
     });
 
-    box.addEventListener("input", (e) => { if (e.target.dataset && e.target.dataset.stu === "q") state.stu.q = e.target.value; });
+    box.addEventListener("input", (e) => {
+      if (e.target.dataset && e.target.dataset.stu === "q") state.stu.q = e.target.value;
+      const wm = e.target.dataset && e.target.dataset.waText;
+      if (wm) { state.wa.texts[wm] = e.target.value; state.wa.dirty[wm] = true; }          // تعديلك يُحفظ ولا يُستبدل
+      if (e.target.dataset && e.target.dataset.wa === "phone") state.wa.phone = e.target.value;
+    });
     box.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.dataset && e.target.dataset.stu === "q") { state.stu.q = e.target.value; runStudent(); } });
     box.addEventListener("input", (e) => {
       const k = e.target.dataset && e.target.dataset.tblQ;
@@ -2243,6 +2371,14 @@
 
     box.addEventListener("change", async (e) => {
       const t = e.target;
+      if (t.dataset.wa) {
+        const k = t.dataset.wa, w = state.wa;
+        if (k === "contact") w.contact = t.value;
+        else if (k === "phone") { w.phone = t.value; return; }
+        else if (k === "breakdown") { w.breakdown = t.checked; w.dirty = {}; }
+        else if (k === "names") { w.names = t.checked; w.dirty = {}; }
+        state.open.wa = true; render(); return;
+      }
       if (t.dataset.set) {
         const k = t.dataset.set;
         if (k === "mask") { state.mask = t.checked; try { localStorage.setItem(MASK_KEY, state.mask ? "1" : ""); } catch (e) { /* خاص */ } }
