@@ -31,7 +31,7 @@
     cmp: { tracks: [], status: "", multiOnly: true, goal: "multi", out: null }, // مقارنة المراحل
     sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, stages: [], baseStage: "المرحلة الثالثة", cmpStages: [], out: null }, // مقارنة الإخوة
     mis: { kind: "pre", tracks: [], stages: [], status: "active", verify: true, msg: "", out: null }, // استبيانات وتعهدات
-    dq: { tracks: [], status: "", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
+    dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false }, // حالة الأقسام القابلة للطي
@@ -1242,6 +1242,7 @@
         if (iI < 0 || iN < 0) throw new Error("تعذّر تحديد عمودي الاسم والهوية في جدول النظام.");
         l.rows.forEach((x) => students.push({ name: clean(x.cells[iN]), id: digits(x.cells[iI]), stu: iS >= 0 ? clean(x.cells[iS]) : "", phone: iP >= 0 ? phoneNorm(x.cells[iP]) : "", track: trackShort(l.tid), stage: stageOf(x.course || ""), group: iG >= 0 ? clean(x.cells[iG]).replace(/^[-–—]$/, "") : "" }));
       });
+      if (c.stages.length) students = students.filter((st) => c.stages.includes(st.stage));      // الفحص داخل المراحل المختارة فقط
       const uniq = new Map();
       students.forEach((st) => { const k = st.stu || st.id + "|" + st.name; if (!uniq.has(k)) uniq.set(k, st); });
       students = [...uniq.values()];
@@ -1296,11 +1297,12 @@
       <div class="cc-card-b">
         <div class="cc-grid">
           <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk(o.v, o.t.replace(/^مسار\s*/, ""), c.tracks.includes(String(o.v)))).join("")}</div></fieldset>
+          <fieldset class="cc-fs"><legend>المراحل${c.stages.length ? ` <em>${ui.fmt(c.stages.length)}</em>` : ""}</legend><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="checkbox" data-dq="stages" value="${esc(g.t)}" ${c.stages.includes(g.t) ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}</div><p class="cc-note">اتركها فارغة لتشمل كل المراحل.</p></fieldset>
           <fieldset class="cc-fs"><legend>حالة الطالب</legend><label class="cc-field"><select data-dq="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></fieldset>
           <fieldset class="cc-fs cc-wide"><legend>ما الذي يُفحص؟</legend><div class="cc-chips">${DQ_CHECKS.map(([k, t]) => `<label class="cc-chk"><input type="checkbox" data-dq="chk:${k}" ${c.checks[k] ? "checked" : ""}> <span>${esc(t)}</span></label>`).join("")}</div></fieldset>
         </div>
       </div>
-      <footer class="cc-actions"><div class="cc-sum"><b>${state.cache && !c.status ? "⚡ من الذاكرة المحمّلة" : "سيُقرأ " + ui.fmt(n) + " " + (n === 1 ? "مسار" : "مسارات")}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"} · ${esc(optLabel("status", c.status) || "كل الحالات")}</span></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${state.cache && !c.status ? "⚡ من الذاكرة المحمّلة" : "سيُقرأ " + ui.fmt(n) + " " + (n === 1 ? "مسار" : "مسارات")}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.stages.length ? " · " + esc(c.stages.join("، ")) : " · كل المراحل"} · ${esc(optLabel("status", c.status) || "كل الحالات")}</span></div>
         <div class="cc-act"><button type="button" class="btn navy" data-cc="run-dq" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ الفحص…" : "افحص البيانات"}</button></div></footer></section>`;
   }
 
@@ -1743,7 +1745,7 @@
       }
       if (t.dataset.dq) {
         const k = t.dataset.dq, c = state.dq;
-        if (k === "tracks") { const v = String(t.value), at = c.tracks.indexOf(v); if (t.checked && at < 0) c.tracks.push(v); else if (!t.checked && at >= 0) c.tracks.splice(at, 1); }
+        if (k === "tracks" || k === "stages") { const v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); }
         else if (k === "status") c.status = t.value;
         else if (k.startsWith("chk:")) c.checks[k.slice(4)] = t.checked;
         render(); return;
