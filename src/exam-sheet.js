@@ -1291,7 +1291,18 @@
     });
   }
 
-  App.examSheet = { init, build, buildAtt, buildGrd, buildEval, buildForm, evalFor, grouped, render, state };
+  /* بيانات جاهزة من «أوامر المركز» بدل رفع ملف Excel: الأعمدة والصفوف كما يقرؤها readDataFile */
+  async function useData(headers, rows) {
+    if (!state.tplBuf) await loadSaved("tpl");
+    if (!state.attBuf) await loadSaved("att");
+    if (!state.grdBuf) await loadSaved("grd");
+    state.headers = headers.slice();
+    state.rows = rows.map((r) => Object.assign({}, r));
+    Object.keys(state.map).forEach((k) => { state.map[k] = guess(headers, k); });
+    render();
+  }
+
+  App.examSheet = { init, build, buildAtt, buildGrd, buildEval, buildForm, evalFor, grouped, render, state, useData };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});

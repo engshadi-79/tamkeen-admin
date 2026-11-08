@@ -33,7 +33,7 @@ const b = spawnSync(process.execPath, [path.join(ROOT, "tools", "build-extension
 if (b.status !== 0) process.exit(1);
 
 const mock = spawn(process.execPath, [path.join(__dirname, "mockksach.js")], { stdio: "ignore" });
-const tests = ["full.js", "background-tab.js", "stop-and-partial.js"];
+const tests = ["ui.js", "full.js", "background-tab.js", "stop-and-partial.js"];
 let failed = 0;
 setTimeout(() => {
   for (const t of tests) {

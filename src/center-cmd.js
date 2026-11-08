@@ -32,9 +32,13 @@
     sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, stages: [], baseStage: "المرحلة الثالثة", cmpStages: [], out: null }, // مقارنة الإخوة
     mis: { kind: "pre", tracks: [], stages: [], status: "active", verify: true, msg: "", out: null }, // استبيانات وتعهدات
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
+    mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
+    grp: { tracks: [], stages: [], status: "active", out: null },
+    stu: { q: "", out: null, pick: null },
+    bundle: { open: false, pick: [], msg: "" },
     saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
-    open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false }, // حالة الأقسام القابلة للطي
+    open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false, sec: false, errs: false }, // حالة الأقسام القابلة للطي
     extraNote: "",
     tpls: null,          // القوالب المحفوظة في المحوّل
     tplPick: [],         // القوالب المختارة لإخراج النماذج
@@ -355,6 +359,20 @@
     if (/(سجل|تسجيل|ضيف|اضف|اضافه|ادخل|ادراج)/.test(n) && /(طلاب|طالب|متدرب|اكسل|excel|ملف|كشف|اسماء)/.test(n)) {
       return { type: "register-needed", message: "أرفق ملف Excel؛ سيقرأ الوكيل الأعمدة ثم تراجع المعاينة وتوافق قبل أن يُكتب شيء." };
     }
+    // تقارير النواقص: «كم طالب لم يعبّئ القبلي في الحلاقة؟» / «من لم يوقّع التعهد؟»
+    if (/(لم\s*ي?عب|ما\s*ي?عب|لم\s*ي?وق|ما\s*ي?وق|ناقص|نواقص|غير\s*(مكمل|معبا|موقع))/.test(n) && /(استبيان|استبانه|قبلي|بعدي|اثر|تعهد|نواقص)/.test(n)) {
+      const kind = /تعهد/.test(n) ? "pledge" : /قبلي/.test(n) ? "pre" : /بعدي/.test(n) ? "post" : /اثر/.test(n) ? "impact" : "all";
+      const cfg = { kind, status: "active", tracks: [], stages: [], out: null };
+      const tw = new Set(wordsOf(raw));
+      const sc = (SCHEMA().studentFilters.fields.find((x) => x.name === "track_id") || { options: [] }).options.filter((o) => o.v).map((o) => ({ o, hit: wordsOf(o.t).filter((w) => tw.has(w)).length })).filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit);
+      if (sc.length && !(sc.length > 1 && sc[0].hit === sc[1].hit)) cfg.tracks = [String(sc[0].o.v)];
+      const sm = n.match(/(?:مرحله|دوره)\s*(?:ال)?(اولي|ثانيه|ثالثه)/);
+      if (sm) cfg.stages = [({ اولي: "الاولى", ثانيه: "الثان", ثالثه: "الثالث" })[sm[1]]];
+      return { type: "mode-intent", mode: "missing", cfg, run: true };
+    }
+    if (/(اخوه|اخوات|اشقاء|اخ\s*او\s*اخت)/.test(n)) return { type: "mode-intent", mode: "siblings", run: false };
+    if (/(فحص|تدقيق|جوده)/.test(n) && /(بيانات|طلاب)/.test(n)) return { type: "mode-intent", mode: "dq", run: false };
+    if (/(حمل|توزيع)\s*(ال)?(مدرب|مجموعات)|(المجموعات|المدربين)\s*(و|ال)/.test(n) && /(مدرب|مجموع)/.test(n) && !/(طلاب|طلبه)\s*(ال)?(غير)?\s*موزع/.test(n)) return { type: "mode-intent", mode: "groups", run: false };
     // استعلام عن شخص محدد
     const targets = privateSearchTarget(raw);
     const searchVerb = /(دور|فتش|ابحث|بحث|اشوف|شوف|اجيب|جيب|هات|اطلع|طلع|لقي|اعرف|عرفني|خبرني|احكيلي|سيرش|search|استعلم|تحقق|اعثر)/.test(n);
@@ -543,7 +561,8 @@
       <summary><span>إخراج النماذج من هذه البيانات</span><span class="cc-badge">${ui.fmt(rows.length)} صفاً</span><small>بدل رفع ملف Excel</small></summary>
       ${state.tpls.length ? `<p class="cc-note">اختر قالباً أو عدة قوالب (ملف لكل قالب). تنتقل البيانات إلى «تحويل حسب قالب» وتخرج النماذج بتنسيقها المحفوظ نفسه.</p>
         <div class="cc-chips">${state.tpls.map((t) => `<label class="cc-chk"><input type="checkbox" data-tpl="${esc(t.id)}" ${state.tplPick.includes(t.id) ? "checked" : ""}> <span>${esc(t.name)} <small>${t.format === "docx" ? "Word" : "Excel"}</small></span></label>`).join("")}</div>
-        <div class="cc-row"><button type="button" class="btn navy small" data-cc="to-forms" ${state.tplPick.length && rows.length ? "" : "disabled"}>جهّز النماذج${state.tplPick.length > 1 ? ` (${ui.fmt(state.tplPick.length)} قوالب)` : ""} ←</button></div>`
+        <div class="cc-row"><button type="button" class="btn navy small" data-cc="to-forms" ${state.tplPick.length && rows.length ? "" : "disabled"}>جهّز النماذج${state.tplPick.length > 1 ? ` (${ui.fmt(state.tplPick.length)} قوالب)` : ""} ←</button>
+          <button type="button" class="btn secondary small" data-cc="to-exam" ${rows.length && App.examSheet && App.examSheet.useData ? "" : "disabled"} title="يملأ جدول الاختبارات بهذه الصفوف بدل رفع Excel">أرسلها إلى «جدول الاختبارات» ←</button></div>`
       : '<p class="cc-note">لا قوالب محفوظة بعد. احفظ قالباً من «تحويل حسب قالب» أولاً.</p>'}</details>`;
   }
 
@@ -567,7 +586,7 @@
     st.page = Math.max(0, Math.min(st.page, pages - 1));
     const part = rows.slice(st.page * TBL_SIZE, (st.page + 1) * TBL_SIZE);
     const pager = pages > 1 ? `<div class="cc-pager"><button type="button" class="cc-link" data-tbl-page="${esc(k)}" data-d="-1" ${st.page === 0 ? "disabled" : ""}>السابق</button><span>صفحة ${ui.fmt(st.page + 1)} من ${ui.fmt(pages)}</span><button type="button" class="cc-link" data-tbl-page="${esc(k)}" data-d="1" ${st.page >= pages - 1 ? "disabled" : ""}>التالي</button></div>` : "";
-    return `<div class="cc-scroll"><table class="cc-table"><thead><tr>${d.heads.map((h, i) => `<th data-tbl-sort="${i}" data-tbl="${esc(k)}" class="cc-sortable ${st.sort === i ? (st.dir > 0 ? "asc" : "desc") : ""}" title="اضغط للفرز">${esc(h)}</th>`).join("")}</tr></thead><tbody>${part.map((r) => `<tr>${r.map((c) => `<td>${esc(cellStr(c))}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${d.heads.length}" class="cc-empty">لا نتائج مطابقة للبحث</td></tr>`}</tbody></table></div>${pager}`;
+    return `<div class="cc-scroll"><table class="cc-table"><thead><tr>${d.heads.map((h, i) => `<th data-tbl-sort="${i}" data-tbl="${esc(k)}" class="cc-sortable ${st.sort === i ? (st.dir > 0 ? "asc" : "desc") : ""}" title="اضغط للفرز">${esc(h)}</th>`).join("")}</tr></thead><tbody>${part.map((r) => `<tr>${r.map((c) => `<td>${esc(showCell(c))}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${d.heads.length}" class="cc-empty">لا نتائج مطابقة للبحث</td></tr>`}</tbody></table></div>${pager}`;
   }
   function dataTable(k, heads, rows) {
     tblData[k] = { heads, rows };
@@ -852,12 +871,14 @@
   /* ===== استبيانات وتعهدات: من لم يعبّئ ولم يوقّع =====
      الاستبيانات: تقرير النظام نفسه «الطلاب الذين لم يعبئوا الاستبيان» (قراءة فقط).
      التعهدات: لا تقرير «من لم يوقّع» في النظام، فيُحسب: طلاب النظام ناقص الموقّعين، بالهوية. */
-  const MIS_KINDS = [{ k: "pre", t: "استبيان قبلي" }, { k: "post", t: "استبيان بعدي" }, { k: "impact", t: "استبيان قياس الأثر" }, { k: "pledge", t: "تعهد الطالب" }, { k: "all", t: "تقرير شامل (الكل معاً)" }];
+  const MIS_KINDS = [{ k: "pre", t: "استبيان قبلي" }, { k: "post", t: "استبيان بعدي" }, { k: "impact", t: "استبيان قياس الأثر" }, { k: "pledge", t: "تعهد الطالب" }, { k: "all", t: "تقرير شامل (الكل معاً)" }, { k: "risk", t: "أولوية المتابعة (الأكثر نواقص)" }];
   const SURVEY_KINDS = ["pre", "post", "impact"];
   const KIND_ITEM = { pre: "الاستبيان القبلي", post: "الاستبيان البعدي", impact: "استبيان قياس الأثر", pledge: "التعهد" };
   const KIND_SHORT = { pre: "قبلي", post: "بعدي", impact: "قياس أثر", pledge: "التعهد" };
   const DEFAULT_MSG = "عزيزي المتدرب {الاسم}، نذكّرك بإكمال {النقص} في نظام مركز مسارات التمكين. شكراً لتعاونك.";
-  const misHeads = () => (state.mis.out && state.mis.out.kind === "all")
+  const misHeads = () => (state.mis.out && state.mis.out.kind === "risk")
+    ? ["الاسم", "رقم الهوية", "رقم الطالب", "الجوال", "المسار", "المرحلة", "المجموعة", "استبيان قبلي", "استبيان بعدي", "قياس أثر", "التعهد", "بلا مجموعة", "جوال غير صالح", "درجة الأولوية"]
+    : (state.mis.out && state.mis.out.kind === "all")
     ? ["الاسم", "رقم الهوية", "رقم الطالب", "الجوال", "المسار", "المرحلة", "المجموعة", "استبيان قبلي", "استبيان بعدي", "قياس أثر", "التعهد", "عدد النواقص"]
     : ["الاسم", "رقم الهوية", "رقم الطالب", "الجوال", "المسار", "المرحلة", "المجموعة", "ملاحظة"];
   const stageOf = (text) => { const t = norm(text || ""); const g = STAGES.find((x) => t.includes(norm(x.k))); return g ? g.t : ""; };
@@ -980,7 +1001,7 @@
     const iPI = pl.heads.indexOf("رقم الهوية");
     if (iPI < 0) throw new Error("تعذّر تحديد رقم الهوية في قائمة التعهدات.");
     const pledged = new Set(pl.rows.map((x) => digits(x.cells[iPI])).filter(Boolean));
-    const rows = [], seen = new Set(); let targets = 0;
+    const rows = [], seen = new Set(), students = []; let targets = 0;
     res.slice(0, -1).forEach((r, i) => {
       if (!r || r.type !== "list") return;
       const iI = r.heads.indexOf("رقم الهوية");
@@ -991,11 +1012,13 @@
         if (c.stages.length && !c.stages.some((k) => (STAGES.find((g) => g.k === k) || {}).t === stage)) return;
         if (!id || seen.has(id)) return;
         seen.add(id); targets++;
+        const grp = misCell(r, x, "المجموعة").replace(/^[-–—]$/, "");
+        students.push({ name: misCell(r, x, "الاسم"), id, stu: misCell(r, x, "رقم الطالب"), phone: misCell(r, x, "الجوال"), track: trackShort(trackIds[i]), stage, group: grp });
         if (pledged.has(id)) return;
-        rows.push({ name: misCell(r, x, "الاسم"), id, stu: misCell(r, x, "رقم الطالب"), phone: misCell(r, x, "الجوال"), track: trackShort(trackIds[i]), stage, group: misCell(r, x, "المجموعة").replace(/^[-–—]$/, "") || "غير موزع", note: "" });
+        rows.push({ name: misCell(r, x, "الاسم"), id, stu: misCell(r, x, "رقم الطالب"), phone: misCell(r, x, "الجوال"), track: trackShort(trackIds[i]), stage, group: grp || "غير موزع", note: "" });
       });
     });
-    return { rows, extra: { targets, pledged: pledged.size } };
+    return { rows, students, extra: { targets, pledged: pledged.size } };
   }
 
   async function runMissing() {
@@ -1009,7 +1032,7 @@
       let rows = [], note = "", extra = {};
       if (c.kind === "pledge") {
         const r = await fetchPledgeMissing(c, trackIds); rows = r.rows; extra = r.extra;
-      } else if (c.kind === "all") {
+      } else if (c.kind === "all" || c.kind === "risk") {
         // الاستبيانات الثلاثة من تقرير النظام + التعهد بالحساب، مدموجة في صف لكل طالب
         const byKind = {};
         for (const k of SURVEY_KINDS) byKind[k] = await fetchSurveyMissing(k, c, statusOk);
@@ -1033,10 +1056,20 @@
         };
         SURVEY_KINDS.forEach((k) => byKind[k].forEach((x) => add(x, k)));
         pl.rows.forEach((x) => add(x, "pledge"));
+        // أولوية المتابعة: نضيف إشارات من قائمة الطلاب نفسها (بلا مجموعة، جوال غير صالح) لمن ليس ناقصاً غيرها
+        if (c.kind === "risk") {
+          pl.students.forEach((st) => {
+            const key = missKey(st), e = m.get(key) || Object.assign({}, st, { flags: {}, note: "" });
+            if (!/^05\d{8}$/.test(phoneNorm(st.phone))) e.flags.noPhone = true;
+            if (!st.group) e.flags.noGroup = true;
+            if (Object.keys(e.flags).length) m.set(key, e);
+          });
+        }
         rows = [...m.values()];
         rows.forEach((x) => { x.count = Object.keys(x.flags).length; });
         note += await enrichIds(rows, trackIds);
-        extra = { all: true, vx, pledge: pl.extra, counts: { pre: byKind.pre.length, post: byKind.post.length, impact: byKind.impact.length, pledge: pl.rows.length } };
+        const targetsBy = {}; pl.students.forEach((st) => { const k = st.track + "|" + st.stage; targetsBy[k] = (targetsBy[k] || 0) + 1; });
+        extra = { all: true, vx, pledge: pl.extra, targetsBy, counts: { pre: byKind.pre.length, post: byKind.post.length, impact: byKind.impact.length, pledge: pl.rows.length, noGroup: rows.filter((x) => x.flags.noGroup).length, noPhone: rows.filter((x) => x.flags.noPhone).length } };
       } else {
         rows = await fetchSurveyMissing(c.kind, c, statusOk);
         if (c.verify && rows.length) {
@@ -1056,7 +1089,7 @@
 
   /* ----- ملف التذكير: اسم، جوال، رسالة جاهزة. لا شيء يُرسَل من هنا ----- */
   const phoneNorm = (v) => { const d = digits(v); return /^5\d{8}$/.test(d) ? "0" + d : d; };
-  const itemsOf = (x, kind) => (kind === "all" ? Object.keys(x.flags || {}).sort((a, b) => ["pre", "post", "impact", "pledge"].indexOf(a) - ["pre", "post", "impact", "pledge"].indexOf(b)).map((k) => KIND_ITEM[k]) : [KIND_ITEM[kind]]).join(" و");
+  const itemsOf = (x, kind) => (kind === "all" || kind === "risk" ? Object.keys(x.flags || {}).filter((k) => KIND_ITEM[k]).sort((a, b) => ["pre", "post", "impact", "pledge"].indexOf(a) - ["pre", "post", "impact", "pledge"].indexOf(b)).map((k) => KIND_ITEM[k]) : [KIND_ITEM[kind]]).join(" و");
   const msgTemplate = () => state.mis.msg || DEFAULT_MSG;
   function remindRows() {
     const o = state.mis.out; if (!o) return { rows: [], noPhone: 0 };
@@ -1064,6 +1097,7 @@
     const rows = [];
     o.rows.forEach((x) => {
       const ph = phoneNorm(x.phone);
+      if (!itemsOf(x, o.kind)) return;                    // لا استبيان ولا تعهد ناقص: لا تذكير
       if (!ph) { noPhone++; return; }
       rows.push([x.name, x.id, ph, x.track, x.group, tpl.replace(/\{الاسم\}/g, x.name.split(" ")[0] || x.name).replace(/\{الاسم الكامل\}/g, x.name).replace(/\{النقص\}/g, itemsOf(x, o.kind))]);
     });
@@ -1071,7 +1105,9 @@
   }
   const remindHeads = () => ["الاسم", "رقم الهوية", "الجوال", "المسار", "المجموعة", "نص الرسالة"];
 
-  const misTable = () => ((state.mis.out && state.mis.out.rows) || []).map((x) => (state.mis.out.kind === "all"
+  const misTable = () => ((state.mis.out && state.mis.out.rows) || []).map((x) => (state.mis.out.kind === "risk"
+    ? [x.name, x.id, x.stu, x.phone, x.track, x.stage, x.group, x.flags.pre ? "ناقص" : "", x.flags.post ? "ناقص" : "", x.flags.impact ? "ناقص" : "", x.flags.pledge ? "ناقص" : "", x.flags.noGroup ? "نعم" : "", x.flags.noPhone ? "نعم" : "", String(x.count)]
+    : state.mis.out.kind === "all"
     ? [x.name, x.id, x.stu, x.phone, x.track, x.stage, x.group, x.flags.pre ? "ناقص" : "", x.flags.post ? "ناقص" : "", x.flags.impact ? "ناقص" : "", x.flags.pledge ? "ناقص" : "", String(x.count)]
     : [x.name, x.id, x.stu, x.phone, x.track, x.stage, x.group, x.note]));
 
@@ -1079,7 +1115,7 @@
     const c = state.mis;
     const chk = (k, v, text, on) => `<label class="cc-chk"><input type="checkbox" data-mis="${k}" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(text)}</span></label>`;
     const kindT = (MIS_KINDS.find((x) => x.k === c.kind) || {}).t;
-    const n = c.kind === "all" ? 0 : c.kind === "pledge" ? trackOpts().filter((o) => !c.tracks.length || c.tracks.includes(String(o.v))).length + 1 : (c.stages.length ? courseOpts().filter((x) => c.stages.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track))).length : Math.max(1, c.tracks.length));
+    const n = c.kind === "all" || c.kind === "risk" ? 0 : c.kind === "pledge" ? trackOpts().filter((o) => !c.tracks.length || c.tracks.includes(String(o.v))).length + 1 : (c.stages.length ? courseOpts().filter((x) => c.stages.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track))).length : Math.max(1, c.tracks.length));
     return `<section class="cc-card" id="cc-mis">
       <header class="cc-card-h"><h3>استبيانات وتعهدات — من لم يُكمل؟</h3><p>يستخرج الطلاب الذين لم يعبّئوا الاستبيان أو لم يوقّعوا التعهد، باسمهم وهويتهم ومسارهم ومجموعتهم. للقراءة فقط.</p></header>
       <div class="cc-card-b">
@@ -1090,9 +1126,9 @@
             <label class="cc-field" style="margin-top:10px"><span>حالة الطالب</span><select data-mis="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></fieldset>
         </div>
         ${c.kind === "pledge" ? "" : `<label class="cc-chk"><input type="checkbox" data-mis="verify" ${c.verify ? "checked" : ""}> <span>تحقّق من الإرسالات الفعلية (يستبعد من عبّأ ولم يحتسبه التقرير) — أدق وأبطأ</span></label>`}
-        <p class="cc-note">${c.kind === "pledge" ? "التعهد: يقرأ قائمة الطلاب وقائمة التعهدات ويطابقها برقم الهوية؛ والباقي هم من لم يوقّعوا." : c.kind === "all" ? "الشامل: يقرأ تقرير النظام للاستبيانات الثلاثة (قبلي وبعدي وقياس الأثر) ويحسب التعهد، ويجمعها في صف لكل طالب ينقصه شيء. أبطأ لأنه يقرأ أكثر." : "الاستبيان: يقرأ تقرير النظام «الطلاب الذين لم يعبئوا الاستبيان» بالمسار والمرحلة المختارين."}</p>
+        <p class="cc-note">${c.kind === "pledge" ? "التعهد: يقرأ قائمة الطلاب وقائمة التعهدات ويطابقها برقم الهوية؛ والباقي هم من لم يوقّعوا." : c.kind === "risk" ? "أولوية المتابعة: التقرير الشامل مع إشارتين من قائمة الطلاب (بلا مجموعة، جوال غير صالح)، مرتّباً بعدد النواقص تنازلياً فتتابع الأخطر أولاً." : c.kind === "all" ? "الشامل: يقرأ تقرير النظام للاستبيانات الثلاثة (قبلي وبعدي وقياس الأثر) ويحسب التعهد، ويجمعها في صف لكل طالب ينقصه شيء. أبطأ لأنه يقرأ أكثر." : "الاستبيان: يقرأ تقرير النظام «الطلاب الذين لم يعبئوا الاستبيان» بالمسار والمرحلة المختارين."}</p>
       </div>
-      <footer class="cc-actions"><div class="cc-sum"><b>${esc(kindT || "")}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.stages.length ? " · " + esc(c.stages.map((k) => (STAGES.find((g) => g.k === k) || {}).t).join("، ")) : ""} · ${esc(optLabel("status", c.status) || "كل الحالات")} · ${c.kind === "all" ? "عدة طلبات قراءة" : ui.fmt(n) + " " + (n === 1 ? "طلب قراءة" : "طلبات قراءة")}</span></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${esc(kindT || "")}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.stages.length ? " · " + esc(c.stages.map((k) => (STAGES.find((g) => g.k === k) || {}).t).join("، ")) : ""} · ${esc(optLabel("status", c.status) || "كل الحالات")} · ${c.kind === "all" || c.kind === "risk" ? "عدة طلبات قراءة" : ui.fmt(n) + " " + (n === 1 ? "طلب قراءة" : "طلبات قراءة")}</span></div>
         <div class="cc-act"><button type="button" class="btn navy" data-cc="run-mis" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ الاستخراج…" : "استخرج التقرير"}</button></div></footer></section>`;
   }
 
@@ -1115,8 +1151,10 @@
     const title = (MIS_KINDS.find((x) => x.k === o.kind) || {}).t || "";
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> لم يُكمل: ${esc(title)}</h3>
       <div class="cc-stats"><span class="cc-stat bad"><b>${ui.fmt(rows.length)}</b> طالباً لم يُكمل</span>
-        ${o.kind === "all" ? SURVEY_KINDS.concat("pledge").map((k) => `<span class="cc-stat"><b>${ui.fmt(o.extra.counts[k])}</b> ناقصهم ${esc(KIND_SHORT[k])}</span>`).join("") : ""}
-        ${o.kind !== "pledge" && o.kind !== "all" && o.extra.reported != null ? `<span class="cc-stat"><b>${ui.fmt(o.extra.reported)}</b> عدّهم تقرير النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.excluded)}</b> استُبعدوا (لهم إرسال فعلي)</span><span class="cc-stat"><b>${ui.fmt(o.extra.allSubs || 0)}</b> إرسالاً قُرئ (${ui.fmt(o.extra.submissions || 0)} من هذا النوع)</span>${o.extra.withOther ? `<span class="cc-stat"><b>${ui.fmt(o.extra.withOther)}</b> منهم لهم إرسال من نوع آخر</span>` : ""}` : ""}
+        ${o.kind === "all" || o.kind === "risk" ? SURVEY_KINDS.concat("pledge").map((k) => `<span class="cc-stat"><b>${ui.fmt(o.extra.counts[k])}</b> ناقصهم ${esc(KIND_SHORT[k])}</span>`).join("") : ""}
+        ${o.kind === "risk" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.counts.noGroup)}</b> بلا مجموعة</span><span class="cc-stat"><b>${ui.fmt(o.extra.counts.noPhone)}</b> جوال غير صالح</span>` : ""}
+        ${o.kind === "all" || o.kind === "risk" ? '<button type="button" class="btn secondary small" data-cc="print-summary">طباعة موجز للمدير</button>' : ""}
+        ${o.kind !== "pledge" && o.kind !== "all" && o.kind !== "risk" && o.extra.reported != null ? `<span class="cc-stat"><b>${ui.fmt(o.extra.reported)}</b> عدّهم تقرير النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.excluded)}</b> استُبعدوا (لهم إرسال فعلي)</span><span class="cc-stat"><b>${ui.fmt(o.extra.allSubs || 0)}</b> إرسالاً قُرئ (${ui.fmt(o.extra.submissions || 0)} من هذا النوع)</span>${o.extra.withOther ? `<span class="cc-stat"><b>${ui.fmt(o.extra.withOther)}</b> منهم لهم إرسال من نوع آخر</span>` : ""}` : ""}
         ${o.kind === "pledge" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.targets)}</b> طالباً في النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.pledged)}</b> وقّعوا</span>` : ""}
         ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-mis">تنزيل Excel</button>' : ""}</div>
       ${o.note ? `<p class="cc-alert warn">${esc(o.note)}</p>` : ""}
@@ -1167,9 +1205,9 @@
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* وضع التصفح الخاص */ } };
-  const CFG = { report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq" };
-  const MODE_NAME = { report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", ask: "اكتب طلبك" };
-  const RUN_BTN = { report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq" };
+  const CFG = { report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
+  const MODE_NAME = { report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
+  const RUN_BTN = { report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
   /* نسخة من إعدادات التبويب بلا نتائجه ولا بياناته */
   const cfgOf = (mode) => JSON.parse(JSON.stringify(state[CFG[mode]], (key, v) => (key === "out" || key === "rows" || key === "msg" || key === "diff" ? undefined : v)));
   function applyCfg(mode, cfg) {
@@ -1180,7 +1218,9 @@
   function savedBar(mode) {
     if (!CFG[mode]) return "";
     const mine = state.saved.filter((x) => x.mode === mode);
-    return `<div class="cc-saved"><span class="cc-saved-t">تقاريري المحفوظة:</span>${mine.map((x) => `<span class="cc-sv"><button type="button" class="cc-sv-n" data-cc="sv-load" data-id="${x.id}" title="تحميل هذا الاختيار">${esc(x.name)}</button><button type="button" class="cc-sv-b" data-cc="sv-run" data-id="${x.id}" title="تحميل وتنفيذ" aria-label="تنفيذ">▶</button><button type="button" class="cc-sv-b" data-cc="sv-del" data-id="${x.id}" title="حذف" aria-label="حذف">×</button></span>`).join("") || '<span class="cc-note">لا شيء بعد</span>'}<button type="button" class="cc-link" data-cc="sv-save">＋ احفظ هذا الاختيار</button></div>`;
+    return `<div class="cc-saved"><span class="cc-saved-t">تقاريري المحفوظة:</span>${mine.map((x) => `<span class="cc-sv"><button type="button" class="cc-sv-n" data-cc="sv-load" data-id="${x.id}" title="تحميل هذا الاختيار">${esc(x.name)}</button><button type="button" class="cc-sv-b" data-cc="sv-run" data-id="${x.id}" title="تحميل وتنفيذ" aria-label="تنفيذ">▶</button><button type="button" class="cc-sv-b" data-cc="sv-del" data-id="${x.id}" title="حذف" aria-label="حذف">×</button></span>`).join("") || '<span class="cc-note">لا شيء بعد</span>'}<button type="button" class="cc-link" data-cc="sv-save">＋ احفظ هذا الاختيار</button>${state.saved.length > 1 ? '<button type="button" class="cc-link" data-cc="bundle-toggle">📦 حزمة تقارير</button>' : ""}</div>
+      ${state.bundle.open && state.saved.length ? `<div class="cc-bundle"><b>شغّل عدة تقارير محفوظة معاً في ملف Excel واحد:</b><div class="cc-chips">${state.saved.map((x) => `<label class="cc-chk"><input type="checkbox" data-bundle value="${esc(x.id)}" ${state.bundle.pick.includes(x.id) ? "checked" : ""}> <span>${esc(x.name)} <small>${esc(MODE_NAME[x.mode] || "")}</small></span></label>`).join("")}</div>
+        <div class="cc-row"><button type="button" class="btn navy small" data-cc="bundle-run" ${state.busy ? "disabled" : ""}>شغّل الحزمة وحمّل Excel</button><span class="cc-note">${esc(state.bundle.msg || "تُشغَّل بالتتابع ولا تغيّر اختياراتك الحالية.")}</span></div></div>` : ""}`;
   }
 
   function runSummary(mode) {
@@ -1196,11 +1236,13 @@
     if (mode === "siblings") { const o = state.sib.out; return o ? o.families + " عائلة، " + o.siblings + " طالباً" : ""; }
     if (mode === "missing") { const o = state.mis.out; return o ? o.rows.length + " طالباً لم يُكمل (" + ((MIS_KINDS.find((k) => k.k === o.kind) || {}).t || "") + ")" : ""; }
     if (mode === "dq") { const o = state.dq.out; return o ? o.issues.length + " ملاحظة من " + o.total + " طالباً" : ""; }
+    if (mode === "groups") { const o = state.grp.out; return o ? o.groups.length + " مجموعة، " + o.unassigned + " غير موزع" : ""; }
+    if (mode === "student") { const o = state.stu.out; return o ? "ملف طالب" : ""; }
     return "";
   }
   /* سجل بلا بيانات شخصية: التبويب والزمن والعدد فقط */
   function logRun(mode, ms) {
-    const e = { at: new Date().toISOString(), mode, ms, info: runSummary(mode), ok: !state.resultError };
+    const e = { at: new Date().toISOString(), mode, ms, info: runSummary(mode), ok: !state.resultError, by: (curUser() || {}).name || "" };
     state.runLog = [e].concat(state.runLog).slice(0, 40);
     lsSet(LOG_KEY, state.runLog);
   }
@@ -1211,7 +1253,7 @@
   function logCard() {
     const rows = state.runLog.slice(0, 15);
     return `<details class="cc-help" data-open="log" ${state.open.log ? "open" : ""}><summary>سجل العمليات (${ui.fmt(state.runLog.length)})</summary>
-      ${rows.length ? `<table class="cc-table"><thead><tr><th>الوقت</th><th>التبويب</th><th>النتيجة</th><th>المدة</th></tr></thead><tbody>${rows.map((e) => `<tr><td>${esc(new Date(e.at).toLocaleString("ar"))}</td><td>${esc(MODE_NAME[e.mode] || e.mode)}</td><td>${e.ok ? "" : "✗ "}${esc(e.info || "—")}</td><td>${esc(fmtElapsed(e.ms || 0))}</td></tr>`).join("")}</tbody></table>
+      ${rows.length ? `<table class="cc-table"><thead><tr><th>الوقت</th><th>بواسطة</th><th>التبويب</th><th>النتيجة</th><th>المدة</th></tr></thead><tbody>${rows.map((e) => `<tr><td>${esc(new Date(e.at).toLocaleString("ar"))}</td><td>${esc(e.by || "—")}</td><td>${esc(MODE_NAME[e.mode] || e.mode)}</td><td>${e.ok ? "" : "✗ "}${esc(e.info || "—")}</td><td>${esc(fmtElapsed(e.ms || 0))}</td></tr>`).join("")}</tbody></table>
       <button type="button" class="cc-link" data-cc="clear-log">مسح السجل</button>` : '<p class="cc-note">لا عمليات مسجّلة بعد.</p>'}
       <p class="cc-note">يُحفظ في هذا المتصفح فقط، ولا يحوي أسماء ولا أرقاماً شخصية.</p></details>`;
   }
@@ -1322,6 +1364,346 @@
       </details></section>`;
   }
 
+  /* ===== الخصوصية والأمان: إخفاء الأرقام، مسح البيانات بعد الخمول وبعد مدة، سجل الأخطاء، تنبيه تحديث الإضافة ===== */
+  const MASK_KEY = "tamkeen-admin:cc-mask", IDLE_KEY = "tamkeen-admin:cc-idle", ERR_KEY = "tamkeen-admin:cc-errors";
+  const CACHE_TTL = 2 * 3600 * 1000;
+  const maskCell = (v) => { const t = cellStr(v); return /^\d{9,10}$/.test(t) ? t.slice(0, 2) + "*".repeat(t.length - 4) + t.slice(-2) : t; };
+  const showCell = (v) => (state.mask ? maskCell(v) : cellStr(v));
+  const verNum = (v) => String(v || "").split(".").map(Number);
+  const verLess = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
+  const curUser = () => { try { return (App.cloud && App.cloud.user && App.cloud.user()) || null; } catch (e) { return null; } };
+  /* حصر التبويب بمدير النظام (إعداد مشترك يحفظه المدير) */
+  const centerAllowed = () => { const st = (App.store && App.store.get && App.store.get()) || {}; const u = curUser(); return !st.centerAdminOnly || !u || !!u.admin; };
+  const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.cache || state.grp.out || state.stu.out);
+  function wipeData(why) {
+    state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null;
+    state.cache = null; state.grp.out = null; state.stu.out = null; state.stu.pick = null;
+    Object.keys(tblData).forEach((k) => delete tblData[k]); Object.keys(tblState).forEach((k) => delete tblState[k]);
+    render();
+    if (why) ui.toast(why);
+  }
+  const pushErr = (msg, where) => {
+    if (!msg) return;
+    state.errors = [{ at: new Date().toISOString(), msg: String(msg).slice(0, 200), where: String(where || "").slice(-60) }].concat(state.errors).slice(0, 30);
+    lsSet(ERR_KEY, state.errors);
+  };
+  function updateBanner() {
+    const cur = App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version();
+    if (!cur || !state.extLatest || !verLess(cur, state.extLatest)) return "";
+    return `<div class="cc-alert warn" role="status">🔄 <b>تحديث متاح لإضافة «وكيل تمكين»</b>: عندك ${esc(cur)} والمنشور ${esc(state.extLatest)}. <a href="extension/tamkeen-center-agent.zip" download>تنزيل الإضافة</a> ثم فكّ الضغط فوق مجلدها واضغط 🔄 على بطاقتها في chrome://extensions.</div>`;
+  }
+  function settingsCard() {
+    const u = curUser();
+    const st = (App.store && App.store.get && App.store.get()) || {};
+    return `<details class="cc-help" data-open="sec" ${state.open.sec ? "open" : ""}><summary>الخصوصية والأمان</summary>
+      <label class="cc-chk"><input type="checkbox" data-set="mask" ${state.mask ? "checked" : ""}> <span>إخفاء الهوية والجوال جزئياً في العرض والنسخ (للمشاركة بالشاشة)</span></label>
+      <label class="cc-field" style="max-width:320px"><span>مسح النتائج من الشاشة بعد خمول</span><select data-set="idle">${[[10, "10 دقائق"], [20, "20 دقيقة"], [60, "ساعة"], [0, "لا تمسح"]].map(([v, t]) => `<option value="${v}" ${state.idleMin === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      ${u && u.admin ? `<label class="cc-chk"><input type="checkbox" data-set="adminonly" ${st.centerAdminOnly ? "checked" : ""}> <span>حصر هذا التبويب بمدير النظام (يسري على كل المستخدمين)</span></label>` : ""}
+      <div class="cc-row"><button type="button" class="cc-link danger" data-cc="wipe-now">مسح كل بيانات هذه الشاشة الآن</button></div>
+      <p class="cc-note">الذاكرة المحمّلة (⚡) تُمسح تلقائياً بعد ساعتين. وكل ما تعرضه هذه الشاشة يبقى في المتصفح ولا يُرسل إلى أي خدمة.</p></details>
+      <details class="cc-help" data-open="errs" ${state.open.errs ? "open" : ""}><summary>أخطاء الصفحة (${ui.fmt(state.errors.length)})</summary>
+      ${state.errors.length ? `<table class="cc-table"><thead><tr><th>الوقت</th><th>الخطأ</th><th>الموضع</th></tr></thead><tbody>${state.errors.slice(0, 10).map((e) => `<tr><td>${esc(new Date(e.at).toLocaleString("ar"))}</td><td>${esc(e.msg)}</td><td>${esc(e.where)}</td></tr>`).join("")}</tbody></table><div class="cc-row"><button type="button" class="cc-link" data-cc="copy-errs">نسخ للإرسال إلى المطوّر</button><button type="button" class="cc-link" data-cc="clear-errs">مسح</button></div>` : '<p class="cc-note">لا أخطاء مسجّلة.</p>'}</details>`;
+  }
+
+  /* ===== موجز للمدير: صفحة طباعة (احفظها PDF من نافذة الطباعة) ===== */
+  function printHtml(title, bodyHtml) {
+    const w = window.open("", "_blank");
+    if (!w) { ui.toast("اسمح بالنوافذ المنبثقة لطباعة الموجز"); return; }
+    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+      body{font:14px/1.7 "Segoe UI",Tahoma,sans-serif;margin:24px;color:#18202D}
+      h1{font-size:20px;margin:0 0 4px} h2{font-size:15px;margin:18px 0 6px} .meta{color:#5B687A;font-size:12px;margin-bottom:14px}
+      table{border-collapse:collapse;width:100%;margin:6px 0 14px} th,td{border:1px solid #cfd6e0;padding:5px 8px;text-align:right;font-size:12.5px}
+      th{background:#eef2f8} .n{font-variant-numeric:tabular-nums} .bad{color:#b42318;font-weight:700} .note{color:#5B687A;font-size:12px}
+      @media print{body{margin:10mm} button{display:none}}
+    </style></head><body>${bodyHtml}<p class="note">أُعدّ هذا الموجز من نظام المركز عبر مساعد تمكين الإداري بتاريخ ${esc(new Date().toLocaleString("ar"))}. القيم «ناقص» تعني عدم وجود إرسال/توقيع في النظام.</p><script>setTimeout(function(){window.print()},300)<\/script></body></html>`);
+    w.document.close();
+  }
+  function printSummary() {
+    const o = state.mis.out;
+    if (!o || !o.extra || !o.extra.targetsBy) return ui.toast("نفّذ التقرير الشامل أولاً");
+    const by = new Map();
+    Object.keys(o.extra.targetsBy).forEach((k) => by.set(k, { total: o.extra.targetsBy[k], pre: 0, post: 0, impact: 0, pledge: 0, any: 0 }));
+    o.rows.forEach((x) => {
+      const k = x.track + "|" + x.stage;
+      const e = by.get(k) || by.set(k, { total: 0, pre: 0, post: 0, impact: 0, pledge: 0, any: 0 }).get(k);
+      ["pre", "post", "impact", "pledge"].forEach((f) => { if (x.flags[f]) e[f]++; });
+      if (["pre", "post", "impact", "pledge"].some((f) => x.flags[f])) e.any++;
+    });
+    const keys = [...by.keys()].sort((a, b) => a.localeCompare(b, "ar"));
+    const tot = { total: 0, pre: 0, post: 0, impact: 0, pledge: 0, any: 0 }; keys.forEach((k) => Object.keys(tot).forEach((f) => { tot[f] += by.get(k)[f]; }));
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) + "%" : "—");
+    const rowHtml = (name, st) => `<tr><td>${esc(name)}</td><td class="n">${ui.fmt(st.total)}</td><td class="n ${st.pre ? "bad" : ""}">${ui.fmt(st.pre)}</td><td class="n ${st.post ? "bad" : ""}">${ui.fmt(st.post)}</td><td class="n ${st.impact ? "bad" : ""}">${ui.fmt(st.impact)}</td><td class="n ${st.pledge ? "bad" : ""}">${ui.fmt(st.pledge)}</td><td class="n">${ui.fmt(st.any)}</td><td class="n">${pct(st.total - st.any, st.total)}</td></tr>`;
+    printHtml("موجز متابعة الطلاب", `<h1>موجز متابعة الطلاب — الاستبيانات والتعهدات</h1>
+      <div class="meta">${state.mis.tracks.length ? esc(state.mis.tracks.map(trackShort).join("، ")) : "كل المسارات"} · ${esc(optLabel("status", state.mis.status) || "كل الحالات")}</div>
+      <table><thead><tr><th>المسار · المرحلة</th><th>الطلاب</th><th>ناقصهم القبلي</th><th>ناقصهم البعدي</th><th>ناقصهم قياس الأثر</th><th>لم يوقّعوا</th><th>ينقصهم شيء</th><th>مكتملون تماماً</th></tr></thead><tbody>${keys.map((k) => rowHtml(k.replace("|", " · ").replace(/ · $/, ""), by.get(k))).join("")}<tr><th>المجموع</th><td class="n">${ui.fmt(tot.total)}</td><td class="n">${ui.fmt(tot.pre)}</td><td class="n">${ui.fmt(tot.post)}</td><td class="n">${ui.fmt(tot.impact)}</td><td class="n">${ui.fmt(tot.pledge)}</td><td class="n">${ui.fmt(tot.any)}</td><td class="n">${pct(tot.total - tot.any, tot.total)}</td></tr></tbody></table>
+      <p class="note">«مكتملون تماماً» = لا ينقصهم قبلي ولا بعدي ولا قياس أثر ولا تعهد. وقد لا يكون كل نوع مطلوباً من كل مرحلة، فاقرأ النسب إرشاداً لا حكماً.</p>`);
+  }
+
+  /* ===== المجموعات والمدربون + اقتراح توزيع غير الموزعين ===== */
+  const grpGroupHeads = () => ["المسار", "المرحلة", "المجموعة", "المدرب", "عدد الطلاب", "الفرق عن المتوسط", "ملاحظة"];
+  const grpTrainerHeads = () => ["المدرب", "عدد المجموعات", "عدد الطلاب", "المسارات"];
+  const grpPropHeads = () => ["الطالب", "رقم الهوية", "المسار", "المرحلة", "المجموعة المقترحة", "مدرب المجموعة", "حجمها بعد التوزيع"];
+
+  async function runGroups() {
+    const c = state.grp;
+    state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
+    render(); refreshStatus();
+    try {
+      const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id));
+      const res = await runCommands(trackIds.map((id) => ({ type: "list", label: optLabel("track_id", id), params: Object.assign({ track_id: id }, c.status ? { status: c.status } : {}) })));
+      let students = [];
+      res.forEach((r, i) => {
+        if (!r || r.type !== "list") return;
+        const at = (h) => r.heads.indexOf(h);
+        const iN = at("الاسم"), iI = at("رقم الهوية"), iG = at("المجموعة"), iT = at("المدرب"), iS = at("رقم الطالب");
+        if (iN < 0 || iG < 0) throw new Error("تعذّر تحديد عمودي الاسم والمجموعة في جدول النظام.");
+        r.rows.forEach((x) => students.push({ name: clean(x.cells[iN]), id: iI >= 0 ? digits(x.cells[iI]) : "", stu: iS >= 0 ? clean(x.cells[iS]) : "", track: trackShort(trackIds[i]), stage: stageOf(x.course || ""), group: clean(x.cells[iG]).replace(/^[-–—]$/, ""), trainer: iT >= 0 ? clean(x.cells[iT]) : "" }));
+      });
+      if (c.stages.length) students = students.filter((st) => c.stages.includes(st.stage));
+      const uniq = new Map(); students.forEach((st) => { const k = st.stu || st.id + "|" + st.name; if (!uniq.has(k)) uniq.set(k, st); }); students = [...uniq.values()];
+      const gm = new Map(), tm = new Map(), unBy = new Map(); let unassigned = 0;
+      students.forEach((st) => {
+        if (!st.group) { unassigned++; const k = st.track + "|" + st.stage; unBy.set(k, (unBy.get(k) || 0) + 1); return; }
+        const gk = st.track + "|" + st.stage + "|" + st.group;
+        const g = gm.get(gk) || gm.set(gk, { track: st.track, stage: st.stage, group: st.group, trainer: "", n: 0 }).get(gk);
+        g.n++; if (st.trainer && !g.trainer) g.trainer = st.trainer;
+      });
+      const groups = [...gm.values()];
+      const avg = new Map(); groups.forEach((g) => { const k = g.track + "|" + g.stage; const a = avg.get(k) || avg.set(k, { s: 0, n: 0 }).get(k); a.s += g.n; a.n++; });
+      groups.forEach((g) => { const a = avg.get(g.track + "|" + g.stage), m = a.s / a.n; g.diff = Math.round((g.n - m) * 10) / 10; g.note = a.n > 1 && g.n > m * 1.25 ? "أكبر من المتوسط" : a.n > 1 && g.n < m * 0.75 ? "أصغر من المتوسط" : ""; });
+      groups.sort((a, b) => (a.track + a.stage + a.group).localeCompare(b.track + b.stage + b.group, "ar"));
+      groups.forEach((g) => { const key = g.trainer || "(بلا مدرب)"; const t = tm.get(key) || tm.set(key, { name: key, groups: 0, n: 0, tracks: new Set() }).get(key); t.groups++; t.n += g.n; t.tracks.add(g.track); });
+      const trainers = [...tm.values()].sort((a, b) => b.n - a.n);
+      c.out = { students, groups, trainers, unassigned, unBy, total: students.length, prop: null, at: new Date() };
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  /* توازن عددي فقط: يضع كل غير موزع في أصغر مجموعة من مجموعات مساره ومرحلته القائمة */
+  function proposeDistribution(o) {
+    const byTS = new Map(), rows = [], notes = [];
+    o.students.forEach((st) => {
+      const k = st.track + "|" + st.stage;
+      const e = byTS.get(k) || byTS.set(k, { track: st.track, stage: st.stage, groups: new Map(), un: [] }).get(k);
+      if (st.group) { const g = e.groups.get(st.group) || e.groups.set(st.group, { n: 0, trainer: "" }).get(st.group); g.n++; if (st.trainer && !g.trainer) g.trainer = st.trainer; }
+      else e.un.push(st);
+    });
+    byTS.forEach((e) => {
+      if (!e.un.length) return;
+      if (!e.groups.size) { notes.push(e.track + " · " + (e.stage || "بلا مرحلة") + ": لا توجد مجموعات قائمة لاقتراح التوزيع عليها (" + e.un.length + " طالباً)."); return; }
+      const gs = [...e.groups.entries()].map(([name, g]) => ({ name, n: g.n, trainer: g.trainer }));
+      e.un.sort((a, b) => a.name.localeCompare(b.name, "ar")).forEach((st) => {
+        gs.sort((a, b) => a.n - b.n || a.name.localeCompare(b.name, "ar"));
+        const g = gs[0]; g.n++;
+        rows.push([st.name, st.id, st.track, st.stage, g.name, g.trainer, g.n]);
+      });
+    });
+    return { rows, notes };
+  }
+  const grpGroupTable = () => ((state.grp.out && state.grp.out.groups) || []).map((g) => [g.track, g.stage, g.group, g.trainer, g.n, g.diff > 0 ? "+" + g.diff : String(g.diff), g.note]);
+  const grpTrainerTable = () => ((state.grp.out && state.grp.out.trainers) || []).map((t) => [t.name, t.groups, t.n, [...t.tracks].join("، ")]);
+  async function exportGrpBook() {
+    const o = state.grp.out; if (!o) return;
+    const wb = new ExcelJS.Workbook();
+    fmtSheet(wb.addWorksheet("المجموعات"), grpGroupHeads(), grpGroupTable());
+    fmtSheet(wb.addWorksheet("المدربون"), grpTrainerHeads(), grpTrainerTable());
+    if (o.prop) fmtSheet(wb.addWorksheet("اقتراح التوزيع"), grpPropHeads(), o.prop.rows);
+    ui.download("المجموعات والمدربون.xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  }
+
+  function grpView() {
+    const c = state.grp;
+    const chk = (k, v, text, on) => `<label class="cc-chk"><input type="checkbox" data-grp="${k}" value="${esc(v)}" ${on ? "checked" : ""}> <span>${esc(text)}</span></label>`;
+    const n = trackOpts().filter((o) => !c.tracks.length || c.tracks.includes(String(o.v))).length;
+    return `<section class="cc-card" id="cc-grp">
+      <header class="cc-card-h"><h3>المجموعات والمدربون</h3><p>حجم كل مجموعة ومدربها وتوازنها، وحمل كل مدرب، وعدد غير الموزعين، مع <b>اقتراح توزيع عددي</b> لهم. للقراءة فقط.</p></header>
+      <div class="cc-card-b"><div class="cc-grid">
+        <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk("tracks", o.v, o.t.replace(/^مسار\s*/, ""), c.tracks.includes(String(o.v)))).join("")}</div></fieldset>
+        <fieldset class="cc-fs"><legend>المراحل${c.stages.length ? ` <em>${ui.fmt(c.stages.length)}</em>` : ""}</legend><div class="cc-chips">${STAGES.map((g) => chk("stages", g.t, g.t, c.stages.includes(g.t))).join("")}</div>
+          <label class="cc-field" style="margin-top:10px"><span>حالة الطالب</span><select data-grp="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></fieldset>
+      </div></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>سيُقرأ ${ui.fmt(n)} ${n === 1 ? "مسار" : n === 2 ? "مساران" : n < 11 ? "مسارات" : "مساراً"}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.stages.length ? " · " + esc(c.stages.join("، ")) : " · كل المراحل"} · ${esc(optLabel("status", c.status) || "كل الحالات")}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-grp" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اعرض المجموعات"}</button></div></footer></section>`;
+  }
+  function grpResult() {
+    const o = state.grp.out;
+    if (!o) return "";
+    const gt = grpGroupTable(), tt = grpTrainerTable();
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> المجموعات والمدربون</h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً</span><span class="cc-stat"><b>${ui.fmt(o.groups.length)}</b> مجموعة</span><span class="cc-stat"><b>${ui.fmt(o.trainers.filter((t) => t.name !== "(بلا مدرب)").length)}</b> مدرباً</span><span class="cc-stat ${o.unassigned ? "bad" : "ok"}"><b>${ui.fmt(o.unassigned)}</b> غير موزع</span>
+        <button type="button" class="btn secondary small" data-cc="export-grp">تنزيل Excel</button></div>
+      <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>المجموعات</h4><span class="cc-badge">${ui.fmt(gt.length)}</span></div></header>${gt.length ? dataTable("grp-g", grpGroupHeads(), gt) : '<p class="cc-note">لا مجموعات.</p>'}</article>
+      <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>حمل المدربين</h4><span class="cc-badge">${ui.fmt(tt.length)}</span></div></header>${tt.length ? dataTable("grp-t", grpTrainerHeads(), tt) : ""}</article>
+      <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>اقتراح توزيع غير الموزعين</h4></div><div class="cc-res-act"><button type="button" class="btn secondary small" data-cc="grp-propose" ${o.unassigned ? "" : "disabled"}>اقترح توزيعاً</button></div></header>
+        <p class="cc-note">توازن عددي فقط: يضع كل غير موزع في أصغر مجموعة من مجموعات مساره ومرحلته القائمة. لا يراعي السعة المسموحة للمجموعة ولا الجنس ولا مواعيد المجموعات، فراجعه قبل أي تطبيق. ولا يُكتب شيء في النظام.</p>
+        ${o.prop ? `${o.prop.notes.map((n) => `<p class="cc-alert warn">${esc(n)}</p>`).join("")}${o.prop.rows.length ? dataTable("grp-p", grpPropHeads(), o.prop.rows) : '<p class="cc-note">لا اقتراحات.</p>'}` : ""}</article></section>`;
+  }
+
+  /* ===== ملف الطالب الشامل: كل ما يخصّ طالباً في بطاقة واحدة ===== */
+  const stuFrom = (it, x) => {
+    const g = (h) => { const i = it.heads.indexOf(h); return i < 0 ? "" : clean(x.cells[i]); };
+    return { name: g("الاسم"), id: digits(g("رقم الهوية")), stu: g("رقم الطالب"), phone: phoneNorm(g("الجوال")), track: g("المسار").replace(/^مسار\s*/, ""), stage: g("المرحلة"), group: g("المجموعة"), trainer: g("المدرب") };
+  };
+  const sameStu = (s0, r, x) => {
+    const stu = misCell(r, x, "رقم الطالب"), id = digits(misCell(r, x, "رقم الهوية")), nm = normName(misCell(r, x, "الاسم") || misCell(r, x, "الطالب"));
+    return (s0.stu && stu && s0.stu === stu) || (s0.id && id && s0.id === id) || (!stu && !id && nm && nm === normName(s0.name));
+  };
+
+  async function runStudent(chosen) {
+    const c = state.stu, q = clean(c.q);
+    if (!chosen && !q) return ui.toast("اكتب اسماً أو رقم هوية أو جوالاً أو رقم طالب");
+    state.busy = true; state.resultError = ""; c.out = null; c.pick = null; state.progress = "";
+    render(); refreshStatus();
+    try {
+      requireAgent12();
+      let s0 = chosen;
+      if (!s0) {
+        const r0 = (await runCommands([{ type: "lookup", label: "بحث", items: [{ q }] }]))[0];
+        const it = r0 && r0.items && r0.items[0];
+        if (!it || !it.count) throw new Error("لا نتيجة لهذا البحث.");
+        const list = it.rows.map((x) => stuFrom(it, x));
+        if (list.length > 1) { c.pick = list; return; }                 // أكثر من مطابق: يختار المستخدم
+        s0 = list[0];
+      }
+      const key = s0.id || s0.stu;
+      const cmds = [{ type: "lookup", label: "بياناته", items: [{ q: key }], details: true }]
+        .concat(SURVEY_KINDS.map((k) => ({ type: "list", source: "missing", label: "نواقص " + KIND_SHORT[k], params: { evaluation_type: k, student_status: "all", q: key } })))
+        .concat([{ type: "list", source: "pledges", label: "التعهد", params: { q: key } }, { type: "list", source: "submissions", label: "إرسالاته", params: { q: key } }]);
+      const parts = clean(s0.name).split(" ").filter(Boolean);
+      const sibCmds = [];
+      if (s0.phone) sibCmds.push({ kind: "phone", cmd: { type: "list", label: "نفس الهاتف", params: { q: s0.phone } } });
+      if (parts.length >= 3) sibCmds.push({ kind: "name", cmd: { type: "list", label: "نفس الاسم", params: { q: parts.slice(1).join(" ") } } });
+      const res = await runCommands(cmds.concat(sibCmds.map((x) => x.cmd)));
+      res.slice(1, 6).forEach((r, i) => { if (i < 3) needHead(r, "حالة تعبئة الاستبيان", "تقرير النواقص"); else if (i === 3) needHead(r, "تاريخ الاعتماد", "التعهدات"); else needHead(r, "النموذج", "إرسالات الاستبيانات"); });
+      // البيانات الأساسية والتفصيلية
+      const d0 = res[0] && res[0].items && res[0].items[0];
+      const kv = [];
+      if (d0 && d0.rows[0]) {
+        const skip = new Set(["الطالب", "المسار / الدورة", "المجموعة / المدرب", "الاسم الإنجليزي"]);    // الأعمدة المدموجة فُصلت وتظهر أعلاه
+        d0.heads.forEach((h, i) => { const v = clean(d0.rows[0].cells[i]); if (v && !skip.has(h)) kv.push([h, v]); });
+      }
+      // الاستبيانات: ناقص (في تقرير النظام) / مكتمل (له إرسال) / غير معروف
+      const subs = [];
+      const sr = res[5];
+      (sr.rows || []).forEach((x) => { if (sameStu(s0, sr, x)) subs.push([misCell(sr, x, "النموذج"), misCell(sr, x, "الدورة"), misCell(sr, x, "الدرجة"), misCell(sr, x, "تاريخ الإرسال")]); });
+      const kindOf = (form) => (/قبلي/.test(form) ? "pre" : /بعدي/.test(form) ? "post" : "impact");
+      const surveys = SURVEY_KINDS.map((k, i) => {
+        const r = res[1 + i];
+        const missing = (r.rows || []).some((x) => !/^(لا يوجد|اختر)/.test(misCell(r, x, "الطالب") || misCell(r, x, "الاسم")) && sameStu(s0, r, x));
+        const mine = subs.filter((x) => kindOf(x[0]) === k);
+        if (missing) return { label: KIND_ITEM[k], state: "ناقص", detail: "يظهر في تقرير «لم يعبئوا الاستبيان»", bad: true };
+        if (mine.length) return { label: KIND_ITEM[k], state: "مكتمل", detail: mine.map((x) => x[3] + (x[2] ? " (الدرجة " + x[2] + ")" : "")).join("؛ ") };
+        return { label: KIND_ITEM[k], state: "غير مطلوب أو لا بيانات", detail: "ليس في تقرير النواقص ولا له إرسال من هذا النوع" };
+      });
+      const pr = res[4];
+      const pRow = (pr.rows || []).find((x) => sameStu(s0, pr, x));
+      const pledge = pRow ? { label: KIND_ITEM.pledge, state: "موقّع", detail: misCell(pr, pRow, "تاريخ الاعتماد") } : { label: KIND_ITEM.pledge, state: "لم يوقّع", detail: "لا تعهد له في قائمة التعهدات", bad: true };
+      // الإخوة المحتملون
+      const nk = normName(parts.slice(1).join(" "));
+      const sibs = new Map();
+      sibCmds.forEach((sc, i) => {
+        const r = res[6 + i];
+        if (!r || r.type !== "list") return;
+        const at = (h) => r.heads.indexOf(h);
+        r.rows.forEach((x) => {
+          const o = { name: clean(x.cells[at("الاسم")]), id: digits(x.cells[at("رقم الهوية")] || ""), stu: at("رقم الطالب") >= 0 ? clean(x.cells[at("رقم الطالب")]) : "", track: at("المسار") >= 0 ? clean(x.cells[at("المسار")]).replace(/^مسار\s*/, "") : "", stage: at("المرحلة") >= 0 ? clean(x.cells[at("المرحلة")]) : "", group: at("المجموعة") >= 0 ? clean(x.cells[at("المجموعة")]) : "" };
+          if ((o.stu && o.stu === s0.stu) || (o.id && o.id === s0.id)) return;
+          if (sc.kind === "name" && normName(o.name).split(" ").slice(1).join(" ") !== nk) return;      // تطابق صارم بعد الاسم الأول
+          const k = o.stu || o.id || o.name;
+          const e = sibs.get(k) || sibs.set(k, Object.assign(o, { why: new Set() })).get(k);
+          e.why.add(sc.kind === "phone" ? "هاتف" : "اسم");
+        });
+      });
+      const quality = [];
+      if (!/^\d{9}$/.test(s0.id)) quality.push("الهوية ليست 9 أرقام (" + (s0.id || "بلا هوية") + ")");
+      if (!/^05\d{8}$/.test(s0.phone)) quality.push("الجوال ناقص أو غير صالح (" + (s0.phone || "بلا جوال") + ")");
+      if (!s0.group) quality.push("بلا مجموعة");
+      if (parts.length < 4) quality.push("الاسم أقل من رباعي");
+      c.out = { s: s0, kv, surveys, pledge, subs, sibs: [...sibs.values()].map((e) => [e.name, e.id, e.track, e.stage, e.group, [...e.why].join(" + ")]), quality, at: new Date() };
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  const stuSibHeads = () => ["الاسم", "رقم الهوية", "المسار", "المرحلة", "المجموعة", "سبب الربط"];
+
+  function stuView() {
+    const c = state.stu;
+    return `<section class="cc-card" id="cc-stu">
+      <header class="cc-card-h"><h3>ملف الطالب الشامل</h3><p>ابحث عن طالب واحد فتظهر لك بطاقة واحدة: بياناته ومجموعته، وحالة الاستبيانات الثلاثة والتعهد، وإرسالاته، وإخوته المحتملون، وملاحظات جودة بياناته. للقراءة فقط.</p></header>
+      <div class="cc-card-b"><label class="cc-field"><span>اسم الطالب، أو رقم الهوية، أو الجوال، أو رقم الطالب (STU)</span><input type="search" class="cc-tbl-q" style="max-width:none" data-stu="q" value="${esc(c.q)}" placeholder="مثال: 401878814"></label>
+        ${c.pick ? `<div class="cc-pick"><b>أكثر من مطابق (${ui.fmt(c.pick.length)})، اختر الطالب:</b><div class="cc-chips">${c.pick.slice(0, 30).map((x, i) => `<button type="button" class="btn secondary small" data-cc="stu-pick" data-i="${i}">${esc(x.name)} · ${esc(showCell(x.id))}</button>`).join("")}</div></div>` : ""}
+      </div>
+      <footer class="cc-actions"><div class="cc-sum"><span>يقرأ الوكيل نحو 8 صفحات صغيرة (قراءة فقط)</span></div><div class="cc-act"><button type="button" class="btn navy" data-cc="run-stu" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ البحث…" : "اعرض الملف"}</button></div></footer></section>`;
+  }
+  function stuResult() {
+    const o = state.stu.out;
+    if (!o) return "";
+    const s0 = o.s, line = (a, b) => `<tr><th>${esc(a)}</th><td>${esc(showCell(b) || "—")}</td></tr>`;
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> ${esc(s0.name)}</h3>
+      <div class="cc-stats">${o.quality.length ? `<span class="cc-stat bad"><b>${ui.fmt(o.quality.length)}</b> ملاحظة جودة</span>` : '<span class="cc-stat ok"><b>0</b> ملاحظة جودة</span>'}${o.sibs.length ? `<span class="cc-stat"><b>${ui.fmt(o.sibs.length)}</b> أخ/أخت محتمل</span>` : ""}<button type="button" class="btn secondary small" data-cc="print-stu">طباعة الملف</button></div>
+      <article class="cc-res"><header class="cc-res-h"><h4>البيانات</h4></header><table class="cc-table"><tbody>${line("الاسم", s0.name)}${line("رقم الهوية", s0.id)}${line("رقم الطالب", s0.stu)}${line("الجوال", s0.phone)}${line("المسار", s0.track)}${line("المرحلة", s0.stage)}${line("المجموعة", s0.group)}${line("المدرب", s0.trainer)}${o.kv.map(([a, b]) => line(a, b)).join("")}</tbody></table></article>
+      <article class="cc-res"><header class="cc-res-h"><h4>الاستبيانات والتعهد</h4></header><table class="cc-table"><thead><tr><th>البند</th><th>الحالة</th><th>تفصيل</th></tr></thead><tbody>${o.surveys.concat([o.pledge]).map((x) => `<tr><td>${esc(x.label)}</td><td class="${x.bad ? "cc-bad" : ""}">${x.state === "مكتمل" || x.state === "موقّع" ? "✓ " : x.bad ? "✗ " : ""}${esc(x.state)}</td><td>${esc(x.detail)}</td></tr>`).join("")}</tbody></table></article>
+      ${o.subs.length ? `<article class="cc-res"><header class="cc-res-h"><h4>إرسالات الاستبيانات</h4></header>${dataTable("stu-subs", ["النموذج", "الدورة", "الدرجة", "تاريخ الإرسال"], o.subs)}</article>` : ""}
+      ${o.sibs.length ? `<article class="cc-res"><header class="cc-res-h"><h4>إخوة محتملون</h4></header>${dataTable("stu-sibs", stuSibHeads(), o.sibs)}</article>` : ""}
+      ${o.quality.length ? `<article class="cc-res"><header class="cc-res-h"><h4>ملاحظات جودة البيانات</h4></header><ul>${o.quality.map((q) => `<li>${esc(q)}</li>`).join("")}</ul></article>` : ""}</section>`;
+  }
+  function printStudent() {
+    const o = state.stu.out; if (!o) return;
+    const s0 = o.s, row = (a, b) => `<tr><th>${esc(a)}</th><td>${esc(showCell(b) || "—")}</td></tr>`;
+    printHtml("ملف الطالب", `<h1>ملف الطالب: ${esc(s0.name)}</h1><div class="meta">رقم الهوية ${esc(showCell(s0.id))} · ${esc(s0.track)} · ${esc(s0.stage)} · ${esc(s0.group || "بلا مجموعة")}</div>
+      <h2>البيانات</h2><table><tbody>${row("الجوال", s0.phone)}${row("رقم الطالب", s0.stu)}${row("المدرب", s0.trainer)}${o.kv.map(([a, b]) => row(a, b)).join("")}</tbody></table>
+      <h2>الاستبيانات والتعهد</h2><table><thead><tr><th>البند</th><th>الحالة</th><th>تفصيل</th></tr></thead><tbody>${o.surveys.concat([o.pledge]).map((x) => `<tr><td>${esc(x.label)}</td><td class="${x.bad ? "bad" : ""}">${esc(x.state)}</td><td>${esc(x.detail)}</td></tr>`).join("")}</tbody></table>
+      ${o.sibs.length ? `<h2>إخوة محتملون</h2><table><thead><tr>${stuSibHeads().map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${o.sibs.map((r) => `<tr>${r.map((c) => `<td>${esc(showCell(c))}</td>`).join("")}</tr>`).join("")}</tbody></table>` : ""}
+      ${o.quality.length ? `<h2>ملاحظات الجودة</h2><ul>${o.quality.map((q) => `<li>${esc(q)}</li>`).join("")}</ul>` : ""}`);
+  }
+
+  /* ===== حزمة التقارير: عدة تقارير محفوظة تُشغَّل معاً في ملف Excel واحد، ورقة لكل تقرير ===== */
+  async function runForMode(mode) {
+    if (mode === "report") { const plan = buildSelection(); return executeBatch(plan.map((x) => x.command), plan.map((x) => x.label), true); }
+    if (mode === "compare") return runCompare();
+    if (mode === "siblings") { state.sib.stageMode = false; return runSiblings(); }
+    if (mode === "missing") return runMissing();
+    if (mode === "dq") return runDq();
+    if (mode === "groups") return runGroups();
+  }
+  function collectSheets(mode, name) {
+    if (mode === "report") return ((state.results && state.results.results) || []).map((r, i) => (r && r.type === "list" ? (() => { const [h, rr] = shown(r.heads, r.rows.map((x) => x.cells)); return { name: state.labels[i] || name, heads: h, rows: rr }; })() : null)).filter(Boolean);
+    if (mode === "compare") return state.cmp.goal === "siblings" ? (state.sib.out ? [{ name, heads: sibHeads(), rows: state.sib.out.rows }] : []) : (state.cmp.out ? [{ name, heads: cmpHeads(), rows: cmpTable() }] : []);
+    if (mode === "siblings") return state.sib.out ? [{ name, heads: sibHeads(), rows: state.sib.out.rows }] : [];
+    if (mode === "missing") return state.mis.out ? [{ name, heads: misHeads(), rows: misTable() }] : [];
+    if (mode === "dq") return state.dq.out ? [{ name, heads: dqHeads(), rows: dqTable() }] : [];
+    if (mode === "groups") return state.grp.out ? [{ name: name + " - مجموعات", heads: grpGroupHeads(), rows: grpGroupTable() }, { name: name + " - مدربون", heads: grpTrainerHeads(), rows: grpTrainerTable() }] : [];
+    return [];
+  }
+  async function runBundle() {
+    const ids = state.bundle.pick.filter((id) => state.saved.some((x) => x.id === id));
+    if (!ids.length) return ui.toast("اختر تقريراً واحداً على الأقل");
+    const backup = {}; Object.values(CFG).forEach((k) => { backup[k] = state[k]; });
+    const origMode = state.mode;
+    const sheets = [], notes = [];
+    for (let i = 0; i < ids.length; i++) {
+      const it = state.saved.find((x) => x.id === ids[i]);
+      state.bundle.msg = "الحزمة: " + (i + 1) + " من " + ids.length + " — " + it.name;
+      state.mode = it.mode; state.adding = ""; applyCfg(it.mode, it.cfg);
+      try {
+        await runForMode(it.mode);
+        if (state.resultError) notes.push([it.name, "خطأ: " + state.resultError]);
+        else { const got = collectSheets(it.mode, it.name); if (!got.length) notes.push([it.name, "لا نتائج"]); got.forEach((g) => sheets.push(g)); }
+      } catch (e) { notes.push([it.name, "خطأ: " + (e.message || e)]); }
+    }
+    Object.keys(backup).forEach((k) => { state[k] = backup[k]; });                // لا نمحو اختياراتك الحالية
+    state.mode = origMode; state.bundle.msg = "";
+    if (!sheets.length) { render(); return ui.toast("لم تنتج الحزمة نتائج"); }
+    const wb = new ExcelJS.Workbook(), used = new Set();
+    sheets.forEach((g, i) => {
+      let nm = (String(i + 1) + "-" + g.name).replace(/^مسار\s*/, "").replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
+      while (used.has(nm)) nm = nm.slice(0, 28) + "·" + used.size;
+      used.add(nm); fmtSheet(wb.addWorksheet(nm), g.heads, g.rows);
+    });
+    if (notes.length) fmtSheet(wb.addWorksheet("ملاحظات"), ["التقرير", "ملاحظة"], notes);
+    ui.download("حزمة التقارير " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    render();
+    ui.toast("نُزّلت الحزمة: " + ui.fmt(sheets.length) + " ورقة" + (notes.length ? "، وفيها ملاحظات" : ""));
+  }
+
   /* حالة الوكيل في جملة ولون واحدين: busy | ok | bad */
   function statusInfo() {
     const st = state.agentStatus;
@@ -1335,6 +1717,8 @@
     const box = $("cc-body");
     if (!box) return;
     if (!SCHEMA()) { box.innerHTML = '<p class="cc-alert warn">مخطط نظام المركز غير محمَّل.</p>'; return; }
+    if (!centerAllowed()) { box.innerHTML = '<p class="cc-alert warn">هذا التبويب مخصّص لمدير النظام. اطلب من المدير إتاحته لك.</p>'; return; }
+    if (state.cache && Date.now() - state.cache.at.getTime() > CACHE_TTL) { state.cache = null; ui.toast("مُسحت الذاكرة المحمّلة لمرور ساعتين؛ حمّلها من جديد عند الحاجة"); }
     const mode = state.adding || state.proposal ? "ask" : state.mode;
     const info = statusInfo();
     const viaExt = App.centerAgent && App.centerAgent.isReady();
@@ -1344,7 +1728,8 @@
     if (state.busy && !state.progStart) { state.progStart = Date.now(); Object.keys(tblState).forEach((k) => delete tblState[k]); }
     if (!state.busy) state.progStart = 0;
     box.innerHTML = `<div class="cc-app">
-      <div class="cc-top" data-st="${info.st}"><span class="cc-dot" aria-hidden="true"></span><span id="cc-status" role="status">${esc(info.text)}</span></div>
+      <div class="cc-top" data-st="${info.st}"><span class="cc-dot" aria-hidden="true"></span><span id="cc-status" role="status">${esc(info.text)}</span><button type="button" class="cc-link cc-mask-btn" data-cc="toggle-mask" aria-pressed="${state.mask}" title="يخص العرض والنسخ، لا ملفات Excel">${state.mask ? "👁 إظهار الأرقام" : "🙈 إخفاء الهوية والجوال"}</button></div>
+      ${updateBanner()}
       ${state.busy ? busyBanner() : ""}
       <nav class="cc-modes" role="tablist" aria-label="نوع الأمر">
         <button type="button" role="tab" class="${mode === "report" ? "on" : ""}" aria-selected="${mode === "report"}" data-cc="mode" data-m="report"><b>تقرير جاهز</b><small>اختر المسار والمرحلة ثم نفّذ</small></button>
@@ -1352,14 +1737,17 @@
         <button type="button" role="tab" class="${mode === "siblings" ? "on" : ""}" aria-selected="${mode === "siblings"}" data-cc="mode" data-m="siblings"><b>مقارنة الإخوة</b><small>طلاب يجمعهم هاتف أو عائلة</small></button>
         <button type="button" role="tab" class="${mode === "missing" ? "on" : ""}" aria-selected="${mode === "missing"}" data-cc="mode" data-m="missing"><b>استبيانات وتعهدات</b><small>من لم يعبّئ أو يوقّع</small></button>
         <button type="button" role="tab" class="${mode === "dq" ? "on" : ""}" aria-selected="${mode === "dq"}" data-cc="mode" data-m="dq"><b>فحص البيانات</b><small>أخطاء الجودة وتغيّر القوائم</small></button>
+        <button type="button" role="tab" class="${mode === "groups" ? "on" : ""}" aria-selected="${mode === "groups"}" data-cc="mode" data-m="groups"><b>المجموعات والمدربون</b><small>التوازن، حمل المدربين، التوزيع</small></button>
+        <button type="button" role="tab" class="${mode === "student" ? "on" : ""}" aria-selected="${mode === "student"}" data-cc="mode" data-m="student"><b>ملف الطالب</b><small>كل شيء عن طالب واحد</small></button>
         <button type="button" role="tab" class="${mode === "ask" ? "on" : ""}" aria-selected="${mode === "ask"}" data-cc="mode" data-m="ask"><b>اكتب طلبك</b><small>بحث، أو تسجيل طلاب من Excel</small></button>
       </nav>
       ${savedBar(mode)}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "dq" ? dqView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "dq" ? dqResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
+      ${settingsCard()}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
         ? "تعمل الأوامر في متصفحك عبر إضافة «وكيل تمكين». سجّل دخولك في نظام المركز مرة واحدة؛ والبحث والقوائم تُنفَّذ مباشرة، أما التسجيل فتراجع معاينته هنا وتوافق قبل أن يُكتب شيء. لا تصل كلمة مرورك أو جلستك إلى تمكين."
         : "تعمل الجلسة في نافذة Edge المحلية. سجّل الدخول فيها مرة واحدة؛ بعدها ينفّذ الوكيل البحث والقوائم والتسجيل ويعرض النتيجة هنا. أو ثبّت إضافة «وكيل تمكين» في Chrome لتعمل دون خادم محلي."}</p></details>
@@ -1433,6 +1821,17 @@
     const trimSep = (v) => clean(v).replace(/^[\s\/\|·\-–—،,:]+|[\s\/\|·\-–—،,:]+$/g, "");
     return [trimSep(name), trimSep(en), stu, id, phone];
   }
+  /* خلية «المجموعة / المدرب»: «S3G2 -» (بلا مدرب)، «G1 - د. أحمد»، أو «S3G1 اسراء خليل…» (رمز المجموعة ثم المدرب بلا فاصل) */
+  function splitGroupCell(raw) {
+    const d = clean(raw).split(/\s+-\s*/);
+    let g = clean(d[0]), tr = clean(d.slice(1).join(" - "));
+    if (!tr) {
+      let m = g.match(/^([A-Za-z]+\d*[A-Za-z]*\d*)\s+(.+)$/);              // رمز لاتيني: G1، S3G2
+      if (!m) m = g.match(/^(المجموعة\s+\S+)\s+(.+)$/);                   // المجموعة الاولى
+      if (m) { g = m[1]; tr = clean(m[2]); }
+    }
+    return [g, tr.replace(/^[-–—]+$/, "")];
+  }
   function expandResult(r) {
     if (!r || !Array.isArray(r.heads) || !Array.isArray(r.rows)) return r;
     const at = (rx) => r.heads.findIndex((h) => rx.test(clean(h)));
@@ -1450,7 +1849,7 @@
         plan.push((c) => { const t = clean(c); const m = t.match(/المرحلة\s*\S+/); return [clean(m ? t.replace(m[0], "") : t), m ? m[0] : ""]; });
       } else if (i === iG) {
         heads.push("المجموعة", "المدرب");
-        plan.push((c) => { const parts = clean(c).split(/\s+-\s*/); return [clean(parts[0]), clean(parts.slice(1).join(" - "))]; });
+        plan.push((c) => splitGroupCell(c));
       } else { heads.push(h); plan.push((c) => [c]); }
     });
     const rows = r.rows.map((x) => ({ cells: [].concat(...plan.map((f, i) => f(x.cells[i]))), course: iC >= 0 ? clean(x.cells[iC]) : "", raw: x.cells }));
@@ -1576,7 +1975,16 @@
     const box = $("cc-body");
     if (!box) return;
     try { const m = localStorage.getItem("tamkeen-admin:cc-msg"); if (m) state.mis.msg = m; } catch (e) { /* خاص */ }
-    state.saved = lsGet(SV_KEY, []); state.runLog = lsGet(LOG_KEY, []);
+    state.saved = lsGet(SV_KEY, []); state.runLog = lsGet(LOG_KEY, []); state.errors = lsGet(ERR_KEY, []);
+    try { state.mask = localStorage.getItem(MASK_KEY) === "1"; const im = localStorage.getItem(IDLE_KEY); if (im !== null && im !== "") state.idleMin = Number(im); } catch (e) { /* خاص */ }
+    ["click", "keydown", "input", "change"].forEach((ev) => box.addEventListener(ev, () => { state.lastAct = Date.now(); }, true));
+    window.setInterval(() => {                                      // مسح النتائج بعد خمول (لا أثناء تنفيذ)
+      if (!state.idleMin || state.busy || !hasSensitive()) return;
+      if (Date.now() - state.lastAct > state.idleMin * 60000) wipeData("مُسحت النتائج من الشاشة لخمولك " + state.idleMin + " دقيقة؛ أعد التنفيذ عند الحاجة");
+    }, 30000);
+    window.addEventListener("error", (e) => pushErr(e.message, (e.filename || "").split("/").pop() + ":" + e.lineno));
+    window.addEventListener("unhandledrejection", (e) => pushErr((e.reason && e.reason.message) || e.reason, "promise"));
+    fetch("extension/manifest.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((m) => { if (m && m.version) { state.extLatest = m.version; if (!state.busy) render(); } }).catch(() => {});
     try { state.notify = localStorage.getItem(NOTIFY_KEY) === "1"; } catch (e) { /* خاص */ }
     window.setInterval(() => { const e = $("cc-elapsed"); if (e && state.busy && state.progStart) e.textContent = fmtElapsed(Date.now() - state.progStart); }, 1000);
     render();
@@ -1602,6 +2010,12 @@
           }
           state.thinking = false;
           if (command.error) { state.proposal = command; render(); return; }
+          if (command.type === "mode-intent") {
+            state.proposal = null; state.mode = command.mode; if (command.cfg) applyCfg(command.mode, command.cfg);
+            render();
+            if (command.run) { const rb = box.querySelector('[data-cc="' + RUN_BTN[command.mode] + '"]'); if (rb && !rb.disabled) rb.click(); }
+            return;
+          }
           if (command.type === "register-needed") { state.proposal = command; state.adding = "register"; state.autoRunRegister = true; render(); return; }
           await executeCommand(command); return;
         } else if (act === "ai-settings") {
@@ -1649,6 +2063,15 @@
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
         } else if (act === "mode") {
           state.mode = b.dataset.m; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
+        } else if (act === "run-stu") { return runStudent();
+        } else if (act === "stu-pick") { return runStudent(state.stu.pick[i]);
+        } else if (act === "print-stu") { return printStudent();
+        } else if (act === "bundle-toggle") { state.bundle.open = !state.bundle.open;
+        } else if (act === "bundle-run") { return runBundle();
+        } else if (act === "run-grp") { return runGroups();
+        } else if (act === "export-grp") { return exportGrpBook();
+        } else if (act === "grp-propose") { state.grp.out.prop = proposeDistribution(state.grp.out);
+        } else if (act === "print-summary") { return printSummary();
         } else if (act === "run-dq") { return runDq();
         } else if (act === "export-dq") { return exportBook("فحص جودة البيانات.xlsx", dqHeads(), dqTable());
         } else if (act === "snap-save") { dqSnapshotSave(); return render();
@@ -1669,6 +2092,13 @@
           return;
         } else if (act === "sv-del") {
           state.saved = state.saved.filter((x) => x.id !== b.dataset.id); lsSet(SV_KEY, state.saved);
+        } else if (act === "toggle-mask") {
+          state.mask = !state.mask; try { localStorage.setItem(MASK_KEY, state.mask ? "1" : ""); } catch (e) { /* خاص */ }
+        } else if (act === "wipe-now") { return wipeData("مُسحت بيانات هذه الشاشة");
+        } else if (act === "clear-errs") { state.errors = []; lsSet(ERR_KEY, []);
+        } else if (act === "copy-errs") {
+          try { await navigator.clipboard.writeText(state.errors.map((e) => e.at + " | " + e.msg + " | " + e.where).join("\n")); ui.toast("نُسخ سجل الأخطاء"); } catch (err) { ui.toast("تعذّر النسخ"); }
+          return;
         } else if (act === "clear-log") { state.runLog = []; lsSet(LOG_KEY, []);
         } else if (act === "stop-run") {
           if (!stopSupported()) return ui.toast("إضافتك لا تدعم الإيقاف؛ حدّثها إلى 1.4.0 أو أحدث");
@@ -1691,6 +2121,12 @@
         } else if (act === "export-cmp") {
           return exportBook("مقارنة المراحل.xlsx", cmpHeads(), cmpTable());
         } else if (act === "cols-all") { state.hiddenCols = new Set();
+        } else if (act === "to-exam") {
+          const { headers, rows } = feedData();
+          if (!rows.length) return ui.toast("لا صفوف");
+          await App.examSheet.useData(headers, rows);
+          const tab = document.querySelector('[data-cv-tab="exam"]'); if (tab) tab.click();
+          return;
         } else if (act === "to-forms") {
           const { headers, rows } = feedData();
           if (!rows.length) return ui.toast("لا صفوف لإخراجها");
@@ -1714,6 +2150,8 @@
       } catch (err) { ui.toast(err.message); }
     });
 
+    box.addEventListener("input", (e) => { if (e.target.dataset && e.target.dataset.stu === "q") state.stu.q = e.target.value; });
+    box.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.dataset && e.target.dataset.stu === "q") { state.stu.q = e.target.value; runStudent(); } });
     box.addEventListener("input", (e) => {
       const k = e.target.dataset && e.target.dataset.tblQ;
       if (k == null) return;
@@ -1727,7 +2165,7 @@
       const cp = e.target.closest("[data-tbl-copy]");
       if (cp) {
         const k = cp.dataset.tblCopy, d = tblData[k];
-        const txt = [d.heads, ...tblRows(k)].map((r) => r.map((c) => cellStr(c).replace(/[\t\r\n]+/g, " ")).join("\t")).join("\n");
+        const txt = [d.heads, ...tblRows(k)].map((r) => r.map((c) => showCell(c).replace(/[\t\r\n]+/g, " ")).join("\t")).join("\n");
         try { await navigator.clipboard.writeText(txt); ui.toast("نُسخ " + ui.fmt(tblRows(k).length) + " صفاً؛ الصقه في Excel"); } catch (err) { ui.toast("تعذّر النسخ؛ استعمل زر التنزيل"); }
       }
     });
@@ -1738,10 +2176,28 @@
 
     box.addEventListener("change", async (e) => {
       const t = e.target;
+      if (t.dataset.set) {
+        const k = t.dataset.set;
+        if (k === "mask") { state.mask = t.checked; try { localStorage.setItem(MASK_KEY, state.mask ? "1" : ""); } catch (e) { /* خاص */ } }
+        else if (k === "idle") { state.idleMin = Number(t.value); try { localStorage.setItem(IDLE_KEY, String(state.idleMin)); } catch (e) { /* خاص */ } return; }
+        else if (k === "adminonly" && App.store && App.store.get) { App.store.get().centerAdminOnly = t.checked; if (App.store.save) App.store.save(); }
+        render(); return;
+      }
       if (t.dataset.ccNotify != null) {
         state.notify = t.checked; try { localStorage.setItem(NOTIFY_KEY, state.notify ? "1" : ""); } catch (e) { /* خاص */ }
         if (t.checked && typeof Notification !== "undefined" && Notification.permission === "default") Notification.requestPermission();
         return;
+      }
+      if (t.dataset.bundle != null) {
+        const a = state.bundle.pick, at = a.indexOf(t.value);
+        if (t.checked && at < 0) a.push(t.value); else if (!t.checked && at >= 0) a.splice(at, 1);
+        return;
+      }
+      if (t.dataset.grp) {
+        const k = t.dataset.grp, c = state.grp;
+        if (k === "tracks" || k === "stages") { const v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); }
+        else if (k === "status") c.status = t.value;
+        render(); return;
       }
       if (t.dataset.dq) {
         const k = t.dataset.dq, c = state.dq;
