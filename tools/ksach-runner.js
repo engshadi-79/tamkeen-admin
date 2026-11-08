@@ -82,6 +82,8 @@
     return b;
   };
   const stopBtn = btn("إيقاف", () => { stopped = true; say("أُوقف. تُحفظ النتائج حتى هنا."); }, "");
+  // يطلب تمكين الإيقاف عبر الإضافة (زر «إيقاف» في صفحة تمكين): نحفظ ما اكتمل ونعيده
+  window.__kxStop = () => { stopped = true; say("أُوقف بطلبك. تُحفظ النتائج حتى هنا."); };
   const wait = (label, kind) => new Promise((resolve) => {
     const go = btn(label, () => { actEl.replaceChildren(stopBtn); resolve(true); }, kind || "go");
     const no = btn("تخطّي", () => { actEl.replaceChildren(stopBtn); resolve(false); }, "");
@@ -423,6 +425,8 @@
       log("خطأ: " + e.message);
       if (/الجلسة/.test(e.message)) break;
     }
+    // نتيجة هذا الأمر تصل تمكين فوراً ليعرضها قبل انتهاء الباقي
+    try { const last = results[results.length - 1]; if (last && typeof window.__kxPartial === "function") window.__kxPartial(i, last); } catch (e) { /* تمكين مغلق */ }
   }
   const payload = { v: 1, at: new Date().toISOString(), results };
   const sent = typeof window.__kxDone === "function" ? await window.__kxDone(payload) : false;

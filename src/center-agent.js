@@ -8,6 +8,7 @@
      const out = await App.centerAgent.run([أمر…], { onProgress, onPlan })
         onProgress(text)       تقدّم التنفيذ في نظام المركز
         onPlan(plan) → bool    خطة التسجيل قبل الكتابة؛ true للموافقة، false للرفض
+        onPartial(i, نتيجة)    نتيجة أمر انتهى قبل غيره (إضافة 1.4.0+)
         out = { results: […] } نتائج الأوامر بالترتيب */
 (function (App) {
   const ORIGIN = location.origin;
@@ -61,6 +62,9 @@
           try { ok = hooks.onPlan ? !!(await hooks.onPlan(m.plan)) : false; } catch (e) { ok = false; }
           post({ type: "approve", ok });
           arm();
+        } else if (m.type === "partial") {
+          arm();
+          if (hooks.onPartial) hooks.onPartial(m.index, m.result);        // نتيجة أمر انتهى (إضافة 1.4.0 فأحدث)
         } else if (m.type === "results") {
           done(resolve, m.data);
         }
@@ -70,6 +74,9 @@
     });
   }
 
-  App.centerAgent = { ready, run, isReady: () => !!version, version: () => version };
+  /* إيقاف التنفيذ الجاري: يحفظ الوكيل ما اكتمل ويعيده كنتائج (إضافة 1.4.0 فأحدث) */
+  const stop = () => post({ type: "stop" });
+
+  App.centerAgent = { ready, run, stop, isReady: () => !!version, version: () => version };
   ready(1500);                                               // يتعرّف على الإضافة عند فتح الصفحة
 })(window.App = window.App || {});

@@ -23,10 +23,11 @@
     }
     if (m.type === "approve") { await send({ type: "approve", ok: !!m.ok }); return; }
     if (m.type === "cancel") { await send({ type: "cancel" }); return; }
+    if (m.type === "stop") { await send({ type: "stop" }); return; }
   });
 
   // من الخلفية إلى الصفحة: التقدّم والخطة والنتائج
   chrome.runtime.onMessage.addListener((m) => {
-    if (m && (m.type === "progress" || m.type === "plan" || m.type === "results")) post(m);
+    if (m && (m.type === "progress" || m.type === "plan" || m.type === "results" || m.type === "partial")) post(m);
   });
 })();

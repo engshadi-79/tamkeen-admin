@@ -11,7 +11,7 @@
 
   const bind = (remote) => {
     window.__kxRemote = !!remote;
-    if (!remote) { window.__kxProgress = window.__kxApprove = window.__kxDone = undefined; return; }
+    if (!remote) { window.__kxProgress = window.__kxApprove = window.__kxDone = window.__kxPartial = undefined; return; }
     // لا نغرق الصفحة بتحديثات: رسالة كل 150ms على الأكثر، لكن **آخر** رسالة تصل دائماً:
     // مؤقت لاحق (قد يتأخر في التبويب الخلفي، وهذا مقبول لأن الرسائل تتتابع كل ثانية تقريباً)
     // ويُرسَل الأخير حتماً قبل النتائج في __kxDone.
@@ -30,6 +30,7 @@
       if (timer) { clearTimeout(timer); timer = null; }
       if (latest !== sent) { sent = latest; try { await chrome.runtime.sendMessage({ type: "progress", text: latest }); } catch (e) { /* تمكين مغلق */ } }
     };
+    window.__kxPartial = (index, result) => { chrome.runtime.sendMessage({ type: "partial", index, result }).catch(() => {}); };
     window.__kxApprove = (plan) => new Promise((resolve) => {
       approvalResolve = resolve;
       chrome.runtime.sendMessage({ type: "plan", plan }).then((r) => { if (!r || !r.ok) { /* تمكين مغلق: تبقى الموافقة المحلية */ } }).catch(() => {});
@@ -54,6 +55,7 @@
   chrome.runtime.onMessage.addListener((m, s, reply) => {
     if (!m) return;
     if (m.type === "start") { start(); reply({ ok: true }); }
+    else if (m.type === "stop") { if (typeof window.__kxStop === "function") window.__kxStop(); reply({ ok: true }); }
     else if (m.type === "approval" && approvalResolve) { const r = approvalResolve; approvalResolve = null; r(!!m.ok); }
   });
   start();                                          // عند تحميل الصفحة
