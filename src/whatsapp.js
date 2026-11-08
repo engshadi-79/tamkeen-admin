@@ -142,6 +142,41 @@
     return out.map((x, i) => "(" + (i + 1) + "/" + out.length + ")\n" + x);
   }
 
+  /* ملف Excel من جدول الصفحة (كل الصفوف). الهوية والجوال ورقم الطالب مستثناة ما لم تُفعَّل خانتها */
+  async function buildXlsx() {
+    const v = currentView(), tb = v && [...v.querySelectorAll("table")].find(visible);
+    if (!tb) throw new Error("لا جدول في هذه الصفحة");
+    if (typeof ExcelJS === "undefined") throw new Error("مكتبة Excel غير محمَّلة");
+    const td = tableData(tb);
+    const keep = td.heads.map((h) => st.xlsxIds || !/هوية|جوال|هاتف|رقم الطالب|رقم الطلب|^id$/i.test(h));
+    const heads = td.heads.filter((_, i) => keep[i]), rows = td.rows.map((r) => r.filter((_, i) => keep[i]));
+    const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet("البيانات".slice(0, 31));
+    if (App.centerCmd && App.centerCmd.fmtSheet) App.centerCmd.fmtSheet(ws, heads, rows);
+    else { ws.views = [{ rightToLeft: true }]; ws.addRow(heads); rows.forEach((r) => ws.addRow(r)); ws.getRow(1).font = { bold: true }; }
+    const buf = await wb.xlsx.writeBuffer();
+    const title = clean((v.querySelector("h1,h2") || {}).textContent || "تقرير").replace(/[\\/:*?"<>|]/g, " ").slice(0, 40);
+    const name = title + " " + new Date().toISOString().slice(0, 10) + ".xlsx";
+    return { name, rows: rows.length, blob: new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) };
+  }
+  /* مشاركة الملف مباشرة إلى واتساب عبر نافذة مشاركة النظام إن دعمها المتصفح؛ وإلا ننزّله لترفقه يدوياً */
+  async function sendXlsx() {
+    let x;
+    try { x = await buildXlsx(); } catch (e) { return toast(e.message || "تعذّر إنشاء الملف"); }
+    const file = new File([x.blob], x.name, { type: x.blob.type });
+    const note = (st.greet ? greetFor([...st.sel][0]) : "") + "مرفق ملف Excel: " + x.name.replace(/\.xlsx$/, "") + " (" + x.rows + " صفاً).";
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], text: note }); return toast("اختر واتساب من نافذة المشاركة ثم المحادثة"); }
+      catch (e) { if (e && e.name === "AbortError") return; /* غير ذلك: ننزّل الملف */ }
+    }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(x.blob); a.download = x.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    const id = [...st.sel][0] || (intl(st.extra, CC) ? "__extra" : "");
+    let num = "";
+    if (id === "__extra") num = intl(st.extra, CC); else if (id) { const c = contacts().find((y) => y.id === id); num = c ? intl(c.phone, c.cc || CC) : ""; }
+    window.open("https://wa.me/" + num + "?text=" + encodeURIComponent(note), "_blank", "noopener");
+    toast("نُزّل الملف. أرفقه في المحادثة بزر المشبك 📎 أو اسحبه إليها");
+  }
+
   function goBtns(id) {
     const n = parts(id).length;
     if (n === 1) return `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="0">${st.opened.has(id + "#0") ? "✓ فُتح" : "فتح واتساب"}</button>`;
@@ -166,8 +201,9 @@
       ${parts().length > 1 ? `<p class="wa-note">الرسالة طويلة (${st.text.length} حرفاً) فقُسّمت إلى ${parts().length} أجزاء لأن رابط واتساب لا يحمل أكثر من نحو ${PART_MAX} حرفاً. افتح كل جزء بالترتيب وأرسله.</p>` : ""}
       <label class="wa-row"><input type="checkbox" data-wa-greet ${st.greet ? "checked" : ""}> تبدأ الرسالة بتحية باسم المستلم (تُضاف عند الفتح لكل مستلم)</label>
       <label>نص الرسالة (يمكنك تعديله)<textarea rows="9" data-wa-text>${esc(st.text)}</textarea></label>
+      ${st.total > 0 ? `<label class="wa-row"><input type="checkbox" data-wa-ids ${st.xlsxIds ? "checked" : ""}> تضمين الهوية والجوال ورقم الطالب في ملف Excel (مغلقة افتراضياً للخصوصية)</label>` : ""}
       <p class="wa-warn">قد يتضمن النص أسماء أو بيانات طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع عليها.</p>
-      <div class="wa-row"><button type="button" class="btn small secondary" data-wa-regen>إعادة توليد من الصفحة</button><button type="button" class="btn small secondary" data-wa-copy>نسخ النص</button><button type="button" class="btn small" data-wa-close>إغلاق</button></div>
+      <div class="wa-row"><button type="button" class="btn small secondary" data-wa-regen>إعادة توليد من الصفحة</button><button type="button" class="btn small secondary" data-wa-copy>نسخ النص</button>${st.total > 0 ? '<button type="button" class="btn small secondary" data-wa-xlsx>إرسال الجدول كملف Excel</button>' : ""}<button type="button" class="btn small" data-wa-close>إغلاق</button></div>
       <p class="wa-note">لكل مستلم زر فتح مستقل؛ واتساب لا يتيح إرسال رسالة واحدة لعدة محادثات برابط واحد.</p>`;
   }
   function open() {
@@ -204,6 +240,7 @@
       if (t === dlg || t.closest("[data-wa-close]")) { st.open = false; return render(); }
       const g = t.closest("[data-wa-go]"); if (g) return go(g.dataset.waGo, +g.dataset.waPart || 0);
       if (t.closest("[data-wa-regen]")) { st.text = buildText(); return render(); }
+      if (t.closest("[data-wa-xlsx]")) return sendXlsx();
       if (t.closest("[data-wa-copy]")) { (navigator.clipboard ? navigator.clipboard.writeText(st.text) : Promise.reject()).then(() => toast("نُسخ النص"), () => toast("تعذّر النسخ")); return; }
       if (t.closest("[data-wa-add]")) {
         const name = (window.prompt("اسم جهة الاتصال (مثال: مدير المركز):", "") || "").trim(); if (!name) return;
@@ -216,6 +253,7 @@
       }
     });
     dlg.addEventListener("change", (e) => {
+      if (e.target.matches && e.target.matches("[data-wa-ids]")) { st.xlsxIds = e.target.checked; return; }
       if (e.target.matches && e.target.matches("[data-wa-greet]")) { st.greet = e.target.checked; st.opened = new Set(); return render(); }
       if (e.target.matches && e.target.matches("[data-wa-limit]")) { st.limit = +e.target.value; st.text = buildText(); st.opened = new Set(); return render(); }
       const s = e.target.closest && e.target.closest("[data-wa-sel]");
