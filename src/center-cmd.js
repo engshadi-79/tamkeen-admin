@@ -1153,7 +1153,7 @@
       <div class="cc-stats"><span class="cc-stat bad"><b>${ui.fmt(rows.length)}</b> طالباً لم يُكمل</span>
         ${o.kind === "all" || o.kind === "risk" ? SURVEY_KINDS.concat("pledge").map((k) => `<span class="cc-stat"><b>${ui.fmt(o.extra.counts[k])}</b> ناقصهم ${esc(KIND_SHORT[k])}</span>`).join("") : ""}
         ${o.kind === "risk" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.counts.noGroup)}</b> بلا مجموعة</span><span class="cc-stat"><b>${ui.fmt(o.extra.counts.noPhone)}</b> جوال غير صالح</span>` : ""}
-        ${o.kind === "all" || o.kind === "risk" ? '<button type="button" class="btn secondary small" data-cc="print-summary">طباعة موجز للمدير</button>' : ""}
+        ${o.kind === "all" || o.kind === "risk" ? '<button type="button" class="btn secondary small" data-cc="print-summary" title="يُطبع على ترويسة المركز الرسمية">طباعة / PDF موجز المدير</button><button type="button" class="btn secondary small" data-cc="word-summary" title="ملف Word على ترويسة المركز الرسمية">Word على الترويسة</button>' : ""}
         ${o.kind !== "pledge" && o.kind !== "all" && o.kind !== "risk" && o.extra.reported != null ? `<span class="cc-stat"><b>${ui.fmt(o.extra.reported)}</b> عدّهم تقرير النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.excluded)}</b> استُبعدوا (لهم إرسال فعلي)</span><span class="cc-stat"><b>${ui.fmt(o.extra.allSubs || 0)}</b> إرسالاً قُرئ (${ui.fmt(o.extra.submissions || 0)} من هذا النوع)</span>${o.extra.withOther ? `<span class="cc-stat"><b>${ui.fmt(o.extra.withOther)}</b> منهم لهم إرسال من نوع آخر</span>` : ""}` : ""}
         ${o.kind === "pledge" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.targets)}</b> طالباً في النظام</span><span class="cc-stat ok"><b>${ui.fmt(o.extra.pledged)}</b> وقّعوا</span>` : ""}
         ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-mis">تنزيل Excel</button>' : ""}</div>
@@ -1418,9 +1418,10 @@
     </style></head><body>${bodyHtml}<p class="note">أُعدّ هذا الموجز من نظام المركز عبر مساعد تمكين الإداري بتاريخ ${esc(new Date().toLocaleString("ar"))}. القيم «ناقص» تعني عدم وجود إرسال/توقيع في النظام.</p><script>setTimeout(function(){window.print()},300)<\/script></body></html>`);
     w.document.close();
   }
-  function printSummary() {
+  /* موجز المدير على الترويسة الرسمية للمركز: كتل تُرسَم بمحرك المستندات المشترك (طباعة/PDF وWord) */
+  function summaryBlocks() {
     const o = state.mis.out;
-    if (!o || !o.extra || !o.extra.targetsBy) return ui.toast("نفّذ التقرير الشامل أولاً");
+    if (!o || !o.extra || !o.extra.targetsBy) return null;
     const by = new Map();
     Object.keys(o.extra.targetsBy).forEach((k) => by.set(k, { total: o.extra.targetsBy[k], pre: 0, post: 0, impact: 0, pledge: 0, any: 0 }));
     o.rows.forEach((x) => {
@@ -1430,13 +1431,38 @@
       if (["pre", "post", "impact", "pledge"].some((f) => x.flags[f])) e.any++;
     });
     const keys = [...by.keys()].sort((a, b) => a.localeCompare(b, "ar"));
-    const tot = { total: 0, pre: 0, post: 0, impact: 0, pledge: 0, any: 0 }; keys.forEach((k) => Object.keys(tot).forEach((f) => { tot[f] += by.get(k)[f]; }));
-    const pct = (a, b) => (b ? Math.round((a / b) * 100) + "%" : "—");
-    const rowHtml = (name, st) => `<tr><td>${esc(name)}</td><td class="n">${ui.fmt(st.total)}</td><td class="n ${st.pre ? "bad" : ""}">${ui.fmt(st.pre)}</td><td class="n ${st.post ? "bad" : ""}">${ui.fmt(st.post)}</td><td class="n ${st.impact ? "bad" : ""}">${ui.fmt(st.impact)}</td><td class="n ${st.pledge ? "bad" : ""}">${ui.fmt(st.pledge)}</td><td class="n">${ui.fmt(st.any)}</td><td class="n">${pct(st.total - st.any, st.total)}</td></tr>`;
-    printHtml("موجز متابعة الطلاب", `<h1>موجز متابعة الطلاب — الاستبيانات والتعهدات</h1>
-      <div class="meta">${state.mis.tracks.length ? esc(state.mis.tracks.map(trackShort).join("، ")) : "كل المسارات"} · ${esc(optLabel("status", state.mis.status) || "كل الحالات")}</div>
-      <table><thead><tr><th>المسار · المرحلة</th><th>الطلاب</th><th>ناقصهم القبلي</th><th>ناقصهم البعدي</th><th>ناقصهم قياس الأثر</th><th>لم يوقّعوا</th><th>ينقصهم شيء</th><th>مكتملون تماماً</th></tr></thead><tbody>${keys.map((k) => rowHtml(k.replace("|", " · ").replace(/ · $/, ""), by.get(k))).join("")}<tr><th>المجموع</th><td class="n">${ui.fmt(tot.total)}</td><td class="n">${ui.fmt(tot.pre)}</td><td class="n">${ui.fmt(tot.post)}</td><td class="n">${ui.fmt(tot.impact)}</td><td class="n">${ui.fmt(tot.pledge)}</td><td class="n">${ui.fmt(tot.any)}</td><td class="n">${pct(tot.total - tot.any, tot.total)}</td></tr></tbody></table>
-      <p class="note">«مكتملون تماماً» = لا ينقصهم قبلي ولا بعدي ولا قياس أثر ولا تعهد. وقد لا يكون كل نوع مطلوباً من كل مرحلة، فاقرأ النسب إرشاداً لا حكماً.</p>`);
+    const tot = { total: 0, pre: 0, post: 0, impact: 0, pledge: 0, any: 0 };
+    keys.forEach((k) => Object.keys(tot).forEach((f) => { tot[f] += by.get(k)[f]; }));
+    const pct = (a, b2) => (b2 ? Math.round((a / b2) * 100) + "%" : "—");
+    const rowOf = (name, st) => [name, ui.fmt(st.total), ui.fmt(st.pre), ui.fmt(st.post), ui.fmt(st.impact), ui.fmt(st.pledge), ui.fmt(st.any), pct(st.total - st.any, st.total)];
+    const scope = (state.mis.tracks.length ? state.mis.tracks.map(trackShort).join("، ") : "كل المسارات") + " · " + (optLabel("status", state.mis.status) || "كل الحالات");
+    return [
+      { kind: "title", text: "موجز متابعة الطلاب — الاستبيانات والتعهدات" },
+      { kind: "meta", text: "التاريخ: " + (ui.formatDate(ui.todayISO()) || ui.todayISO()), sizePt: 12 },
+      { kind: "para", text: "" },
+      { kind: "bold", text: "نطاق الموجز: " + scope },
+      { kind: "para", text: "" },
+      { kind: "table", headers: ["المسار · المرحلة", "الطلاب", "ناقصهم القبلي", "ناقصهم البعدي", "ناقصهم قياس الأثر", "لم يوقّعوا", "ينقصهم شيء", "مكتملون تماماً"],
+        widths: [0.26, 0.09, 0.12, 0.12, 0.12, 0.12, 0.085, 0.085], align: [null, "center", "center", "center", "center", "center", "center", "center"],
+        rows: keys.map((k) => rowOf(k.replace("|", " · ").replace(/ · $/, ""), by.get(k))).concat([rowOf("المجموع", tot)]) },
+      { kind: "para", text: "" },
+      { kind: "para", text: "«مكتملون تماماً» = لا ينقصهم استبيان قبلي ولا بعدي ولا قياس أثر ولا تعهد. وقد لا يكون كل نوع مطلوباً من كل مرحلة، فتُقرأ النسب إرشاداً لا حكماً. مصدر البيانات: نظام المركز." },
+    ];
+  }
+  /* الترويسة الرسمية غير متاحة: صفحة طباعة بسيطة بديلة */
+  function printSummary() {
+    const list = summaryBlocks();
+    if (!list) return ui.toast("نفّذ التقرير الشامل أو أولوية المتابعة أولاً");
+    if (App.docRender && App.docRender.print) return App.docRender.print(list, "موجز متابعة الطلاب", false);
+    const t = list.find((x) => x.kind === "table");
+    printHtml("موجز متابعة الطلاب", `<h1>${esc(list[0].text)}</h1><table><thead><tr>${t.headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${t.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+  }
+  async function wordSummary() {
+    const list = summaryBlocks();
+    if (!list) return ui.toast("نفّذ التقرير الشامل أو أولوية المتابعة أولاً");
+    if (!(App.docRender && App.docRender.exportWord)) return ui.toast("محرك المستندات غير متاح");
+    try { if (App.docx && App.docx.load) await App.docx.load(); } catch (e) { /* يُحمَّل عند الحاجة */ }
+    App.docRender.exportWord(list, "موجز متابعة الطلاب " + ui.todayISO());
   }
 
   /* ===== المجموعات والمدربون + اقتراح توزيع غير الموزعين ===== */
@@ -1638,21 +1664,40 @@
     if (!o) return "";
     const s0 = o.s, line = (a, b) => `<tr><th>${esc(a)}</th><td>${esc(showCell(b) || "—")}</td></tr>`;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> ${esc(s0.name)}</h3>
-      <div class="cc-stats">${o.quality.length ? `<span class="cc-stat bad"><b>${ui.fmt(o.quality.length)}</b> ملاحظة جودة</span>` : '<span class="cc-stat ok"><b>0</b> ملاحظة جودة</span>'}${o.sibs.length ? `<span class="cc-stat"><b>${ui.fmt(o.sibs.length)}</b> أخ/أخت محتمل</span>` : ""}<button type="button" class="btn secondary small" data-cc="print-stu">طباعة الملف</button></div>
+      <div class="cc-stats">${o.quality.length ? `<span class="cc-stat bad"><b>${ui.fmt(o.quality.length)}</b> ملاحظة جودة</span>` : '<span class="cc-stat ok"><b>0</b> ملاحظة جودة</span>'}${o.sibs.length ? `<span class="cc-stat"><b>${ui.fmt(o.sibs.length)}</b> أخ/أخت محتمل</span>` : ""}<button type="button" class="btn secondary small" data-cc="print-stu" title="يُطبع على ترويسة المركز الرسمية">طباعة / PDF</button><button type="button" class="btn secondary small" data-cc="word-stu">Word على الترويسة</button></div>
       <article class="cc-res"><header class="cc-res-h"><h4>البيانات</h4></header><table class="cc-table"><tbody>${line("الاسم", s0.name)}${line("رقم الهوية", s0.id)}${line("رقم الطالب", s0.stu)}${line("الجوال", s0.phone)}${line("المسار", s0.track)}${line("المرحلة", s0.stage)}${line("المجموعة", s0.group)}${line("المدرب", s0.trainer)}${o.kv.map(([a, b]) => line(a, b)).join("")}</tbody></table></article>
       <article class="cc-res"><header class="cc-res-h"><h4>الاستبيانات والتعهد</h4></header><table class="cc-table"><thead><tr><th>البند</th><th>الحالة</th><th>تفصيل</th></tr></thead><tbody>${o.surveys.concat([o.pledge]).map((x) => `<tr><td>${esc(x.label)}</td><td class="${x.bad ? "cc-bad" : ""}">${x.state === "مكتمل" || x.state === "موقّع" ? "✓ " : x.bad ? "✗ " : ""}${esc(x.state)}</td><td>${esc(x.detail)}</td></tr>`).join("")}</tbody></table></article>
       ${o.subs.length ? `<article class="cc-res"><header class="cc-res-h"><h4>إرسالات الاستبيانات</h4></header>${dataTable("stu-subs", ["النموذج", "الدورة", "الدرجة", "تاريخ الإرسال"], o.subs)}</article>` : ""}
       ${o.sibs.length ? `<article class="cc-res"><header class="cc-res-h"><h4>إخوة محتملون</h4></header>${dataTable("stu-sibs", stuSibHeads(), o.sibs)}</article>` : ""}
       ${o.quality.length ? `<article class="cc-res"><header class="cc-res-h"><h4>ملاحظات جودة البيانات</h4></header><ul>${o.quality.map((q) => `<li>${esc(q)}</li>`).join("")}</ul></article>` : ""}</section>`;
   }
+  function studentBlocks() {
+    const o = state.stu.out; if (!o) return null;
+    const s0 = o.s, v = (x) => showCell(x) || "—";
+    const out = [
+      { kind: "title", text: "ملف الطالب: " + s0.name },
+      { kind: "meta", text: "التاريخ: " + (ui.formatDate(ui.todayISO()) || ui.todayISO()), sizePt: 12 },
+      { kind: "para", text: "" },
+      { kind: "bold", text: "البيانات" },
+      { kind: "table", headers: ["البند", "القيمة"], widths: [0.35, 0.65], align: [null, null],
+        rows: [["رقم الهوية", v(s0.id)], ["رقم الطالب", v(s0.stu)], ["الجوال", v(s0.phone)], ["المسار", v(s0.track)], ["المرحلة", v(s0.stage)], ["المجموعة", v(s0.group)], ["المدرب", v(s0.trainer)]].concat(o.kv.map(([a, b2]) => [a, v(b2)])) },
+      { kind: "para", text: "" },
+      { kind: "bold", text: "الاستبيانات والتعهد" },
+      { kind: "table", headers: ["البند", "الحالة", "تفصيل"], widths: [0.3, 0.2, 0.5], align: [null, "center", null], rows: o.surveys.concat([o.pledge]).map((x) => [x.label, x.state, x.detail]) },
+    ];
+    if (o.sibs.length) out.push({ kind: "para", text: "" }, { kind: "bold", text: "إخوة محتملون" }, { kind: "table", headers: stuSibHeads(), widths: [0.3, 0.14, 0.18, 0.12, 0.1, 0.16], align: [null, "center", null, null, "center", "center"], rows: o.sibs.map((r) => r.map((c) => v(c))) });
+    if (o.quality.length) out.push({ kind: "para", text: "" }, { kind: "bold", text: "ملاحظات جودة البيانات" }, ...o.quality.map((q) => ({ kind: "para", text: "• " + q })));
+    return out;
+  }
   function printStudent() {
-    const o = state.stu.out; if (!o) return;
-    const s0 = o.s, row = (a, b) => `<tr><th>${esc(a)}</th><td>${esc(showCell(b) || "—")}</td></tr>`;
-    printHtml("ملف الطالب", `<h1>ملف الطالب: ${esc(s0.name)}</h1><div class="meta">رقم الهوية ${esc(showCell(s0.id))} · ${esc(s0.track)} · ${esc(s0.stage)} · ${esc(s0.group || "بلا مجموعة")}</div>
-      <h2>البيانات</h2><table><tbody>${row("الجوال", s0.phone)}${row("رقم الطالب", s0.stu)}${row("المدرب", s0.trainer)}${o.kv.map(([a, b]) => row(a, b)).join("")}</tbody></table>
-      <h2>الاستبيانات والتعهد</h2><table><thead><tr><th>البند</th><th>الحالة</th><th>تفصيل</th></tr></thead><tbody>${o.surveys.concat([o.pledge]).map((x) => `<tr><td>${esc(x.label)}</td><td class="${x.bad ? "bad" : ""}">${esc(x.state)}</td><td>${esc(x.detail)}</td></tr>`).join("")}</tbody></table>
-      ${o.sibs.length ? `<h2>إخوة محتملون</h2><table><thead><tr>${stuSibHeads().map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${o.sibs.map((r) => `<tr>${r.map((c) => `<td>${esc(showCell(c))}</td>`).join("")}</tr>`).join("")}</tbody></table>` : ""}
-      ${o.quality.length ? `<h2>ملاحظات الجودة</h2><ul>${o.quality.map((q) => `<li>${esc(q)}</li>`).join("")}</ul>` : ""}`);
+    const list = studentBlocks(); if (!list) return;
+    if (App.docRender && App.docRender.print) return App.docRender.print(list, "ملف الطالب", false);
+    printHtml("ملف الطالب", "<h1>" + esc(list[0].text) + "</h1>");
+  }
+  async function wordStudent() {
+    const list = studentBlocks(); if (!list) return;
+    try { if (App.docx && App.docx.load) await App.docx.load(); } catch (e) { /* */ }
+    App.docRender.exportWord(list, "ملف الطالب " + state.stu.out.s.name.split(" ")[0]);
   }
 
   /* ===== حزمة التقارير: عدة تقارير محفوظة تُشغَّل معاً في ملف Excel واحد، ورقة لكل تقرير ===== */
@@ -2066,12 +2111,14 @@
         } else if (act === "run-stu") { return runStudent();
         } else if (act === "stu-pick") { return runStudent(state.stu.pick[i]);
         } else if (act === "print-stu") { return printStudent();
+        } else if (act === "word-stu") { return wordStudent();
         } else if (act === "bundle-toggle") { state.bundle.open = !state.bundle.open;
         } else if (act === "bundle-run") { return runBundle();
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
         } else if (act === "grp-propose") { state.grp.out.prop = proposeDistribution(state.grp.out);
         } else if (act === "print-summary") { return printSummary();
+        } else if (act === "word-summary") { return wordSummary();
         } else if (act === "run-dq") { return runDq();
         } else if (act === "export-dq") { return exportBook("فحص جودة البيانات.xlsx", dqHeads(), dqTable());
         } else if (act === "snap-save") { dqSnapshotSave(); return render();

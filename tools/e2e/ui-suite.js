@@ -90,9 +90,13 @@ async function suite() {
   c.state.mis.kind = "risk"; await run("missing", "run-mis", 1100);
   const risk = c.state.mis.out;
   ok("أولوية المتابعة: صفوف مرتبة بالأولوية تنازلياً", risk.rows.length >= 3 && risk.rows[0].count >= risk.rows[risk.rows.length - 1].count);
-  let html = ""; const ow = window.open; window.open = () => ({ document: { write: (h) => { html = h; }, close() {} } });
-  b.querySelector('[data-cc="print-summary"]').click(); window.open = ow;
-  ok("موجز المدير: جدول بالمجاميع", /<table>/.test(html) && /المجموع/.test(html));
+  const wp = window.print; let printed = 0; window.print = () => { printed++; };
+  b.querySelector('[data-cc="print-summary"]').click(); await wait(500); window.print = wp;
+  const proot = document.getElementById("print-root");
+  ok("موجز المدير يُطبع على صفحة الترويسة بجدول ومجاميع", printed === 1 && proot.querySelectorAll(".lh-page").length >= 1 && /المجموع/.test(proot.textContent) && /letterhead\/page\.jpg/.test(getComputedStyle(proot.querySelector(".lh-page")).backgroundImage));
+  let wcap = null; const wod = App.ui.download; App.ui.download = (n, blob) => { wcap = { n, size: blob.size }; };
+  b.querySelector('[data-cc="word-summary"]').click(); for (let i = 0; i < 30 && !wcap; i++) await wait(200); App.ui.download = wod;
+  ok("موجز المدير: ملف Word على الترويسة", !!wcap && /\.docx$/.test(wcap.n) && wcap.size > 50000, wcap && Math.round(wcap.size / 1024) + "KB");
 
   // ===== 7) المجموعات والمدربون =====
   DATA = [mk("طالب أول رباعي كامل", "401000001", "0591000001", "1", S2, "G1 مدرب أحمد"), mk("طالب ثان رباعي كامل", "401000002", "0591000002", "2", S2, "G1 مدرب أحمد"), mk("طالب ثالث رباعي كامل", "401000003", "0591000003", "3", S2, "G1 مدرب أحمد"), mk("طالب رابع رباعي كامل", "401000004", "0591000004", "4", S2, "G2 مدربة سلمى"), mk("وليد غير موزع رباعي", "401000005", "0591000005", "5", S2, " - "), mk("هدى غير موزعة رباعي", "401000006", "0591000006", "6", S2, "-")];
