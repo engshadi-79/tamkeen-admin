@@ -98,6 +98,12 @@ async function suite() {
   b.querySelector('[data-cc="word-summary"]').click(); for (let i = 0; i < 30 && !wcap; i++) await wait(200); App.ui.download = wod;
   ok("موجز المدير: ملف Word على الترويسة", !!wcap && /\.docx$/.test(wcap.n) && wcap.size > 50000, wcap && Math.round(wcap.size / 1024) + "KB");
 
+  c.state.mis = Object.assign(c.state.mis, { kind: "pre", out: null }); c.render();
+  ok("زر «تقرير المدير» ظاهر في البطاقة دائماً", !!b.querySelector('[data-cc="manager-print"]') && !!b.querySelector('[data-cc="manager-word"]'));
+  printed = 0; window.print = () => { printed++; };
+  b.querySelector('[data-cc="manager-print"]').click(); await wait(1600); window.print = wp;
+  ok("«تقرير المدير» من بطاقة بلا نتيجة: يشغّل الشامل ثم يطبع", printed === 1 && c.state.mis.kind === "all" && !!c.state.mis.out);
+
   // ===== 7) المجموعات والمدربون =====
   DATA = [mk("طالب أول رباعي كامل", "401000001", "0591000001", "1", S2, "G1 مدرب أحمد"), mk("طالب ثان رباعي كامل", "401000002", "0591000002", "2", S2, "G1 مدرب أحمد"), mk("طالب ثالث رباعي كامل", "401000003", "0591000003", "3", S2, "G1 مدرب أحمد"), mk("طالب رابع رباعي كامل", "401000004", "0591000004", "4", S2, "G2 مدربة سلمى"), mk("وليد غير موزع رباعي", "401000005", "0591000005", "5", S2, " - "), mk("هدى غير موزعة رباعي", "401000006", "0591000006", "6", S2, "-")];
   c.state.grp = Object.assign(c.state.grp, { tracks: ["1"], stages: [], status: "active", out: null });

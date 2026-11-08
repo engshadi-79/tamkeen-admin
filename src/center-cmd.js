@@ -1129,7 +1129,7 @@
         <p class="cc-note">${c.kind === "pledge" ? "التعهد: يقرأ قائمة الطلاب وقائمة التعهدات ويطابقها برقم الهوية؛ والباقي هم من لم يوقّعوا." : c.kind === "risk" ? "أولوية المتابعة: التقرير الشامل مع إشارتين من قائمة الطلاب (بلا مجموعة، جوال غير صالح)، مرتّباً بعدد النواقص تنازلياً فتتابع الأخطر أولاً." : c.kind === "all" ? "الشامل: يقرأ تقرير النظام للاستبيانات الثلاثة (قبلي وبعدي وقياس الأثر) ويحسب التعهد، ويجمعها في صف لكل طالب ينقصه شيء. أبطأ لأنه يقرأ أكثر." : "الاستبيان: يقرأ تقرير النظام «الطلاب الذين لم يعبئوا الاستبيان» بالمسار والمرحلة المختارين."}</p>
       </div>
       <footer class="cc-actions"><div class="cc-sum"><b>${esc(kindT || "")}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.stages.length ? " · " + esc(c.stages.map((k) => (STAGES.find((g) => g.k === k) || {}).t).join("، ")) : ""} · ${esc(optLabel("status", c.status) || "كل الحالات")} · ${c.kind === "all" || c.kind === "risk" ? "عدة طلبات قراءة" : ui.fmt(n) + " " + (n === 1 ? "طلب قراءة" : "طلبات قراءة")}</span></div>
-        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-mis" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ الاستخراج…" : "استخرج التقرير"}</button></div></footer></section>`;
+        <div class="cc-act"><button type="button" class="btn secondary" data-cc="manager-print" ${state.busy ? "disabled" : ""} title="يشغّل التقرير الشامل ثم يطبع موجزاً على ترويسة المركز">تقرير المدير ← طباعة / PDF</button><button type="button" class="btn secondary" data-cc="manager-word" ${state.busy ? "disabled" : ""} title="يشغّل التقرير الشامل ثم يصدّر Word على ترويسة المركز">Word</button><button type="button" class="btn navy" data-cc="run-mis" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ الاستخراج…" : "استخرج التقرير"}</button></div></footer></section>`;
   }
 
   function remindCard() {
@@ -1463,6 +1463,17 @@
     if (!(App.docRender && App.docRender.exportWord)) return ui.toast("محرك المستندات غير متاح");
     try { if (App.docx && App.docx.load) await App.docx.load(); } catch (e) { /* يُحمَّل عند الحاجة */ }
     App.docRender.exportWord(list, "موجز متابعة الطلاب " + ui.todayISO());
+  }
+
+  /* تقرير المدير بنقرة: يشغّل التقرير الشامل (إن لم تكن نتيجته حاضرة) ثم يطبع/يصدّر Word على الترويسة */
+  async function managerReport(how) {
+    const c = state.mis;
+    if (!(c.out && c.out.extra && c.out.extra.targetsBy)) {
+      c.kind = "all"; c.verify = c.verify !== false;
+      await runMissing();
+      if (state.resultError || !(c.out && c.out.extra && c.out.extra.targetsBy)) return;
+    }
+    return how === "word" ? wordSummary() : printSummary();
   }
 
   /* ===== المجموعات والمدربون + اقتراح توزيع غير الموزعين ===== */
@@ -2117,6 +2128,8 @@
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
         } else if (act === "grp-propose") { state.grp.out.prop = proposeDistribution(state.grp.out);
+        } else if (act === "manager-print") { return managerReport("print");
+        } else if (act === "manager-word") { return managerReport("word");
         } else if (act === "print-summary") { return printSummary();
         } else if (act === "word-summary") { return wordSummary();
         } else if (act === "run-dq") { return runDq();
