@@ -69,6 +69,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       await new Promise((r) => setTimeout(r, Math.max(0, Math.min(Number(msg.ms) || 0, 10000))));
       return reply({ ok: true });
     }
+    // إيقاف من صفحة تمكين: نمرّره إلى تبويب النظام الذي ينفّذ، فيحفظ الوكيل ما اكتمل
+    if (type === "stop") {
+      if (!fromApp(sender)) return reply({});
+      const { ctx } = await chrome.storage.session.get("ctx");
+      if (!ctx || ctx.from !== sender.tab.id || ctx.ksach == null) return reply({ ok: false });
+      try { await chrome.tabs.sendMessage(ctx.ksach, { type: "stop" }); return reply({ ok: true }); } catch (e) { return reply({ ok: false }); }
+    }
     if (type === "cancel") {
       if (!fromApp(sender)) return reply({});
       await chrome.storage.session.remove("pending");
@@ -104,6 +111,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         await chrome.storage.session.set({ ctx: Object.assign({}, ctx, { ksach: sender.tab.id }) });
       }
       return reply({ pack: pending.pack, remote: !!pending.remote });
+    }
+    if (type === "partial") {
+      if (!fromKsach(sender)) return reply({});
+      return reply({ ok: await toApp({ type: "partial", index: msg.index, result: msg.result }) });
     }
     if (type === "progress" || type === "plan") {
       if (!fromKsach(sender)) return reply({});

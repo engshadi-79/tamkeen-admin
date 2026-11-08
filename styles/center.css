@@ -1072,3 +1072,24 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 .cc-bar i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--teal); transition: width .35s ease; }
 .cc-bar.ind i { width: 38%; animation: ccslide 1.1s ease-in-out infinite; transition: none; }
 .cc-busy-t { font-size: .84rem; color: var(--ink); overflow-wrap: anywhere; }
+
+/* ===== جدول البيانات الموحّد ===== */
+.cc-tbl-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 6px; }
+.cc-tbl-q { flex: 1 1 220px; max-width: 340px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; font-size: .85rem; }
+.cc-tbl-n { color: var(--muted); font-size: .8rem; }
+.cc-sortable { cursor: pointer; user-select: none; }
+.cc-sortable:hover { background: color-mix(in srgb, var(--teal) 12%, var(--bg)); }
+.cc-sortable.asc::after { content: " ▲"; font-size: .7rem; color: var(--teal); }
+.cc-sortable.desc::after { content: " ▼"; font-size: .7rem; color: var(--teal); }
+.cc-pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 8px 0 2px; font-size: .85rem; color: var(--muted); }
+.cc-empty { text-align: center; color: var(--muted); padding: 14px; }
+
+/* ===== التقارير المحفوظة، الإيقاف، السجل ===== */
+.cc-saved { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .85rem; }
+.cc-saved-t { color: var(--muted); font-weight: 700; }
+.cc-sv { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; background: var(--card); overflow: hidden; }
+.cc-sv button { background: none; border: 0; padding: 4px 10px; cursor: pointer; color: var(--ink); font: inherit; }
+.cc-sv button:hover { background: color-mix(in srgb, var(--teal) 12%, var(--card)); }
+.cc-sv .cc-sv-b { padding: 4px 8px; color: var(--muted); border-inline-start: 1px solid var(--line); }
+.cc-busy-act { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.cc-link.danger { color: #d64545; }
