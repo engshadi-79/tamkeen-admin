@@ -36,7 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null },
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
-    wa: { contact: "", phone: "", breakdown: true, names: false, texts: {}, dirty: {}, cc: "970" }, contacts: [],
+    wa: { contact: "", phone: "", breakdown: true, names: false, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
     saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false, sec: false, errs: false, wa: false }, // حالة الأقسام القابلة للطي
@@ -1808,7 +1808,7 @@
   const waScope = () => (state.mis.tracks.length ? state.mis.tracks.map(trackShort).join("، ") : "كل المسارات") + " · " + (optLabel("status", state.mis.status) || "كل الحالات");
   function waBuild(mode) {
     const w = state.wa, today = ui.formatDate(ui.todayISO()) || ui.todayISO(), L = [];
-    const NAMES_MAX = 12;
+    const NAMES_MAX = 100000;                          // كل الأسماء الظاهرة في التقرير؛ الرسالة الطويلة تُقسَّم إلى أجزاء
     if (mode === "missing") {
       const o = state.mis.out; if (!o) return "";
       const title = (MIS_KINDS.find((k) => k.k === o.kind) || {}).t || "";
@@ -1818,12 +1818,12 @@
         o.rows.forEach((x) => { const k = (x.track || "—") + (x.stage ? " · " + x.stage : "") + (x.group ? " · مجموعة " + x.group : ""); const e = by.get(k) || by.set(k, { n: 0, pre: 0, post: 0, impact: 0, pledge: 0 }).get(k); e.n++; ["pre", "post", "impact", "pledge"].forEach((f) => { if (x.flags && x.flags[f]) e[f]++; }); });
         [...by.entries()].sort((a, b) => b[1].n - a[1].n).forEach(([k, e]) => L.push("• " + k + ": " + ui.fmt(e.n) + (o.kind === "all" || o.kind === "risk" ? " (قبلي " + e.pre + "، بعدي " + e.post + "، أثر " + e.impact + "، تعهد " + e.pledge + ")" : "")));
       }
-      if (w.names) { L.push("", "الأسماء (أول " + Math.min(NAMES_MAX, o.rows.length) + "):"); o.rows.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.name + (x.group ? " — مجموعة " + x.group : "") + (x.trainer ? " (المدرب: " + x.trainer + ")" : "") + (o.kind === "all" || o.kind === "risk" ? " [" + itemsOf(x, o.kind) + "]" : ""))); }
+      if (w.names) { L.push("", "الأسماء (" + o.rows.length + "):"); o.rows.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.name + (x.group ? " — مجموعة " + x.group : "") + (x.trainer ? " (المدرب: " + x.trainer + ")" : "") + (o.kind === "all" || o.kind === "risk" ? " [" + itemsOf(x, o.kind) + "]" : ""))); }
     } else if (mode === "dq") {
       const o = state.dq.out; if (!o) return "";
       L.push("🔎 فحص جودة البيانات — " + today, "الفحص: " + ui.fmt(o.total) + " طالباً · الملاحظات: " + ui.fmt(o.issues.length));
       if (w.breakdown) DQ_CHECKS.filter(([k]) => o.byType[k]).forEach(([k, t]) => L.push("• " + t + ": " + ui.fmt(o.byType[k])));
-      if (w.names) { L.push("", "أمثلة:"); o.issues.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.s.name + (x.s.group ? " — مجموعة " + x.s.group : "") + ": " + DQ_LABEL[x.type])); }
+      if (w.names) { L.push("", "الملاحظات (" + o.issues.length + "):"); o.issues.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.s.name + (x.s.group ? " — مجموعة " + x.s.group : "") + ": " + DQ_LABEL[x.type])); }
     } else if (mode === "groups") {
       const o = state.grp.out; if (!o) return "";
       L.push("👥 المجموعات والمدربون — " + today, ui.fmt(o.total) + " طالباً في " + ui.fmt(o.groups.length) + " مجموعة · غير موزعين: " + ui.fmt(o.unassigned));
@@ -1839,6 +1839,16 @@
     }
     return L.join("\n");
   }
+  /* رابط wa.me محدود الطول، فتُقسَّم الرسالة الطويلة عند حدود الأسطر إلى أجزاء مرقمة */
+  const WA_PART_MAX = 1400;
+  function waParts(text) {
+    const t = String(text || "").trim();
+    if (t.length <= WA_PART_MAX) return [t];
+    const out = []; let cur = "";
+    t.split("\n").forEach((line) => { if (cur && (cur + "\n" + line).length > WA_PART_MAX) { out.push(cur); cur = line; } else cur = cur ? cur + "\n" + line : line; });
+    if (cur) out.push(cur);
+    return out.map((x, i) => "(" + (i + 1) + "/" + out.length + ")\n" + x);
+  }
   const waText = (mode) => { const w = state.wa; if (!w.dirty[mode]) w.texts[mode] = waBuild(mode); return w.texts[mode] || ""; };
   function waCard(mode) {
     const w = state.wa, text = waText(mode);
@@ -1851,10 +1861,10 @@
         <label class="cc-field"><span>المستلم (جهة اتصال محفوظة)</span><select data-wa="contact"><option value="">— اختر، أو اكتب رقماً —</option>${state.contacts.map((c) => `<option value="${esc(c.id)}" ${c.id === w.contact ? "selected" : ""}>${esc(c.name)}${c.role ? " — " + esc(c.role) : ""}</option>`).join("")}</select></label>
         <label class="cc-field"><span>أو رقم آخر</span><input type="tel" inputmode="tel" data-wa="phone" value="${esc(w.phone)}" placeholder="059xxxxxxx" ${cur ? "disabled" : ""}></label>
       </div>
-      <div class="cc-chips"><label class="cc-chk"><input type="checkbox" data-wa="breakdown" ${w.breakdown ? "checked" : ""}> <span>أرقام لكل مسار / تفصيل</span></label>${hasNames ? `<label class="cc-chk"><input type="checkbox" data-wa="names" ${w.names ? "checked" : ""}> <span>أسماء الطلاب (أول 12) — بيانات شخصية</span></label>` : ""}</div>
-      <label class="cc-field"><span>نص الرسالة (يمكنك تعديله قبل الفتح)</span><textarea rows="8" data-wa-text="${mode}">${esc(text)}</textarea></label>
+      <div class="cc-chips"><label class="cc-chk"><input type="checkbox" data-wa="breakdown" ${w.breakdown ? "checked" : ""}> <span>أرقام لكل مسار / تفصيل</span></label>${hasNames ? `<label class="cc-chk"><input type="checkbox" data-wa="names" ${w.names ? "checked" : ""}> <span>أسماء الطلاب (كلهم) — بيانات شخصية</span></label>` : ""}</div>
+      ${waParts(w.texts[mode] || text).length > 1 ? `<p class="cc-note">الرسالة طويلة فقُسّمت إلى ${waParts(w.texts[mode] || text).length} أجزاء (حد رابط واتساب). اضغط الزر مرة بعد مرة: يفتح كل جزء بالترتيب، وأرسله في واتساب ثم ارجع واضغط للجزء التالي.</p>` : ""}<label class="cc-field"><span>نص الرسالة (يمكنك تعديله قبل الفتح)</span><textarea rows="8" data-wa-text="${mode}">${esc(text)}</textarea></label>
       ${w.names && hasNames ? '<p class="cc-alert warn">النص يتضمن أسماء طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع على هذه البيانات.</p>' : ""}
-      <div class="cc-row"><button type="button" class="btn navy small" data-cc="wa-open" data-mode="${mode}">افتح واتساب بالرسالة</button><button type="button" class="cc-link" data-cc="wa-copy" data-mode="${mode}">نسخ النص</button><button type="button" class="cc-link" data-cc="wa-regen" data-mode="${mode}">إعادة توليد النص</button><button type="button" class="cc-link" data-cc="wa-addc">＋ جهة اتصال</button>${cur ? '<button type="button" class="cc-link danger" data-cc="wa-delc">حذف هذه الجهة</button>' : ""}</div>
+      <div class="cc-row"><button type="button" class="btn navy small" data-cc="wa-open" data-mode="${mode}">${(() => { const n = waParts(w.texts[mode] || text).length, i = Math.min(w.part[mode] || 0, n - 1); return n > 1 ? "افتح الجزء " + (i + 1) + " من " + n : "افتح واتساب بالرسالة"; })()}</button><button type="button" class="cc-link" data-cc="wa-copy" data-mode="${mode}">نسخ النص</button><button type="button" class="cc-link" data-cc="wa-regen" data-mode="${mode}">إعادة توليد النص</button><button type="button" class="cc-link" data-cc="wa-addc">＋ جهة اتصال</button>${cur ? '<button type="button" class="cc-link danger" data-cc="wa-delc">حذف هذه الجهة</button>' : ""}</div>
       <p class="cc-note">لا يُرسَل شيء تلقائياً: يفتح واتساب (ويب أو تطبيق) والرسالة جاهزة، وتضغط أنت «إرسال». الأرقام دولية تلقائياً بإضافة ${esc(w.cc)} إن بدأ الرقم بصفر. جهات الاتصال تُحفظ في هذا المتصفح فقط.</p>
     </details>`;
   }
@@ -1865,9 +1875,14 @@
     const num = waIntl(cur ? cur.phone : w.phone, (cur && cur.cc) || w.cc);
     if (!num && (cur || w.phone)) return ui.toast("رقم غير صالح");
     if (w.names && !confirm("الرسالة تتضمن أسماء طلاب. هل تريد فتح واتساب بها؟")) return;
-    const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(text);
-    if (url.length > 1900) ui.toast("الرسالة طويلة؛ قد لا تُحمَّل كاملة في واتساب. اختصرها أو انسخها ثم الصقها.");
+    const ps = waParts(text), idx = Math.min(w.part[mode] || 0, ps.length - 1);
+    const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(ps[idx]);
     window.open(url, "_blank", "noopener");
+    if (ps.length > 1) {
+      w.part[mode] = idx + 1 >= ps.length ? 0 : idx + 1;
+      ui.toast(idx + 1 >= ps.length ? "فُتح الجزء الأخير (" + ps.length + " من " + ps.length + ")" : "فُتح الجزء " + (idx + 1) + " من " + ps.length + ". أرسله ثم ارجع واضغط للجزء التالي");
+      state.open.wa = true; render();
+    }
   }
 
   /* حالة الوكيل في جملة ولون واحدين: busy | ok | bad */
