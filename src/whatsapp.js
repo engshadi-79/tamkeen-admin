@@ -55,7 +55,7 @@
     const today = new Date().toLocaleDateString("ar", { year: "numeric", month: "numeric", day: "numeric" });
     const L = [];
     const h = view.querySelector("h1, h2");
-    L.push("📌 " + clean(h ? h.textContent : document.title) + " — " + today);
+    L.push("*" + clean(h ? h.textContent : document.title) + "* — " + today);
     /* بطاقات الأرقام: عنصر فيه رقم وتسمية */
     const stats = [...view.querySelectorAll(".stat, .kpi, .card-stat, .cc-stat, [data-stat]")].filter(visible).slice(0, 10);
     stats.forEach((s) => { const k = s.cloneNode(true); k.querySelectorAll("button, .material-symbols-outlined").forEach((n) => n.remove()); const t = clean(k.textContent); if (t && t.length < 80) L.push("• " + t); });
@@ -66,6 +66,7 @@
       const skip = heads.map((x) => /هوية|جوال|هاتف|رقم الطالب|رقم الطلب|^id$/i.test(x));
       const total = td.rows.length, lim = st.limit > 0 ? Math.min(st.limit, total) : total;
       L.push("", "الجدول (" + total + " صفاً" + (lim < total ? "، المعروض أول " + lim : "") + "):");
+      let seq = 0;
       td.rows.slice(0, lim).forEach((r) => {
         /* خلية «ناقص»: نكتب اسم عمودها (قبلي/بعدي/تعهد…) بدل كلمة ناقص المجردة */
         const lack = [];
@@ -78,10 +79,10 @@
         /* عمود عدد النواقص: رقم مجرد في آخر الصف بعد أن عرفنا النواقص، فيصبح مكرراً */
         if (lack.length && /^\d+$/.test(cells[cells.length - 1] || "")) cells.pop();
         if (cells.length) {
-          L.push("▪ *" + cells[0] + "*");
+          L.push((++seq) + "- *" + cells[0] + "*");
           if (cells.length > 1) L.push("   " + cells.slice(1).join(" · ").slice(0, 160));
-          if (lack.length) L.push("   ⚠️ ينقصه: " + lack.join("، "));
-        } else if (lack.length) L.push("▪ ⚠️ ينقصه: " + lack.join("، "));
+          if (lack.length) L.push("   ينقصه: " + lack.join("، "));
+        } else if (lack.length) L.push((++seq) + "- ينقصه: " + lack.join("، "));
       });
       st.total = total;
     } else st.total = 0;
@@ -98,7 +99,7 @@
     const sel = clean(String(window.getSelection ? window.getSelection() : ""));
     const v = currentView(), id = v ? v.id.replace(/^view-/, "") : "";
     st.view = id;
-    if (sel.length > 3) return "📌 " + clean((v && v.querySelector("h1,h2") || {}).textContent || document.title) + "\n" + sel;
+    if (sel.length > 3) return "*" + clean((v && v.querySelector("h1,h2") || {}).textContent || document.title) + "*\n" + sel;
     if (providers[id]) { try { const t = providers[id](); if (t) return String(t); } catch (e) { /* نرجع للنص العام */ } }
     return genericText(v);
   }
