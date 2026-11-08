@@ -1815,15 +1815,15 @@
       L.push("📋 " + title + " — " + today, "النطاق: " + waScope(), "الإجمالي: " + ui.fmt(o.rows.length) + " طالباً " + (o.kind === "pledge" ? "لم يوقّعوا" : o.kind === "all" || o.kind === "risk" ? "ينقصهم شيء" : "لم يعبّئوا"));
       if (w.breakdown) {
         const by = new Map();
-        o.rows.forEach((x) => { const k = (x.track || "—") + (x.stage ? " · " + x.stage : ""); const e = by.get(k) || by.set(k, { n: 0, pre: 0, post: 0, impact: 0, pledge: 0 }).get(k); e.n++; ["pre", "post", "impact", "pledge"].forEach((f) => { if (x.flags && x.flags[f]) e[f]++; }); });
+        o.rows.forEach((x) => { const k = (x.track || "—") + (x.stage ? " · " + x.stage : "") + (x.group ? " · مجموعة " + x.group : ""); const e = by.get(k) || by.set(k, { n: 0, pre: 0, post: 0, impact: 0, pledge: 0 }).get(k); e.n++; ["pre", "post", "impact", "pledge"].forEach((f) => { if (x.flags && x.flags[f]) e[f]++; }); });
         [...by.entries()].sort((a, b) => b[1].n - a[1].n).forEach(([k, e]) => L.push("• " + k + ": " + ui.fmt(e.n) + (o.kind === "all" || o.kind === "risk" ? " (قبلي " + e.pre + "، بعدي " + e.post + "، أثر " + e.impact + "، تعهد " + e.pledge + ")" : "")));
       }
-      if (w.names) { L.push("", "الأسماء (أول " + Math.min(NAMES_MAX, o.rows.length) + "):"); o.rows.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.name + (o.kind === "all" || o.kind === "risk" ? " (" + itemsOf(x, o.kind) + ")" : ""))); }
+      if (w.names) { L.push("", "الأسماء (أول " + Math.min(NAMES_MAX, o.rows.length) + "):"); o.rows.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.name + (x.group ? " — مجموعة " + x.group : "") + (x.trainer ? " (المدرب: " + x.trainer + ")" : "") + (o.kind === "all" || o.kind === "risk" ? " [" + itemsOf(x, o.kind) + "]" : ""))); }
     } else if (mode === "dq") {
       const o = state.dq.out; if (!o) return "";
       L.push("🔎 فحص جودة البيانات — " + today, "الفحص: " + ui.fmt(o.total) + " طالباً · الملاحظات: " + ui.fmt(o.issues.length));
       if (w.breakdown) DQ_CHECKS.filter(([k]) => o.byType[k]).forEach(([k, t]) => L.push("• " + t + ": " + ui.fmt(o.byType[k])));
-      if (w.names) { L.push("", "أمثلة:"); o.issues.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.s.name + ": " + DQ_LABEL[x.type])); }
+      if (w.names) { L.push("", "أمثلة:"); o.issues.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.s.name + (x.s.group ? " — مجموعة " + x.s.group : "") + ": " + DQ_LABEL[x.type])); }
     } else if (mode === "groups") {
       const o = state.grp.out; if (!o) return "";
       L.push("👥 المجموعات والمدربون — " + today, ui.fmt(o.total) + " طالباً في " + ui.fmt(o.groups.length) + " مجموعة · غير موزعين: " + ui.fmt(o.unassigned));
