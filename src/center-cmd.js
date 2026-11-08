@@ -29,7 +29,7 @@
     labels: [],          // عنوان كل نتيجة في الدفعة الأخيرة
     hiddenCols: new Set(), // أعمدة أخفاها المستخدم من العرض والتنزيل (بأسمائها)
     cmp: { tracks: [], status: "", multiOnly: true, goal: "multi", out: null }, // مقارنة المراحل
-    sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, baseStage: "المرحلة الثالثة", cmpStages: [], out: null }, // مقارنة الإخوة
+    sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, stages: [], baseStage: "المرحلة الثالثة", cmpStages: [], out: null }, // مقارنة الإخوة
     mis: { kind: "pre", tracks: [], stages: [], status: "active", verify: true, out: null }, // استبيانات وتعهدات
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true }, // حالة الأقسام القابلة للطي
@@ -710,6 +710,7 @@
           const id = iId >= 0 ? digits(x.cells[iId]) : "", name = clean(x.cells[iName]);
           const key = id || name; if (!key) return;
           const stage = (STAGES.find((g) => norm(x.course || "").includes(norm(g.k))) || {}).t || "";
+          if (!c.stageMode && c.stages.length && !c.stages.includes(stage)) return;       // المقارنة داخل المراحل المختارة فقط
           const p = people.get(key) || { name, id, phones: new Set(), places: [], stages: new Set() };
           if (stage) p.stages.add(stage);
           [iPhone, iP2].forEach((i) => { if (i >= 0) { const k = phoneKey(x.cells[i]); if (k) p.phones.add(k); } });
@@ -786,13 +787,14 @@
       <div class="cc-card-b">
         <div class="cc-grid">
           <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => chk(o.v, o.t.replace(/^مسار\s*/, ""), c.tracks.includes(String(o.v)))).join("")}</div></fieldset>
+          <fieldset class="cc-fs"><legend>المراحل${c.stages.length ? ` <em>${ui.fmt(c.stages.length)}</em>` : ""}</legend><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="checkbox" data-sib="stages" value="${esc(g.t)}" ${c.stages.includes(g.t) ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}</div><p class="cc-note">تُقارَن الإخوة بين طلاب المراحل المختارة فقط. اتركها فارغة لتشمل كل المراحل.</p></fieldset>
           <fieldset class="cc-fs"><legend>تصفية</legend><label class="cc-field"><span>حالة الطالب</span><select data-sib="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></fieldset>
           <fieldset class="cc-fs cc-wide"><legend>معيار الربط</legend><div class="cc-chips">
             ${opt("phone", "نفس رقم الهاتف", c.phone)}${opt("name", "نفس الاسم بعد الاسم الأول (الأب والجد والعائلة)", c.name)}${opt("loose", "الأب والعائلة فقط (أوسع، أخطاؤه أكثر)", c.loose)}${opt("both", "يجب تحقق الهاتف والاسم معاً (أدق)", c.both)}</div>
             <p class="cc-note">الهاتف وحده قد يجمع غير الإخوة (هاتف مشترك لجهة أو قريب). و«معاً» يُظهر الأرجح فقط. عمود «سبب الربط» في النتيجة يبيّن ما جمعهم.</p></fieldset>
         </div>
       </div>
-      <footer class="cc-actions"><div class="cc-sum"><b>${state.cache && !c.status ? "⚡ من الذاكرة المحمّلة" : `سيُقرأ ${ui.fmt(n)} ${n === 1 ? "مسار" : n === 2 ? "مساران" : n < 11 ? "مسارات" : "مساراً"}`}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.status ? " · " + esc(optLabel("status", c.status)) : " · كل الحالات"}</span></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${state.cache && !c.status ? "⚡ من الذاكرة المحمّلة" : `سيُقرأ ${ui.fmt(n)} ${n === 1 ? "مسار" : n === 2 ? "مساران" : n < 11 ? "مسارات" : "مساراً"}`}</b><span>${c.tracks.length ? esc(c.tracks.map(trackShort).join("، ")) : "كل المسارات"}${c.stages.length ? " · " + esc(c.stages.join("، ")) : " · كل المراحل"}${c.status ? " · " + esc(optLabel("status", c.status)) : " · كل الحالات"}</span></div>
         <div class="cc-act"><button type="button" class="btn navy" data-cc="run-sib" ${state.busy || !n ? "disabled" : ""}>${state.busy ? "جارٍ الجلب والمقارنة…" : "اجلب وقارن"}</button></div></footer></section>`;
   }
 
@@ -1382,7 +1384,7 @@
       }
       if (t.dataset.sib) {
         const k = t.dataset.sib, c = state.sib;
-        if (k === "tracks" || k === "cmpStages") { const v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); }
+        if (k === "tracks" || k === "cmpStages" || k === "stages") { const v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); }
         else if (k === "baseStage") { c.baseStage = t.value; c.cmpStages = c.cmpStages.filter((x) => x !== t.value); }
         else if (k === "status") c.status = t.value;
         else c[k] = t.checked;
