@@ -8,7 +8,7 @@
   const App = (window.App = window.App || {});
   const CONTACT_KEY = "tamkeen-admin:cc-contacts", CC = "970";
   const providers = {};
-  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "", limit: 25, total: 0 };
+  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "", limit: 25, total: 0, greet: true };
 
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
@@ -77,8 +77,11 @@
         }).filter(Boolean);
         /* عمود عدد النواقص: رقم مجرد في آخر الصف بعد أن عرفنا النواقص، فيصبح مكرراً */
         if (lack.length && /^\d+$/.test(cells[cells.length - 1] || "")) cells.pop();
-        if (lack.length) cells.push("ينقصه: " + lack.join("، "));
-        if (cells.length) L.push("- " + cells.join(" · ").slice(0, 200));
+        if (cells.length) {
+          L.push("▪ *" + cells[0] + "*");
+          if (cells.length > 1) L.push("   " + cells.slice(1).join(" · ").slice(0, 160));
+          if (lack.length) L.push("   ⚠️ ينقصه: " + lack.join("، "));
+        } else if (lack.length) L.push("▪ ⚠️ ينقصه: " + lack.join("، "));
       });
       st.total = total;
     } else st.total = 0;
@@ -122,8 +125,14 @@
 
   /* رابط واتساب محدود الطول، فنقسم الرسالة الطويلة إلى أجزاء عند حدود الأسطر */
   const PART_MAX = 1400;
-  function parts() {
-    const t = st.text.trim();
+  /* تحية موجَّهة باسم المستلم المحفوظ (للرقم المكتوب يدوياً بلا اسم: تحية عامة) */
+  function greetFor(id) {
+    if (!st.greet) return "";
+    const c = id && id !== "__extra" ? contacts().find((x) => x.id === id) : null;
+    return "السلام عليكم ورحمة الله وبركاته" + (c ? "\nالأستاذ/ة " + c.name + (c.role ? " (" + c.role + ")" : "") + "،" : "،") + "\nإليكم ما يلي:\n\n";
+  }
+  function parts(id) {
+    const t = (greetFor(id) + st.text).trim();
     if (t.length <= PART_MAX) return [t];
     const out = []; let cur = "";
     t.split("\n").forEach((line) => {
@@ -134,7 +143,7 @@
   }
 
   function goBtns(id) {
-    const n = parts().length;
+    const n = parts(id).length;
     if (n === 1) return `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="0">${st.opened.has(id + "#0") ? "✓ فُتح" : "فتح واتساب"}</button>`;
     return `<span class="wa-parts">${Array.from({ length: n }, (_, i) => `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="${i}">${st.opened.has(id + "#" + i) ? "✓ " : ""}جزء ${i + 1}</button>`).join("")}</span>`;
   }
@@ -155,6 +164,7 @@
       <div class="wa-row"><input type="tel" inputmode="tel" data-wa-extra placeholder="أو رقم آخر 059xxxxxxx" value="${esc(st.extra)}" style="flex:1;min-width:160px">${extraNum ? goBtns("__extra") : ""}<button type="button" class="btn small secondary" data-wa-add>＋ جهة اتصال</button></div>
       ${st.total > 0 ? `<label class="wa-row">عدد الصفوف في الرسالة (الجدول فيه ${st.total}): <select data-wa-limit>${[10, 25, 50, 100, 0].map((n) => `<option value="${n}" ${st.limit === n ? "selected" : ""}>${n === 0 ? "الكل" : n}</option>`).join("")}</select></label>` : ""}
       ${parts().length > 1 ? `<p class="wa-note">الرسالة طويلة (${st.text.length} حرفاً) فقُسّمت إلى ${parts().length} أجزاء لأن رابط واتساب لا يحمل أكثر من نحو ${PART_MAX} حرفاً. افتح كل جزء بالترتيب وأرسله.</p>` : ""}
+      <label class="wa-row"><input type="checkbox" data-wa-greet ${st.greet ? "checked" : ""}> تبدأ الرسالة بتحية باسم المستلم (تُضاف عند الفتح لكل مستلم)</label>
       <label>نص الرسالة (يمكنك تعديله)<textarea rows="9" data-wa-text>${esc(st.text)}</textarea></label>
       <p class="wa-warn">قد يتضمن النص أسماء أو بيانات طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع عليها.</p>
       <div class="wa-row"><button type="button" class="btn small secondary" data-wa-regen>إعادة توليد من الصفحة</button><button type="button" class="btn small secondary" data-wa-copy>نسخ النص</button><button type="button" class="btn small" data-wa-close>إغلاق</button></div>
@@ -166,7 +176,7 @@
     st.open = true; st.opened = new Set(); render();
   }
   function go(id, part) {
-    const text = (parts()[part || 0] || "").trim();
+    const text = (parts(id)[part || 0] || "").trim();
     if (!text) return toast("لا نص لإرساله");
     let num = "";
     if (id === "__extra") num = intl(st.extra, CC);
@@ -206,6 +216,7 @@
       }
     });
     dlg.addEventListener("change", (e) => {
+      if (e.target.matches && e.target.matches("[data-wa-greet]")) { st.greet = e.target.checked; st.opened = new Set(); return render(); }
       if (e.target.matches && e.target.matches("[data-wa-limit]")) { st.limit = +e.target.value; st.text = buildText(); st.opened = new Set(); return render(); }
       const s = e.target.closest && e.target.closest("[data-wa-sel]");
       if (s) { s.checked ? st.sel.add(s.dataset.waSel) : st.sel.delete(s.dataset.waSel); render(); }
