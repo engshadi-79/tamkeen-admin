@@ -1093,3 +1093,9 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 .cc-sv .cc-sv-b { padding: 4px 8px; color: var(--muted); border-inline-start: 1px solid var(--line); }
 .cc-busy-act { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .cc-link.danger { color: #d64545; }
+
+.cc-mask-btn { margin-inline-start: auto; font-size: .8rem; }
+.cc-top { flex-wrap: wrap; }
+
+.cc-bundle { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; margin-top: 6px; }
+.cc-bad { color: #d64545; font-weight: 700; }
