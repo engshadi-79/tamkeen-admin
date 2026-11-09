@@ -8,7 +8,7 @@
   const App = (window.App = window.App || {});
   const CONTACT_KEY = "tamkeen-admin:cc-contacts", CC = "970";
   const providers = {};
-  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "", limit: 25, total: 0, greet: true };
+  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "", limit: 25, total: 0, greet: true, tpl: "full" };
 
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
@@ -120,20 +120,50 @@
 #wa-box .wa-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 #wa-box .wa-warn{background:#fff3cd;color:#664d03;padding:8px;border-radius:8px;font-size:.85rem}
 #wa-box button{cursor:pointer}
+#wa-box .wa-last{opacity:.7}#wa-box .wa-loglist{max-height:150px;overflow:auto;font-size:.85rem;display:grid;gap:2px;margin:6px 0}#wa-box select{max-width:190px}
 #wa-box .wa-parts{display:flex;gap:4px;flex-wrap:wrap}`;
     document.head.appendChild(s);
   }
 
   /* رابط واتساب محدود الطول، فنقسم الرسالة الطويلة إلى أجزاء عند حدود الأسطر */
   const PART_MAX = 1400;
+  /* ===== قوالب الرسائل: صياغة التحية + نوع المحتوى (قائمة كاملة | موجز بلا أسماء) ===== */
+  const TPL_KEY = "tamkeen-admin:wa-templates", LOG_KEY = "tamkeen-admin:wa-log", LOG_KEEP = 150;
+  const DEFAULT_GREET = "السلام عليكم ورحمة الله وبركاته|{المستلم}|إليكم ما يلي:";
+  const BUILTIN = [
+    { id: "full", name: "قائمة كاملة (بالأسماء)", greet: DEFAULT_GREET, mode: "list", builtin: true },
+    { id: "summary", name: "موجز (أرقام بلا قائمة أسماء)", greet: DEFAULT_GREET, mode: "summary", builtin: true },
+  ];
+  const templates = () => BUILTIN.concat(lsGet(TPL_KEY, []));
+  const tplById = (id) => templates().find((t) => t.id === id) || BUILTIN[0];
+  /* قالب المستلم: ما ربطتَه به، وإلا المختار في النافذة */
+  function tplFor(id) {
+    const c = id && id !== "__extra" ? contacts().find((x) => x.id === id) : null;
+    return tplById((c && c.tpl) || st.tpl);
+  }
   /* تحية موجَّهة باسم المستلم المحفوظ (للرقم المكتوب يدوياً بلا اسم: تحية عامة) */
   function greetFor(id) {
     if (!st.greet) return "";
     const c = id && id !== "__extra" ? contacts().find((x) => x.id === id) : null;
-    return "السلام عليكم ورحمة الله وبركاته" + (c ? "\nالأستاذ/ة " + c.name + (c.role ? " (" + c.role + ")" : "") + "،" : "،") + "\nإليكم ما يلي:\n\n";
+    const who = c ? "الأستاذ/ة " + c.name + (c.role ? " (" + c.role + ")" : "") + "،" : "";
+    const today = new Date().toLocaleDateString("ar", { year: "numeric", month: "numeric", day: "numeric" });
+    const g = tplFor(id).greet.split("|").map((line) => line
+      .replace(/\{المستلم\}/g, who).replace(/\{الاسم\}/g, c ? c.name : "").replace(/\{الصفة\}/g, c ? c.role || "" : "").replace(/\{التاريخ\}/g, today).trim())
+      .filter(Boolean).join("\n");
+    return g ? g + "\n\n" : "";
   }
+  /* نص المحتوى لقالب المستلم: الموجز يقتصر على ما قبل الجدول (العنوان والأرقام) */
+  const bodyFor = (id) => (tplFor(id).mode === "summary" ? st.text.split(/\n\nالجدول \(/)[0] : st.text);
+
+  /* ===== سجل ما فُتح: لمن ومتى وأي جزء، لتجنب التكرار ونسيان الأجزاء (محلي بالمتصفح) ===== */
+  const logList = () => lsGet(LOG_KEY, []);
+  function log(e) { const l = logList(); l.push(Object.assign({ at: new Date().toISOString() }, e)); lsSet(LOG_KEY, l.slice(-LOG_KEEP)); }
+  const fmtAt = (iso) => { const d = new Date(iso); return d.toLocaleDateString("ar", { month: "numeric", day: "numeric" }) + " " + d.toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }); };
+  const nameOf = (id) => { if (id === "__extra") { const n = intl(st.extra, CC); return "رقم …" + n.slice(-4); } const c = contacts().find((x) => x.id === id); return c ? c.name : ""; };
+  const lastSent = (name) => { const l = logList().filter((e) => e.to === name); return l.length ? l[l.length - 1] : null; };
+
   function parts(id) {
-    const t = (greetFor(id) + st.text).trim();
+    const t = (greetFor(id) + bodyFor(id)).trim();
     if (t.length <= PART_MAX) return [t];
     const out = []; let cur = "";
     t.split("\n").forEach((line) => {
@@ -186,7 +216,7 @@
   function listHtml() {
     const cs = contacts();
     if (!cs.length) return '<p class="wa-note">لا جهات محفوظة بعد. أضف جهة أو اكتب رقماً أدناه.</p>';
-    return cs.map((c) => `<label class="wa-r"><span><input type="checkbox" data-wa-sel="${esc(c.id)}" ${st.sel.has(c.id) ? "checked" : ""}> ${esc(c.name)}${c.role ? " — " + esc(c.role) : ""}</span>${st.sel.has(c.id) ? goBtns(c.id) : ""}</label>`).join("");
+    return cs.map((c) => `<label class="wa-r"><span><input type="checkbox" data-wa-sel="${esc(c.id)}" ${st.sel.has(c.id) ? "checked" : ""}> ${esc(c.name)}${c.role ? " — " + esc(c.role) : ""}${(() => { const l = lastSent(c.name); return l ? ` <small class="wa-last">آخر فتح: ${esc(fmtAt(l.at))}</small>` : ""; })()}</span>${st.sel.has(c.id) ? `<select data-wa-ctpl="${esc(c.id)}" title="قالب هذا المستلم">${templates().map((t) => `<option value="${esc(t.id)}" ${(c.tpl || st.tpl) === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select>` + goBtns(c.id) : ""}</label>`).join("");
   }
   function render() {
     const d = document.getElementById("wa-dlg");
@@ -200,12 +230,14 @@
       <div class="wa-row"><input type="tel" inputmode="tel" data-wa-extra placeholder="أو رقم آخر 059xxxxxxx" value="${esc(st.extra)}" style="flex:1;min-width:160px">${extraNum ? goBtns("__extra") : ""}<button type="button" class="btn small secondary" data-wa-add>＋ جهة اتصال</button></div>
       ${st.total > 0 ? `<label class="wa-row">عدد الصفوف في الرسالة (الجدول فيه ${st.total}): <select data-wa-limit>${[10, 25, 50, 100, 0].map((n) => `<option value="${n}" ${st.limit === n ? "selected" : ""}>${n === 0 ? "الكل" : n}</option>`).join("")}</select></label>` : ""}
       ${parts().length > 1 ? `<p class="wa-note">الرسالة طويلة (${st.text.length} حرفاً) فقُسّمت إلى ${parts().length} أجزاء لأن رابط واتساب لا يحمل أكثر من نحو ${PART_MAX} حرفاً. افتح كل جزء بالترتيب وأرسله.</p>` : ""}
+      <div class="wa-row"><label>قالب الرسالة: <select data-wa-tpl>${templates().map((t) => `<option value="${esc(t.id)}" ${st.tpl === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><button type="button" class="btn small secondary" data-wa-newtpl>＋ قالب</button>${tplById(st.tpl).builtin ? "" : '<button type="button" class="btn small secondary" data-wa-deltpl>حذف القالب</button>'}</div>
       <label class="wa-row"><input type="checkbox" data-wa-greet ${st.greet ? "checked" : ""}> تبدأ الرسالة بتحية باسم المستلم (تُضاف عند الفتح لكل مستلم)</label>
       <label>نص الرسالة (يمكنك تعديله)<textarea rows="9" data-wa-text>${esc(st.text)}</textarea></label>
       ${st.total > 0 ? `<label class="wa-row"><input type="checkbox" data-wa-ids ${st.xlsxIds ? "checked" : ""}> تضمين الهوية والجوال ورقم الطالب في ملف Excel (مغلقة افتراضياً للخصوصية)</label>` : ""}
       <p class="wa-warn">قد يتضمن النص أسماء أو بيانات طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع عليها.</p>
       <div class="wa-row"><button type="button" class="btn small secondary" data-wa-regen>إعادة توليد من الصفحة</button><button type="button" class="btn small secondary" data-wa-copy>نسخ النص</button>${st.total > 0 ? '<button type="button" class="btn small secondary" data-wa-xlsx>إرسال الجدول كملف Excel</button>' : ""}<button type="button" class="btn small" data-wa-close>إغلاق</button></div>
-      <p class="wa-note">لكل مستلم زر فتح مستقل؛ واتساب لا يتيح إرسال رسالة واحدة لعدة محادثات برابط واحد.</p>`;
+      <p class="wa-note">لكل مستلم زر فتح مستقل؛ واتساب لا يتيح إرسال رسالة واحدة لعدة محادثات برابط واحد.</p>
+      <details class="wa-logbox"><summary>سجل ما فُتح (${logList().length})</summary>${logList().length ? `<div class="wa-loglist">${logList().slice(-20).reverse().map((e) => `<div>${esc(fmtAt(e.at))} — إلى ${esc(e.to || "؟")} · ${esc(e.page || "")}${e.part ? " · جزء " + esc(e.part) : ""}</div>`).join("")}</div><button type="button" class="btn small secondary" data-wa-clearlog>مسح السجل</button>` : '<p class="wa-note">لا شيء بعد.</p>'}</details>`;
   }
   function open() {
     st.text = buildText();
@@ -219,9 +251,14 @@
     if (id === "__extra") num = intl(st.extra, CC);
     else { const c = contacts().find((x) => x.id === id); num = c ? intl(c.phone, c.cc || CC) : ""; }
     if (!num) return toast("رقم غير صالح");
+    const total = parts(id).length, partLabel = total > 1 ? ((part || 0) + 1) + "/" + total : "";
+    const who = nameOf(id) || "رقم …" + num.slice(-4), pageName = st.view || "";
+    const dup = logList().filter((e) => e.to === who && e.page === pageName && (e.part || "") === partLabel && Date.now() - Date.parse(e.at) < 86400000).pop();
+    if (dup && !confirm("فتحتَ هذه الرسالة لـ" + who + " " + fmtAt(dup.at) + ". هل تكررها؟")) return;
     const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(text);
     if (url.length > 1900) toast("الرسالة طويلة؛ قد لا تُحمَّل كاملة. اختصرها أو انسخها.");
     window.open(url, "_blank", "noopener");
+    log({ to: who, page: pageName, part: partLabel, chars: text.length });
     st.opened.add(id + "#" + (part || 0)); render();
   }
 
@@ -242,6 +279,20 @@
       const g = t.closest("[data-wa-go]"); if (g) return go(g.dataset.waGo, +g.dataset.waPart || 0);
       if (t.closest("[data-wa-regen]")) { st.text = buildText(); return render(); }
       if (t.closest("[data-wa-xlsx]")) return sendXlsx();
+      if (t.closest("[data-wa-clearlog]")) { if (confirm("مسح سجل ما فُتح؟")) { lsSet(LOG_KEY, []); render(); } return; }
+      if (t.closest("[data-wa-deltpl]")) {
+        const cur = tplById(st.tpl); if (cur.builtin || !confirm("حذف القالب «" + cur.name + "»؟")) return;
+        lsSet(TPL_KEY, lsGet(TPL_KEY, []).filter((x) => x.id !== cur.id)); st.tpl = "full"; return render();
+      }
+      if (t.closest("[data-wa-newtpl]")) {
+        const name = (window.prompt("اسم القالب (مثال: للمدير، أو للموظف المختص):", "") || "").trim(); if (!name) return;
+        const summary = window.confirm("هل القالب «موجز» بلا قائمة أسماء؟\nموافق = موجز (العنوان والأرقام فقط)\nإلغاء = قائمة كاملة");
+        const greet = (window.prompt("صياغة التحية. الفاصل | لسطر جديد. المتغيرات: {المستلم} {الاسم} {الصفة} {التاريخ}", DEFAULT_GREET) || "").trim();
+        if (!greet) return;
+        const list = lsGet(TPL_KEY, []), id = "t" + Date.now();
+        list.push({ id, name: name.slice(0, 40), greet: greet.slice(0, 300), mode: summary ? "summary" : "list" }); lsSet(TPL_KEY, list);
+        st.tpl = id; return render();
+      }
       if (t.closest("[data-wa-copy]")) { (navigator.clipboard ? navigator.clipboard.writeText(st.text) : Promise.reject()).then(() => toast("نُسخ النص"), () => toast("تعذّر النسخ")); return; }
       if (t.closest("[data-wa-add]")) {
         const name = (window.prompt("اسم جهة الاتصال (مثال: مدير المركز):", "") || "").trim(); if (!name) return;
@@ -255,6 +306,12 @@
     });
     dlg.addEventListener("change", (e) => {
       if (e.target.matches && e.target.matches("[data-wa-ids]")) { st.xlsxIds = e.target.checked; return; }
+      if (e.target.matches && e.target.matches("[data-wa-tpl]")) { st.tpl = e.target.value; st.opened = new Set(); return render(); }
+      if (e.target.matches && e.target.matches("[data-wa-ctpl]")) {
+        const cs = contacts(), c = cs.find((x) => x.id === e.target.dataset.waCtpl);
+        if (c) { c.tpl = e.target.value === st.tpl ? "" : e.target.value; lsSet(CONTACT_KEY, cs); }
+        st.opened = new Set(); return render();
+      }
       if (e.target.matches && e.target.matches("[data-wa-greet]")) { st.greet = e.target.checked; st.opened = new Set(); return render(); }
       if (e.target.matches && e.target.matches("[data-wa-limit]")) { st.limit = +e.target.value; st.text = buildText(); st.opened = new Set(); return render(); }
       const s = e.target.closest && e.target.closest("[data-wa-sel]");
@@ -272,6 +329,6 @@
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && st.open) { st.open = false; render(); } });
   }
 
-  App.whatsapp = { init, open, register: (viewId, fn) => { providers[viewId] = fn; }, intl };
+  App.whatsapp = { log, init, open, register: (viewId, fn) => { providers[viewId] = fn; }, intl };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

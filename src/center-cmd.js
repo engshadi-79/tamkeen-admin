@@ -1086,8 +1086,41 @@
       const per = {}; rows.forEach((x) => { const k = (x.track || "—") + (x.stage ? " · " + x.stage : ""); per[k] = (per[k] || 0) + 1; });
       rows.sort((a, b) => (b.count || 0) - (a.count || 0) || (a.track + a.stage + a.group).localeCompare(b.track + b.stage + b.group, "ar") || a.name.localeCompare(b.name, "ar"));
       c.out = { kind: c.kind, rows, per, note, extra, at: new Date() };
+      c.out.diff = misDiffAndSave(c, rows);
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
+  }
+
+  /* ----- مقارنة مع تشغيل سابق: لقطات محلية بالمتصفح للناقصين (الاسم والمفتاح فقط) لكل نوع ونطاق ----- */
+  const MISNAP_KEY = "tamkeen-admin:cc-missnap", MISNAP_KEEP = 12, DAY = 86400000;
+  const misScopeKey = (c) => [c.kind, c.tracks.slice().sort().join(","), c.stages.slice().sort().join(","), c.status].join("|");
+  function misDiffAndSave(c, rows) {
+    const all = lsGet(MISNAP_KEY, {}), key = misScopeKey(c), list = Array.isArray(all[key]) ? all[key] : [];
+    const now = Date.now(), cur = new Map(rows.map((x) => [missKey(x), x]));
+    /* خط الأساس: أحدث لقطة عمرها 6 أيام فأكثر؛ وإلا أقدم لقطة عمرها ساعة فأكثر */
+    const aged = list.map((e) => ({ e, age: now - Date.parse(e.at) })).filter((x) => x.age >= 3600000);
+    const week = aged.filter((x) => x.age >= 6 * DAY).sort((a, b) => a.age - b.age)[0];
+    const base = week || aged.sort((a, b) => b.age - a.age)[0];
+    let diff = null;
+    if (base) {
+      const old = new Map(base.e.rows.map((r) => [r[0], r]));
+      const done = [...old.entries()].filter(([k]) => !cur.has(k)).map(([, r]) => ({ name: r[1], track: r[2] }));
+      const added = [...cur.entries()].filter(([k]) => !old.has(k)).map(([, x]) => ({ name: x.name, track: x.track }));
+      diff = { at: base.e.at, before: old.size, now: cur.size, done, added };
+    }
+    /* نحتفظ بلقطة جديدة؛ وإن كانت الأخيرة عمرها أقل من ساعة نستبدلها حتى لا تتراكم */
+    const snap = { at: new Date().toISOString(), rows: rows.map((x) => [missKey(x), x.name, x.track]) };
+    const kept = list.filter((e) => now - Date.parse(e.at) >= 3600000);
+    kept.push(snap); all[key] = kept.slice(-MISNAP_KEEP);
+    lsSet(MISNAP_KEY, all);
+    return diff;
+  }
+  const diffDate = (iso) => ui.formatDate(String(iso).slice(0, 10)) || String(iso).slice(0, 10);
+  function diffStats(o) {
+    const d = o.diff;
+    if (!d) return '<span class="cc-stat"><small>لا مقارنة بعد: هذا أول استخراج لهذا النطاق، وتظهر المقارنة في المرة القادمة.</small></span>';
+    const list = (arr) => arr.length ? `<details class="cc-adv"><summary><span>${ui.fmt(arr.length)} طالباً</span></summary><div class="cc-note">${arr.slice(0, 200).map((x) => esc(x.name) + (x.track ? " — " + esc(x.track) : "")).join("<br>")}</div></details>` : "";
+    return `<span class="cc-stat ok"><b>${ui.fmt(d.done.length)}</b> أكملوا منذ ${esc(diffDate(d.at))}</span><span class="cc-stat ${d.added.length ? "bad" : ""}"><b>${ui.fmt(d.added.length)}</b> نقص جديد</span><span class="cc-stat"><small>كان ${ui.fmt(d.before)} فأصبح ${ui.fmt(d.now)}</small></span>${list(d.done) ? `<div class="cc-wide">أكملوا: ${list(d.done)}</div>` : ""}`;
   }
 
   /* ----- ملف التذكير: اسم، جوال، رسالة جاهزة. لا شيء يُرسَل من هنا ----- */
@@ -1154,6 +1187,7 @@
     const title = (MIS_KINDS.find((x) => x.k === o.kind) || {}).t || "";
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> لم يُكمل: ${esc(title)}</h3>
       <div class="cc-stats"><span class="cc-stat bad"><b>${ui.fmt(rows.length)}</b> طالباً لم يُكمل</span>
+        ${diffStats(o)}
         ${o.kind === "all" || o.kind === "risk" ? SURVEY_KINDS.concat("pledge").map((k) => `<span class="cc-stat"><b>${ui.fmt(o.extra.counts[k])}</b> ناقصهم ${esc(KIND_SHORT[k])}</span>`).join("") : ""}
         ${o.kind === "risk" ? `<span class="cc-stat"><b>${ui.fmt(o.extra.counts.noGroup)}</b> بلا مجموعة</span><span class="cc-stat"><b>${ui.fmt(o.extra.counts.noPhone)}</b> جوال غير صالح</span>` : ""}
         ${rows.length ? '<button type="button" class="btn secondary small" data-cc="print-summary" title="يُطبع على ترويسة المركز الرسمية">طباعة / PDF موجز المدير</button><button type="button" class="btn secondary small" data-cc="word-summary" title="ملف Word على ترويسة المركز الرسمية">Word على الترويسة</button>' : ""}
@@ -1813,6 +1847,7 @@
       const o = state.mis.out; if (!o) return "";
       const title = (MIS_KINDS.find((k) => k.k === o.kind) || {}).t || "";
       L.push("📋 " + title + " — " + today, "النطاق: " + waScope(), "الإجمالي: " + ui.fmt(o.rows.length) + " طالباً " + (o.kind === "pledge" ? "لم يوقّعوا" : o.kind === "all" || o.kind === "risk" ? "ينقصهم شيء" : "لم يعبّئوا"));
+      if (o.diff) L.push("مقارنة مع " + diffDate(o.diff.at) + ": أكمل " + ui.fmt(o.diff.done.length) + " طالباً، ونقص جديد " + ui.fmt(o.diff.added.length) + " (كان " + ui.fmt(o.diff.before) + " وأصبح " + ui.fmt(o.diff.now) + ")");
       if (w.breakdown) {
         const by = new Map();
         o.rows.forEach((x) => { const k = (x.track || "—") + (x.stage ? " · " + x.stage : "") + (x.group ? " · مجموعة " + x.group : ""); const e = by.get(k) || by.set(k, { n: 0, pre: 0, post: 0, impact: 0, pledge: 0 }).get(k); e.n++; ["pre", "post", "impact", "pledge"].forEach((f) => { if (x.flags && x.flags[f]) e[f]++; }); });
@@ -1876,6 +1911,7 @@
     if (!num && (cur || w.phone)) return ui.toast("رقم غير صالح");
     if (w.names && !confirm("الرسالة تتضمن أسماء طلاب. هل تريد فتح واتساب بها؟")) return;
     const ps = waParts(text), idx = Math.min(w.part[mode] || 0, ps.length - 1);
+    if (App.whatsapp && App.whatsapp.log) App.whatsapp.log({ to: cur ? cur.name : w.phone, page: "أوامر المركز — " + mode, part: ps.length > 1 ? (idx + 1) + "/" + ps.length : "", chars: ps[idx].length });
     const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(ps[idx]);
     window.open(url, "_blank", "noopener");
     if (ps.length > 1) {
