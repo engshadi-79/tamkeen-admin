@@ -183,11 +183,15 @@
   const imports = () => call("imports");
   const putImport = (name, fields, rows) => call("putImport", { name, fields, rows });
   const dropImport = (name) => call("dropImport", { name });
+  /* واتساب للأعمال (للمدير): الحالة والإعداد والإرسال المباشر من الخادم */
+  const waStatus = () => call("waStatus");
+  const waConfig = (cfg) => call("waConfig", cfg);
+  const waSend = (p) => call("waSend", p);
 
   App.cloud = {
     settings, saveSettings, ready, user, status, login, setup, logout, refreshUser, changePassword,
     listUsers, saveUser, deleteUser, upload, download, sync, syncAll, people, ocr, digest, reserve, search, backups, events, forgot, reset, logoutAll,
-    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay, history, revert, legacyCopy, stats, statsKey, setStatsPeriod, imports, putImport, dropImport,
+    toBase64, isTrial, useServer, defaultUrl: DEFAULT_URL, oldUrl: OLD_URL, consumeMovedNotice, exportUsers, importUsers, adopt, backupDays, restoreDay, history, revert, legacyCopy, stats, statsKey, setStatsPeriod, imports, putImport, dropImport, waStatus, waConfig, waSend,
     onAuth: (fn) => listeners.push(fn),
   };
 })(window.App = window.App || {});

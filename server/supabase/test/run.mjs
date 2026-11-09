@@ -16,7 +16,7 @@ writeFileSync(here + "fn.ts", code);
 let handler = null;
 globalThis.Deno = {
   serve: (fn) => { handler = fn; },
-  env: { get: (k) => ({ SUPABASE_URL: "http://x", SUPABASE_SERVICE_ROLE_KEY: "k", ADMIN_KEY: "SECRET123" }[k]) },
+  env: { get: (k) => ({ SUPABASE_URL: "http://x", SUPABASE_SERVICE_ROLE_KEY: "k", ADMIN_KEY: "SECRET123", WA_TOKEN: "TOKEN_SECRET_XYZ", WA_PHONE_ID: "555000111" }[k]) },
 };
 globalThis.__fakeDb = makeDb();
 
@@ -394,6 +394,48 @@ check("غير المحال إليه لا يستطيع", as.done === false, as);
 await post({ action: "sync", token: T, records: [{ id: "as3", type: "in", number: "و/3", subject: "للمتابعة", assignee: "لينا", dueDate: "2026-01-01", done: false, updatedAt: ts(54) }], deleted: {} });
 const dd17 = await post({ action: "digestData", key: "SECRET123" });
 check("الملخص ينسب الوارد المحال إلى المحال إليه", dd17.lateIn.some((r) => r.number === "و/3" && r.owner === "لينا"), dd17.lateIn);
+
+
+/* ===== 20. واتساب للأعمال: الإرسال المباشر ===== */
+console.log("\n[20] واتساب للأعمال");
+const waCalls = []; let waNext = null;
+const waRealFetch = globalThis.fetch;
+globalThis.fetch = async (url, opts) => {
+  if (String(url).startsWith("https://graph.facebook.com/")) {
+    waCalls.push({ url: String(url), auth: opts.headers.Authorization, body: JSON.parse(opts.body) });
+    const r = waNext || { ok: true, status: 200, j: { messages: [{ id: "wamid.OK" + waCalls.length }] } };
+    return { ok: r.ok, status: r.status, json: async () => r.j };
+  }
+  return waRealFetch(url, opts);
+};
+const saraTok = (await post({ action: "login", username: "lina16", password: "lina1234" })).token;
+const wst = await post({ action: "waStatus", token: T });
+check("الحالة: مُعدّ (الأسرار موجودة) دون كشفها", wst.configured === true && !JSON.stringify(wst).includes("TOKEN_SECRET"), wst);
+check("غير المدير لا يرسل", (await post({ action: "waSend", token: saraTok, to: "970599123456", text: "x" })).error === "هذا الإجراء للمدير فقط");
+check("رقم غير صالح يُرفض", /غير صالح/.test((await post({ action: "waSend", token: T, to: "12", text: "x" })).error || ""));
+check("نص فارغ يُرفض", /لا نص/.test((await post({ action: "waSend", token: T, to: "970599123456", text: "  " })).error || ""));
+let wr = await post({ action: "waSend", token: T, to: "+970 599-123-456", text: "السلام عليكم\nتقرير 📊", label: "المدير" });
+check("إرسال نص: مرة واحدة برقم نظيف وبالرمز في الترويسة فقط", wr.ok === true && wr.sent === 1 && waCalls.length === 1 && waCalls[0].body.to === "970599123456" && waCalls[0].auth === "Bearer TOKEN_SECRET_XYZ" && waCalls[0].url.includes("/555000111/messages"), { wr, waCalls });
+check("الرد لا يحوي الرمز", !JSON.stringify(wr).includes("TOKEN_SECRET"));
+check("الإيموجي والأسطر تصل كما هي", waCalls[0].body.text.body === "السلام عليكم\nتقرير 📊");
+waCalls.length = 0;
+const longText = Array.from({ length: 400 }, (_, i) => "سطر رقم " + i + " " + "ن".repeat(15)).join("\n");
+wr = await post({ action: "waSend", token: T, to: "970599123456", text: longText });
+check("النص الطويل يُقسَّم عند حدود الأسطر إلى أجزاء ≤ 3800 ويُعاد تركيبه كما هو", wr.ok && wr.sent === waCalls.length && waCalls.length >= 2 && waCalls.every((c) => c.body.text.body.length <= 3800) && waCalls.map((c) => c.body.text.body).join("\n") === longText, { sent: wr.sent, n: waCalls.length });
+waCalls.length = 0; waNext = { ok: false, status: 400, j: { error: { code: 131047, message: "Re-engagement message" } } };
+wr = await post({ action: "waSend", token: T, to: "970599123456", text: "مرحبا" });
+check("خارج نافذة 24 ساعة: يطلب قالباً بعبارة عربية", wr.ok === false && wr.needTemplate === true && /قالب/.test(wr.message), wr);
+waNext = { ok: false, status: 400, j: { error: { code: 131030, message: "not allowed" } } };
+wr = await post({ action: "waSend", token: T, to: "970599123456", text: "مرحبا" });
+check("رقم خارج قائمة التجريبي: رسالة واضحة", wr.ok === false && /API Setup/.test(wr.message), wr);
+waNext = null; waCalls.length = 0;
+check("اسم قالب غير صالح يُرفض", /حروف إنجليزية/.test((await post({ action: "waConfig", token: T, template: "تقرير جاهز", lang: "ar" })).error || ""));
+check("حفظ إعداد القالب", (await post({ action: "waConfig", token: T, template: "report_ready", lang: "ar" })).template === "report_ready");
+wr = await post({ action: "waSend", token: T, to: "970599123456", kind: "template", params: ["أبو محمد\nالمدير", "9  طلاب"] });
+check("قالب الافتتاح: الاسم واللغة من الإعداد والمتغيرات بلا أسطر", wr.ok && waCalls[0].body.type === "template" && waCalls[0].body.template.name === "report_ready" && waCalls[0].body.template.language.code === "ar" && waCalls[0].body.template.components[0].parameters.map((p) => p.text).join("|") === "أبو محمد المدير|9 طلاب", waCalls[0] && waCalls[0].body);
+const wl = await post({ action: "waLog", token: T });
+check("سجل الإرسال يحفظ من أرسل ولمن بلا النص ولا الرمز", wl.log.length >= 4 && wl.log.every((e) => !JSON.stringify(e).includes("TOKEN_SECRET") && !("text" in e)) && wl.log.some((e) => e.by && e.to === "المدير" && e.ok), wl.log.slice(-2));
+globalThis.fetch = waRealFetch;
 
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);
