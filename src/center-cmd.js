@@ -1863,7 +1863,8 @@
     const joinAr = (arr) => arr.join(" و");
 
     L.push("السلام عليكم ورحمة الله وبركاته،");
-    if (cur) L.push((cur.fem === true ? "الأستاذة/ " : cur.fem === false ? "الأستاذ/ " : "الأستاذ/ة ") + cur.name + (cur.role ? " – " + cur.role : "") + "،");
+    if (cur && cur.link) L.push("السادة أعضاء " + (/^مجموعة/.test(cur.name) ? "" : "مجموعة ") + cur.name + "،");
+    else if (cur) L.push((cur.fem === true ? "الأستاذة/ " : cur.fem === false ? "الأستاذ/ " : "الأستاذ/ة ") + cur.name + (cur.role ? " – " + cur.role : "") + "،");
     L.push("📊 تقرير متابعة استكمال المتطلبات التدريبية", "📅 " + dateStr);
     if (trackNames.length) L.push("📚 المسار: " + trackNames.join("، "));
     if (stages.length) L.push("📍 المرحلة: " + stages.join("، "));
@@ -1941,13 +1942,13 @@
     return `<details class="cc-adv" data-open="wa" ${state.open.wa ? "open" : ""}>
       <summary><span>إرسال عبر واتساب</span><small>يفتح واتساب برسالة جاهزة وترسلها أنت</small></summary>
       <div class="cc-two">
-        <label class="cc-field"><span>المستلم (جهة اتصال محفوظة)</span><select data-wa="contact"><option value="">— اختر، أو اكتب رقماً —</option>${state.contacts.map((c) => `<option value="${esc(c.id)}" ${c.id === w.contact ? "selected" : ""}>${esc(c.name)}${c.role ? " — " + esc(c.role) : ""}</option>`).join("")}</select></label>
+        <label class="cc-field"><span>المستلم (جهة اتصال محفوظة)</span><select data-wa="contact"><option value="">— اختر، أو اكتب رقماً —</option>${state.contacts.map((c) => `<option value="${esc(c.id)}" ${c.id === w.contact ? "selected" : ""}>${esc(c.name)}${c.link ? " (مجموعة)" : c.role ? " — " + esc(c.role) : ""}</option>`).join("")}</select></label>
         <label class="cc-field"><span>أو رقم آخر</span><input type="tel" inputmode="tel" data-wa="phone" value="${esc(w.phone)}" placeholder="059xxxxxxx" ${cur ? "disabled" : ""}></label>
       </div>
       <div class="cc-chips"><label class="cc-chk"><input type="checkbox" data-wa="breakdown" ${w.breakdown ? "checked" : ""}> <span>أرقام لكل مسار / تفصيل</span></label>${hasNames ? `<label class="cc-chk"><input type="checkbox" data-wa="names" ${w.names ? "checked" : ""}> <span>أسماء الطلاب (كلهم) — بيانات شخصية</span></label>` : ""}</div>
       ${waParts(w.texts[mode] || text).length > 1 ? `<p class="cc-note">الرسالة طويلة فقُسّمت إلى ${waParts(w.texts[mode] || text).length} أجزاء (حد رابط واتساب). اضغط الزر مرة بعد مرة: يفتح كل جزء بالترتيب، وأرسله في واتساب ثم ارجع واضغط للجزء التالي.</p>` : ""}<label class="cc-field"><span>نص الرسالة (يمكنك تعديله قبل الفتح)</span><textarea rows="8" data-wa-text="${mode}">${esc(text)}</textarea></label>
       ${w.names && hasNames ? '<p class="cc-alert warn">النص يتضمن أسماء طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع على هذه البيانات.</p>' : ""}
-      <div class="cc-row"><button type="button" class="btn navy small" data-cc="wa-open" data-mode="${mode}">${(() => { const n = waParts(w.texts[mode] || text).length, i = Math.min(w.part[mode] || 0, n - 1); return n > 1 ? "افتح الجزء " + (i + 1) + " من " + n : "افتح واتساب بالرسالة"; })()}</button><button type="button" class="cc-link" data-cc="wa-copy" data-mode="${mode}">نسخ النص</button><button type="button" class="cc-link" data-cc="wa-regen" data-mode="${mode}">إعادة توليد النص</button><button type="button" class="cc-link" data-cc="wa-addc">＋ جهة اتصال</button>${cur ? '<button type="button" class="cc-link danger" data-cc="wa-delc">حذف هذه الجهة</button>' : ""}</div>
+      <div class="cc-row"><button type="button" class="btn navy small" data-cc="wa-open" data-mode="${mode}">${(() => { const n = waParts(w.texts[mode] || text).length, i = Math.min(w.part[mode] || 0, n - 1); return n > 1 ? "افتح الجزء " + (i + 1) + " من " + n : "افتح واتساب بالرسالة"; })()}</button><button type="button" class="cc-link" data-cc="wa-copy" data-mode="${mode}">نسخ النص</button><button type="button" class="cc-link" data-cc="wa-regen" data-mode="${mode}">إعادة توليد النص</button><button type="button" class="cc-link" data-cc="wa-addc">＋ جهة اتصال</button><button type="button" class="cc-link" data-cc="wa-addg">＋ مجموعة</button>${cur ? '<button type="button" class="cc-link danger" data-cc="wa-delc">حذف هذه الجهة</button>' : ""}</div>
       <p class="cc-note">لا يُرسَل شيء تلقائياً: يفتح واتساب (ويب أو تطبيق) والرسالة جاهزة، وتضغط أنت «إرسال». الأرقام دولية تلقائياً بإضافة ${esc(w.cc)} إن بدأ الرقم بصفر. جهات الاتصال تُحفظ في هذا المتصفح فقط.</p>
     </details>`;
   }
@@ -1955,13 +1956,19 @@
     const w = state.wa, text = (w.texts[mode] || waText(mode)).trim();
     if (!text) return ui.toast("لا نص لإرساله");
     const cur = state.contacts.find((c) => c.id === w.contact);
-    const num = waIntl(cur ? cur.phone : w.phone, (cur && cur.cc) || w.cc);
-    if (!num && (cur || w.phone)) return ui.toast("رقم غير صالح");
+    const isGroup = !!(cur && cur.link);
+    const num = isGroup ? "" : waIntl(cur ? cur.phone : w.phone, (cur && cur.cc) || w.cc);
+    if (!num && !isGroup && (cur || w.phone)) return ui.toast("رقم غير صالح");
     if (w.names && !confirm("الرسالة تتضمن أسماء طلاب. هل تريد فتح واتساب بها؟")) return;
     const ps = waParts(text), idx = Math.min(w.part[mode] || 0, ps.length - 1);
     if (App.whatsapp && App.whatsapp.log) App.whatsapp.log({ to: cur ? cur.name : w.phone, page: "أوامر المركز — " + mode, part: ps.length > 1 ? (idx + 1) + "/" + ps.length : "", chars: ps[idx].length });
-    const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(ps[idx]);
-    window.open(url, "_blank", "noopener");
+    if (isGroup) {
+      /* رابط دعوة المجموعة لا يقبل نصاً جاهزاً: ننسخ الرسالة ونفتح المجموعة لتلصقها */
+      (navigator.clipboard ? navigator.clipboard.writeText(ps[idx]) : Promise.reject()).then(
+        () => ui.toast("نُسخت الرسالة. الصقها في المجموعة (Ctrl+V) ثم أرسلها"),
+        () => ui.toast("تعذّر النسخ تلقائياً؛ استعمل زر «نسخ النص» ثم الصق في المجموعة"));
+      window.open(cur.link, "_blank", "noopener");
+    } else window.open("https://wa.me/" + num + "?text=" + encodeURIComponent(ps[idx]), "_blank", "noopener");
     if (ps.length > 1) {
       w.part[mode] = idx + 1 >= ps.length ? 0 : idx + 1;
       ui.toast(idx + 1 >= ps.length ? "فُتح الجزء الأخير (" + ps.length + " من " + ps.length + ")" : "فُتح الجزء " + (idx + 1) + " من " + ps.length + ". أرسله ثم ارجع واضغط للجزء التالي");
@@ -2355,6 +2362,13 @@
           const fem = window.confirm("هل المستلم أنثى؟ (موافق = «الأستاذة»، إلغاء = «الأستاذ»)");
           const id = String(Date.now());
           state.contacts.push({ id, name: name.slice(0, 40), role: role.slice(0, 40), phone, cc: state.wa.cc, fem }); lsSet(CONTACT_KEY, state.contacts);
+          state.wa.contact = id; state.open.wa = true;
+        } else if (act === "wa-addg") {
+          const name = (window.prompt("اسم المجموعة (مثال: مجموعة منسقي المساحات):", "") || "").trim(); if (!name) return;
+          const link = (window.prompt("رابط دعوة المجموعة (من واتساب: معلومات المجموعة ← الدعوة عبر رابط)، ويبدأ بـ https://chat.whatsapp.com/", "") || "").trim();
+          if (!/^https:\/\/chat\.whatsapp\.com\/[\w-]{10,}/i.test(link)) return ui.toast("رابط الدعوة غير صالح");
+          const id = String(Date.now());
+          state.contacts.push({ id, name: name.slice(0, 40), role: "", link: link.slice(0, 200) }); lsSet(CONTACT_KEY, state.contacts);
           state.wa.contact = id; state.open.wa = true;
         } else if (act === "wa-delc") {
           state.contacts = state.contacts.filter((x) => x.id !== state.wa.contact); lsSet(CONTACT_KEY, state.contacts); state.wa.contact = ""; state.open.wa = true;

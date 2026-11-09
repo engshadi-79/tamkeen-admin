@@ -145,7 +145,7 @@
   function greetFor(id) {
     if (!st.greet) return "";
     const c = id && id !== "__extra" ? contacts().find((x) => x.id === id) : null;
-    const who = c ? "الأستاذ/ة " + c.name + (c.role ? " (" + c.role + ")" : "") + "،" : "";
+    const who = c ? (c.link ? "السادة أعضاء " + (/^مجموعة/.test(c.name) ? "" : "مجموعة ") + c.name + "،" : "الأستاذ/ة " + c.name + (c.role ? " (" + c.role + ")" : "") + "،") : "";
     const today = new Date().toLocaleDateString("ar", { year: "numeric", month: "numeric", day: "numeric" });
     const g = tplFor(id).greet.split("|").map((line) => line
       .replace(/\{المستلم\}/g, who).replace(/\{الاسم\}/g, c ? c.name : "").replace(/\{الصفة\}/g, c ? c.role || "" : "").replace(/\{التاريخ\}/g, today).trim())
@@ -210,13 +210,15 @@
 
   function goBtns(id) {
     const n = parts(id).length;
+    const isG = id !== "__extra" && (contacts().find((x) => x.id === id) || {}).link;
+    if (isG) return `<span class="wa-parts">${Array.from({ length: n }, (_, i) => `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="${i}">${st.opened.has(id + "#" + i) ? "✓ " : ""}${n > 1 ? "جزء " + (i + 1) + ": " : ""}نسخ وفتح المجموعة</button>`).join("")}</span>`;
     if (n === 1) return `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="0">${st.opened.has(id + "#0") ? "✓ فُتح" : "فتح واتساب"}</button>`;
     return `<span class="wa-parts">${Array.from({ length: n }, (_, i) => `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="${i}">${st.opened.has(id + "#" + i) ? "✓ " : ""}جزء ${i + 1}</button>`).join("")}</span>`;
   }
   function listHtml() {
     const cs = contacts();
     if (!cs.length) return '<p class="wa-note">لا جهات محفوظة بعد. أضف جهة أو اكتب رقماً أدناه.</p>';
-    return cs.map((c) => `<label class="wa-r"><span><input type="checkbox" data-wa-sel="${esc(c.id)}" ${st.sel.has(c.id) ? "checked" : ""}> ${esc(c.name)}${c.role ? " — " + esc(c.role) : ""}${(() => { const l = lastSent(c.name); return l ? ` <small class="wa-last">آخر فتح: ${esc(fmtAt(l.at))}</small>` : ""; })()}</span>${st.sel.has(c.id) ? `<select data-wa-ctpl="${esc(c.id)}" title="قالب هذا المستلم">${templates().map((t) => `<option value="${esc(t.id)}" ${(c.tpl || st.tpl) === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select>` + goBtns(c.id) : ""}</label>`).join("");
+    return cs.map((c) => `<label class="wa-r"><span><input type="checkbox" data-wa-sel="${esc(c.id)}" ${st.sel.has(c.id) ? "checked" : ""}> ${esc(c.name)}${c.link ? " (مجموعة)" : c.role ? " — " + esc(c.role) : ""}${(() => { const l = lastSent(c.name); return l ? ` <small class="wa-last">آخر فتح: ${esc(fmtAt(l.at))}</small>` : ""; })()}</span>${st.sel.has(c.id) ? `<select data-wa-ctpl="${esc(c.id)}" title="قالب هذا المستلم">${templates().map((t) => `<option value="${esc(t.id)}" ${(c.tpl || st.tpl) === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select>` + goBtns(c.id) : ""}</label>`).join("");
   }
   function render() {
     const d = document.getElementById("wa-dlg");
@@ -227,7 +229,7 @@
       <h3>إرسال عبر واتساب</h3>
       <div class="wa-note">الصفحة: ${esc(st.view || "—")} — يفتح واتساب برسالة جاهزة وترسلها أنت.</div>
       <div class="wa-list">${listHtml()}</div>
-      <div class="wa-row"><input type="tel" inputmode="tel" data-wa-extra placeholder="أو رقم آخر 059xxxxxxx" value="${esc(st.extra)}" style="flex:1;min-width:160px">${extraNum ? goBtns("__extra") : ""}<button type="button" class="btn small secondary" data-wa-add>＋ جهة اتصال</button></div>
+      <div class="wa-row"><input type="tel" inputmode="tel" data-wa-extra placeholder="أو رقم آخر 059xxxxxxx" value="${esc(st.extra)}" style="flex:1;min-width:160px">${extraNum ? goBtns("__extra") : ""}<button type="button" class="btn small secondary" data-wa-add>＋ جهة اتصال</button><button type="button" class="btn small secondary" data-wa-addg>＋ مجموعة</button></div>
       ${st.total > 0 ? `<label class="wa-row">عدد الصفوف في الرسالة (الجدول فيه ${st.total}): <select data-wa-limit>${[10, 25, 50, 100, 0].map((n) => `<option value="${n}" ${st.limit === n ? "selected" : ""}>${n === 0 ? "الكل" : n}</option>`).join("")}</select></label>` : ""}
       ${parts().length > 1 ? `<p class="wa-note">الرسالة طويلة (${st.text.length} حرفاً) فقُسّمت إلى ${parts().length} أجزاء لأن رابط واتساب لا يحمل أكثر من نحو ${PART_MAX} حرفاً. افتح كل جزء بالترتيب وأرسله.</p>` : ""}
       <div class="wa-row"><label>قالب الرسالة: <select data-wa-tpl>${templates().map((t) => `<option value="${esc(t.id)}" ${st.tpl === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><button type="button" class="btn small secondary" data-wa-newtpl>＋ قالب</button>${tplById(st.tpl).builtin ? "" : '<button type="button" class="btn small secondary" data-wa-deltpl>حذف القالب</button>'}</div>
@@ -248,16 +250,23 @@
     const text = (parts(id)[part || 0] || "").trim();
     if (!text) return toast("لا نص لإرساله");
     let num = "";
+    const gc = id !== "__extra" ? contacts().find((x) => x.id === id) : null;
     if (id === "__extra") num = intl(st.extra, CC);
-    else { const c = contacts().find((x) => x.id === id); num = c ? intl(c.phone, c.cc || CC) : ""; }
-    if (!num) return toast("رقم غير صالح");
+    else num = gc && !gc.link ? intl(gc.phone, gc.cc || CC) : "";
+    if (!num && !(gc && gc.link)) return toast("رقم غير صالح");
     const total = parts(id).length, partLabel = total > 1 ? ((part || 0) + 1) + "/" + total : "";
     const who = nameOf(id) || "رقم …" + num.slice(-4), pageName = st.view || "";
     const dup = logList().filter((e) => e.to === who && e.page === pageName && (e.part || "") === partLabel && Date.now() - Date.parse(e.at) < 86400000).pop();
     if (dup && !confirm("فتحتَ هذه الرسالة لـ" + who + " " + fmtAt(dup.at) + ". هل تكررها؟")) return;
-    const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(text);
-    if (url.length > 1900) toast("الرسالة طويلة؛ قد لا تُحمَّل كاملة. اختصرها أو انسخها.");
-    window.open(url, "_blank", "noopener");
+    if (gc && gc.link) {
+      /* رابط دعوة المجموعة لا يقبل نصاً جاهزاً: ننسخ الرسالة ونفتح المجموعة لتلصقها */
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast("نُسخت الرسالة. الصقها في المجموعة (Ctrl+V) ثم أرسلها"), () => toast("تعذّر النسخ تلقائياً؛ استعمل زر «نسخ النص» ثم الصق في المجموعة"));
+      window.open(gc.link, "_blank", "noopener");
+    } else {
+      const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(text);
+      if (url.length > 1900) toast("الرسالة طويلة؛ قد لا تُحمَّل كاملة. اختصرها أو انسخها.");
+      window.open(url, "_blank", "noopener");
+    }
     log({ to: who, page: pageName, part: partLabel, chars: text.length });
     st.opened.add(id + "#" + (part || 0)); render();
   }
@@ -294,6 +303,14 @@
         st.tpl = id; return render();
       }
       if (t.closest("[data-wa-copy]")) { (navigator.clipboard ? navigator.clipboard.writeText(st.text) : Promise.reject()).then(() => toast("نُسخ النص"), () => toast("تعذّر النسخ")); return; }
+      if (t.closest("[data-wa-addg]")) {
+        const name = (window.prompt("اسم المجموعة (مثال: مجموعة منسقي المساحات):", "") || "").trim(); if (!name) return;
+        const link = (window.prompt("رابط دعوة المجموعة (من واتساب: معلومات المجموعة ← الدعوة عبر رابط)، ويبدأ بـ https://chat.whatsapp.com/", "") || "").trim();
+        if (!/^https:\/\/chat\.whatsapp\.com\/[\w-]{10,}/i.test(link)) return toast("رابط الدعوة غير صالح");
+        const cs = contacts(), id = String(Date.now());
+        cs.push({ id, name: name.slice(0, 40), role: "", link: link.slice(0, 200) }); lsSet(CONTACT_KEY, cs);
+        st.sel.add(id); render(); return;
+      }
       if (t.closest("[data-wa-add]")) {
         const name = (window.prompt("اسم جهة الاتصال (مثال: مدير المركز):", "") || "").trim(); if (!name) return;
         const role = (window.prompt("الصفة (اختياري):", "") || "").trim();
