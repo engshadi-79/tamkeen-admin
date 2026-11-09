@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 26;
+const VERSION = 27;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -653,6 +653,92 @@ async function statsPush(req: any) {
   return { ok: true, at: value.at, period: await kvGet("stats_period") };
 }
 
+/* ===== واتساب للأعمال (Meta Cloud API): إرسال مباشر من النظام =====
+   الرمز ومعرّف الرقم أسرار في Supabase (WA_TOKEN وWA_PHONE_ID) لا تصل المتصفح ولا تظهر في أي رد.
+   النص الحر لا يُقبل إلا داخل 24 ساعة من آخر رسالة للمستلم، وما قبل ذلك يلزمه قالب معتمد من Meta. */
+const WA_LOG_KEEP = 200, WA_CHUNK = 3800;       // حد النص المباشر 4096 حرفاً؛ نقسم الأطول عند حدود الأسطر
+const waEnv = () => ({ token: Deno.env.get("WA_TOKEN") || "", phoneId: Deno.env.get("WA_PHONE_ID") || "", ver: Deno.env.get("WA_API_VERSION") || "v21.0" });
+const waDigits = (v: unknown) => String(v || "").replace(/\D/g, "");
+function waChunks(text: string): string[] {
+  const out: string[] = []; let cur = "";
+  for (const line of text.split("\n")) {
+    let l = line;
+    while (l.length > WA_CHUNK) { if (cur) { out.push(cur); cur = ""; } out.push(l.slice(0, WA_CHUNK)); l = l.slice(WA_CHUNK); }
+    if (cur && (cur + "\n" + l).length > WA_CHUNK) { out.push(cur); cur = l; } else cur = cur ? cur + "\n" + l : l;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+async function waStatus() {
+  const e = waEnv(), conf = (await kvGet("wa_config")) || {};
+  return { ok: true, configured: !!(e.token && e.phoneId), template: String(conf.template || ""), lang: String(conf.lang || "ar"), withName: !!conf.withName };
+}
+async function waConfigSet(req: any) {
+  const template = String(req.template || "").trim().slice(0, 100), lang = String(req.lang || "ar").trim().slice(0, 10) || "ar";
+  if (template && !/^[a-z0-9_]+$/.test(template)) throw new Error("اسم القالب بحروف إنجليزية صغيرة وأرقام وشرطة سفلية فقط (كما في WhatsApp Manager)");
+  const withName = !!req.withName;          // هل في نص القالب متغير واحد {{1}} لاسم المستلم
+  await db.from("kv").upsert({ key: "wa_config", value: { template, lang, withName } });
+  return { ok: true, template, lang, withName };
+}
+async function waLogAdd(entry: Record<string, unknown>) {
+  const l = ((await kvGet("wa_log")) as unknown[]) || [];
+  l.push({ at: new Date().toISOString(), ...entry });
+  await db.from("kv").upsert({ key: "wa_log", value: l.slice(-WA_LOG_KEEP) });
+}
+async function waGraph(body: Record<string, unknown>) {
+  const e = waEnv();
+  const r = await fetch(`https://graph.facebook.com/${e.ver}/${e.phoneId}/messages`, {
+    method: "POST", headers: { Authorization: `Bearer ${e.token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  return { ok: r.ok, j };
+}
+/* أخطاء Meta الشائعة بعبارة عربية واضحة */
+function waHint(code: number, msg: string): { needTemplate?: boolean; message: string } {
+  if (code === 131047 || code === 131051) return { needTemplate: true, message: "مرّت أكثر من 24 ساعة على آخر رسالة من المستلم؛ تلزم رسالة قالب معتمدة أولاً." };
+  if (code === 131030) return { message: "هذا الرقم ليس في قائمة المستلمين المسموح بها للرقم التجريبي (أضفه في API Setup ← To)." };
+  if (code === 190) return { message: "رمز الوصول منتهٍ أو غير صالح؛ ولّد رمزاً جديداً وحدّث WA_TOKEN في أسرار Supabase." };
+  if (code === 132001) return { message: "اسم القالب أو لغته غير موجودين أو غير معتمدين في WhatsApp Manager." };
+  if (code === 131056) return { message: "أُرسل إلى هذا الرقم كثيراً خلال وقت قصير؛ انتظر قليلاً." };
+  return { message: "رفضت Meta الرسالة: " + String(msg || code).slice(0, 200) };
+}
+async function waSend(req: any, user: any) {
+  const e = waEnv();
+  if (!e.token || !e.phoneId) throw new Error("الإرسال المباشر غير مُعدّ: أضف WA_TOKEN وWA_PHONE_ID في أسرار Supabase");
+  const to = waDigits(req.to);
+  if (!/^\d{9,15}$/.test(to)) throw new Error("رقم المستلم غير صالح");
+  const label = String(req.label || "").slice(0, 60), tail = "…" + to.slice(-4);
+  const sent: string[] = [];
+  const fail = async (code: number, msg: string) => {
+    const h = waHint(code, msg);
+    await waLogAdd({ by: user.name, to: label || tail, kind: req.kind || "text", ok: false, code });
+    return { ok: false, code, needTemplate: !!h.needTemplate, message: h.message, sent: sent.length };
+  };
+  if (req.kind === "template") {
+    const conf = (await kvGet("wa_config")) || {};
+    const name = String(req.template || conf.template || "");
+    if (!name) throw new Error("لم يُضبط اسم قالب الافتتاح بعد");
+    const params = (Array.isArray(req.params) ? req.params : []).map((p: unknown) => String(p ?? "").replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 900));
+    const tpl: Record<string, unknown> = { name, language: { code: String(req.lang || conf.lang || "ar") } };
+    if (params.length) tpl.components = [{ type: "body", parameters: params.map((text: string) => ({ type: "text", text })) }];
+    const r = await waGraph({ messaging_product: "whatsapp", to, type: "template", template: tpl });
+    if (!r.ok) return json(await fail(Number(r.j?.error?.code), r.j?.error?.message));
+    await waLogAdd({ by: user.name, to: label || tail, kind: "template", ok: true, id: r.j?.messages?.[0]?.id || "" });
+    return json({ ok: true, sent: 1, kind: "template" });
+  }
+  const text = String(req.text || "").trim();
+  if (!text) throw new Error("لا نص لإرساله");
+  if (text.length > 60000) throw new Error("النص أطول من حد واتساب (نحو 65 ألف حرف)");
+  const chunks = waChunks(text);
+  for (const body of chunks) {
+    const r = await waGraph({ messaging_product: "whatsapp", recipient_type: "individual", to, type: "text", text: { preview_url: false, body } });
+    if (!r.ok) return json(await fail(Number(r.j?.error?.code), r.j?.error?.message));
+    sent.push(r.j?.messages?.[0]?.id || "");
+  }
+  await waLogAdd({ by: user.name, to: label || tail, kind: "text", ok: true, parts: chunks.length, chars: text.length });
+  return json({ ok: true, sent: chunks.length, kind: "text" });
+}
+
 /* ===== مساعد Google (سكربت Apps Script): القراءة الضوئية وإرسال الملخص اليومي ===== */
 const kvGet = async (key: string) => (await db.from("kv").select("value").eq("key", key).maybeSingle()).data?.value ?? null;
 const HELPER_URL = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
@@ -1162,6 +1248,10 @@ Deno.serve(async (httpReq) => {
       case "restoreDay": return json(await restoreDay(req.day, user));
       case "importUsers": return json(await importUsers(req.users, user));
       case "deleteUser": return json(await deleteUser(req.username, user));
+      case "waStatus": return json(await waStatus());
+      case "waConfig": return json(await waConfigSet(req));
+      case "waSend": return await waSend(req, user);
+      case "waLog": return json({ log: ((await kvGet("wa_log")) as unknown[]) || [] });
       case "digest": {
         const hour = Math.min(23, Math.max(0, Number(req.hour) || 7));
         const value = { enabled: !!req.enabled, hour };

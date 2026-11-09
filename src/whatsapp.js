@@ -8,7 +8,7 @@
   const App = (window.App = window.App || {});
   const CONTACT_KEY = "tamkeen-admin:cc-contacts", CC = "970";
   const providers = {};
-  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "", limit: 25, total: 0, greet: true, tpl: "full", official: false, dirty: false, onames: true };
+  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "", limit: 25, total: 0, greet: true, tpl: "full", official: false, dirty: false, onames: true, api: null, sending: false };
 
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
@@ -221,7 +221,10 @@
     toast("نُزّل الملف. أرفقه في المحادثة بزر المشبك 📎 أو اسحبه إليها");
   }
 
-  function goBtns(id) {
+  const apiOn = (id) => !!(st.api && st.api.configured) && (id === "__extra" || !(contacts().find((x) => x.id === id) || {}).link);
+  const apiBtn = (id) => `<button type="button" class="btn small navy" data-wa-api="${esc(id)}" ${st.sending ? "disabled" : ""} title="يُرسَل من النظام مباشرة عبر واتساب للأعمال بلا فتح واتساب">${st.opened.has(id + "#api") ? "✓ أُرسل" : st.sending ? "جارٍ الإرسال…" : "إرسال مباشر"}</button>`;
+  function goBtns(id) { return apiOn(id) ? `<span class="wa-parts">${apiBtn(id)}${goBtnsBase(id)}</span>` : goBtnsBase(id); }
+  function goBtnsBase(id) {
     const n = parts(id).length;
     const isG = id !== "__extra" && (contacts().find((x) => x.id === id) || {}).link;
     if (isG) return `<span class="wa-parts">${Array.from({ length: n }, (_, i) => `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="${i}">${st.opened.has(id + "#" + i) ? "✓ " : ""}${n > 1 ? "جزء " + (i + 1) + ": " : ""}نسخ وفتح المجموعة</button>`).join("")}</span>`;
@@ -255,6 +258,7 @@
       <p class="wa-warn">قد يتضمن النص أسماء أو بيانات طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع عليها.</p>
       <div class="wa-row"><button type="button" class="btn small secondary" data-wa-regen>إعادة توليد من الصفحة</button><button type="button" class="btn small secondary" data-wa-copy>نسخ النص</button>${st.total > 0 ? '<button type="button" class="btn small secondary" data-wa-xlsx>إرسال الجدول كملف Excel</button>' : ""}<button type="button" class="btn small" data-wa-close>إغلاق</button></div>
       <p class="wa-note">لكل مستلم زر فتح مستقل؛ واتساب لا يتيح إرسال رسالة واحدة لعدة محادثات برابط واحد.</p>
+      ${st.api ? `<details class="wa-logbox"><summary>الإرسال المباشر (واتساب للأعمال) — ${st.api.error ? "غير متاح" : st.api.configured ? "مفعّل" : "غير مُعدّ"}</summary>${st.api.error ? `<p class="wa-note">${esc(st.api.error)}. إن كانت دالة الخادم قديمة فحدّثها إلى النسخة 27 فأعلى.</p>` : st.api.configured ? `<p class="wa-note">الرقم المرسِل مُعدّ في Supabase. قالب الافتتاح: <b>${esc(st.api.template || "غير مضبوط")}</b>${st.api.template ? " (" + esc(st.api.lang) + (st.api.withName ? "، بمتغير للاسم" : "") + ")" : ""}.<br>النص الحر يصل فقط لمن راسل الرقم خلال 24 ساعة؛ وغير ذلك يُرسَل له قالب الافتتاح أولاً.</p><button type="button" class="btn small secondary" data-wa-apicfg>ضبط قالب الافتتاح</button>` : '<p class="wa-note">أضف السرّين WA_TOKEN وWA_PHONE_ID في Supabase ← Edge Functions ← Secrets، ثم أعد فتح النافذة.</p>'}</details>` : ""}
       <details class="wa-logbox"><summary>سجل ما فُتح (${logList().length})</summary>${logList().length ? `<div class="wa-loglist">${logList().slice(-20).reverse().map((e) => `<div>${esc(fmtAt(e.at))} — إلى ${esc(e.to || "؟")} · ${esc(e.page || "")}${e.part ? " · جزء " + esc(e.part) : ""}</div>`).join("")}</div><button type="button" class="btn small secondary" data-wa-clearlog>مسح السجل</button>` : '<p class="wa-note">لا شيء بعد.</p>'}</details>`;
     if (st.official) document.querySelectorAll("#wa-box [data-wa-limit], #wa-box [data-wa-tpl], #wa-box [data-wa-greet], #wa-box [data-wa-newtpl], #wa-box [data-wa-deltpl]").forEach((n) => { const box = n.closest("label, .wa-row") || n; box.remove(); });
     if (st.official) document.querySelectorAll("#wa-box [data-wa-ctpl]").forEach((n) => n.remove());
@@ -263,6 +267,55 @@
     st.dirty = false; st.text = buildText();
     if (!st.text) return toast("لا محتوى في هذه الصفحة لإرساله");
     st.open = true; st.opened = new Set(); render();
+    loadApi();
+  }
+  /* الإرسال المباشر للمدير فقط؛ وإن كانت دالة الخادم قديمة أو غير مُعدّة لا يظهر شيء */
+  async function loadApi() {
+    st.api = null;
+    try {
+      const u = App.cloud && App.cloud.user && App.cloud.user();
+      if (!(u && u.admin && App.cloud.waStatus)) return;
+      st.api = await App.cloud.waStatus();
+    } catch (e) { st.api = { error: String(e.message || e) }; }
+    if (st.open) render();
+  }
+  async function apiSend(id) {
+    if (st.sending) return;
+    const gc = id !== "__extra" ? contacts().find((x) => x.id === id) : null;
+    const num = id === "__extra" ? intl(st.extra, CC) : gc ? intl(gc.phone, gc.cc || CC) : "";
+    if (!num) return toast("رقم غير صالح");
+    const text = (parts(id)[0] || "").trim();
+    if (!text) return toast("لا نص لإرساله");
+    const who = nameOf(id) || "رقم …" + num.slice(-4);
+    if (!confirm("سيُرسَل نص التقرير كاملاً (" + text.length + " حرفاً) إلى " + who + " مباشرة من النظام عبر واتساب للأعمال، دون فتح واتساب. هل تتابع؟")) return;
+    st.sending = true; render();
+    try {
+      let r = await App.cloud.waSend({ to: num, text, label: who });
+      if (!r.ok && r.needTemplate) {
+        const cfg = st.api || {};
+        if (!cfg.template) toast(r.message + " لم يُضبط قالب الافتتاح بعد: افتح «الإرسال المباشر» أسفل النافذة واضبطه.");
+        else if (confirm(r.message + "\nتُرسَل الآن رسالة الافتتاح «" + cfg.template + "» إلى " + who + "، وبعد أن يردّ اضغط «إرسال مباشر» مرة أخرى لإرسال التقرير كاملاً. هل ترسل رسالة الافتتاح؟")) {
+          const t = await App.cloud.waSend({ to: num, kind: "template", params: cfg.withName ? [gc ? gc.name : who] : [], label: who });
+          toast(t.ok ? "أُرسلت رسالة الافتتاح. بعد ردّه أعد الإرسال المباشر." : t.message || "تعذّر إرسال رسالة الافتتاح");
+          if (t.ok) log({ to: who, page: st.view || "", via: "api-template" });
+        }
+      } else if (!r.ok) toast(r.message || "تعذّر الإرسال");
+      else {
+        toast("أُرسل التقرير إلى " + who + (r.sent > 1 ? " (" + r.sent + " رسائل متتابعة بسبب الطول)" : ""));
+        log({ to: who, page: st.view || "", via: "api", chars: text.length });
+        st.opened.add(id + "#api");
+      }
+    } catch (e) { toast(String(e.message || e)); }
+    st.sending = false; render();
+  }
+  async function apiConfig() {
+    const cur = st.api || {};
+    const template = (window.prompt("اسم قالب الافتتاح المعتمد في WhatsApp Manager (حروف إنجليزية صغيرة وأرقام و_ ؛ اتركه فارغاً للحذف):", cur.template || "") || "").trim();
+    if (template === "" && !cur.template) return;
+    const lang = (window.prompt("رمز لغة القالب (مثل ar أو en_US):", cur.lang || "ar") || "ar").trim();
+    const withName = !!template && window.confirm("هل في نص القالب متغير واحد {{1}} لاسم المستلم؟\nموافق = نعم (يُرسَل اسمه)\nإلغاء = لا متغيرات");
+    try { const r = await App.cloud.waConfig({ template, lang, withName }); st.api = Object.assign({}, st.api, r); toast("حُفظ إعداد قالب الافتتاح"); } catch (e) { toast(String(e.message || e)); }
+    render();
   }
   function go(id, part) {
     const text = (parts(id)[part || 0] || "").trim();
@@ -309,6 +362,8 @@
       if (t === dlg || t.closest("[data-wa-close]")) { st.open = false; return render(); }
       const g = t.closest("[data-wa-go]"); if (g) return go(g.dataset.waGo, +g.dataset.waPart || 0);
       if (t.closest("[data-wa-regen]")) { st.dirty = false; st.text = buildText(); return render(); }
+      const ab = t.closest("[data-wa-api]"); if (ab) return apiSend(ab.dataset.waApi);
+      if (t.closest("[data-wa-apicfg]")) return apiConfig();
       if (t.closest("[data-wa-xlsx]")) return sendXlsx();
       if (t.closest("[data-wa-clearlog]")) { if (confirm("مسح سجل ما فُتح؟")) { lsSet(LOG_KEY, []); render(); } return; }
       if (t.closest("[data-wa-deltpl]")) {
