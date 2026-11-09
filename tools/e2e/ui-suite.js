@@ -116,6 +116,12 @@ async function suite() {
   b.querySelector('[data-cc="wa-addc"]').click(); window.prompt = op2; window.confirm = cf0;
   ok("واتساب: تُحفظ جهة اتصال وتُختار", c.state.contacts.length === 1 && c.state.wa.contact === c.state.contacts[0].id && JSON.parse(localStorage.getItem("tamkeen-admin:cc-contacts")).length === 1);
   const nm0 = b.querySelector("[data-wa=names]"); nm0.checked = false; nm0.dispatchEvent(new Event("change", { bubbles: true }));   // الأسماء مفعّلة افتراضياً الآن
+  // الوضع الافتراضي: نسخ الرسالة كاملة وفتح المحادثة بلا نص في الرابط
+  let clip = ""; const wc0 = Object.getOwnPropertyDescriptor(navigator, "clipboard"); Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { clip = x; } }, configurable: true });
+  let pasteUrl = ""; const wo0 = window.open; window.open = (u) => { pasteUrl = u; return null; };
+  b.querySelector('[data-cc="wa-open"]').click(); await wait(100); window.open = wo0;
+  ok("واتساب (الافتراضي): الرسالة كاملة تُنسخ والرابط بلا نص", /^https:\/\/wa\.me\/970599123456$/.test(pasteUrl) && /غير المستكمل/.test(clip) && !/%/.test(pasteUrl), pasteUrl);
+  localStorage.setItem("tamkeen-admin:wa-mode", JSON.stringify("link"));                       // بقية الاختبارات على وضع إدراج النص في الرابط
   let waUrl = ""; const wo = window.open; window.open = (u) => { waUrl = u; return null; };
   b.querySelector('[data-cc="wa-open"]').click(); window.open = wo;
   const waTxt = decodeURIComponent(waUrl.split("?text=")[1] || "");
@@ -124,6 +130,7 @@ async function suite() {
   const cf = window.confirm; window.confirm = () => true; window.open = (u) => { waUrl = u; return null; };
   b.querySelector('[data-cc="wa-open"]').click(); window.open = wo; window.confirm = cf;
   ok("واتساب: خيار الأسماء يضيفها بعد تأكيد", /بسمة|جلال/.test(decodeURIComponent(waUrl)));
+  localStorage.removeItem("tamkeen-admin:wa-mode"); if (wc0) Object.defineProperty(navigator, "clipboard", wc0);
   const ed = b.querySelector("[data-wa-text]"); ed.value = "نص معدّل بيدي"; ed.dispatchEvent(new Event("input", { bubbles: true }));
   c.render(); ok("واتساب: تعديل النص يُحفظ ولا يُستبدل عند إعادة الرسم", /نص معدّل بيدي/.test(b.querySelector("[data-wa-text]").value));
 

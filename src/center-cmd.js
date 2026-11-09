@@ -1925,7 +1925,9 @@
     return L.join("\n");
   }
   /* رابط wa.me محدود الطول، فتُقسَّم الرسالة الطويلة عند حدود الأسطر إلى أجزاء مرقمة */
-  const WA_PART_MAX = 1400;
+  const WA_PART_MAX = Infinity;                       // لا تجزئة: الرسالة كاملة تُنسخ وتُلصق (حد واتساب نحو 65 ألف حرف)
+  const WA_MODE_KEY = "tamkeen-admin:wa-mode";
+  const waMode = () => (lsGet(WA_MODE_KEY, "paste") === "link" ? "link" : "paste");
   function waParts(text) {
     const t = String(text || "").trim();
     if (t.length <= WA_PART_MAX) return [t];
@@ -1946,7 +1948,7 @@
         <label class="cc-field"><span>المستلم (جهة اتصال محفوظة)</span><select data-wa="contact"><option value="">— اختر، أو اكتب رقماً —</option>${state.contacts.map((c) => `<option value="${esc(c.id)}" ${c.id === w.contact ? "selected" : ""}>${esc(c.name)}${c.link ? " (مجموعة)" : c.role ? " — " + esc(c.role) : ""}</option>`).join("")}</select></label>
         <label class="cc-field"><span>أو رقم آخر</span><input type="tel" inputmode="tel" data-wa="phone" value="${esc(w.phone)}" placeholder="059xxxxxxx" ${cur ? "disabled" : ""}></label>
       </div>
-      <div class="cc-chips"><label class="cc-chk"><input type="checkbox" data-wa="breakdown" ${w.breakdown ? "checked" : ""}> <span>أرقام لكل مسار / تفصيل</span></label>${hasNames ? `<label class="cc-chk"><input type="checkbox" data-wa="names" ${w.names ? "checked" : ""}> <span>أسماء الطلاب (كلهم) — بيانات شخصية</span></label>` : ""}</div>
+      <div class="cc-chips"><label class="cc-chk"><input type="checkbox" data-wa="breakdown" ${w.breakdown ? "checked" : ""}> <span>أرقام لكل مسار / تفصيل</span></label>${`<label class="cc-chk"><input type="checkbox" data-wa="linkmode" ${waMode() === "link" ? "checked" : ""}> <span>إدراج النص في الرابط (للقصير فقط؛ الافتراضي نسخ الرسالة كاملة ولصقها)</span></label>`}${hasNames ? `<label class="cc-chk"><input type="checkbox" data-wa="names" ${w.names ? "checked" : ""}> <span>أسماء الطلاب (كلهم) — بيانات شخصية</span></label>` : ""}</div>
       ${waParts(w.texts[mode] || text).length > 1 ? `<p class="cc-note">الرسالة طويلة فقُسّمت إلى ${waParts(w.texts[mode] || text).length} أجزاء (حد رابط واتساب). اضغط الزر مرة بعد مرة: يفتح كل جزء بالترتيب، وأرسله في واتساب ثم ارجع واضغط للجزء التالي.</p>` : ""}<label class="cc-field"><span>نص الرسالة (يمكنك تعديله قبل الفتح)</span><textarea rows="8" data-wa-text="${mode}">${esc(text)}</textarea></label>
       ${w.names && hasNames ? '<p class="cc-alert warn">النص يتضمن أسماء طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع على هذه البيانات.</p>' : ""}
       <div class="cc-row"><button type="button" class="btn navy small" data-cc="wa-open" data-mode="${mode}">${(() => { const n = waParts(w.texts[mode] || text).length, i = Math.min(w.part[mode] || 0, n - 1); return n > 1 ? "افتح الجزء " + (i + 1) + " من " + n : "افتح واتساب بالرسالة"; })()}</button><button type="button" class="cc-link" data-cc="wa-copy" data-mode="${mode}">نسخ النص</button><button type="button" class="cc-link" data-cc="wa-regen" data-mode="${mode}">إعادة توليد النص</button><button type="button" class="cc-link" data-cc="wa-addc">＋ جهة اتصال</button><button type="button" class="cc-link" data-cc="wa-addg">＋ مجموعة</button>${cur ? '<button type="button" class="cc-link danger" data-cc="wa-delc">حذف هذه الجهة</button>' : ""}</div>
@@ -1969,7 +1971,17 @@
         () => ui.toast("نُسخت الرسالة. الصقها في المجموعة (Ctrl+V) ثم أرسلها"),
         () => ui.toast("تعذّر النسخ تلقائياً؛ استعمل زر «نسخ النص» ثم الصق في المجموعة"));
       window.open(cur.link, "_blank", "noopener");
-    } else window.open("https://wa.me/" + num + "?text=" + encodeURIComponent(ps[idx]), "_blank", "noopener");
+    } else if (waMode() === "link") {
+      const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(ps[idx]);
+      if (url.length > 1900) ui.toast("الرسالة طويلة؛ قد يقطعها واتساب. ألغِ «إدراج النص في الرابط» لتُنسخ كاملة.");
+      window.open(url, "_blank", "noopener");
+    } else {
+      /* الافتراضي: ننسخ الرسالة كاملة ونفتح المحادثة فقط. اللصق يحفظ الرموز ولا يحدّ بطول الرابط */
+      (navigator.clipboard ? navigator.clipboard.writeText(ps[idx]) : Promise.reject()).then(
+        () => ui.toast("نُسخت الرسالة كاملة. الصقها في المحادثة (Ctrl+V) ثم أرسل"),
+        () => ui.toast("تعذّر النسخ تلقائياً؛ استعمل زر «نسخ النص» ثم الصق في المحادثة"));
+      window.open(num ? "https://wa.me/" + num : "https://web.whatsapp.com/", "_blank", "noopener");
+    }
     if (ps.length > 1) {
       w.part[mode] = idx + 1 >= ps.length ? 0 : idx + 1;
       ui.toast(idx + 1 >= ps.length ? "فُتح الجزء الأخير (" + ps.length + " من " + ps.length + ")" : "فُتح الجزء " + (idx + 1) + " من " + ps.length + ". أرسله ثم ارجع واضغط للجزء التالي");
@@ -2492,6 +2504,7 @@
         else if (k === "phone") { w.phone = t.value; return; }
         else if (k === "breakdown") { w.breakdown = t.checked; w.dirty = {}; }
         else if (k === "names") { w.names = t.checked; w.dirty = {}; }
+        else if (k === "linkmode") lsSet(WA_MODE_KEY, t.checked ? "link" : "paste");
         state.open.wa = true; render(); return;
       }
       if (t.dataset.set) {
