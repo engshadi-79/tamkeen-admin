@@ -36,7 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null },
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
-    wa: { contact: "", phone: "", breakdown: true, names: false, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
+    wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
     saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false, sec: false, errs: false, wa: false }, // حالة الأقسام القابلة للطي
@@ -1840,20 +1840,68 @@
     return d.startsWith("0") ? cc + d.slice(1) : cc + d;
   };
   const waScope = () => (state.mis.tracks.length ? state.mis.tracks.map(trackShort).join("، ") : "كل المسارات") + " · " + (optLabel("status", state.mis.status) || "كل الحالات");
+  /* ===== صيغة التقرير الرسمي لواتساب: استبيانات وتعهدات ===== */
+  const WA_ITEM = { pre: "التقييم القبلي", post: "التقييم البعدي", impact: "قياس الأثر", pledge: "التعهد" };
+  const WA_SEP = "━━━━━━━━━━━━━━";
+  function waMissingReport(o) {
+    const w = state.wa, cur = state.contacts.find((c) => c.id === w.contact), L = [];
+    const multi = o.kind === "all" || o.kind === "risk";
+    const tracks = [...new Set(o.rows.map((x) => x.track).filter(Boolean))];
+    const trackNames = tracks.length ? tracks : (state.mis.tracks.length ? state.mis.tracks.map(trackShort) : []);
+    const stages = [...new Set(o.rows.map((x) => x.stage).filter(Boolean))];
+    /* مؤنث إن كانت كل المسارات نسائية (مثل «التجميل النسائي»)؛ وإلا صيغة المذكر الجامع */
+    const fem = trackNames.length > 0 && trackNames.every((t) => /نسائ/.test(t));
+    const S = fem ? "الطالبات" : "الطلاب", sPl = fem ? "طالبات" : "طلاب";
+    const done = fem ? "استكملن" : "استكملوا", left = fem ? "المستكملات" : "المستكملين";
+    const d = new Date(), pad = (n) => String(n).padStart(2, "0");
+    const dateStr = d.toLocaleDateString("ar", { weekday: "long" }) + " " + pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear() + "م";
+    /* ما تبقّى وما اكتمل: للشامل من العدّادات، وللنوع الواحد هو النوع نفسه */
+    const kinds = multi ? ["pre", "post", "impact", "pledge"] : [o.kind];
+    const cnt = (k) => (multi ? (o.extra.counts && o.extra.counts[k]) || 0 : o.rows.length);
+    const remaining = kinds.filter((k) => cnt(k) > 0), complete = multi ? kinds.filter((k) => cnt(k) === 0) : [];
+    const items = (x) => (multi ? kinds.filter((k) => x.flags && x.flags[k]) : [o.kind]).map((k) => WA_ITEM[k]).join(" و");
+    const joinAr = (arr) => arr.join(" و");
+
+    L.push("السلام عليكم ورحمة الله وبركاته،");
+    if (cur) L.push((cur.fem === true ? "الأستاذة/ " : cur.fem === false ? "الأستاذ/ " : "الأستاذ/ة ") + cur.name + (cur.role ? " – " + cur.role : "") + "،");
+    L.push("📊 تقرير متابعة استكمال المتطلبات التدريبية", "📅 " + dateStr);
+    if (trackNames.length) L.push("📚 المسار: " + trackNames.join("، "));
+    if (stages.length) L.push("📍 المرحلة: " + stages.join("، "));
+    L.push("", "أولاً: الملخص الإحصائي");
+    const dg = o.diff;
+    if (dg) {
+      if (dg.done.length) L.push("* ✅ " + ui.fmt(dg.done.length) + " " + sPl + " " + (multi ? done + " جميع المتطلبات" : "أنجزوا".replace("وا", fem ? "ن" : "وا") + " " + WA_ITEM[o.kind]) + " منذ " + diffDate(dg.at) + ".");
+      if (dg.now < dg.before) L.push("* 📉 انخفض عدد " + S + " غير " + left + " من " + ui.fmt(dg.before) + " إلى " + ui.fmt(dg.now) + ".");
+      else if (dg.now > dg.before) L.push("* 📈 ارتفع عدد " + S + " غير " + left + " من " + ui.fmt(dg.before) + " إلى " + ui.fmt(dg.now) + ".");
+    } else L.push("* 📌 عدد " + S + " غير " + left + ": " + ui.fmt(o.rows.length) + ".");
+    if (!o.rows.length) L.push("* ✅ لا متطلبات متبقية؛ جميع " + S + " " + left.replace("غير ", "") + ".");
+    else if (remaining.length === 1) L.push("* ⚠️ المتطلب المتبقي: " + WA_ITEM[remaining[0]] + " فقط.");
+    else if (remaining.length > 1) L.push("* ⚠️ المتطلبات المتبقية: " + remaining.map((k) => WA_ITEM[k] + " (" + ui.fmt(cnt(k)) + ")").join("، ") + ".");
+    if (complete.length) L.push("* ✅ " + joinAr(complete.map((k) => WA_ITEM[k])) + ": مكتملة لدى الجميع.");
+    if (w.breakdown && o.per && Object.keys(o.per).length > 1) Object.entries(o.per).forEach(([k, n]) => L.push("* " + k + ": " + ui.fmt(n)));
+
+    if (w.names && o.rows.length) {
+      L.push("", "ثانياً: قائمة " + S + " المطلوب متابعت" + (fem ? "هن" : "هم"), WA_SEP);
+      o.rows.forEach((x, i) => {
+        L.push((i + 1) + ". " + x.name);
+        if (x.group) L.push("المجموعة: " + x.group);
+        const it = items(x); if (it) L.push("المطلوب: " + it + ".");
+        L.push("", WA_SEP);
+      });
+    }
+    if (o.rows.length) {
+      const need = remaining.length ? joinAr(remaining.map((k) => WA_ITEM[k])) : "المتطلبات";
+      L.push("الإجراء المطلوب:", "يرجى متابعة " + S + " المذكور" + (fem ? "ات" : "ين") + " واستكمال " + need + "، لإغلاق جميع المتطلبات التدريبية.");
+    }
+    L.push("مع خالص الشكر والتقدير لجهودكم وتعاونكم.");
+    return L.join("\n");
+  }
   function waBuild(mode) {
     const w = state.wa, today = ui.formatDate(ui.todayISO()) || ui.todayISO(), L = [];
     const NAMES_MAX = 100000;                          // كل الأسماء الظاهرة في التقرير؛ الرسالة الطويلة تُقسَّم إلى أجزاء
     if (mode === "missing") {
       const o = state.mis.out; if (!o) return "";
-      const title = (MIS_KINDS.find((k) => k.k === o.kind) || {}).t || "";
-      L.push("📋 " + title + " — " + today, "النطاق: " + waScope(), "الإجمالي: " + ui.fmt(o.rows.length) + " طالباً " + (o.kind === "pledge" ? "لم يوقّعوا" : o.kind === "all" || o.kind === "risk" ? "ينقصهم شيء" : "لم يعبّئوا"));
-      if (o.diff) L.push("مقارنة مع " + diffDate(o.diff.at) + ": أكمل " + ui.fmt(o.diff.done.length) + " طالباً، ونقص جديد " + ui.fmt(o.diff.added.length) + " (كان " + ui.fmt(o.diff.before) + " وأصبح " + ui.fmt(o.diff.now) + ")");
-      if (w.breakdown) {
-        const by = new Map();
-        o.rows.forEach((x) => { const k = (x.track || "—") + (x.stage ? " · " + x.stage : "") + (x.group ? " · مجموعة " + x.group : ""); const e = by.get(k) || by.set(k, { n: 0, pre: 0, post: 0, impact: 0, pledge: 0 }).get(k); e.n++; ["pre", "post", "impact", "pledge"].forEach((f) => { if (x.flags && x.flags[f]) e[f]++; }); });
-        [...by.entries()].sort((a, b) => b[1].n - a[1].n).forEach(([k, e]) => L.push("• " + k + ": " + ui.fmt(e.n) + (o.kind === "all" || o.kind === "risk" ? " (قبلي " + e.pre + "، بعدي " + e.post + "، أثر " + e.impact + "، تعهد " + e.pledge + ")" : "")));
-      }
-      if (w.names) { L.push("", "الأسماء (" + o.rows.length + "):"); o.rows.slice(0, NAMES_MAX).forEach((x) => L.push("- " + x.name + (x.group ? " — مجموعة " + x.group : "") + (x.trainer ? " (المدرب: " + x.trainer + ")" : "") + (o.kind === "all" || o.kind === "risk" ? " [" + itemsOf(x, o.kind) + "]" : ""))); }
+      return waMissingReport(o);
     } else if (mode === "dq") {
       const o = state.dq.out; if (!o) return "";
       L.push("🔎 فحص جودة البيانات — " + today, "الفحص: " + ui.fmt(o.total) + " طالباً · الملاحظات: " + ui.fmt(o.issues.length));
@@ -2304,8 +2352,9 @@
           const role = (window.prompt("الصفة (اختياري، مثال: مسؤول البيانات):", "") || "").trim();
           const phone = (window.prompt("رقم الجوال (مثال 0599xxxxxx أو +970599xxxxxx):", "") || "").trim();
           if (!waIntl(phone, state.wa.cc)) return ui.toast("رقم غير صالح");
+          const fem = window.confirm("هل المستلم أنثى؟ (موافق = «الأستاذة»، إلغاء = «الأستاذ»)");
           const id = String(Date.now());
-          state.contacts.push({ id, name: name.slice(0, 40), role: role.slice(0, 40), phone, cc: state.wa.cc }); lsSet(CONTACT_KEY, state.contacts);
+          state.contacts.push({ id, name: name.slice(0, 40), role: role.slice(0, 40), phone, cc: state.wa.cc, fem }); lsSet(CONTACT_KEY, state.contacts);
           state.wa.contact = id; state.open.wa = true;
         } else if (act === "wa-delc") {
           state.contacts = state.contacts.filter((x) => x.id !== state.wa.contact); lsSet(CONTACT_KEY, state.contacts); state.wa.contact = ""; state.open.wa = true;

@@ -112,12 +112,14 @@ async function suite() {
   ok("تقرير المدير من نتيجة «بعدي» ظاهرة: بلا إعادة جلب", calls.length === 0 && printed === 1 && c.state.mis.kind === "post" && /لم يعبّئوا/.test(document.getElementById("print-root").textContent));
   const wd = b.querySelector("[data-open=wa]"); if (wd) { wd.open = true; wd.dispatchEvent(new Event("toggle")); c.render(); }
   const op2 = window.prompt, ans = ["مدير المركز", "المدير", "0599123456"]; let ai = 0; window.prompt = () => ans[ai++];
-  b.querySelector('[data-cc="wa-addc"]').click(); window.prompt = op2;
+  const cf0 = window.confirm; window.confirm = () => false;      // «هل المستلم أنثى؟» ← لا
+  b.querySelector('[data-cc="wa-addc"]').click(); window.prompt = op2; window.confirm = cf0;
   ok("واتساب: تُحفظ جهة اتصال وتُختار", c.state.contacts.length === 1 && c.state.wa.contact === c.state.contacts[0].id && JSON.parse(localStorage.getItem("tamkeen-admin:cc-contacts")).length === 1);
+  const nm0 = b.querySelector("[data-wa=names]"); nm0.checked = false; nm0.dispatchEvent(new Event("change", { bubbles: true }));   // الأسماء مفعّلة افتراضياً الآن
   let waUrl = ""; const wo = window.open; window.open = (u) => { waUrl = u; return null; };
   b.querySelector('[data-cc="wa-open"]').click(); window.open = wo;
   const waTxt = decodeURIComponent(waUrl.split("?text=")[1] || "");
-  ok("واتساب: رابط wa.me برقم دولي ونص يحوي الإجمالي بلا أسماء", /^https:\/\/wa\.me\/970599123456\?text=/.test(waUrl) && /الإجمالي/.test(waTxt) && !/بسمة|جلال/.test(waTxt), waTxt.split(String.fromCharCode(10))[0]);
+  ok("واتساب: رابط wa.me برقم دولي ونص يحوي الإجمالي بلا أسماء", /^https:\/\/wa\.me\/970599123456\?text=/.test(waUrl) && /غير المستكمل/.test(waTxt) && /الأستاذ\//.test(waTxt) && !/بسمة|جلال/.test(waTxt), waTxt.split(String.fromCharCode(10))[0]);
   const waNames = b.querySelector("[data-wa=names]"); waNames.checked = true; waNames.dispatchEvent(new Event("change", { bubbles: true }));
   const cf = window.confirm; window.confirm = () => true; window.open = (u) => { waUrl = u; return null; };
   b.querySelector('[data-cc="wa-open"]').click(); window.open = wo; window.confirm = cf;
@@ -174,7 +176,7 @@ async function suite() {
   ok("النتائج التدريجية: تنتهي بنتيجتين", c.state.results && c.state.results.results.length === 2 && c.state.results.results.every((r) => r.type === "list"));
   PARTIAL = false;
   let release, held = 0; const hold = new Promise((r) => { release = r; }); const prevRun = agent.run; agent.run = async (cmds) => { held++; await hold; return { results: cmds.map(() => ({ type: "list", heads: SH, rows: [] })) }; };
-  c.state.mode = "report"; c.render(); b.querySelector('[data-cc="run-selection"]').click(); await wait(300);
+  c.state.mode = "report"; c.render(); b.querySelector('[data-cc="run-selection"]').click(); await wait(900);
   const stopBtn = b.querySelector('[data-cc="stop-run"]');
   ok("زر الإيقاف ومربع الإشعار يظهران أثناء التنفيذ", !!stopBtn && !!b.querySelector("[data-cc-notify]"));
   const fake = document.createElement("button"); fake.dataset.cc = "run-dq"; b.appendChild(fake);
