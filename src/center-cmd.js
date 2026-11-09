@@ -1843,8 +1843,9 @@
   /* ===== صيغة التقرير الرسمي لواتساب: استبيانات وتعهدات ===== */
   const WA_ITEM = { pre: "التقييم القبلي", post: "التقييم البعدي", impact: "قياس الأثر", pledge: "التعهد" };
   const WA_SEP = "━━━━━━━━━━━━━━";
-  function waMissingReport(o) {
-    const w = state.wa, cur = state.contacts.find((c) => c.id === w.contact), L = [];
+  function waMissingReport(o, contact, opts) {
+    const w = state.wa, cur = contact !== undefined ? contact : state.contacts.find((c) => c.id === w.contact), L = [];
+    const showNames = opts && opts.names !== undefined ? opts.names : w.names;
     const multi = o.kind === "all" || o.kind === "risk";
     const tracks = [...new Set(o.rows.map((x) => x.track).filter(Boolean))];
     const trackNames = tracks.length ? tracks : (state.mis.tracks.length ? state.mis.tracks.map(trackShort) : []);
@@ -1881,7 +1882,7 @@
     if (complete.length) L.push("* ✅ " + joinAr(complete.map((k) => WA_ITEM[k])) + ": مكتملة لدى الجميع.");
     if (w.breakdown && o.per && Object.keys(o.per).length > 1) Object.entries(o.per).forEach(([k, n]) => L.push("* " + k + ": " + ui.fmt(n)));
 
-    if (w.names && o.rows.length) {
+    if (showNames && o.rows.length) {
       L.push("", "ثانياً: قائمة " + S + " المطلوب متابعت" + (fem ? "هن" : "هم"), WA_SEP);
       o.rows.forEach((x, i) => {
         L.push((i + 1) + ". " + x.name);
@@ -2615,7 +2616,9 @@
     return true;
   }
 
-  App.centerCmd = { tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+  /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
+  const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
+  App.centerCmd = { missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});

@@ -8,7 +8,7 @@
   const App = (window.App = window.App || {});
   const CONTACT_KEY = "tamkeen-admin:cc-contacts", CC = "970";
   const providers = {};
-  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "", limit: 25, total: 0, greet: true, tpl: "full" };
+  const st = { open: false, text: "", sel: new Set(), extra: "", opened: new Set(), view: "", limit: 25, total: 0, greet: true, tpl: "full", official: false, dirty: false, onames: true };
 
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
@@ -95,8 +95,19 @@
     }
     return L.join("\n");
   }
+  /* تبويب «أوامر المركز» ظاهر وفيه نتيجة «استبيانات وتعهدات»: نستعمل صيغة التقرير الرسمي بدل النص العام */
+  function officialActive() {
+    try {
+      const cc = App.centerCmd, pane = document.querySelector('[data-cv-pane="center"]');
+      return !!(cc && cc.missingReport && cc.state && cc.state.mode === "missing" && cc.state.mis && cc.state.mis.out && visible(pane));
+    } catch (e) { return false; }
+  }
+  const contactOf = (id) => (id && id !== "__extra" ? contacts().find((x) => x.id === id) || null : null);
+  const officialText = (id) => App.centerCmd.missingReport(contactOf(id), { names: st.onames });
   function buildText() {
     const sel = clean(String(window.getSelection ? window.getSelection() : ""));
+    st.official = sel.length <= 3 && officialActive();
+    if (st.official) { st.view = "center"; return officialText([...st.sel][0]); }
     const v = currentView(), id = v ? v.id.replace(/^view-/, "") : "";
     st.view = id;
     if (sel.length > 3) return "*" + clean((v && v.querySelector("h1,h2") || {}).textContent || document.title) + "*\n" + sel;
@@ -163,7 +174,7 @@
   const lastSent = (name) => { const l = logList().filter((e) => e.to === name); return l.length ? l[l.length - 1] : null; };
 
   function parts(id) {
-    const t = (greetFor(id) + bodyFor(id)).trim();
+    const t = (st.official ? (st.dirty ? st.text : officialText(id)) : greetFor(id) + bodyFor(id)).trim();
     if (t.length <= PART_MAX) return [t];
     const out = []; let cur = "";
     t.split("\n").forEach((line) => {
@@ -224,6 +235,7 @@
     const d = document.getElementById("wa-dlg");
     d.classList.toggle("open", st.open);
     if (!st.open) return;
+    if (st.official && !st.dirty) st.text = officialText([...st.sel][0]);
     const extraNum = intl(st.extra, CC);
     document.getElementById("wa-box").innerHTML = `
       <h3>إرسال عبر واتساب</h3>
@@ -234,15 +246,18 @@
       ${parts().length > 1 ? `<p class="wa-note">الرسالة طويلة (${st.text.length} حرفاً) فقُسّمت إلى ${parts().length} أجزاء لأن رابط واتساب لا يحمل أكثر من نحو ${PART_MAX} حرفاً. افتح كل جزء بالترتيب وأرسله.</p>` : ""}
       <div class="wa-row"><label>قالب الرسالة: <select data-wa-tpl>${templates().map((t) => `<option value="${esc(t.id)}" ${st.tpl === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><button type="button" class="btn small secondary" data-wa-newtpl>＋ قالب</button>${tplById(st.tpl).builtin ? "" : '<button type="button" class="btn small secondary" data-wa-deltpl>حذف القالب</button>'}</div>
       <label class="wa-row"><input type="checkbox" data-wa-greet ${st.greet ? "checked" : ""}> تبدأ الرسالة بتحية باسم المستلم (تُضاف عند الفتح لكل مستلم)</label>
+      ${st.official ? `<label class="wa-row"><input type="checkbox" data-wa-onames ${st.onames ? "checked" : ""}> تضمين قائمة أسماء الطلاب</label><p class="wa-note">صيغة التقرير الرسمي (ملخص إحصائي وقائمة مرقمة وإجراء مطلوب). تتغير التحية باسم كل مستلم عند الفتح ما لم تعدّل النص بيدك.</p>` : ""}
       <label>نص الرسالة (يمكنك تعديله)<textarea rows="9" data-wa-text>${esc(st.text)}</textarea></label>
       ${st.total > 0 ? `<label class="wa-row"><input type="checkbox" data-wa-ids ${st.xlsxIds ? "checked" : ""}> تضمين الهوية والجوال ورقم الطالب في ملف Excel (مغلقة افتراضياً للخصوصية)</label>` : ""}
       <p class="wa-warn">قد يتضمن النص أسماء أو بيانات طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع عليها.</p>
       <div class="wa-row"><button type="button" class="btn small secondary" data-wa-regen>إعادة توليد من الصفحة</button><button type="button" class="btn small secondary" data-wa-copy>نسخ النص</button>${st.total > 0 ? '<button type="button" class="btn small secondary" data-wa-xlsx>إرسال الجدول كملف Excel</button>' : ""}<button type="button" class="btn small" data-wa-close>إغلاق</button></div>
       <p class="wa-note">لكل مستلم زر فتح مستقل؛ واتساب لا يتيح إرسال رسالة واحدة لعدة محادثات برابط واحد.</p>
       <details class="wa-logbox"><summary>سجل ما فُتح (${logList().length})</summary>${logList().length ? `<div class="wa-loglist">${logList().slice(-20).reverse().map((e) => `<div>${esc(fmtAt(e.at))} — إلى ${esc(e.to || "؟")} · ${esc(e.page || "")}${e.part ? " · جزء " + esc(e.part) : ""}</div>`).join("")}</div><button type="button" class="btn small secondary" data-wa-clearlog>مسح السجل</button>` : '<p class="wa-note">لا شيء بعد.</p>'}</details>`;
+    if (st.official) document.querySelectorAll("#wa-box [data-wa-limit], #wa-box [data-wa-tpl], #wa-box [data-wa-greet], #wa-box [data-wa-newtpl], #wa-box [data-wa-deltpl]").forEach((n) => { const box = n.closest("label, .wa-row") || n; box.remove(); });
+    if (st.official) document.querySelectorAll("#wa-box [data-wa-ctpl]").forEach((n) => n.remove());
   }
   function open() {
-    st.text = buildText();
+    st.dirty = false; st.text = buildText();
     if (!st.text) return toast("لا محتوى في هذه الصفحة لإرساله");
     st.open = true; st.opened = new Set(); render();
   }
@@ -286,7 +301,7 @@
       const t = e.target;
       if (t === dlg || t.closest("[data-wa-close]")) { st.open = false; return render(); }
       const g = t.closest("[data-wa-go]"); if (g) return go(g.dataset.waGo, +g.dataset.waPart || 0);
-      if (t.closest("[data-wa-regen]")) { st.text = buildText(); return render(); }
+      if (t.closest("[data-wa-regen]")) { st.dirty = false; st.text = buildText(); return render(); }
       if (t.closest("[data-wa-xlsx]")) return sendXlsx();
       if (t.closest("[data-wa-clearlog]")) { if (confirm("مسح سجل ما فُتح؟")) { lsSet(LOG_KEY, []); render(); } return; }
       if (t.closest("[data-wa-deltpl]")) {
@@ -323,6 +338,7 @@
     });
     dlg.addEventListener("change", (e) => {
       if (e.target.matches && e.target.matches("[data-wa-ids]")) { st.xlsxIds = e.target.checked; return; }
+      if (e.target.matches && e.target.matches("[data-wa-onames]")) { st.onames = e.target.checked; st.dirty = false; st.opened = new Set(); return render(); }
       if (e.target.matches && e.target.matches("[data-wa-tpl]")) { st.tpl = e.target.value; st.opened = new Set(); return render(); }
       if (e.target.matches && e.target.matches("[data-wa-ctpl]")) {
         const cs = contacts(), c = cs.find((x) => x.id === e.target.dataset.waCtpl);
@@ -335,7 +351,7 @@
       if (s) { s.checked ? st.sel.add(s.dataset.waSel) : st.sel.delete(s.dataset.waSel); render(); }
     });
     dlg.addEventListener("input", (e) => {
-      if (e.target.matches("[data-wa-text]")) st.text = e.target.value;
+      if (e.target.matches("[data-wa-text]")) { st.text = e.target.value; st.dirty = true; }
       else if (e.target.matches("[data-wa-extra]")) {
         st.extra = e.target.value;
         /* نعيد الرسم فقط عند ظهور/اختفاء زر الفتح حتى لا نفقد المؤشر */
