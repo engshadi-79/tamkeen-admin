@@ -1884,11 +1884,17 @@
 
     if (showNames && o.rows.length) {
       L.push("", "ثانياً: قائمة " + S + " المطلوب متابعت" + (fem ? "هن" : "هم"), WA_SEP);
-      o.rows.forEach((x, i) => {
-        L.push((i + 1) + ". " + x.name);
-        if (x.group) L.push("المجموعة: " + x.group);
-        const it = items(x); if (it) L.push("المطلوب: " + it + ".");
-        L.push("", WA_SEP);
+      /* كل مسار (ومرحلة إن تعدّدت المراحل) له عنوان قبل طلابه، وترقيم الطلاب يبدأ من 1 في كل مسار */
+      const multiStage = stages.length > 1, groups = new Map();
+      o.rows.forEach((x) => { const k = (x.track || "—") + (multiStage && x.stage ? " · " + x.stage : ""); (groups.get(k) || groups.set(k, []).get(k)).push(x); });
+      [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], "ar")).forEach(([k, list]) => {
+        L.push("📚 المسار: " + k + " (" + ui.fmt(list.length) + ")", WA_SEP);
+        list.forEach((x, i) => {
+          L.push((i + 1) + ". " + x.name);
+          if (x.group) L.push("المجموعة: " + x.group);
+          const it = items(x); if (it) L.push("المطلوب: " + it + ".");
+          L.push("", WA_SEP);
+        });
       });
     }
     if (o.rows.length) {
