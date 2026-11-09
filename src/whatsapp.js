@@ -137,7 +137,9 @@
   }
 
   /* رابط واتساب محدود الطول، فنقسم الرسالة الطويلة إلى أجزاء عند حدود الأسطر */
-  const PART_MAX = 1400;
+  const PART_MAX = Infinity;                          // لا تجزئة: الرسالة كاملة تُنسخ وتُلصق
+  const MODE_KEY = "tamkeen-admin:wa-mode";
+  const waMode = () => (lsGet(MODE_KEY, "paste") === "link" ? "link" : "paste");
   /* ===== قوالب الرسائل: صياغة التحية + نوع المحتوى (قائمة كاملة | موجز بلا أسماء) ===== */
   const TPL_KEY = "tamkeen-admin:wa-templates", LOG_KEY = "tamkeen-admin:wa-log", LOG_KEEP = 150;
   const DEFAULT_GREET = "السلام عليكم ورحمة الله وبركاته|{المستلم}|إليكم ما يلي:";
@@ -223,7 +225,7 @@
     const n = parts(id).length;
     const isG = id !== "__extra" && (contacts().find((x) => x.id === id) || {}).link;
     if (isG) return `<span class="wa-parts">${Array.from({ length: n }, (_, i) => `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="${i}">${st.opened.has(id + "#" + i) ? "✓ " : ""}${n > 1 ? "جزء " + (i + 1) + ": " : ""}نسخ وفتح المجموعة</button>`).join("")}</span>`;
-    if (n === 1) return `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="0">${st.opened.has(id + "#0") ? "✓ فُتح" : "فتح واتساب"}</button>`;
+    if (n === 1) return `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="0">${st.opened.has(id + "#0") ? "✓ فُتح" : waMode() === "link" ? "فتح واتساب" : "نسخ وفتح واتساب"}</button>`;
     return `<span class="wa-parts">${Array.from({ length: n }, (_, i) => `<button type="button" class="btn small" data-wa-go="${esc(id)}" data-wa-part="${i}">${st.opened.has(id + "#" + i) ? "✓ " : ""}جزء ${i + 1}</button>`).join("")}</span>`;
   }
   function listHtml() {
@@ -249,6 +251,7 @@
       ${st.official ? `<label class="wa-row"><input type="checkbox" data-wa-onames ${st.onames ? "checked" : ""}> تضمين قائمة أسماء الطلاب</label><p class="wa-note">صيغة التقرير الرسمي (ملخص إحصائي وقائمة مرقمة وإجراء مطلوب). تتغير التحية باسم كل مستلم عند الفتح ما لم تعدّل النص بيدك.</p>` : ""}
       <label>نص الرسالة (يمكنك تعديله)<textarea rows="9" data-wa-text>${esc(st.text)}</textarea></label>
       ${st.total > 0 ? `<label class="wa-row"><input type="checkbox" data-wa-ids ${st.xlsxIds ? "checked" : ""}> تضمين الهوية والجوال ورقم الطالب في ملف Excel (مغلقة افتراضياً للخصوصية)</label>` : ""}
+      <label class="wa-row"><input type="checkbox" data-wa-linkmode ${waMode() === "link" ? "checked" : ""}> إدراج النص في الرابط (للرسائل القصيرة فقط؛ الافتراضي نسخ الرسالة كاملة ثم لصقها في المحادثة)</label>
       <p class="wa-warn">قد يتضمن النص أسماء أو بيانات طلاب. واتساب يمرّر الرسالة عبر خوادمه؛ أرسلها فقط لمن له صلاحية الاطّلاع عليها.</p>
       <div class="wa-row"><button type="button" class="btn small secondary" data-wa-regen>إعادة توليد من الصفحة</button><button type="button" class="btn small secondary" data-wa-copy>نسخ النص</button>${st.total > 0 ? '<button type="button" class="btn small secondary" data-wa-xlsx>إرسال الجدول كملف Excel</button>' : ""}<button type="button" class="btn small" data-wa-close>إغلاق</button></div>
       <p class="wa-note">لكل مستلم زر فتح مستقل؛ واتساب لا يتيح إرسال رسالة واحدة لعدة محادثات برابط واحد.</p>
@@ -277,10 +280,14 @@
       /* رابط دعوة المجموعة لا يقبل نصاً جاهزاً: ننسخ الرسالة ونفتح المجموعة لتلصقها */
       (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast("نُسخت الرسالة. الصقها في المجموعة (Ctrl+V) ثم أرسلها"), () => toast("تعذّر النسخ تلقائياً؛ استعمل زر «نسخ النص» ثم الصق في المجموعة"));
       window.open(gc.link, "_blank", "noopener");
-    } else {
+    } else if (waMode() === "link") {
       const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(text);
-      if (url.length > 1900) toast("الرسالة طويلة؛ قد لا تُحمَّل كاملة. اختصرها أو انسخها.");
+      if (url.length > 1900) toast("الرسالة طويلة؛ قد يقطعها واتساب. ألغِ «إدراج النص في الرابط» لتُنسخ كاملة.");
       window.open(url, "_blank", "noopener");
+    } else {
+      /* الافتراضي: ننسخ الرسالة كاملة ونفتح المحادثة فقط. اللصق يحفظ الرموز ولا يحدّ بطول الرابط */
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast("نُسخت الرسالة كاملة. الصقها في المحادثة (Ctrl+V) ثم أرسل"), () => toast("تعذّر النسخ تلقائياً؛ استعمل زر «نسخ النص» ثم الصق في المحادثة"));
+      window.open("https://wa.me/" + num, "_blank", "noopener");
     }
     log({ to: who, page: pageName, part: partLabel, chars: text.length });
     st.opened.add(id + "#" + (part || 0)); render();
@@ -338,6 +345,7 @@
     });
     dlg.addEventListener("change", (e) => {
       if (e.target.matches && e.target.matches("[data-wa-ids]")) { st.xlsxIds = e.target.checked; return; }
+      if (e.target.matches && e.target.matches("[data-wa-linkmode]")) { lsSet(MODE_KEY, e.target.checked ? "link" : "paste"); return render(); }
       if (e.target.matches && e.target.matches("[data-wa-onames]")) { st.onames = e.target.checked; st.dirty = false; st.opened = new Set(); return render(); }
       if (e.target.matches && e.target.matches("[data-wa-tpl]")) { st.tpl = e.target.value; st.opened = new Set(); return render(); }
       if (e.target.matches && e.target.matches("[data-wa-ctpl]")) {
