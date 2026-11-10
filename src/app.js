@@ -79,12 +79,11 @@
   }
 
   function initGroups() {
-    const state = readGroups();
     document.querySelectorAll(".nav-group").forEach((g) => {
       const name = g.dataset.group;
-      // أول مرة: الأقسام مطويّة إلا ما فيه الصفحة المفتوحة
-      // أدوات الملفات في المقدمة: مفتوحة في أول زيارة، ثم تتذكّر حالتها
-      if (state[name] || (name === "tools" && !(name in state))) g.classList.add("open");
+      // عند كل فتح للموقع: «الرئيسية» و«أدوات الملفات» مفتوحتان، وبقية الأقسام مطوية.
+      // القسم الذي فيه الصفحة المفتوحة يُفتح تلقائياً (openGroupOf)، والنقر على عنوان قسم يفتحه ويطويه في الجلسة الحالية.
+      if (name === "main" || name === "tools") g.classList.add("open");
       const head = g.querySelector(".nav-head");
       if (!head) return;
       head.addEventListener("click", () => {

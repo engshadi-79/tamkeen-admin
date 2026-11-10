@@ -26,7 +26,7 @@ class CDP {
   async send(method, params = {}) {
     await this.ready; const id = ++this.id;
     return new Promise((res, rej) => {
-      const t = setTimeout(() => { this.cb.delete(id); rej(new Error("مهلة CDP: " + method)); }, 180000);
+      const t = setTimeout(() => { this.cb.delete(id); rej(new Error("مهلة CDP: " + method)); }, 600000);
       this.cb.set(id, { res: (v) => { clearTimeout(t); res(v); }, rej: (e) => { clearTimeout(t); rej(e); } });
       this.ws.send(JSON.stringify({ id, method, params }));
     });
