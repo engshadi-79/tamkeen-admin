@@ -64,6 +64,12 @@
       .sort((a, b) => a[1] - b[1])
       .map((x) => x[0]);
   }
+  /* بصمات الأقسام كما أعادها الخادم: قسم لم يتغيّر يعود «same» بلا بيانات (توفير حصة النقل).
+     كل FULL_EVERY دقائق تُرسل جولة بلا بصمات، فتُقرأ الأقسام كاملة احتياطاً. */
+  const MARKS_KEY = "tamkeen-admin:sync-marks", FULL_EVERY = 10 * 60000;
+  const loadMarks = () => { try { return JSON.parse(localStorage.getItem(MARKS_KEY) || "{}"); } catch (e) { return {}; } };
+  const saveMarks = (m) => { try { localStorage.setItem(MARKS_KEY, JSON.stringify(m)); } catch (e) { /* تخزين غير متاح */ } };
+  let lastFull = 0;
   const loadSnap = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "{}"); } catch (e) { return {}; } };
   const saveSnap = (snap) => { try { localStorage.setItem(SNAP_KEY, JSON.stringify(snap)); } catch (e) { /* تخزين غير متاح */ } };
 
@@ -129,10 +135,18 @@
         sentPrints[name] = {};
         local.forEach((r) => { sentPrints[name][r.id] = fingerprint(r); });
       });
-      const merged = await App.cloud.syncAll(cols);
+      const full = Date.now() - lastFull > FULL_EVERY;
+      const marks = full ? {} : loadMarks();
+      // البصمة تُرسل فقط لقسم نعرف حالته على الخادم (له بصمات قيود)؛ القسم الفارغ يُقرأ كاملاً ولا يكلّف شيئاً
+      Object.keys(marks).forEach((n) => { if (!snap[n] || !Object.keys(snap[n]).length) delete marks[n]; });
+      const merged = await App.cloud.syncAll(cols, marks);
+      if (full) lastFull = Date.now();
+      const newMarks = {};
       const next = {};
       const skipped = [];
       COLS.forEach((name) => {
+        // القسم لم يتغيّر على الخادم منذ آخر قراءة: تبقى بيانات الجهاز وبصماته كما هي
+        if (merged[name] && merged[name].same === true) { next[name] = snap[name] || {}; if (merged[name].mark) newMarks[name] = merged[name].mark; return; }
         if (!merged[name] || !Array.isArray(merged[name].records)) {
           // الخادم لا يعرف هذا القسم بعد: تبقى بيانات الجهاز كما هي
           next[name] = snap[name] || {};
@@ -140,11 +154,13 @@
           return;
         }
         const records = merged[name].records;
+        if (merged[name].mark) newMarks[name] = merged[name].mark;
         // خادم أعاد قسماً فارغاً بلا أي شاهد حذف، ونحن لم نرسل شيئاً: خادم جديد أو فارغ،
         // فلا تُمسح بيانات الجهاز بردّه — تُترك كما هي وتُرفع في الجولة التالية.
         const sentNothing = !(cols[name].records || []).length && !Object.keys(cols[name].deleted || {}).length;
         if (!records.length && !Object.keys(merged[name].deleted || {}).length && readCol(name).length && sentNothing) {
           next[name] = {};
+          delete newMarks[name];
           schedule(1500);
           return;
         }
@@ -178,6 +194,7 @@
       });
       if (skipped.length) console.warn("أقسام لا يدعمها الخادم بعد:", skipped.join("، "));
       saveSnap(next);
+      saveMarks(newMarks);
       store.save();
       lastSync = Date.now();
       liveOk();
@@ -279,8 +296,8 @@
     store.onChange(() => { if (!syncing) schedule(1500); });
     store.onExternal(() => rerender());
     App.cloud.onAuth((kind) => {
-      if (kind === "login") { saveSnap({}); sync(true); loadPeople(); }
-      else { try { localStorage.removeItem(SNAP_KEY); } catch (e) { /* تخزين غير متاح */ } }
+      if (kind === "login") { saveSnap({}); saveMarks({}); lastFull = 0; sync(true); loadPeople(); }
+      else { try { localStorage.removeItem(SNAP_KEY); localStorage.removeItem(MARKS_KEY); } catch (e) { /* تخزين غير متاح */ } }
     });
     if (App.cloud.ready()) { setTimeout(() => { sync(false); loadPeople(); }, 1200); }
     // صفحات يعمل عليها أكثر من مستخدم معاً تُحدَّث أسرع ما دامت مفتوحة
@@ -303,7 +320,7 @@
 
   /* بعد اعتماد البيانات على خادم جديد: تُمسح البصمات لتبدأ مزامنة نظيفة */
   function resetSnap() {
-    try { localStorage.removeItem(SNAP_KEY); } catch (e) { /* تخزين غير متاح */ }
+    try { localStorage.removeItem(SNAP_KEY); localStorage.removeItem(MARKS_KEY); } catch (e) { /* تخزين غير متاح */ }
   }
 
   App.shared = { init, sync, names, loadPeople, allowWipe, collect, resetSnap, syncState, clearIncoming };

@@ -219,6 +219,8 @@
     try { localStorage.setItem(SNAP_KEY, JSON.stringify(snap)); } catch (e) { /* تخزين غير متاح */ }
   };
 
+  const REG_MARK_KEY = "tamkeen-admin:reg-mark";
+  let regLastFull = 0;
   async function syncShared(showErrors) {
     if (!App.cloud || !App.cloud.ready()) return;
     if (syncing) { syncAgain = true; return; }
@@ -239,12 +241,20 @@
       const sentPrints = {};
       local.forEach((r) => { sentPrints[r.id] = fingerprint(r); });
       // بلا تغييرات: طلب قراءة فقط، فلا يكتب الخادم شيئاً ولا يزدحم القفل
-      const merged = await App.cloud.sync(changed.length || Object.keys(deleted).length ? local : [], deleted);
+      const readOnly = !changed.length && !Object.keys(deleted).length;
+      const fullRound = Date.now() - regLastFull > 10 * 60000;        // قراءة كاملة احتياطية كل 10 دقائق
+      let regMark = ""; try { regMark = readOnly && !fullRound && local.length ? localStorage.getItem(REG_MARK_KEY) || "" : ""; } catch (e) { /* تخزين غير متاح */ }
+      const merged = await App.cloud.sync(readOnly ? [] : local, deleted, regMark);
+      if (fullRound) regLastFull = Date.now();
+      // السجل لم يتغيّر على الخادم منذ آخر قراءة: لا شيء يُستبدل (توفير حصة النقل)
+      if (merged.same === true) { lastSync = Date.now(); uploadPendingToCenter(); purgeTrash(); return; }
+      try { if (merged.mark) localStorage.setItem(REG_MARK_KEY, merged.mark); else localStorage.removeItem(REG_MARK_KEY); } catch (e) { /* تخزين غير متاح */ }
       // خادم أعاد سجلاً فارغاً بلا أي شاهد حذف، ونحن لم نرسل شيئاً:
       // خادم جديد أو فارغ، فلا تُمسح قيود الجهاز بردّه — تُرفع في الجولة التالية.
       if (!merged.records.length && !Object.keys(merged.deleted || {}).length && local.length
           && !changed.length && !Object.keys(deleted).length) {
         saveSnap([]);
+        try { localStorage.removeItem(REG_MARK_KEY); } catch (e) { /* تخزين غير متاح */ }
         scheduleSync(1500);
         return;
       }

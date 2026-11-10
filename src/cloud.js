@@ -160,8 +160,8 @@
     return { name: r.name, blob: new Blob([bytes], { type: r.mime || "application/octet-stream" }) };
   }
 
-  const sync = (records, deleted) => call("sync", { records, deleted });
-  const syncAll = (cols) => call("syncAll", { cols });
+  const sync = (records, deleted, mark) => call("sync", { records, deleted, mark: mark || "" });
+  const syncAll = (cols, marks) => call("syncAll", { cols, marks: marks || {} });
   const people = async () => (await call("people")).people || [];
   const ocr = (data, mime, name) => call("ocr", { data, mime, name });
   const digest = (enabled, hour) => call("digest", { enabled, hour });

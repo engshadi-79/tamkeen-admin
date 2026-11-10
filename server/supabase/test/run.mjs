@@ -437,5 +437,34 @@ const wl = await post({ action: "waLog", token: T });
 check("سجل الإرسال يحفظ من أرسل ولمن بلا النص ولا الرمز", wl.log.length >= 4 && wl.log.every((e) => !JSON.stringify(e).includes("TOKEN_SECRET") && !("text" in e)) && wl.log.some((e) => e.by && e.to === "المدير" && e.ok), wl.log.slice(-2));
 globalThis.fetch = waRealFetch;
 
+
+/* ===== 21. بصمات الأقسام: القراءة الدورية لقسم لم يتغيّر لا تعيد بياناته ===== */
+console.log("\n[21] بصمات الأقسام (توفير حصة النقل)");
+const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+const mk21 = (id, title, at) => ({ id, title, updatedAt: at });
+await post({ action: "syncAll", token: T, cols: { mk21: { records: [mk21("a", "أول", ts(1)), mk21("b", "ثان", ts(1))], deleted: {} } } });
+let m1 = (await post({ action: "syncAll", token: T, cols: { mk21: { records: [], deleted: {} } } })).mk21;
+check("القراءة الكاملة تعيد القيود ومعها بصمة", m1.records.length === 2 && typeof m1.mark === "string" && m1.mark.length > 3, m1.mark);
+let m2 = (await post({ action: "syncAll", token: T, cols: { mk21: { records: [], deleted: {} } }, marks: { mk21: m1.mark } })).mk21;
+check("بالبصمة نفسها: «لم يتغيّر» بلا قيود", m2.same === true && m2.records === undefined && m2.mark === m1.mark, m2);
+check("الرد المختصر أصغر كثيراً من الكامل", JSON.stringify(m2).length < JSON.stringify(m1).length / 2);
+check("بصمة خاطئة تعيد القسم كاملاً", (await post({ action: "syncAll", token: T, cols: { mk21: { records: [], deleted: {} } }, marks: { mk21: "x" } })).mk21.records.length === 2);
+check("بلا بصمات (جهاز قديم): القسم كاملاً كما كان", (await post({ action: "syncAll", token: T, cols: { mk21: { records: [], deleted: {} } } })).mk21.records.length === 2);
+await nap(5);
+await post({ action: "syncAll", token: A, cols: { mk21: { records: [mk21("a", "عدّله جهاز آخر", ts(5)), mk21("b", "ثان", ts(1))], deleted: {} } } });
+let m3 = (await post({ action: "syncAll", token: T, cols: { mk21: { records: [], deleted: {} } }, marks: { mk21: m1.mark } })).mk21;
+check("بعد تعديل من جهاز آخر: يعود القسم كاملاً ببصمة جديدة", Array.isArray(m3.records) && m3.records.find((r) => r.id === "a").title === "عدّله جهاز آخر" && m3.mark !== m1.mark, m3.mark);
+await nap(5);
+await post({ action: "syncAll", token: A, cols: { mk21: { records: [mk21("b", "ثان", ts(1))], deleted: { a: ts(9) } } } });
+let m4 = (await post({ action: "syncAll", token: T, cols: { mk21: { records: [], deleted: {} } }, marks: { mk21: m3.mark } })).mk21;
+check("بعد حذف من جهاز آخر: يعود كاملاً وفيه شاهد الحذف", Array.isArray(m4.records) && m4.records.length === 1 && !!m4.deleted.a && m4.mark !== m3.mark, m4);
+check("ثم يستقر: البصمة الجديدة تعود «لم يتغيّر»", (await post({ action: "syncAll", token: T, cols: { mk21: { records: [], deleted: {} } }, marks: { mk21: m4.mark } })).mk21.same === true);
+const mixed = await post({ action: "syncAll", token: T, cols: { mk21: { records: [], deleted: {} }, mk21b: { records: [mk21("z", "جديد", ts(2))], deleted: {} } }, marks: { mk21: m4.mark, mk21b: "anything" } });
+check("قسم يُكتب فيه يعود كاملاً دائماً ولو أُرسلت له بصمة", mixed.mk21.same === true && Array.isArray(mixed.mk21b.records) && mixed.mk21b.records.length === 1, mixed);
+const rg1 = await post({ action: "sync", token: T, records: [], deleted: {} });
+check("سجل الوارد: القراءة تعيد بصمة", Array.isArray(rg1.records) && !!rg1.mark, rg1.mark);
+const rg2 = await post({ action: "sync", token: T, records: [], deleted: {}, mark: rg1.mark });
+check("سجل الوارد: بالبصمة نفسها «لم يتغيّر»", rg2.same === true && rg2.records === undefined, rg2);
+
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);

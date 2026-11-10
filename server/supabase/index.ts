@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 27;
+const VERSION = 28;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -805,7 +805,29 @@ async function readCol(col: string) {
   return { records, deleted };
 }
 
-async function syncAll(cols: Record<string, any>, user: any) {
+/* بصمة رخيصة لحالة قسم: عدد قيوده وأحدث كتابة فيها، وعدد شواهد الحذف وأحدثها.
+   كل كتابة في records تضع updated_at = الآن، فأي إضافة أو تعديل أو حذف يغيّر البصمة.
+   الغرض: طلب القراءة الدوري لقسم لم يتغيّر يعود بسطر واحد بدل القسم كله (كان يستنزف حصة النقل).
+   تُحسب البصمة قبل قراءة البيانات: كتابة تقع بينهما تجعل بصمة الجهاز أقدم، فيقرأ كاملاً في الجولة التالية. */
+async function colMark(col: string): Promise<string> {
+  try {
+    const r = await db.from("records").select("updated_at", { count: "exact" }).eq("col", col).order("updated_at", { ascending: false }).limit(1);
+    if (r.error) return "";
+    const cutoff = new Date(Date.now() - TOMBSTONE_DAYS * 86400000).toISOString();
+    const d = await db.from("deletions").select("at", { count: "exact" }).eq("col", col).gte("at", cutoff).order("at", { ascending: false }).limit(1);
+    if (d.error) return "";
+    return [r.count ?? 0, r.data?.[0]?.updated_at || "", d.count ?? 0, d.data?.[0]?.at || ""].join("|");
+  } catch (_e) { return ""; }
+}
+/* قراءة قسم مع بصمته؛ وإن طابقت بصمة الجهاز عاد «لم يتغيّر» بلا بيانات */
+async function readColMarked(col: string, known: unknown) {
+  const mark = await colMark(col);
+  if (mark && known && String(known) === mark) return { same: true, mark };
+  const data = await readCol(col);
+  return mark ? { ...data, mark } : data;
+}
+
+async function syncAll(cols: Record<string, any>, user: any, marks: Record<string, unknown> = {}) {
   const result: Record<string, unknown> = {};
   for (const name of Object.keys(cols || {})) {
     if (!COL_NAME.test(name)) continue;
@@ -814,7 +836,7 @@ async function syncAll(cols: Record<string, any>, user: any) {
     const del = c.deleted || {};
     result[name] = (recs.length || Object.keys(del).length)
       ? await mergeCol(name, recs, del, user, name === "letterApprovals")
-      : await readCol(name);
+      : await readColMarked(name, marks ? marks[name] : null);
   }
   return result;
 }
@@ -1200,9 +1222,9 @@ Deno.serve(async (httpReq) => {
         if (recs.length || Object.keys(del).length) await backupDaily();
         return json(recs.length || Object.keys(del).length
           ? await mergeCol("registry", recs, del, user, true)
-          : await readCol("registry"));
+          : await readColMarked("registry", req.mark));
       }
-      case "syncAll": return json(await syncAll(req.cols || {}, user));
+      case "syncAll": return json(await syncAll(req.cols || {}, user, req.marks || {}));
       case "people": {
         const { data } = await db.from("app_users").select("name, username").eq("active", true);
         return json({ people: data || [] });
