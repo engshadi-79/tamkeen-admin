@@ -45,7 +45,7 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
-const VERSION = 28;
+const VERSION = 29;
 const SESSION_DAYS = 30;
 const RESURRECT_MS = 24 * 3600 * 1000;
 const TOMBSTONE_DAYS = 90;   // شواهد الحذف تُنظّف بعدها
@@ -770,9 +770,11 @@ async function ocrViaHelper(req: any) {
 }
 
 /* بيانات الملخص اليومي: المساعد يقرّر الساعة ويرسل من Gmail */
-async function digestData() {
+async function digestData(nowHour?: unknown) {
   const cfg = (await kvGet("digest")) || { enabled: false, hour: 7 };
   if (!cfg.enabled) return { enabled: false, hour: cfg.hour };
+  // السكربت يفحص كل ساعة؛ في غير ساعة الإرسال لا حاجة لقراءة الوارد والمهام (توفير حصة النقل)
+  if (nowHour !== undefined && nowHour !== null && nowHour !== "" && Number(nowHour) !== Number(cfg.hour)) return { enabled: true, hour: cfg.hour, notNow: true };
   const reg = (await readCol("registry")).records.filter((r: any) => r && !r.deletedAt && r.type === "in" && r.dueDate && !r.done)
     .map((r: any) => ({ number: r.number || "", subject: r.subject || "", party: r.party || "", dueDate: r.dueDate, owner: r.assignee || r.owner || "" }));
   const tasks = (await readCol("tasks")).records.filter((t: any) => t && !t.done && t.dueDate)
@@ -1186,7 +1188,7 @@ Deno.serve(async (httpReq) => {
         }
         if (req.action === "driveSnapshot") return json(await driveSnapshot());
         if (req.action === "driveFileUrls") return json(await driveFileUrls(req.ids));
-        if (req.action === "digestData") return json(await digestData());
+        if (req.action === "digestData") return json(await digestData(req.nowHour));
         const info = req.info && typeof req.info === "object" ? req.info : {};
         // رابط المساعد المنشور: يُحفظ ليستعمله الخادم في القراءة الضوئية
         const helper = String(req.url || info.helper || "");

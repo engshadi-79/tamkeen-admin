@@ -29,7 +29,8 @@ function setupSupabaseBackup() {
     const h = t.getHandlerFunction();
     if (h === "supabaseBackup" || h === "supabaseBackupContinue" || h === "digestTick" || h === "dailyDigest") ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger("supabaseBackup").timeBased().atHour(SB_HOUR).everyDays(1).create();
+  // أسبوعية (كل سبت) بدل يومية: كل لقطة تسحب بيانات النظام كلها فتستهلك حصة النقل في Supabase
+  ScriptApp.newTrigger("supabaseBackup").timeBased().onWeekDay(ScriptApp.WeekDay.SATURDAY).atHour(SB_HOUR).create();
   ScriptApp.newTrigger("digestTick").timeBased().everyHours(1).create();
   // الخادم يتحقق من كل رابط قبل قبوله، فنجرّب المرشّحين بالترتيب
   let helper = false;
@@ -173,8 +174,9 @@ function sbOcr_(req) {
 
 /* ===== الملخص اليومي: يُفحص كل ساعة، ويُرسل مرة في اليوم في الساعة التي اختارها المدير ===== */
 function digestTick() {
-  const d = sbCall_({ action: "digestData", key: sbKey_() });
-  if (!d.enabled) return;
+  // نرسل الساعة الحالية: الخادم لا يقرأ الوارد والمهام إلا في ساعة الإرسال (توفير حصة النقل)
+  const d = sbCall_({ action: "digestData", key: sbKey_(), nowHour: Number(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "H")) });
+  if (!d.enabled || d.notNow) return;
   const tz = Session.getScriptTimeZone();
   const now = new Date();
   if (Number(Utilities.formatDate(now, tz, "H")) !== Number(d.hour)) return;

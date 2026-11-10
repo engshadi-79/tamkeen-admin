@@ -154,10 +154,30 @@
     return call("upload", { name, mime: blob.type || "application/octet-stream", path, data: await toBase64(blob) });
   }
 
+  /* ملف الخادم لا يتغيّر محتواه تحت معرّفه، فيُحفظ في المتصفح (Cache Storage) ولا يُنزَّل في كل مرة.
+     حتى 60 ملفاً وحتى 15 ميغابايت للملف؛ وأي فشل في التخزين يعود للتنزيل العادي. */
+  const FILE_CACHE = "tamkeen-files-v1", FILE_CACHE_MAX = 60, FILE_CACHE_BYTES = 15 * 1024 * 1024;
+  const fileKey = (id) => "https://files.tamkeen.local/" + encodeURIComponent(String(id));
   async function download(id) {
+    let cache = null;
+    try { cache = window.caches ? await caches.open(FILE_CACHE) : null; } catch (e) { cache = null; }
+    if (cache) {
+      try {
+        const hit = await cache.match(fileKey(id));
+        if (hit) return { name: decodeURIComponent(hit.headers.get("x-name") || "") || String(id), blob: await hit.blob(), cached: true };
+      } catch (e) { /* نكمل بالتنزيل */ }
+    }
     const r = await call("file", { id });
     const bytes = Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0));
-    return { name: r.name, blob: new Blob([bytes], { type: r.mime || "application/octet-stream" }) };
+    const blob = new Blob([bytes], { type: r.mime || "application/octet-stream" });
+    if (cache && blob.size <= FILE_CACHE_BYTES) {
+      try {
+        await cache.put(fileKey(id), new Response(blob, { headers: { "x-name": encodeURIComponent(r.name || ""), "content-type": blob.type } }));
+        const keys = await cache.keys();
+        for (let i = 0; i < keys.length - FILE_CACHE_MAX; i++) await cache.delete(keys[i]);   // الأقدم أولاً
+      } catch (e) { /* تخزين ممتلئ أو مقيَّد: لا يضرّ */ }
+    }
+    return { name: r.name, blob };
   }
 
   const sync = (records, deleted, mark) => call("sync", { records, deleted, mark: mark || "" });

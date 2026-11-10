@@ -6,7 +6,7 @@
   const { ui, store } = App;
   const $ = (id) => document.getElementById(id);
   const esc = ui.esc;
-  const REFRESH = 60000;
+  const REFRESH = 24 * 60 * 60000;   // مرة كل يوم (توفير حصة النقل)؛ وتُحمَّل أيضاً عند فتح الشاشة
   const ROTATE = 15000;           // تبديل اللوحات في وضع العرض
   const CACHE = "tamkeen-admin:ksach-stats";
 
