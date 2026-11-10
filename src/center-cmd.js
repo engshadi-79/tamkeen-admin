@@ -1309,7 +1309,7 @@
     const items = whatsNew(), dq = lsGet(SNAP_KEY, null);
     if (!items.length && !dq) return "";
     const changed = items.filter((x) => x.cmp && (x.cmp.done.length || x.cmp.added.length)).length;
-    const open = state.open.news !== undefined ? state.open.news : changed > 0;
+    const open = !!state.open.news;                       // مغلقة دائماً حتى تفتحها بنفسك
     return `<details class="cc-adv cc-news" data-open="news" ${open ? "open" : ""}><summary><span>ما الجديد منذ آخر مرة</span><span class="cc-badge">${ui.fmt(items.length + (dq ? 1 : 0))}</span><small>${changed ? ui.fmt(changed) + " تقرير تغيّر" : "لا تغيّر بعد"}</small></summary>
       <div class="cc-news-list">${items.map((x) => `<div class="cc-news-row"><div class="cc-news-t"><b>${esc(x.label)}</b><span class="cc-note">${esc(x.scope)}</span></div>
         <div class="cc-news-v">${x.cmp ? `<span class="cc-stat ok"><b>${ui.fmt(x.cmp.done.length)}</b> أكملوا</span><span class="cc-stat ${x.cmp.added.length ? "bad" : ""}"><b>${ui.fmt(x.cmp.added.length)}</b> نقص جديد</span><span class="cc-note">كان ${ui.fmt(x.cmp.before)} وأصبح ${ui.fmt(x.cmp.now)} منذ ${esc(diffDate(x.cmp.baseAt))}</span>` : `<span class="cc-note">${ui.fmt(x.now)} ناقصاً في لقطة واحدة؛ المقارنة من التشغيل القادم</span>`}<span class="cc-note">آخر تشغيل ${esc(agoDays(x.lastAt))}</span></div>
