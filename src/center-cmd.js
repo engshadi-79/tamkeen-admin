@@ -1319,7 +1319,7 @@
   }
   /* ===== التذكير الأسبوعي بالتقرير الشامل ===== */
   const WEEKLY_KEY = "tamkeen-admin:cc-weekly", SNOOZE_KEY = "tamkeen-admin:cc-weekly-snooze";
-  const markWeekly = () => { lsSet(WEEKLY_KEY, { at: new Date().toISOString() }); renderDash(); };
+  const markWeekly = () => { lsSet(WEEKLY_KEY, { at: new Date().toISOString() }); renderDash(); try { if (App.dashboard && App.dashboard.render) App.dashboard.render(); } catch (e) { /* اللوحة غير جاهزة */ } };
   const weeklyNow = () => weeklyDue(lsGet(WEEKLY_KEY, null), lsGet(SNOOZE_KEY, 0), Date.now());
   const weeklyText = (w) => (w.never ? "لم تشغّل التقرير الشامل الأسبوعي بعد." : "مرّت " + ui.fmt(w.days) + " أيام على آخر تقرير شامل.") + " حان موعد المتابعة.";
   function weeklyBanner() {
@@ -2735,7 +2735,7 @@
 
   /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
-  App.centerCmd = { missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+  App.centerCmd = { allowed: centerAllowed, missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});

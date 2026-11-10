@@ -23,6 +23,7 @@
   <!-- هوية «منجز» منقولة من D:i\Mahamm: تأخذ البنية من السابق وتستبدل الصبغة -->
   <!-- هوية «نظام جرد مركز التدريب»: كحلي وفيروزي، منقولة من الملف الذي أرسلته -->
   <link rel="stylesheet" href="styles/center.css?v=408">
+  <link rel="stylesheet" href="styles/clear.css?v=410">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -52,7 +53,8 @@
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <img src="assets/logo-white.png" alt="تمكين" class="brand-logo">
+        <img src="assets/logo-white.png" alt="تمكين" class="brand-logo brand-logo-white">
+        <img src="assets/logo.png" alt="" class="brand-logo brand-logo-color" aria-hidden="true">
         <span class="brand-copy">
           <h1>تمكين <span class="accent">الإداري</span></h1>
           <small>بوابة الحوكمة الرقمية</small>
@@ -189,8 +191,8 @@
             </div>
           </div>
         </div>
-        <div id="dash-munjaz"></div>
-        <div class="row col-6 dash-dense" id="stats"></div>
+        <!-- ما يحتاج منك إجراء اليوم: ثلاثة أرقام كبيرة (يملؤها dashboard.js) -->
+        <div class="card dash-today" id="dash-today"></div>
         <!-- وصول سريع إلى أدوات الملفات: كانت تحتاج فتح القائمة الجانبية لبلوغها -->
         <div class="card dash-quick">
           <div class="dash-section-head">
@@ -203,6 +205,32 @@
             <a class="dash-quick-card" href="#hospitality"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">room_service</span></span><span class="dash-quick-text"><b>كشف توزيع الضيافة</b><small>جهّز كشف الضيافة وطباعته</small></span></a>
           </div>
         </div>
+        <div class="dash-pair">
+        <div class="card dash-next-card">
+              <div class="dash-section-head"><div><span class="dash-section-kicker">الخطوة التالية</span><h3>أقرب المهام</h3></div><a class="dash-text-link" href="#tasks">عرض الكل</a></div>
+              <ul class="task-list" id="dash-tasks"></ul>
+            </div>
+        <!-- تقارير المركز المحفوظة بنقرة + تذكير الأسبوع (يملؤها center-cmd.js) -->
+        <div class="card dash-saved-card" id="dash-saved" hidden></div>
+        </div>
+        <div class="card">
+          <div class="dash-section-head">
+            <div><span class="dash-section-kicker">نظرة على البرامج</span><h3>حالة المسارات التدريبية</h3><p>الحضور والساعات المكتملة وملفات الأرشيف لكل مسار</p></div>
+            <a class="dash-text-link" href="#tracks">إدارة المسارات <span aria-hidden="true">←</span></a>
+          </div>
+          <div class="table-wrap dash-table-wrap"><table class="dash-table dash-track-table">
+            <thead><tr><th>المسار</th><th>النوع</th><th>المستفيدون</th><th>الحضور</th><th>الإنجاز</th><th>الأرشيف</th></tr></thead>
+            <tbody id="dash-tracks"></tbody>
+          </table></div>
+        </div>
+        <!-- المؤشرات والتحليلات والتنبيهات: مطوية افتراضياً لتبقى الصفحة واضحة -->
+        <details class="card dash-more" id="dash-more">
+          <summary>مؤشرات المركز والتنبيهات والتحليلات <small id="dash-more-count"></small></summary>
+          <div class="dash-more-body">
+        <div id="dash-munjaz"></div>
+        <div class="row col-6 dash-dense" id="stats"></div>
+        <div class="row col-8-4" id="dash-centre"></div>
+        <div class="ch-grid-wrap" id="dash-charts"></div>
         <div class="row col-8-4 dash-work-grid">
           <div class="card dash-team-card">
             <div class="dash-section-head">
@@ -221,27 +249,10 @@
               <div class="dash-section-head"><div><span class="dash-section-kicker">تحتاج انتباهك</span><h3>التنبيهات</h3></div><span class="dash-alert-count" id="dash-alert-count">0</span></div>
               <ul class="alerts" id="alerts"></ul>
             </div>
-            <div class="card dash-next-card">
-              <div class="dash-section-head"><div><span class="dash-section-kicker">الخطوة التالية</span><h3>أقرب المهام</h3></div><a class="dash-text-link" href="#tasks">عرض الكل</a></div>
-              <ul class="task-list" id="dash-tasks"></ul>
-            </div>
           </div>
         </div>
-        <!-- تقارير المركز المحفوظة بنقرة + تذكير الأسبوع (يملؤها center-cmd.js) -->
-        <div class="card dash-saved-card" id="dash-saved" hidden></div>
-        <!-- حال المركز من لقطة النظام: جدول المسارات وقائمة ما يحتاج إجراءً -->
-        <div class="row col-8-4" id="dash-centre"></div>
-        <div class="ch-grid-wrap" id="dash-charts"></div>
-        <div class="card">
-          <div class="dash-section-head">
-            <div><span class="dash-section-kicker">نظرة على البرامج</span><h3>حالة المسارات التدريبية</h3><p>الحضور والساعات المكتملة وملفات الأرشيف لكل مسار</p></div>
-            <a class="dash-text-link" href="#tracks">إدارة المسارات <span aria-hidden="true">←</span></a>
           </div>
-          <div class="table-wrap dash-table-wrap"><table class="dash-table dash-track-table">
-            <thead><tr><th>المسار</th><th>النوع</th><th>المستفيدون</th><th>الحضور</th><th>الإنجاز</th><th>الأرشيف</th></tr></thead>
-            <tbody id="dash-tracks"></tbody>
-          </table></div>
-        </div>
+        </details>
       </section>
 
       <!-- ===== متابعة المسارات ===== -->
@@ -1551,7 +1562,7 @@
   <script src="src/templates.js?v=340"></script>
   <script src="src/tracks.js?v=340"></script>
   <script src="src/tasks.js?v=340"></script>
-  <script src="src/dashboard.js?v=340"></script>
+  <script src="src/dashboard.js?v=410"></script>
   <script src="src/docx.js?v=340"></script>
   <script src="src/ai.js?v=341"></script>
   <script src="src/doc-render.js?v=340"></script>
@@ -1584,8 +1595,8 @@
   <script src="src/exam-sheet.js?v=382"></script>
   <script src="src/center-schema.js?v=340"></script>
   <script src="src/center-agent.js?v=380"></script>
-  <script src="src/center-util.js?v=408"></script>
-  <script src="src/center-cmd.js?v=408"></script>
+  <script src="src/center-util.js?v=410"></script>
+  <script src="src/center-cmd.js?v=410"></script>
   <script src="vendor/supabase.min.js"></script>
   <script src="src/hospitality.js?v=340"></script>
   <script src="src/sheets.js?v=340"></script>
