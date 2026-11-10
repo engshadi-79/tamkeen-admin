@@ -1490,3 +1490,16 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .rep-man-bar .sc-f { width: 190px; }
 .rep-man-table input { width: 100%; max-width: 190px; padding: 4px 7px; font-size: 12.5px; }
 .rep-man-table td { vertical-align: middle; }
+
+/* وصول سريع إلى أدوات الملفات في اللوحة الرئيسية */
+.dash-quick { margin: 0 0 16px; border-radius: 13px; }
+.dash-quick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr)); gap: 10px; }
+.dash-quick-card { display: flex; align-items: center; gap: 11px; min-width: 0; padding: 12px 13px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); color: var(--text); text-decoration: none; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.dash-quick-card:hover, .dash-quick-card:focus-visible { border-color: var(--teal-600); box-shadow: 0 4px 14px rgba(0, 0, 0, .08); transform: translateY(-1px); outline: none; }
+.dash-quick-card:focus-visible { box-shadow: 0 0 0 3px rgba(13, 148, 136, .25); }
+.dash-quick-ico { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; border-radius: 11px; background: var(--teal-100); color: var(--teal-600); }
+.dash-quick-ico .material-symbols-outlined { font-size: 22px; }
+.dash-quick-text { display: grid; gap: 2px; min-width: 0; }
+.dash-quick-text b { font-size: 12.5px; line-height: 1.4; }
+.dash-quick-text small { color: var(--muted); font-size: 10.5px; line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) { .dash-quick-card { transition: none; } .dash-quick-card:hover { transform: none; } }

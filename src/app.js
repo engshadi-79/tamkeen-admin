@@ -83,7 +83,8 @@
     document.querySelectorAll(".nav-group").forEach((g) => {
       const name = g.dataset.group;
       // أول مرة: الأقسام مطويّة إلا ما فيه الصفحة المفتوحة
-      if (state[name]) g.classList.add("open");
+      // أدوات الملفات في المقدمة: مفتوحة في أول زيارة، ثم تتذكّر حالتها
+      if (state[name] || (name === "tools" && !(name in state))) g.classList.add("open");
       const head = g.querySelector(".nav-head");
       if (!head) return;
       head.addEventListener("click", () => {
