@@ -17,9 +17,9 @@
   <!-- قالب Gentelella v4 كاملاً (مجمَّع من مصدره)، ثم تنسيقنا فوقه للغة والتخطيط -->
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles/gentelella.css?v=340">
-  <link rel="stylesheet" href="styles/theme.css?v=340">
+  <link rel="stylesheet" href="styles/theme.css?v=406">
   <!-- هوية «تمكين التنفيذية»: طبقة الصبغ النهائية فوق كل ما سبق -->
-  <link rel="stylesheet" href="styles/executive.css?v=340">
+  <link rel="stylesheet" href="styles/executive.css?v=406">
   <!-- هوية «منجز» منقولة من D:i\Mahamm: تأخذ البنية من السابق وتستبدل الصبغة -->
   <!-- هوية «نظام جرد مركز التدريب»: كحلي وفيروزي، منقولة من الملف الذي أرسلته -->
   <link rel="stylesheet" href="styles/center.css?v=350">
@@ -76,8 +76,18 @@
           </ul>
         </li>
 
+        <li class="nav-group" data-group="tools">
+          <button type="button" class="nav-head">١. أدوات الملفات</button>
+          <ul>
+            <li><button data-view="converter"><span class="ico material-symbols-outlined">transform</span><span class="nav-text">تحويل ملف حسب قالب</span></button></li>
+            <li><button data-view="rtl"><span class="ico material-symbols-outlined">flip</span><span class="nav-text">تصحيح اتجاه Word و PPT</span></button></li>
+            <li><button data-view="sheets"><span class="ico material-symbols-outlined">table_chart</span><span class="nav-text">جداول البيانات</span></button></li>
+            <li><button data-view="hospitality"><span class="ico material-symbols-outlined">room_service</span><span class="nav-text">كشف توزيع الضيافة</span></button></li>
+          </ul>
+        </li>
+
         <li class="nav-group" data-group="training">
-          <button type="button" class="nav-head">١. التدريب والمستفيدون</button>
+          <button type="button" class="nav-head">٢. التدريب والمستفيدون</button>
           <ul>
             <li><button data-view="tracks"><span class="ico material-symbols-outlined">route</span><span class="nav-text">متابعة المسارات</span></button></li>
             <li><button data-view="roster"><span class="ico material-symbols-outlined">groups_3</span><span class="nav-text">المستفيدون والتعهدات</span></button></li>
@@ -88,22 +98,12 @@
         </li>
 
         <li class="nav-group" data-group="docs">
-          <button type="button" class="nav-head">٢. المراسلات والمحاضر</button>
+          <button type="button" class="nav-head">٣. المراسلات والمحاضر</button>
           <ul>
             <li><button data-view="registry"><span class="ico material-symbols-outlined">move_to_inbox</span><span class="nav-text">الوارد والصادر</span></button></li>
             <li><button data-view="letters"><span class="ico material-symbols-outlined">mark_email_read</span><span class="nav-text">المراسلات والتقارير</span></button></li>
             <li><button data-view="meetings"><span class="ico material-symbols-outlined">history_edu</span><span class="nav-text">محاضر الاجتماعات</span></button></li>
             <li><button data-view="report"><span class="ico material-symbols-outlined">calendar_month</span><span class="nav-text">التقرير الدوري</span></button></li>
-          </ul>
-        </li>
-
-        <li class="nav-group" data-group="tools">
-          <button type="button" class="nav-head">٣. أدوات الملفات</button>
-          <ul>
-            <li><button data-view="converter"><span class="ico material-symbols-outlined">transform</span><span class="nav-text">تحويل ملف حسب قالب</span></button></li>
-            <li><button data-view="rtl"><span class="ico material-symbols-outlined">flip</span><span class="nav-text">تصحيح اتجاه Word و PPT</span></button></li>
-            <li><button data-view="sheets"><span class="ico material-symbols-outlined">table_chart</span><span class="nav-text">جداول البيانات</span></button></li>
-            <li><button data-view="hospitality"><span class="ico material-symbols-outlined">room_service</span><span class="nav-text">كشف توزيع الضيافة</span></button></li>
           </ul>
         </li>
 
@@ -184,9 +184,18 @@
         </div>
         <div id="dash-munjaz"></div>
         <div class="row col-6 dash-dense" id="stats"></div>
-        <!-- حال المركز من لقطة النظام: جدول المسارات وقائمة ما يحتاج إجراءً -->
-        <div class="row col-8-4" id="dash-centre"></div>
-        <div class="ch-grid-wrap" id="dash-charts"></div>
+        <!-- وصول سريع إلى أدوات الملفات: كانت تحتاج فتح القائمة الجانبية لبلوغها -->
+        <div class="card dash-quick">
+          <div class="dash-section-head">
+            <div><span class="dash-section-kicker">وصول سريع</span><h3>أدوات الملفات</h3><p>ما تستعمله يومياً في تجهيز الملفات والبيانات</p></div>
+          </div>
+          <div class="dash-quick-grid">
+            <a class="dash-quick-card" href="#converter"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">transform</span></span><span class="dash-quick-text"><b>تحويل ملف حسب قالب</b><small>أخرج النماذج من ملف Excel أو من بيانات المركز</small></span></a>
+            <a class="dash-quick-card" href="#sheets"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">table_chart</span></span><span class="dash-quick-text"><b>جداول البيانات</b><small>جداول مشتركة بين الفريق</small></span></a>
+            <a class="dash-quick-card" href="#rtl"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">flip</span></span><span class="dash-quick-text"><b>تصحيح اتجاه Word و PPT</b><small>اضبط اتجاه الملفات العربية</small></span></a>
+            <a class="dash-quick-card" href="#hospitality"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">room_service</span></span><span class="dash-quick-text"><b>كشف توزيع الضيافة</b><small>جهّز كشف الضيافة وطباعته</small></span></a>
+          </div>
+        </div>
         <div class="row col-8-4 dash-work-grid">
           <div class="card dash-team-card">
             <div class="dash-section-head">
@@ -211,6 +220,9 @@
             </div>
           </div>
         </div>
+        <!-- حال المركز من لقطة النظام: جدول المسارات وقائمة ما يحتاج إجراءً -->
+        <div class="row col-8-4" id="dash-centre"></div>
+        <div class="ch-grid-wrap" id="dash-charts"></div>
         <div class="card">
           <div class="dash-section-head">
             <div><span class="dash-section-kicker">نظرة على البرامج</span><h3>حالة المسارات التدريبية</h3><p>الحضور والساعات المكتملة وملفات الأرشيف لكل مسار</p></div>
@@ -1563,7 +1575,7 @@
   <script src="src/exam-sheet.js?v=382"></script>
   <script src="src/center-schema.js?v=340"></script>
   <script src="src/center-agent.js?v=380"></script>
-  <script src="src/center-cmd.js?v=405"></script>
+  <script src="src/center-cmd.js?v=406"></script>
   <script src="vendor/supabase.min.js"></script>
   <script src="src/hospitality.js?v=340"></script>
   <script src="src/sheets.js?v=340"></script>
@@ -1573,6 +1585,6 @@
   <script src="src/search.js?v=340"></script>
   <script src="src/whatsapp.js?v=403"></script>
   <script src="src/realtime.js?v=340"></script>
-  <script src="src/app.js?v=352"></script>
+  <script src="src/app.js?v=406"></script>
 </body>
 </html>
