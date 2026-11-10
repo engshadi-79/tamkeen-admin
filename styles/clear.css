@@ -1,0 +1,81 @@
+/* تصميم «واضح»: قائمة جانبية فاتحة وصفحة رئيسية أبسط بخط أكبر وتباين أعلى.
+   يُحمَّل آخر الأوراق، ويخص الوضع النهاري فقط؛ الوضع الليلي (data-theme="dark") يبقى كما هو.
+   الرفع في الخصوصية (html:root:root:root:root) لأن executive.css وcenter.css يثبّتان ألوان القائمة الليلية. */
+
+/* ===== القائمة الجانبية الفاتحة ===== */
+.brand-logo-color { display: none; }
+html:root:root:root:root[data-theme="light"] .brand-logo-white { display: none; }
+html:root:root:root:root[data-theme="light"] .brand-logo-color { display: block; }
+
+html:root:root:root:root[data-theme="light"] .sidebar { background: #fff; color: #1a2332; box-shadow: none; border-inline-end: 1px solid #dfe4ea; }
+html:root:root:root:root[data-theme="light"] .brand { border-bottom-color: #edf0f4; }
+html:root:root:root:root[data-theme="light"] .brand h1 { color: #1a2332; }
+html:root:root:root:root[data-theme="light"] .brand .accent { color: #0f766e; }
+html:root:root:root:root[data-theme="light"] .brand small { color: #5b687a; }
+html:root:root:root:root[data-theme="light"] #mobile-menu-toggle { color: #1a2332; background: #f1f5f9; border-color: #dfe4ea; }
+html:root:root:root:root[data-theme="light"] .side-user { border-bottom-color: #edf0f4; }
+html:root:root:root:root[data-theme="light"] .side-user-text b { color: #1a2332; }
+html:root:root:root:root[data-theme="light"] .side-user-text small { color: #5b687a; }
+html:root:root:root:root[data-theme="light"] .side-avatar { background: #e6f4f2; color: #0f766e; }
+
+html:root:root:root:root[data-theme="light"] .nav button { color: #2b3648; font-weight: 500; font-size: 14px; }
+html:root:root:root:root[data-theme="light"] .nav button:hover { background: #f1f5f9; color: #0b5d56; }
+html:root:root:root:root[data-theme="light"] .nav button.active { background: #e6f4f2; background-image: none; color: #0b5d56; font-weight: 700; box-shadow: none; }
+html:root:root:root:root[data-theme="light"] .nav .ico { color: #5b687a; opacity: 1; }
+html:root:root:root:root[data-theme="light"] .nav button.active .ico,
+html:root:root:root:root[data-theme="light"] .nav button:hover .ico { color: #0f766e; }
+html:root:root:root:root[data-theme="light"] .nav .nav-head { color: #5b687a; font-size: 12px; font-weight: 700; letter-spacing: 0; }
+html:root:root:root:root[data-theme="light"] .nav .nav-head:hover,
+html:root:root:root:root[data-theme="light"] .nav-group.open > .nav-head { color: #1a2332; }
+
+html:root:root:root:root[data-theme="light"] .sidebar-foot { border-top-color: #edf0f4; color: #5b687a; }
+html:root:root:root:root[data-theme="light"] .sidebar-foot button { background: #f1f5f9; color: #2b3648; }
+html:root:root:root:root[data-theme="light"] .sidebar-foot button:hover { background: #e6f4f2; color: #0b5d56; }
+html:root:root:root:root[data-theme="light"] .sf-badge b { color: #0f766e; }
+
+/* ===== اللوحة الرئيسية الواضحة ===== */
+#view-dashboard { --d-text: #1a2332; --d-sub: #5b687a; --d-line: #dfe4ea; --d-ok: #0f766e; --d-ok-bg: #e6f4f2; --d-bad: #b42318; --d-bad-bg: #fdecea; --d-warn: #8a5a00; --d-warn-bg: #fff4d6; }
+#view-dashboard .card { border-radius: 14px; }
+#view-dashboard .dash-section-head h3 { font-size: 17px; font-weight: 700; }
+#view-dashboard .dash-section-head p { font-size: 12.5px; }
+#view-dashboard .dash-section-kicker { font-size: 11px; }
+#view-dashboard .dash-text-link { font-size: 12.5px; }
+#view-dashboard .dash-table { font-size: 13.5px; }
+#view-dashboard .dash-table th { font-size: 11.5px; }
+
+/* «ما يحتاج منك إجراء اليوم» */
+.dash-today { margin: 0 0 16px; }
+.dash-today-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.dash-tile { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 16px 18px; border-radius: 14px; border: 1px solid transparent; text-decoration: none; font: inherit; text-align: start; cursor: pointer; }
+.dash-tile:hover, .dash-tile:focus-visible { filter: brightness(.97); outline: none; box-shadow: 0 0 0 3px rgba(15, 118, 110, .25); }
+.dash-tile b { font-size: 34px; line-height: 1; font-weight: 700; min-width: 44px; text-align: center; }
+.dash-tile span { display: grid; gap: 2px; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.dash-tile small { font-size: 12.5px; font-weight: 500; opacity: .85; }
+.dash-tile.bad { background: var(--d-bad-bg, #fdecea); color: var(--d-bad, #b42318); }
+.dash-tile.warn { background: var(--d-warn-bg, #fff4d6); color: var(--d-warn, #8a5a00); }
+.dash-tile.ok { background: var(--d-ok-bg, #e6f4f2); color: #0b5d56; }
+
+/* أقرب المهام + تقارير المركز جنباً إلى جنب */
+.dash-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin: 0 0 16px; align-items: start; }
+.dash-pair > .card { margin: 0; }
+.dash-pair .dash-saved-card { margin: 0; }
+.dash-saved-btn { font-size: 14px; padding: 11px 14px; }
+
+/* تفاصيل المؤشرات والتحليلات: مطوية افتراضياً */
+.dash-more { margin: 0 0 16px; padding: 0; }
+.dash-more > summary { display: flex; align-items: center; gap: 10px; padding: 14px 18px; cursor: pointer; list-style: none; font-size: 15px; font-weight: 700; }
+.dash-more > summary::-webkit-details-marker { display: none; }
+.dash-more > summary::before { content: "▸"; color: var(--d-sub, #5b687a); font-size: 14px; transition: transform .15s; }
+.dash-more[open] > summary::before { transform: rotate(90deg); }
+.dash-more > summary small { font-size: 12.5px; font-weight: 400; color: var(--d-sub, #5b687a); }
+.dash-more-body { padding: 4px 16px 16px; display: grid; gap: 14px; }
+.dash-more-body > * { margin: 0; }
+
+/* حالة المسارات */
+#view-dashboard .dash-track-table td, #view-dashboard .dash-track-table th { padding-block: 11px; }
+@media (prefers-reduced-motion: reduce) { .dash-more > summary::before { transition: none; } }
+
+/* الوضع الليلي: بلاطات اليوم بألوان داكنة متناسقة */
+html:root:root[data-theme="dark"] .dash-tile.bad { background: rgba(240, 82, 82, .16); color: #ff9a9a; }
+html:root:root[data-theme="dark"] .dash-tile.warn { background: rgba(212, 160, 40, .18); color: #f2ca50; }
+html:root:root[data-theme="dark"] .dash-tile.ok { background: rgba(15, 118, 110, .24); color: #7be0d5; }

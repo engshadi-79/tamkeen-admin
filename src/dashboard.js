@@ -359,7 +359,45 @@
       <div class="mj-mini">${miniPanels()}</div>`;
   }
 
+  /* ===== «ما يحتاج منك إجراء اليوم»: ثلاثة أرقام كبيرة بألوان الحالة، وكل رقم يفتح ما يخصّه ===== */
+  const tile = (tone, n, label, hint, href, attrs) => {
+    const inner = `<b>${typeof n === "number" ? ui.fmt(n) : n}</b><span>${label}<small>${hint}</small></span>`;
+    return href ? `<a class="dash-tile ${tone}" href="${href}">${inner}</a>` : `<button type="button" class="dash-tile ${tone}" ${attrs || ""}>${inner}</button>`;
+  };
+  function todayCard(overdue) {
+    const el = document.getElementById("dash-today");
+    if (!el) return;
+    const follow = App.registry ? App.registry.followUps() : [];
+    const late = follow.filter((x) => x.days < 0).length;
+    const tiles = [
+      overdue.length ? tile("bad", overdue.length, "مهام متأخرة", "راجعها الآن", "#tasks") : tile("ok", 0, "لا مهام متأخرة", "كل شيء في موعده", "#tasks"),
+      follow.length ? tile(late ? "bad" : "warn", follow.length, "وارد يحتاج معالجة", late ? `${ui.fmt(late)} منها متأخر` : "مستحق خلال ٣ أيام", "#registry") : tile("ok", 0, "لا وارد مستحق", "لا شيء بانتظار رد", "#registry"),
+    ];
+    // تقرير المركز الأسبوعي: لمن يُتاح له التبويب فقط
+    const cc = App.centerCmd;
+    if (!cc || !cc.allowed || cc.allowed()) {
+      let rec = null;
+      try { rec = JSON.parse(localStorage.getItem("tamkeen-admin:cc-weekly") || "null"); } catch (e) { rec = null; }
+      const last = rec && rec.at ? Date.parse(rec.at) : 0;
+      const days = last ? Math.floor((Date.now() - last) / DAY) : null;
+      tiles.push(days === null
+        ? tile("warn", "—", "تقرير المركز", "لم يُشغَّل بعد: شغّله الآن", "", "data-dash-weekly")
+        : days >= 7 ? tile("warn", days, "أيام منذ آخر تقرير للمركز", "حان موعد التقرير: شغّله", "", "data-dash-weekly")
+        : tile("ok", days, "أيام منذ آخر تقرير للمركز", "في موعده", "", "data-dash-weekly"));
+    }
+    el.innerHTML = `<div class="dash-section-head"><div><span class="dash-section-kicker">اليوم</span><h3>ما يحتاج منك إجراء اليوم</h3></div></div><div class="dash-today-grid">${tiles.join("")}</div>`;
+  }
+  /* التفاصيل المطوية: تتذكر حالتها */
+  function initMore() {
+    const el = document.getElementById("dash-more");
+    if (!el || el.dataset.ready) return;
+    el.dataset.ready = "1";
+    try { el.open = localStorage.getItem("tamkeen-admin:dash-more") === "1"; } catch (e) { /* خاص */ }
+    el.addEventListener("toggle", () => { try { localStorage.setItem("tamkeen-admin:dash-more", el.open ? "1" : "0"); } catch (e) { /* خاص */ } });
+  }
+
   function render() {
+    initMore();
     const { tasks } = store.get();
     const trackList = App.tracks.ordered();
     const s = App.tracks.summary(trackList);
@@ -371,6 +409,7 @@
     munjaz();
     document.getElementById("stats").innerHTML = statCards(trackList, s, pending, overdue);
     centreCards(pending, overdue);
+    todayCard(overdue);
 
     const alerts = [];
     trackList.filter((t) => Number(t.attendancePct) < ATTENDANCE_THRESHOLD).forEach((t) => {
@@ -387,6 +426,8 @@
     document.getElementById("alerts").innerHTML = alerts.length ? alerts.join("") : `<li class="ok">لا توجد تنبيهات حالياً — جميع المؤشرات ضمن الحدود المطلوبة.</li>`;
     const alertCount = document.getElementById("dash-alert-count");
     if (alertCount) { alertCount.textContent = ui.fmt(alerts.length); alertCount.classList.toggle("is-clear", alerts.length === 0); }
+    const moreCount = document.getElementById("dash-more-count");
+    if (moreCount) moreCount.textContent = alerts.length ? `— ${ui.fmt(alerts.length)} تنبيهاً` : "— لا تنبيهات";
 
     const team = new Map();
     tasks.forEach((task) => {
