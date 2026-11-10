@@ -1,0 +1,173 @@
+/* أدوات «أوامر المركز» التي لا تعتمد على حالة الصفحة: نصوص وأرقام، تقسيم خلايا النظام، تنسيق Excel،
+   حسابات اللقطات والالتزام والتذكير. فُصلت عن center-cmd.js ليصغر ملفه، وليمكن اختبارها في Node مباشرة
+   (node tools/test-center-util.js). لا تقرأ DOM ولا ui ولا state. */
+(function (App) {
+  const clean = (v) => String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+  const digits = (v) => String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, "");
+  const cellStr = (c) => String(c == null ? "" : c);
+  const phoneNorm = (v) => { const d = digits(v); return /^5\d{8}$/.test(d) ? "0" + d : d; };
+  const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* وضع التصفح الخاص */ } };
+  const maskCell = (v) => { const t = cellStr(v); return /^\d{9,10}$/.test(t) ? t.slice(0, 2) + "*".repeat(t.length - 4) + t.slice(-2) : t; };
+  const verNum = (v) => String(v || "").split(".").map(Number);
+  const verLess = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
+
+  /* رقم دولي لرابط wa.me: 059… ← 97059… ، ويُبقى الرقم الذي يبدأ بـ + أو 00 كما هو */
+  const waIntl = (raw, cc) => {
+    const t = String(raw || "").trim(), d = digits(t);
+    if (!d) return "";
+    if (t.startsWith("+")) return d;
+    if (d.startsWith("00")) return d.slice(2);
+    if (d.startsWith(cc) && d.length >= cc.length + 8) return d;
+    return d.startsWith("0") ? cc + d.slice(1) : cc + d;
+  };
+  /* تقسيم الرسالة عند حدود الأسطر إلى أجزاء مرقمة إن تجاوزت max (الافتراضي: لا تجزئة) */
+  function waParts(text, max) {
+    const lim = max == null ? Infinity : max, t = String(text || "").trim();
+    if (t.length <= lim) return [t];
+    const out = []; let cur = "";
+    t.split("\n").forEach((line) => { if (cur && (cur + "\n" + line).length > lim) { out.push(cur); cur = line; } else cur = cur ? cur + "\n" + line : line; });
+    if (cur) out.push(cur);
+    return out.map((x, i) => "(" + (i + 1) + "/" + out.length + ")\n" + x);
+  }
+
+  /* ورقة منسّقة: اتجاه يمين لليسار، ترويسة مثبّتة ملوّنة، فلاتر، وعرض أعمدة بحسب المحتوى */
+  function fmtSheet(ws, heads, rows) {
+    ws.views = [{ rightToLeft: true, state: "frozen", ySplit: 1 }];
+    ws.addRow(heads);
+    rows.forEach((r) => ws.addRow(r));
+    const hr = ws.getRow(1);
+    hr.font = { bold: true };
+    hr.alignment = { vertical: "middle", horizontal: "right" };
+    hr.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8EEF7" } };
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: Math.max(1, heads.length) } };
+    heads.forEach((h, i) => {
+      let w = cellStr(h).length;
+      rows.forEach((r) => { w = Math.max(w, cellStr(r[i]).length); });
+      ws.getColumn(i + 1).width = Math.min(45, Math.max(10, w + 3));
+    });
+  }
+
+  /* جدول النظام يدمج عدة بيانات في خلية واحدة (الطالب، المسار/الدورة، المجموعة/المدرب).
+     نفصلها إلى أعمدة مستقلة، لكل نوع بيانات عموده، ونحتفظ بنص الدورة الأصلي لأغراض التصفية. */
+  function splitStudentCell(raw) {
+    let t = clean(raw);
+    const stu = (t.match(/STU-[\d-]+/) || [""])[0];
+    if (stu) t = t.replace(stu, " ");
+    const NO_EN = "لا يوجد اسم إنجليزي";
+    let name, en = "";
+    const k = t.indexOf(NO_EN);
+    if (k >= 0) { name = t.slice(0, k); t = t.slice(k + NO_EN.length); }
+    else {
+      const m = t.match(/[A-Za-z][A-Za-z .'\-]*[A-Za-z]/);
+      if (m) { const at = t.indexOf(m[0]); name = t.slice(0, at); en = m[0]; t = t.slice(at + m[0].length); }
+      else { const d = t.search(/\d/); name = d < 0 ? t : t.slice(0, d); t = d < 0 ? "" : t.slice(d); }
+    }
+    // ما بقي: «الهوية - الجوال» بفاصل بينهما. نقسمه بالفواصل لا بشكل الرقم، فالجوال قد يأتي بلا صفر أوله
+    const parts = t.split(/\s*[-–—·]\s*/).map(digits).filter(Boolean);
+    let id = "", phone = "";
+    if (parts.length >= 2) { id = parts[0]; phone = parts[parts.length - 1]; }
+    else if (parts.length === 1) { if (/^0?5\d{8}$/.test(parts[0])) phone = parts[0]; else id = parts[0]; }
+    if (/^5\d{8}$/.test(phone)) phone = "0" + phone;
+    // الاسم العربي يفصله النظام عمّا بعده بـ « / » أو شرطة: نزيل الفواصل من طرفيه (والإنجليزي كذلك)
+    const trimSep = (v) => clean(v).replace(/^[\s\/\|·\-–—،,:]+|[\s\/\|·\-–—،,:]+$/g, "");
+    return [trimSep(name), trimSep(en), stu, id, phone];
+  }
+  /* خلية «المجموعة / المدرب»: «S3G2 -» (بلا مدرب)، «G1 - د. أحمد»، أو «S3G1 اسراء خليل…» (رمز المجموعة ثم المدرب بلا فاصل) */
+  function splitGroupCell(raw) {
+    const d = clean(raw).split(/\s+-\s*/);
+    let g = clean(d[0]), tr = clean(d.slice(1).join(" - "));
+    if (!tr) {
+      let m = g.match(/^([A-Za-z]+\d*[A-Za-z]*\d*)\s+(.+)$/);              // رمز لاتيني: G1، S3G2
+      if (!m) m = g.match(/^(المجموعة\s+\S+)\s+(.+)$/);                   // المجموعة الاولى
+      if (m) { g = m[1]; tr = clean(m[2]); }
+    }
+    return [g, tr.replace(/^[-–—]+$/, "")];
+  }
+  function expandResult(r) {
+    if (!r || !Array.isArray(r.heads) || !Array.isArray(r.rows)) return r;
+    const at = (rx) => r.heads.findIndex((h) => rx.test(clean(h)));
+    const iS = at(/^الطالب$/), iC = at(/^المسار\s*\/\s*الدورة$/), iG = at(/^المجموعة\s*\/\s*المدرب$/);
+    if (iS < 0 && iC < 0 && iG < 0) return r;
+    const heads = [], plan = [];
+    r.heads.forEach((h, i) => {
+      if (i === iS) {
+        const hasPhone = r.heads.some((x) => clean(x) === "الجوال");   // تقرير له عمود جوال خاص: لا نكرره
+        heads.push("الاسم", "الاسم الإنجليزي", "رقم الطالب", "رقم الهوية"); if (!hasPhone) heads.push("الجوال");
+        plan.push((c) => { const v = splitStudentCell(c); return hasPhone ? v.slice(0, 4) : v; });
+      }
+      else if (i === iC) {
+        heads.push("المسار", "المرحلة");
+        plan.push((c) => { const t = clean(c); const m = t.match(/المرحلة\s*\S+/); return [clean(m ? t.replace(m[0], "") : t), m ? m[0] : ""]; });
+      } else if (i === iG) {
+        heads.push("المجموعة", "المدرب");
+        plan.push((c) => splitGroupCell(c));
+      } else { heads.push(h); plan.push((c) => [c]); }
+    });
+    const rows = r.rows.map((x) => ({ cells: [].concat(...plan.map((f, i) => f(x.cells[i]))), course: iC >= 0 ? clean(x.cells[iC]) : "", raw: x.cells }));
+    return Object.assign({}, r, { heads, rows, rawHeads: r.heads });
+  }
+
+  /* ===== لقطات الناقصين: خط الأساس والفرق ===== */
+  const DAY = 86400000, HOUR = 3600000;
+  /* خط الأساس: أحدث لقطة عمرها 6 أيام فأكثر؛ وإلا أقدم لقطة عمرها ساعة فأكثر (نسبةً إلى nowMs) */
+  function pickBase(list, nowMs) {
+    const aged = (list || []).map((e) => ({ e, age: nowMs - Date.parse(e.at) })).filter((x) => x.age >= HOUR);
+    const week = aged.filter((x) => x.age >= 6 * DAY).sort((a, b) => a.age - b.age)[0];
+    return week || aged.sort((a, b) => b.age - a.age)[0] || null;
+  }
+  /* صفوف اللقطة [مفتاح، اسم، مسار]: من أكمل (كانوا ناقصين) ومن نقص جديداً */
+  function diffRows(baseRows, curRows) {
+    const old = new Map((baseRows || []).map((r) => [r[0], r])), cur = new Map((curRows || []).map((r) => [r[0], r]));
+    return {
+      before: old.size, now: cur.size,
+      done: [...old.entries()].filter(([k]) => !cur.has(k)).map(([, r]) => ({ name: r[1], track: r[2] })),
+      added: [...cur.entries()].filter(([k]) => !old.has(k)).map(([, r]) => ({ name: r[1], track: r[2] })),
+    };
+  }
+  /* آخر لقطة مقابل خط الأساس قبلها (لشاشة «ما الجديد»؛ تحتاج لقطتين على الأقل) */
+  function compareLatest(list) {
+    if (!list || list.length < 2) return null;
+    const latest = list[list.length - 1], base = pickBase(list.slice(0, -1), Date.parse(latest.at));
+    if (!base) return null;
+    return Object.assign({ baseAt: base.e.at, latestAt: latest.at }, diffRows(base.e.rows, latest.rows));
+  }
+
+  /* ===== الالتزام بالمتطلبات لكل مجموعة ومدرب =====
+     students: طلاب النظام {id, stu, name, track, stage, group, trainer}؛ missing: صفوف الناقصين {id, stu, flags:{pre,post,impact,pledge}}.
+     الطالب «مكتمل» إن لم يرد في الناقصين بأي من الأربعة. الترتيب: الأقل التزاماً أولاً. */
+  const REQ = ["pre", "post", "impact", "pledge"];
+  function rankCompliance(students, missing) {
+    const byId = new Map(), byStu = new Map();
+    (missing || []).forEach((m) => { if (m.id) byId.set(String(m.id), m); if (m.stu) byStu.set(String(m.stu), m); });
+    const find = (st) => (st.id && byId.get(String(st.id))) || (st.stu && byStu.get(String(st.stu))) || null;
+    const gm = new Map(), tm = new Map();
+    const empty = () => ({ n: 0, complete: 0, pre: 0, post: 0, impact: 0, pledge: 0 });
+    const add = (e, m) => { e.n++; const lacks = REQ.filter((k) => m && m.flags && m.flags[k]); if (!lacks.length) e.complete++; lacks.forEach((k) => { e[k]++; }); };
+    (students || []).forEach((st) => {
+      const m = find(st), group = st.group || "(غير موزع)", trainer = st.trainer || "(بلا مدرب)";
+      const gk = st.track + "|" + st.stage + "|" + group;
+      add(gm.get(gk) || gm.set(gk, Object.assign(empty(), { track: st.track, stage: st.stage, group, trainer: st.trainer || "" })).get(gk), m);
+      const g = gm.get(gk); if (st.trainer && !g.trainer) g.trainer = st.trainer;
+      add(tm.get(trainer) || tm.set(trainer, Object.assign(empty(), { name: trainer, groups: new Set(), tracks: new Set() })).get(trainer), m);
+      const t = tm.get(trainer); t.groups.add(gk); t.tracks.add(st.track);
+    });
+    const pct = (e) => (e.n ? Math.round((e.complete / e.n) * 100) : 0);
+    const worstFirst = (a, b) => a.pct - b.pct || b.n - a.n || String(a.group || a.name).localeCompare(String(b.group || b.name), "ar");
+    const groups = [...gm.values()].map((e) => Object.assign(e, { pct: pct(e) })).sort(worstFirst);
+    const trainers = [...tm.values()].map((e) => Object.assign(e, { pct: pct(e), groups: e.groups.size, tracks: [...e.tracks] })).sort(worstFirst);
+    const total = groups.reduce((a, g) => a + g.n, 0), complete = groups.reduce((a, g) => a + g.complete, 0);
+    return { groups, trainers, total, complete, pct: total ? Math.round((complete / total) * 100) : 0 };
+  }
+
+  /* ===== التذكير الأسبوعي =====
+     rec: { at } آخر تقرير شامل؛ snoozeUntil: وقت (ms) أجّل التذكير إليه. due: انقضت 7 أيام أو لم يُشغَّل قط. */
+  function weeklyDue(rec, snoozeUntil, nowMs) {
+    const last = rec && rec.at ? Date.parse(rec.at) : 0;
+    const days = last ? Math.floor((nowMs - last) / DAY) : null;
+    const overdue = !last || nowMs - last >= 7 * DAY;
+    return { due: overdue && !(snoozeUntil && nowMs < snoozeUntil), days, never: !last };
+  }
+
+  App.ccUtil = { clean, digits, cellStr, phoneNorm, lsGet, lsSet, maskCell, verNum, verLess, waIntl, waParts, fmtSheet, splitStudentCell, splitGroupCell, expandResult, pickBase, diffRows, compareLatest, rankCompliance, weeklyDue };
+})(window.App = window.App || {});

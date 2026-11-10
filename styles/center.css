@@ -1099,3 +1099,19 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 
 .cc-bundle { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; margin-top: 6px; }
 .cc-bad { color: #d64545; font-weight: 700; }
+
+/* تقارير المركز المحفوظة في اللوحة الرئيسية + ما الجديد في أوامر المركز */
+.dash-saved-card { margin: 0 0 16px; border-radius: 13px; }
+.dash-saved-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.dash-saved-btn { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; text-align: start; transition: border-color .15s, box-shadow .15s; }
+.dash-saved-btn:hover, .dash-saved-btn:focus-visible { border-color: var(--teal-600); box-shadow: 0 0 0 3px rgba(13, 148, 136, .2); outline: none; }
+.dash-saved-btn .material-symbols-outlined { font-size: 20px; color: var(--teal-600); }
+.dash-saved-btn small { display: block; color: var(--muted); font-size: 10px; font-weight: 500; }
+.dash-weekly { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--warn-bg, #fff4d6); color: var(--text); font-size: 12.5px; }
+.cc-weekly { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.cc-news-list { display: grid; gap: 8px; margin: 8px 0; }
+.cc-news-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(0, 2fr) auto; gap: 10px; align-items: center; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; }
+.cc-news-t { display: grid; gap: 2px; min-width: 0; }
+.cc-news-v { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cc-sub { margin: 14px 0 6px; font-size: 13px; }
+@media (max-width: 720px) { .cc-news-row { grid-template-columns: minmax(0, 1fr); } }

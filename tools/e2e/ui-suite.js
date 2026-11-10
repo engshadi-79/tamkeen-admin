@@ -142,6 +142,15 @@ async function suite() {
   ok("المجموعات: مجموعتان ومدربان و2 غير موزع", go.groups.length === 2 && go.trainers.length === 2 && go.unassigned === 2);
   b.querySelector('[data-cc="grp-propose"]').click();
   ok("اقتراح التوزيع: يوازن (الصغرى أولاً)", c.state.grp.out.prop.rows.length === 2 && c.state.grp.out.prop.rows[0][4] === "G2");
+  b.querySelector('[data-cc="grp-compliance"]').click();
+  for (let i = 0; i < 60 && !c.state.grp.comp && !c.state.resultError; i++) await wait(200);
+  const cp = c.state.grp.comp;
+  ok("الالتزام: يُحسب لكل مجموعة ومدرب بلا خطأ", !!cp && !c.state.resultError && cp.total === 6 && cp.groups.some((g) => g.group === "G1") && cp.groups.every((g) => Number.isInteger(g.pct)) && cp.trainers.length >= 2, cp && { total: cp.total, err: c.state.resultError });
+  ok("الالتزام: جدولان في النتيجة وزر تنزيل", !!b.querySelector('[data-tblbox="grp-cg"]') && !!b.querySelector('[data-tblbox="grp-ct"]'));
+  const pp7 = window.print; let printed7 = 0; window.print = () => { printed7++; };
+  b.querySelector('[data-cc="print-grp"]').click(); await wait(800); window.print = pp7;
+  const pr7 = (document.getElementById("print-root") || {}).textContent || "";
+  ok("المجموعات: طباعة على الترويسة الرسمية بجدول الالتزام", printed7 === 1 && /تقرير المجموعات والمدربين/.test(pr7) && /الالتزام بالمتطلبات/.test(pr7), pr7.slice(0, 80));
 
   // ===== 8) الإخوة: اختيار المراحل والمقارنة بين المراحل =====
   DATA = [mk("أحمد خالد علي أبو نصير", "401", "0591000001", "1", S3, "G1 - "), mk("علي خالد علي أبو نصير", "402", "0591000001", "2", S1, "G1 - "), mk("منى فؤاد حسين قاسم", "407", "0594000004", "3", S3, "G1 - "), mk("سلمى فؤاد حسين قاسم", "409", "0594000004", "4", S3, "G1 - ")];
@@ -168,6 +177,15 @@ async function suite() {
   c.state.mode = "report"; c.state.sel = { tracks: ["1"], stages: [], status: "active", group_status: "", details: false, extra: {} }; c.render(); b.querySelector('[data-cc="sv-save"]').click();
   c.state.mode = "dq"; c.state.dq.tracks = ["1"]; c.render(); b.querySelector('[data-cc="sv-save"]').click(); window.prompt = op;
   ok("المحفوظات: حُفظ تقريران", c.state.saved.length === 2 && JSON.parse(localStorage.getItem("tamkeen-admin:cc-saved")).length === 2);
+  const dsv = document.getElementById("dash-saved");
+  ok("اللوحة الرئيسية: التقارير المحفوظة بأزرار تشغيل", !!dsv && !dsv.hidden && dsv.querySelectorAll("[data-dash-saved]").length === 2, dsv && dsv.innerHTML.length);
+  localStorage.removeItem("tamkeen-admin:cc-weekly"); localStorage.removeItem("tamkeen-admin:cc-weekly-snooze"); c.render();
+  ok("التذكير الأسبوعي: يظهر ما دام لا تقرير شامل أسبوعي", !!b.querySelector('[data-cc="weekly-run"]'));
+  b.querySelector('[data-cc="weekly-snooze"]').click();
+  ok("التأجيل يومين يخفي التذكير", !b.querySelector('[data-cc="weekly-run"]') && Number(localStorage.getItem("tamkeen-admin:cc-weekly-snooze")) > Date.now());
+  ok("ما الجديد: بطاقة بتقارير الناقصين المحفوظة لقطاتها", !!b.querySelector(".cc-news") && b.querySelectorAll(".cc-news-row").length >= 1, b.querySelectorAll(".cc-news-row").length);
+  b.querySelector('[data-cc="news-load"]').click();
+  ok("«افتح هذا التقرير» يحمّل اختياراته في تبويب الاستبيانات", c.state.mode === "missing" && !c.state.mis.out);
   c.state.sel = { tracks: ["2"], stages: [], status: "", group_status: "", details: false, extra: {} };
   c.state.mode = "dq"; c.render(); b.querySelector('[data-cc="bundle-toggle"]').click();
   b.querySelectorAll("[data-bundle]").forEach((cb) => { cb.checked = true; cb.dispatchEvent(new Event("change", { bubbles: true })); });
