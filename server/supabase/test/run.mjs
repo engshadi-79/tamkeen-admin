@@ -333,6 +333,10 @@ check("تفعيل الملخص يُحفظ", dg.enabled === true && dg.hour === 8
 const dd = await post({ action: "digestData", key: "SECRET123" });
 check("بيانات الملخص فيها المهام المستحقة", dd.enabled && dd.hour === 8 && dd.lateTasks.some((t) => t.text === "مستحقة"), dd);
 check("بيانات الملخص تحتاج الرمز", (await post({ action: "digestData", key: "x" })).error === "رمز النسخ غير صحيح");
+const ddOff = await post({ action: "digestData", key: "SECRET123", nowHour: 3 });
+check("الملخص في غير ساعته: ردّ خفيف بلا قراءة الوارد والمهام", ddOff.enabled === true && ddOff.notNow === true && ddOff.lateTasks === undefined && ddOff.users === undefined && JSON.stringify(ddOff).length < 80, ddOff);
+const ddOn = await post({ action: "digestData", key: "SECRET123", nowHour: 8 });
+check("وفي ساعته: البيانات كاملة", ddOn.enabled && !ddOn.notNow && ddOn.lateTasks.some((t) => t.text === "مستحقة"), ddOn);
 
 /* ===== 19. دمج خانات المستفيدين ===== */
 console.log("\n[19] دمج خانات المستفيدين");

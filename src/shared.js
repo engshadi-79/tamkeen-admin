@@ -305,9 +305,9 @@
     let fastTick = 0;
     setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      fastTick += 15;
-      if (fastTick >= 60 || LIVE_VIEWS.some(active)) { fastTick = 0; sync(false); }
-    }, 15000);
+      fastTick += 30;
+      if (fastTick >= 180 || LIVE_VIEWS.some(active)) { fastTick = 0; sync(false); }   // توفير حصة النقل: 3 دقائق عادةً، 30 ثانية في الصفحات المشتركة
+    }, 30000);
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") schedule(1000); });
   }
 

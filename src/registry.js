@@ -1255,7 +1255,7 @@
       store.onChange(() => { if (!syncing) scheduleSync(1500); });
       store.onExternal(() => { if ($("view-registry").classList.contains("active")) render(); });
       setTimeout(() => syncShared(false), 800);
-      setInterval(() => { if (document.visibilityState === "visible") syncShared(false); }, 60000);
+      setInterval(() => { if (document.visibilityState === "visible") syncShared(false); }, 180000);
       document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - lastSync > 15000) syncShared(false); });
     }
     document.querySelectorAll("[data-reg-type]").forEach((b) => b.addEventListener("click", () => { filter.type = b.dataset.regType; render(); }));
