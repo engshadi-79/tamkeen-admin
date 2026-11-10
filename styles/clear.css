@@ -79,3 +79,10 @@ html:root:root:root:root[data-theme="light"] .sf-badge b { color: #0f766e; }
 html:root:root[data-theme="dark"] .dash-tile.bad { background: rgba(240, 82, 82, .16); color: #ff9a9a; }
 html:root:root[data-theme="dark"] .dash-tile.warn { background: rgba(212, 160, 40, .18); color: #f2ca50; }
 html:root:root[data-theme="dark"] .dash-tile.ok { background: rgba(15, 118, 110, .24); color: #7be0d5; }
+
+/* بطاقات اللوحة: executive.css يثبّت padding: 0 على بطاقات اللوحة، فنعطي الجديدة حشوة مريحة */
+html:root:root #view-dashboard > .card:not(.dash-more),
+html:root:root #view-dashboard .dash-pair > .card { padding: 18px 20px; }
+html:root:root #view-dashboard .dash-more { padding: 0; }
+html:root:root #view-dashboard .dash-today .dash-section-head,
+html:root:root #view-dashboard .dash-quick .dash-section-head { margin-bottom: 14px; }
