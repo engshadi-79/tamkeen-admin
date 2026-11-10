@@ -1503,3 +1503,6 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .dash-quick-text b { font-size: 12.5px; line-height: 1.4; }
 .dash-quick-text small { color: var(--muted); font-size: 10.5px; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) { .dash-quick-card { transition: none; } .dash-quick-card:hover { transform: none; } }
+/* قسم الصفحات المؤرشفة في القائمة: أخفت وزناً من الأقسام الفاعلة */
+.nav-group[data-group="archive"] .nav-head { opacity: .72; }
+.nav-group[data-group="archive"] .nav-head:hover, .nav-group[data-group="archive"].open .nav-head { opacity: 1; }
