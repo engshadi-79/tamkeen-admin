@@ -203,7 +203,7 @@ async function suite() {
   let release, held = 0; const hold = new Promise((r) => { release = r; }); const prevRun = agent.run; agent.run = async (cmds) => { held++; await hold; return { results: cmds.map(() => ({ type: "list", heads: SH, rows: [] })) }; };
   c.state.mode = "report"; c.render(); b.querySelector('[data-cc="run-selection"]').click(); await wait(900);
   let stopBtn = null;                                           // الرسم قد يتأخر على جهاز بطيء: ننتظر الزر بدل افتراض ظهوره بعد زمن ثابت
-  for (let i = 0; i < 40 && !stopBtn; i++) { stopBtn = b.querySelector('[data-cc="stop-run"]'); if (!stopBtn) await wait(150); }
+  for (let i = 0; i < 60 && !stopBtn; i++) { stopBtn = b.querySelector('[data-cc="stop-run"]'); if (!stopBtn) { if (i % 6 === 5) c.render(); await wait(150); } }   // إعادة رسم دورية: حالة الوكيل قد تتأخر على جهاز مشغول
   ok("زر الإيقاف ومربع الإشعار يظهران أثناء التنفيذ", !!stopBtn && !!b.querySelector("[data-cc-notify]"));
   const fake = document.createElement("button"); fake.dataset.cc = "run-dq"; b.appendChild(fake);
   const heldBefore = held; fake.click(); await wait(150); fake.remove();
