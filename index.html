@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="styles/executive.css?v=406">
   <!-- هوية «منجز» منقولة من D:i\Mahamm: تأخذ البنية من السابق وتستبدل الصبغة -->
   <!-- هوية «نظام جرد مركز التدريب»: كحلي وفيروزي، منقولة من الملف الذي أرسلته -->
-  <link rel="stylesheet" href="styles/center.css?v=350">
+  <link rel="stylesheet" href="styles/center.css?v=408">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -227,6 +227,8 @@
             </div>
           </div>
         </div>
+        <!-- تقارير المركز المحفوظة بنقرة + تذكير الأسبوع (يملؤها center-cmd.js) -->
+        <div class="card dash-saved-card" id="dash-saved" hidden></div>
         <!-- حال المركز من لقطة النظام: جدول المسارات وقائمة ما يحتاج إجراءً -->
         <div class="row col-8-4" id="dash-centre"></div>
         <div class="ch-grid-wrap" id="dash-charts"></div>
@@ -1582,7 +1584,8 @@
   <script src="src/exam-sheet.js?v=382"></script>
   <script src="src/center-schema.js?v=340"></script>
   <script src="src/center-agent.js?v=380"></script>
-  <script src="src/center-cmd.js?v=407"></script>
+  <script src="src/center-util.js?v=408"></script>
+  <script src="src/center-cmd.js?v=408"></script>
   <script src="vendor/supabase.min.js"></script>
   <script src="src/hospitality.js?v=340"></script>
   <script src="src/sheets.js?v=340"></script>

@@ -6,9 +6,9 @@
   const esc = ui.esc;
   const core = () => App.converterCore;
   const SCHEMA = () => App.centerSchema;
-  const clean = (v) => String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+  /* الأدوات التي لا تعتمد على حالة الصفحة في center-util.js (وتُختبر في Node: tools/test-center-util.js) */
+  const { clean, digits, cellStr, phoneNorm, lsGet, lsSet, maskCell, verNum, verLess, waIntl, waParts: waPartsOf, fmtSheet, splitStudentCell, splitGroupCell, expandResult, pickBase, diffRows, compareLatest, rankCompliance, weeklyDue } = App.ccUtil;
   const norm = (v) => core().normalizeHeader(clean(v)).replace(/^مسار\s*/, "");
-  const digits = (v) => String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, "");
 
   /* الوضع الافتراضي لكل تقرير: الطلاب النشطون الموزَّعون على مجموعات */
   const defaultSel = () => ({ tracks: [], stages: [], status: "active", group_status: "assigned", details: false, extra: {} });
@@ -33,7 +33,7 @@
     mis: { kind: "pre", tracks: [], stages: [], status: "active", verify: true, msg: "", out: null }, // استبيانات وتعهدات
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
-    grp: { tracks: [], stages: [], status: "active", out: null },
+    grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -571,7 +571,6 @@
   const TBL_SIZE = 50;
   const tblState = {}, tblData = {};
   const tblSt = (k) => tblState[k] || (tblState[k] = { q: "", sort: -1, dir: 1, page: 0 });
-  const cellStr = (c) => String(c == null ? "" : c);
   function tblRows(k) {
     const d = tblData[k], st = tblSt(k);
     let rows = d.rows;
@@ -732,7 +731,7 @@
     const multi = o.list.filter((p) => p.stages.length > 1).length;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة المقارنة</h3>
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(multi)}</b> في أكثر من مرحلة</span>${o.perStage.map((g) => `<span class="cc-stat"><b>${ui.fmt(g.n)}</b> ${esc(g.t)}</span>`).join("")}
-        ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-cmp">تنزيل Excel</button>' : ""}</div>
+        ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-cmp">تنزيل Excel</button>' : ""}<button type="button" class="btn secondary small" data-cc="print-cmp" title="يُطبع على ترويسة المركز الرسمية">طباعة / PDF على الترويسة</button><button type="button" class="btn secondary small" data-cc="word-cmp">Word</button></div>
       <div class="cc-tools"><div class="cc-res"><header class="cc-res-h"><h4>التقاطع بين المراحل</h4></header>
         <div class="cc-stats">${o.pairs.map((x) => `<span class="cc-stat"><b>${ui.fmt(x.n)}</b> في ${esc(x.a.t)} و${esc(x.b.t)}</span>`).join("")}
           ${Object.keys(o.dist).sort().map((k) => `<span class="cc-stat"><b>${ui.fmt(o.dist[k])}</b> في ${k === "1" ? "مرحلة واحدة" : ui.fmt(k) + " مراحل"}</span>`).join("")}</div></div></div>
@@ -864,7 +863,7 @@
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة مقارنة الإخوة${o.stageStats ? " — " + esc(o.stageStats.lastLabel) + " مقابل " + esc(o.stageStats.cmpLabel) : ""}</h3>
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً مختلفاً</span><span class="cc-stat ok"><b>${ui.fmt(o.families)}</b> عائلة</span><span class="cc-stat ok"><b>${ui.fmt(o.siblings)}</b> طالباً لهم إخوة</span><span class="cc-stat"><b>${ui.fmt(o.largest)}</b> أكبر عائلة</span>${o.stageStats ? `<span class="cc-stat ok"><b>${ui.fmt(o.stageStats.last)}</b> طالباً في ${esc(o.stageStats.lastLabel)} لهم إخوة في ${esc(o.stageStats.cmpLabel)}</span><span class="cc-stat"><b>${ui.fmt(o.stageStats.early)}</b> من الإخوة في ${esc(o.stageStats.cmpLabel)}</span>` : ""}
         ${Object.keys(o.sizes).sort((a, b) => a - b).map((k) => `<span class="cc-stat"><b>${ui.fmt(o.sizes[k])}</b> من ${ui.fmt(k)}</span>`).join("")}
-        ${o.rows.length ? '<button type="button" class="btn secondary small" data-cc="export-sib">تنزيل Excel</button>' : ""}</div>
+        ${o.rows.length ? '<button type="button" class="btn secondary small" data-cc="export-sib">تنزيل Excel</button>' : ""}<button type="button" class="btn secondary small" data-cc="print-sib" title="يُطبع على ترويسة المركز الرسمية">طباعة / PDF على الترويسة</button><button type="button" class="btn secondary small" data-cc="word-sib">Word</button></div>
       ${waCard("siblings")}
       ${o.rows.length ? "" : '<p class="cc-alert warn">لم أجد طلاباً يجمعهم المعيار المختار. جرّب إلغاء «معاً» أو تفعيل المعيار الأوسع.</p>'}
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>العائلات المحتملة</h4><span class="cc-badge">${ui.fmt(o.rows.length)} صفاً</span></div></header>
@@ -1024,18 +1023,10 @@
     return { rows, students, extra: { targets, pledged: pledged.size } };
   }
 
-  async function runMissing() {
-    const c = state.mis;
-    state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
-    render(); refreshStatus();
-    try {
-      requireAgent12();
-      const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id));
-      const statusOk = ["active", "withdrawn", "graduated", "suspended"].includes(c.status) ? c.status : "all";
-      let rows = [], note = "", extra = {};
-      if (c.kind === "pledge") {
-        const r = await fetchPledgeMissing(c, trackIds); rows = r.rows; extra = r.extra;
-      } else if (c.kind === "all" || c.kind === "risk") {
+  /* التقرير الشامل: الاستبيانات الثلاثة من تقرير النظام + التعهد بالحساب، مدموجة في صف لكل طالب ينقصه شيء.
+     تُرجع أيضاً students (كل طلاب النطاق) لمن يحتاج المقام، كترتيب الالتزام. */
+  async function fetchAllMissing(c, trackIds, statusOk) {
+    let rows = [], note = "", extra = {};
         // الاستبيانات الثلاثة من تقرير النظام + التعهد بالحساب، مدموجة في صف لكل طالب
         const byKind = {};
         for (const k of SURVEY_KINDS) byKind[k] = await fetchSurveyMissing(k, c, statusOk);
@@ -1073,6 +1064,21 @@
         note += await enrichIds(rows, trackIds);
         const targetsBy = {}; pl.students.forEach((st) => { const k = st.track + "|" + st.stage; targetsBy[k] = (targetsBy[k] || 0) + 1; });
         extra = { all: true, vx, pledge: pl.extra, targetsBy, counts: { pre: byKind.pre.length, post: byKind.post.length, impact: byKind.impact.length, pledge: pl.rows.length, noGroup: rows.filter((x) => x.flags.noGroup).length, noPhone: rows.filter((x) => x.flags.noPhone).length } };
+    return { rows, note, extra, students: pl.students };
+  }
+  async function runMissing() {
+    const c = state.mis;
+    state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
+    render(); refreshStatus();
+    try {
+      requireAgent12();
+      const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id));
+      const statusOk = ["active", "withdrawn", "graduated", "suspended"].includes(c.status) ? c.status : "all";
+      let rows = [], note = "", extra = {};
+      if (c.kind === "pledge") {
+        const r = await fetchPledgeMissing(c, trackIds); rows = r.rows; extra = r.extra;
+      } else if (c.kind === "all" || c.kind === "risk") {
+        const r = await fetchAllMissing(c, trackIds, statusOk); rows = r.rows; note += r.note; extra = r.extra;
       } else {
         rows = await fetchSurveyMissing(c.kind, c, statusOk);
         if (c.verify && rows.length) {
@@ -1096,22 +1102,13 @@
   const misScopeKey = (c) => [c.kind, c.tracks.slice().sort().join(","), c.stages.slice().sort().join(","), c.status].join("|");
   function misDiffAndSave(c, rows) {
     const all = lsGet(MISNAP_KEY, {}), key = misScopeKey(c), list = Array.isArray(all[key]) ? all[key] : [];
-    const now = Date.now(), cur = new Map(rows.map((x) => [missKey(x), x]));
-    /* خط الأساس: أحدث لقطة عمرها 6 أيام فأكثر؛ وإلا أقدم لقطة عمرها ساعة فأكثر */
-    const aged = list.map((e) => ({ e, age: now - Date.parse(e.at) })).filter((x) => x.age >= 3600000);
-    const week = aged.filter((x) => x.age >= 6 * DAY).sort((a, b) => a.age - b.age)[0];
-    const base = week || aged.sort((a, b) => b.age - a.age)[0];
-    let diff = null;
-    if (base) {
-      const old = new Map(base.e.rows.map((r) => [r[0], r]));
-      const done = [...old.entries()].filter(([k]) => !cur.has(k)).map(([, r]) => ({ name: r[1], track: r[2] }));
-      const added = [...cur.entries()].filter(([k]) => !old.has(k)).map(([, x]) => ({ name: x.name, track: x.track }));
-      diff = { at: base.e.at, before: old.size, now: cur.size, done, added };
-    }
+    const now = Date.now();
+    const snapRows = rows.map((x) => [missKey(x), x.name, x.track]);
+    const base = pickBase(list, now);
+    const diff = base ? Object.assign({ at: base.e.at }, diffRows(base.e.rows, snapRows)) : null;
     /* نحتفظ بلقطة جديدة؛ وإن كانت الأخيرة عمرها أقل من ساعة نستبدلها حتى لا تتراكم */
-    const snap = { at: new Date().toISOString(), rows: rows.map((x) => [missKey(x), x.name, x.track]) };
     const kept = list.filter((e) => now - Date.parse(e.at) >= 3600000);
-    kept.push(snap); all[key] = kept.slice(-MISNAP_KEEP);
+    kept.push({ at: new Date(now).toISOString(), rows: snapRows }); all[key] = kept.slice(-MISNAP_KEEP);
     lsSet(MISNAP_KEY, all);
     return diff;
   }
@@ -1124,7 +1121,6 @@
   }
 
   /* ----- ملف التذكير: اسم، جوال، رسالة جاهزة. لا شيء يُرسَل من هنا ----- */
-  const phoneNorm = (v) => { const d = digits(v); return /^5\d{8}$/.test(d) ? "0" + d : d; };
   const itemsOf = (x, kind) => (kind === "all" || kind === "risk" ? Object.keys(x.flags || {}).filter((k) => KIND_ITEM[k]).sort((a, b) => ["pre", "post", "impact", "pledge"].indexOf(a) - ["pre", "post", "impact", "pledge"].indexOf(b)).map((k) => KIND_ITEM[k]) : [KIND_ITEM[kind]]).join(" و");
   const msgTemplate = () => state.mis.msg || DEFAULT_MSG;
   function remindRows() {
@@ -1241,8 +1237,6 @@
 
   /* ===== تخزين محلي (هذا المتصفح فقط): التقارير المحفوظة، سجل العمليات، الإشعار، لقطة البيانات ===== */
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
-  const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
-  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* وضع التصفح الخاص */ } };
   const CFG = { report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
   const MODE_NAME = { report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
   const RUN_BTN = { report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
@@ -1283,6 +1277,7 @@
     const e = { at: new Date().toISOString(), mode, ms, info: runSummary(mode), ok: !state.resultError, by: (curUser() || {}).name || "" };
     state.runLog = [e].concat(state.runLog).slice(0, 40);
     lsSet(LOG_KEY, state.runLog);
+    if (e.ok && mode === "missing" && state.mis.out && (state.mis.out.kind === "all" || state.mis.out.kind === "risk")) markWeekly();
   }
   function notifyDone(mode, ms) {
     if (!state.notify || typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible") return;
@@ -1296,6 +1291,70 @@
       <p class="cc-note">يُحفظ في هذا المتصفح فقط، ولا يحوي أسماء ولا أرقاماً شخصية.</p></details>`;
   }
   const stopSupported = () => { const n = String((App.centerAgent && App.centerAgent.version && App.centerAgent.version()) || "").split(".").map(Number); return n.length >= 2 && (n[0] > 1 || (n[0] === 1 && n[1] >= 4)); };
+
+  /* ===== ما الجديد منذ آخر مرة: من لقطات الناقصين المحفوظة في المتصفح، بلا أي قراءة من النظام ===== */
+  const agoDays = (iso) => { const d = Math.floor((Date.now() - Date.parse(iso)) / 86400000); return d <= 0 ? "اليوم" : d === 1 ? "أمس" : "قبل " + d + " أيام"; };
+  function whatsNew() {
+    const all = lsGet(MISNAP_KEY, {}), out = [];
+    Object.keys(all).forEach((key) => {
+      const list = all[key]; if (!Array.isArray(list) || !list.length) return;
+      const [kind, tr, st, status] = key.split("|");
+      const scope = [tr ? tr.split(",").map(trackShort).join("، ") : "كل المسارات", st ? st.split(",").map((k) => (STAGES.find((g) => g.k === k) || {}).t || k).join("، ") : "", status ? optLabel("status", status) : "كل الحالات"].filter(Boolean).join(" · ");
+      const last = list[list.length - 1];
+      out.push({ key, kind, tracks: tr ? tr.split(",") : [], stages: st ? st.split(",") : [], status: status || "", label: (MIS_KINDS.find((k) => k.k === kind) || {}).t || kind, scope, lastAt: last.at, now: last.rows.length, cmp: compareLatest(list) });
+    });
+    return out.sort((a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt)).slice(0, 8);
+  }
+  function newsCard() {
+    const items = whatsNew(), dq = lsGet(SNAP_KEY, null);
+    if (!items.length && !dq) return "";
+    const changed = items.filter((x) => x.cmp && (x.cmp.done.length || x.cmp.added.length)).length;
+    const open = state.open.news !== undefined ? state.open.news : changed > 0;
+    return `<details class="cc-adv cc-news" data-open="news" ${open ? "open" : ""}><summary><span>ما الجديد منذ آخر مرة</span><span class="cc-badge">${ui.fmt(items.length + (dq ? 1 : 0))}</span><small>${changed ? ui.fmt(changed) + " تقرير تغيّر" : "لا تغيّر بعد"}</small></summary>
+      <div class="cc-news-list">${items.map((x) => `<div class="cc-news-row"><div class="cc-news-t"><b>${esc(x.label)}</b><span class="cc-note">${esc(x.scope)}</span></div>
+        <div class="cc-news-v">${x.cmp ? `<span class="cc-stat ok"><b>${ui.fmt(x.cmp.done.length)}</b> أكملوا</span><span class="cc-stat ${x.cmp.added.length ? "bad" : ""}"><b>${ui.fmt(x.cmp.added.length)}</b> نقص جديد</span><span class="cc-note">كان ${ui.fmt(x.cmp.before)} وأصبح ${ui.fmt(x.cmp.now)} منذ ${esc(diffDate(x.cmp.baseAt))}</span>` : `<span class="cc-note">${ui.fmt(x.now)} ناقصاً في لقطة واحدة؛ المقارنة من التشغيل القادم</span>`}<span class="cc-note">آخر تشغيل ${esc(agoDays(x.lastAt))}</span></div>
+        <button type="button" class="cc-link" data-cc="news-load" data-key="${esc(x.key)}">افتح هذا التقرير</button></div>`).join("")}
+        ${dq ? `<div class="cc-news-row"><div class="cc-news-t"><b>فحص البيانات</b><span class="cc-note">آخر لقطة ${esc(agoDays(dq.at))} (${ui.fmt(dq.rows.length)} طالباً)</span></div><div class="cc-news-v"></div><button type="button" class="cc-link" data-cc="news-dq">افتح فحص البيانات</button></div>` : ""}</div>
+      <p class="cc-note">تُحسب من اللقطات المحفوظة في هذا المتصفح، فلا تقرأ شيئاً من نظام المركز.</p></details>`;
+  }
+  /* ===== التذكير الأسبوعي بالتقرير الشامل ===== */
+  const WEEKLY_KEY = "tamkeen-admin:cc-weekly", SNOOZE_KEY = "tamkeen-admin:cc-weekly-snooze";
+  const markWeekly = () => { lsSet(WEEKLY_KEY, { at: new Date().toISOString() }); renderDash(); };
+  const weeklyNow = () => weeklyDue(lsGet(WEEKLY_KEY, null), lsGet(SNOOZE_KEY, 0), Date.now());
+  const weeklyText = (w) => (w.never ? "لم تشغّل التقرير الشامل الأسبوعي بعد." : "مرّت " + ui.fmt(w.days) + " أيام على آخر تقرير شامل.") + " حان موعد المتابعة.";
+  function weeklyBanner() {
+    const w = weeklyNow();
+    if (!w.due || state.busy) return "";
+    return `<div class="cc-alert warn cc-weekly" role="status"><span>${esc(weeklyText(w))}</span><span class="cc-row"><button type="button" class="btn navy small" data-cc="weekly-run">شغّل التقرير الشامل الآن</button><button type="button" class="cc-link" data-cc="weekly-snooze">ذكّرني بعد يومين</button></span></div>`;
+  }
+  function runWeekly() {
+    state.mode = "missing"; state.adding = ""; state.proposal = null; state.mis.kind = "all"; state.mis.out = null;
+    render();
+    const rb = $("cc-body").querySelector('[data-cc="run-mis"]'); if (rb && !rb.disabled) rb.click();
+  }
+  function runSavedById(id) {
+    const it = state.saved.find((x) => x.id === id); if (!it) return ui.toast("التقرير المحفوظ غير موجود");
+    state.mode = it.mode; state.adding = ""; state.proposal = null; applyCfg(it.mode, it.cfg);
+    render();
+    const rb = $("cc-body").querySelector('[data-cc="' + RUN_BTN[it.mode] + '"]'); if (rb && !rb.disabled) rb.click();
+  }
+  /* ===== اللوحة الرئيسية: تقاريري المحفوظة بنقرة + تذكير الأسبوع ===== */
+  function renderDash() {
+    const el = document.getElementById("dash-saved"); if (!el) return;
+    let w = { due: false };
+    try { w = weeklyNow(); } catch (e) { /* لا يضرّ */ }
+    const saved = (state.saved || []).slice(-4).reverse();
+    if (!centerAllowed() || (!saved.length && !w.due)) { el.hidden = true; el.innerHTML = ""; return; }
+    el.hidden = false;
+    el.innerHTML = `<div class="dash-section-head"><div><span class="dash-section-kicker">نظام المركز</span><h3>تقارير المركز</h3><p>تُشغَّل بنقرة، وتظهر النتيجة في «أوامر المركز»</p></div></div>
+      ${w.due ? `<div class="dash-weekly"><span>${esc(weeklyText(w))}</span><button type="button" class="dash-saved-btn" data-dash-weekly>شغّل التقرير الشامل</button></div>` : ""}
+      ${saved.length ? `<div class="dash-saved-list">${saved.map((x) => `<button type="button" class="dash-saved-btn" data-dash-saved="${esc(x.id)}"><span class="material-symbols-outlined" aria-hidden="true">play_arrow</span><span>${esc(x.name)}<small>${esc(MODE_NAME[x.mode] || "")}</small></span></button>`).join("")}</div>` : ""}`;
+  }
+  /* يفتح تبويب «أوامر المركز» في المحوّل ثم ينفّذ */
+  function openCenterThen(fn) {
+    location.hash = "#converter";
+    window.setTimeout(() => { const tab = document.querySelector('[data-cv-tab="center"]'); if (tab) tab.click(); window.setTimeout(fn, 200); }, 250);
+  }
 
   /* ===== فحص البيانات: ملاحظات الجودة + مقارنة بلقطة سابقة ===== */
   const DQ_CHECKS = [["dupId", "هوية مكررة لطالبين مختلفين"], ["badId", "هوية ليست 9 أرقام"], ["noPhone", "جوال ناقص أو غير صالح"], ["noGroup", "بلا مجموعة"], ["shortName", "اسم أقل من رباعي"], ["dupName", "اسم مكرر بهويات مختلفة"], ["dupPhone", "جوال مشترك بين طلاب (قد يكونون إخوة)"]];
@@ -1393,7 +1452,7 @@
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة الفحص</h3>
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً فُحص</span><span class="cc-stat ${rows.length ? "bad" : "ok"}"><b>${ui.fmt(rows.length)}</b> ملاحظة</span>
         ${DQ_CHECKS.filter(([k]) => o.byType[k]).map(([k, t]) => `<span class="cc-stat"><b>${ui.fmt(o.byType[k])}</b> ${esc(t)}</span>`).join("")}
-        ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-dq">تنزيل Excel</button>' : ""}</div>
+        ${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-dq">تنزيل Excel</button>' : ""}<button type="button" class="btn secondary small" data-cc="print-dq" title="يُطبع على ترويسة المركز الرسمية">طباعة / PDF على الترويسة</button><button type="button" class="btn secondary small" data-cc="word-dq">Word</button></div>
       ${waCard("dq")}
       ${!rows.length ? '<p class="cc-alert warn">لا ملاحظات بحسب الفحوص المختارة.</p>' : `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الملاحظات</h4><span class="cc-badge">${ui.fmt(rows.length)} صفاً</span></div></header>${dataTable("dq", dqHeads(), rows)}</article>`}
       <details class="cc-adv" data-open="snap" ${state.open.snap ? "open" : ""}><summary><span>لقطة البيانات ومقارنتها</span><small>تغيّر منذ آخر لقطة</small></summary>
@@ -1406,10 +1465,7 @@
   /* ===== الخصوصية والأمان: إخفاء الأرقام، مسح البيانات بعد الخمول وبعد مدة، سجل الأخطاء، تنبيه تحديث الإضافة ===== */
   const MASK_KEY = "tamkeen-admin:cc-mask", IDLE_KEY = "tamkeen-admin:cc-idle", ERR_KEY = "tamkeen-admin:cc-errors";
   const CACHE_TTL = 2 * 3600 * 1000;
-  const maskCell = (v) => { const t = cellStr(v); return /^\d{9,10}$/.test(t) ? t.slice(0, 2) + "*".repeat(t.length - 4) + t.slice(-2) : t; };
   const showCell = (v) => (state.mask ? maskCell(v) : cellStr(v));
-  const verNum = (v) => String(v || "").split(".").map(Number);
-  const verLess = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
   const curUser = () => { try { return (App.cloud && App.cloud.user && App.cloud.user()) || null; } catch (e) { return null; } };
   /* حصر التبويب بمدير النظام (إعداد مشترك يحفظه المدير) */
   const centerAllowed = () => { const st = (App.store && App.store.get && App.store.get()) || {}; const u = curUser(); return !st.centerAdminOnly || !u || !!u.admin; };
@@ -1526,6 +1582,78 @@
     App.docRender.exportWord(list, "موجز متابعة الطلاب " + ui.todayISO());
   }
 
+  /* ===== الترويسة الرسمية لبقية التقارير: فحص البيانات، المجموعات والمدربون (والالتزام)، مقارنة المراحل، الإخوة ===== */
+  const lhDate = () => ({ kind: "meta", text: "التاريخ: " + (ui.formatDate(ui.todayISO()) || ui.todayISO()), sizePt: 12 });
+  const lhScope = (c) => (c.tracks && c.tracks.length ? c.tracks.map(trackShort).join("، ") : "كل المسارات") + " · " + (optLabel("status", c.status) || "كل الحالات");
+  const gap = () => ({ kind: "para", text: "" });
+  function lhPrint(list, title) {
+    if (!list) return ui.toast("نفّذ التقرير أولاً");
+    if (App.docRender && App.docRender.print) return App.docRender.print(list, title, false);
+    const t = list.find((x) => x.kind === "table");
+    printHtml(title, `<h1>${esc(list[0].text)}</h1>` + (t ? `<table><thead><tr>${t.headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${t.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>` : ""));
+  }
+  async function lhWord(list, base) {
+    if (!list) return ui.toast("نفّذ التقرير أولاً");
+    if (!(App.docRender && App.docRender.exportWord)) return ui.toast("محرك المستندات غير متاح");
+    try { if (App.docx && App.docx.load) await App.docx.load(); } catch (e) { /* يُحمَّل عند الحاجة */ }
+    App.docRender.exportWord(list, base + " " + ui.todayISO());
+  }
+  /* بلا هويات ولا جوالات: التقرير الرسمي يُرسَل للإدارة، فالأسماء والمواقع تكفي */
+  function dqBlocks() {
+    const o = state.dq.out; if (!o) return null;
+    const sum = DQ_CHECKS.filter(([k]) => o.byType[k]).map(([k, t]) => [t, ui.fmt(o.byType[k])]);
+    const MAX = 60, shownIssues = o.issues.slice(0, MAX);
+    const out = [{ kind: "title", text: "تقرير جودة بيانات الطلاب" }, lhDate(), gap(), { kind: "bold", text: "نطاق الفحص: " + lhScope(state.dq) }, { kind: "para", text: "فُحص " + ui.fmt(o.total) + " طالباً، وظهرت " + ui.fmt(o.issues.length) + " ملاحظة." }, gap()];
+    if (sum.length) out.push({ kind: "table", headers: ["نوع الملاحظة", "العدد"], widths: [0.75, 0.25], align: [null, "center"], rows: sum.concat([["المجموع", ui.fmt(o.issues.length)]]) }, gap());
+    if (shownIssues.length) {
+      out.push({ kind: "bold", text: "أمثلة على الملاحظات" + (o.issues.length > MAX ? " (أول " + MAX + " من " + ui.fmt(o.issues.length) + ")" : "") });
+      out.push({ kind: "table", headers: ["النوع", "الاسم", "المسار", "المرحلة", "المجموعة", "التفصيل"], widths: [0.17, 0.25, 0.17, 0.11, 0.09, 0.21], align: [null, null, null, null, "center", null],
+        rows: shownIssues.map((x) => [DQ_LABEL[x.type] || x.type, x.s.name, x.s.track, x.s.stage, x.s.group || "—", x.detail || ""]) });
+    } else out.push({ kind: "para", text: "لا ملاحظات بحسب الفحوص المختارة." });
+    out.push(gap(), { kind: "para", text: "مصدر البيانات: نظام المركز. هوية الطالب وجواله غير مدرجين في هذا التقرير حمايةً للخصوصية." });
+    return out;
+  }
+  function groupsBlocks() {
+    const o = state.grp.out; if (!o) return null;
+    const out = [{ kind: "title", text: "تقرير المجموعات والمدربين" }, lhDate(), gap(), { kind: "bold", text: "النطاق: " + lhScope(state.grp) },
+      { kind: "para", text: ui.fmt(o.total) + " طالباً في " + ui.fmt(o.groups.length) + " مجموعة، مع " + ui.fmt(o.trainers.filter((t) => t.name !== "(بلا مدرب)").length) + " مدرباً. غير الموزعين: " + ui.fmt(o.unassigned) + "." }, gap(),
+      { kind: "bold", text: "المجموعات" },
+      { kind: "table", headers: ["المسار", "المرحلة", "المجموعة", "المدرب", "الطلاب", "ملاحظة"], widths: [0.22, 0.14, 0.12, 0.24, 0.1, 0.18], align: [null, null, "center", null, "center", null],
+        rows: o.groups.map((g) => [g.track, g.stage, g.group, g.trainer || "—", ui.fmt(g.n), g.note || ""]) }, gap(),
+      { kind: "bold", text: "حمل المدربين" },
+      { kind: "table", headers: ["المدرب", "المجموعات", "الطلاب", "المسارات"], widths: [0.34, 0.14, 0.14, 0.38], align: [null, "center", "center", null], rows: o.trainers.map((t) => [t.name, ui.fmt(t.groups), ui.fmt(t.n), [...t.tracks].join("، ")]) }];
+    const comp = state.grp.comp;
+    if (comp) {
+      const lack = (x) => [x.pre ? "قبلي " + x.pre : "", x.post ? "بعدي " + x.post : "", x.impact ? "أثر " + x.impact : "", x.pledge ? "تعهد " + x.pledge : ""].filter(Boolean).join("، ") || "—";
+      out.push(gap(), { kind: "bold", text: "الالتزام بالمتطلبات — الأقل التزاماً أولاً (العام " + comp.pct + "%)" },
+        { kind: "table", headers: ["المسار · المرحلة", "المجموعة", "المدرب", "الطلاب", "المكتملون", "الالتزام", "الناقص"], widths: [0.24, 0.09, 0.2, 0.08, 0.1, 0.09, 0.2], align: [null, "center", null, "center", "center", "center", null],
+          rows: comp.groups.map((g) => [g.track + " · " + g.stage, g.group, g.trainer || "—", ui.fmt(g.n), ui.fmt(g.complete), g.pct + "%", lack(g)]) }, gap(),
+        { kind: "table", headers: ["المدرب", "المجموعات", "الطلاب", "المكتملون", "الالتزام", "الناقص"], widths: [0.3, 0.12, 0.1, 0.12, 0.11, 0.25], align: [null, "center", "center", "center", "center", null],
+          rows: comp.trainers.map((t) => [t.name, ui.fmt(t.groups), ui.fmt(t.n), ui.fmt(t.complete), t.pct + "%", lack(t)]) },
+        { kind: "para", text: "«مكتمل» = لا ينقصه استبيان قبلي ولا بعدي ولا قياس أثر ولا تعهد؛ فتُقرأ النسب إرشاداً لا حكماً." });
+    }
+    out.push(gap(), { kind: "para", text: "مصدر البيانات: نظام المركز." });
+    return out;
+  }
+  function compareBlocks() {
+    const o = state.cmp.out; if (!o) return null;
+    const multi = o.list.filter((p) => p.stages.length > 1).length;
+    const out = [{ kind: "title", text: "تقرير مقارنة المراحل" }, lhDate(), gap(), { kind: "bold", text: "النطاق: " + lhScope(state.cmp) },
+      { kind: "para", text: ui.fmt(o.total) + " طالباً مختلفاً، منهم " + ui.fmt(multi) + " سجّلوا في أكثر من مرحلة." }, gap()];
+    const rows = o.pairs.map((x) => [x.a.t + " و" + x.b.t, ui.fmt(x.n)]).concat(Object.keys(o.dist).sort().map((k) => [k === "1" ? "في مرحلة واحدة" : "في " + ui.fmt(k) + " مراحل", ui.fmt(o.dist[k])]));
+    if (rows.length) out.push({ kind: "table", headers: ["الحالة", "عدد الطلاب"], widths: [0.7, 0.3], align: [null, "center"], rows });
+    out.push(gap(), { kind: "para", text: "مصدر البيانات: نظام المركز." });
+    return out;
+  }
+  function siblingsBlocks() {
+    const o = state.sib.out; if (!o) return null;
+    const out = [{ kind: "title", text: "تقرير مقارنة الإخوة" }, lhDate(), gap(), { kind: "bold", text: "النطاق: " + lhScope(state.sib) },
+      { kind: "para", text: ui.fmt(o.families) + " عائلة، تضم " + ui.fmt(o.siblings) + " طالباً من أصل " + ui.fmt(o.total) + "." }];
+    if (o.stageStats) out.push({ kind: "para", text: o.stageStats.lastLabel + " مقابل " + o.stageStats.cmpLabel + ": " + ui.fmt(o.stageStats.last) + " طالباً لهم إخوة." });
+    out.push(gap(), { kind: "para", text: "الإخوة محتملون بمطابقة الجوال والاسم، فتُراجَع القائمة قبل أي إجراء. مصدر البيانات: نظام المركز." });
+    return out;
+  }
+
   /* تقرير المدير بنقرة: يشغّل التقرير الشامل (إن لم تكن نتيجته حاضرة) ثم يطبع/يصدّر Word على الترويسة */
   async function managerReport(how) {
     const c = state.mis;
@@ -1549,7 +1677,7 @@
 
   async function runGroups() {
     const c = state.grp;
-    state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
+    state.busy = true; state.resultError = ""; c.out = null; c.comp = null; state.progress = "";
     render(); refreshStatus();
     try {
       const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id));
@@ -1581,6 +1709,39 @@
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
   }
+  /* ===== الالتزام بالمتطلبات: نسبة المكتملين (القبلي والبعدي وقياس الأثر والتعهد) لكل مجموعة ومدرب ===== */
+  const grpCompHeads = () => ["الترتيب", "المسار", "المرحلة", "المجموعة", "المدرب", "الطلاب", "المكتملون", "الالتزام", "ناقصهم القبلي", "ناقصهم البعدي", "ناقصهم قياس الأثر", "لم يوقّعوا"];
+  const grpCompTrainerHeads = () => ["الترتيب", "المدرب", "المجموعات", "الطلاب", "المكتملون", "الالتزام", "ناقصهم القبلي", "ناقصهم البعدي", "ناقصهم قياس الأثر", "لم يوقّعوا"];
+  const grpCompGroupTable = () => ((state.grp.comp && state.grp.comp.groups) || []).map((g, i) => [i + 1, g.track, g.stage, g.group, g.trainer || "—", g.n, g.complete, g.pct + "%", g.pre, g.post, g.impact, g.pledge]);
+  const grpCompTrainerTable = () => ((state.grp.comp && state.grp.comp.trainers) || []).map((t, i) => [i + 1, t.name, t.groups, t.n, t.complete, t.pct + "%", t.pre, t.post, t.impact, t.pledge]);
+  async function runCompliance() {
+    const g = state.grp;
+    if (!g.out) return ui.toast("اعرض المجموعات أولاً");
+    if (state.busy) return ui.toast("هناك عملية جارية الآن؛ انتظر انتهاءها.");
+    state.busy = true; state.resultError = ""; g.comp = null; state.progress = "";
+    render(); refreshStatus();
+    try {
+      requireAgent12();
+      const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !g.tracks.length || g.tracks.includes(id));
+      const statusOk = ["active", "withdrawn", "graduated", "suspended"].includes(g.status) ? g.status : "all";
+      /* مراحل المجموعات تُحفظ بعناوينها، ومراحل الاستبيانات بمفاتيحها */
+      const cfg = { kind: "all", tracks: g.tracks, stages: STAGES.filter((x) => g.stages.includes(x.t)).map((x) => x.k), status: g.status, verify: true };
+      const r = await fetchAllMissing(cfg, trackIds, statusOk);
+      g.comp = Object.assign(rankCompliance(g.out.students, r.rows), { at: new Date(), note: r.note || "" });
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  function compCard() {
+    const g = state.grp, comp = g.comp;
+    const tbl = (k, heads, rows) => (rows.length ? dataTable(k, heads, rows) : "");
+    return `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الالتزام بالمتطلبات — الأقل التزاماً أولاً</h4>${comp ? `<span class="cc-badge">${ui.fmt(comp.pct)}% عموماً</span>` : ""}</div><div class="cc-res-act"><button type="button" class="btn secondary small" data-cc="grp-compliance" ${state.busy ? "disabled" : ""}>${comp ? "أعد الحساب" : "احسب الالتزام"}</button></div></header>
+      ${comp ? `<div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(comp.total)}</b> طالباً</span><span class="cc-stat ok"><b>${ui.fmt(comp.complete)}</b> مكتملون تماماً</span><span class="cc-stat ${comp.pct < 70 ? "bad" : "ok"}"><b>${ui.fmt(comp.pct)}%</b> الالتزام العام</span></div>
+        <p class="cc-note">«مكتمل» = لا ينقصه استبيان قبلي ولا بعدي ولا قياس أثر ولا تعهد. وقد لا يكون كل نوع مطلوباً من كل مرحلة، فتُقرأ النسب إرشاداً لا حكماً.</p>
+        <h5 class="cc-sub">المجموعات</h5>${tbl("grp-cg", grpCompHeads(), grpCompGroupTable())}
+        <h5 class="cc-sub">المدربون</h5>${tbl("grp-ct", grpCompTrainerHeads(), grpCompTrainerTable())}`
+      : '<p class="cc-note">يقرأ الاستبيانات الثلاثة والتعهدات لطلاب هذا العرض، ويحسب نسبة المكتملين لكل مجموعة ولكل مدرب، فتعرف أين تتابع. أبطأ من عرض المجموعات لأنه يقرأ أكثر. للقراءة فقط.</p>'}
+    </article>`;
+  }
   /* توازن عددي فقط: يضع كل غير موزع في أصغر مجموعة من مجموعات مساره ومرحلته القائمة */
   function proposeDistribution(o) {
     const byTS = new Map(), rows = [], notes = [];
@@ -1610,6 +1771,7 @@
     fmtSheet(wb.addWorksheet("المجموعات"), grpGroupHeads(), grpGroupTable());
     fmtSheet(wb.addWorksheet("المدربون"), grpTrainerHeads(), grpTrainerTable());
     if (o.prop) fmtSheet(wb.addWorksheet("اقتراح التوزيع"), grpPropHeads(), o.prop.rows);
+    if (state.grp.comp) { fmtSheet(wb.addWorksheet("الالتزام - المجموعات"), grpCompHeads(), grpCompGroupTable()); fmtSheet(wb.addWorksheet("الالتزام - المدربون"), grpCompTrainerHeads(), grpCompTrainerTable()); }
     ui.download("المجموعات والمدربون.xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
 
@@ -1633,10 +1795,11 @@
     const gt = grpGroupTable(), tt = grpTrainerTable();
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> المجموعات والمدربون</h3>
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total)}</b> طالباً</span><span class="cc-stat"><b>${ui.fmt(o.groups.length)}</b> مجموعة</span><span class="cc-stat"><b>${ui.fmt(o.trainers.filter((t) => t.name !== "(بلا مدرب)").length)}</b> مدرباً</span><span class="cc-stat ${o.unassigned ? "bad" : "ok"}"><b>${ui.fmt(o.unassigned)}</b> غير موزع</span>
-        <button type="button" class="btn secondary small" data-cc="export-grp">تنزيل Excel</button></div>
+        <button type="button" class="btn secondary small" data-cc="export-grp">تنزيل Excel</button><button type="button" class="btn secondary small" data-cc="print-grp" title="يُطبع على ترويسة المركز الرسمية">طباعة / PDF على الترويسة</button><button type="button" class="btn secondary small" data-cc="word-grp">Word</button></div>
       ${waCard("groups")}
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>المجموعات</h4><span class="cc-badge">${ui.fmt(gt.length)}</span></div></header>${gt.length ? dataTable("grp-g", grpGroupHeads(), gt) : '<p class="cc-note">لا مجموعات.</p>'}</article>
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>حمل المدربين</h4><span class="cc-badge">${ui.fmt(tt.length)}</span></div></header>${tt.length ? dataTable("grp-t", grpTrainerHeads(), tt) : ""}</article>
+      ${compCard()}
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>اقتراح توزيع غير الموزعين</h4></div><div class="cc-res-act"><button type="button" class="btn secondary small" data-cc="grp-propose" ${o.unassigned ? "" : "disabled"}>اقترح توزيعاً</button></div></header>
         <p class="cc-note">توازن عددي فقط: يضع كل غير موزع في أصغر مجموعة من مجموعات مساره ومرحلته القائمة. لا يراعي السعة المسموحة للمجموعة ولا الجنس ولا مواعيد المجموعات، فراجعه قبل أي تطبيق. ولا يُكتب شيء في النظام.</p>
         ${o.prop ? `${o.prop.notes.map((n) => `<p class="cc-alert warn">${esc(n)}</p>`).join("")}${o.prop.rows.length ? dataTable("grp-p", grpPropHeads(), o.prop.rows) : '<p class="cc-note">لا اقتراحات.</p>'}` : ""}</article></section>`;
@@ -1823,6 +1986,7 @@
     });
     if (notes.length) fmtSheet(wb.addWorksheet("ملاحظات"), ["التقرير", "ملاحظة"], notes);
     ui.download("حزمة التقارير " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    markWeekly();
     render();
     ui.toast("نُزّلت الحزمة: " + ui.fmt(sheets.length) + " ورقة" + (notes.length ? "، وفيها ملاحظات" : ""));
   }
@@ -1830,15 +1994,6 @@
   /* ===== رسالة واتساب: تُفتح جاهزة في واتساب ويرسلها المستخدم بنفسه (رابط wa.me) =====
      لا حساب ولا مفتاح ولا إرسال تلقائي: الضغط على «إرسال» في واتساب يبقى بيدك. */
   const CONTACT_KEY = "tamkeen-admin:cc-contacts", CC_KEY = "tamkeen-admin:cc-cc";
-  /* رقم دولي لرابط wa.me: 059… ← 97059… ، ويُبقى الرقم الذي يبدأ بـ + أو 00 كما هو */
-  const waIntl = (raw, cc) => {
-    const t = String(raw || "").trim(), d = digits(t);
-    if (!d) return "";
-    if (t.startsWith("+")) return d;
-    if (d.startsWith("00")) return d.slice(2);
-    if (d.startsWith(cc) && d.length >= cc.length + 8) return d;
-    return d.startsWith("0") ? cc + d.slice(1) : cc + d;
-  };
   const waScope = () => (state.mis.tracks.length ? state.mis.tracks.map(trackShort).join("، ") : "كل المسارات") + " · " + (optLabel("status", state.mis.status) || "كل الحالات");
   /* ===== صيغة التقرير الرسمي لواتساب: استبيانات وتعهدات ===== */
   const WA_ITEM = { pre: "التقييم القبلي", post: "التقييم البعدي", impact: "قياس الأثر", pledge: "التعهد" };
@@ -1934,14 +2089,7 @@
   const WA_PART_MAX = Infinity;                       // لا تجزئة: الرسالة كاملة تُنسخ وتُلصق (حد واتساب نحو 65 ألف حرف)
   const WA_MODE_KEY = "tamkeen-admin:wa-mode";
   const waMode = () => (lsGet(WA_MODE_KEY, "paste") === "link" ? "link" : "paste");
-  function waParts(text) {
-    const t = String(text || "").trim();
-    if (t.length <= WA_PART_MAX) return [t];
-    const out = []; let cur = "";
-    t.split("\n").forEach((line) => { if (cur && (cur + "\n" + line).length > WA_PART_MAX) { out.push(cur); cur = line; } else cur = cur ? cur + "\n" + line : line; });
-    if (cur) out.push(cur);
-    return out.map((x, i) => "(" + (i + 1) + "/" + out.length + ")\n" + x);
-  }
+  const waParts = (text) => waPartsOf(text, WA_PART_MAX);
   const waText = (mode) => { const w = state.wa; if (!w.dirty[mode]) w.texts[mode] = waBuild(mode); return w.texts[mode] || ""; };
   function waCard(mode) {
     const w = state.wa, text = waText(mode);
@@ -2022,6 +2170,8 @@
       <div class="cc-top" data-st="${info.st}"><span class="cc-dot" aria-hidden="true"></span><span id="cc-status" role="status">${esc(info.text)}</span><button type="button" class="cc-link cc-mask-btn" data-cc="toggle-mask" aria-pressed="${state.mask}" title="يخص العرض والنسخ، لا ملفات Excel">${state.mask ? "👁 إظهار الأرقام" : "🙈 إخفاء الهوية والجوال"}</button></div>
       ${updateBanner()}
       ${state.busy ? busyBanner() : ""}
+      ${weeklyBanner()}
+      ${newsCard()}
       <nav class="cc-modes" role="tablist" aria-label="نوع الأمر">
         <button type="button" role="tab" class="${mode === "report" ? "on" : ""}" aria-selected="${mode === "report"}" data-cc="mode" data-m="report"><b>تقرير جاهز</b><small>اختر المسار والمرحلة ثم نفّذ</small></button>
         <button type="button" role="tab" class="${mode === "compare" ? "on" : ""}" aria-selected="${mode === "compare"}" data-cc="mode" data-m="compare"><b>مقارنة المراحل</b><small>من سجّل في أكثر من مرحلة</small></button>
@@ -2046,22 +2196,6 @@
   }
 
   /* ===== التنزيل ===== */
-  /* ورقة منسّقة: اتجاه يمين لليسار، ترويسة مثبّتة ملوّنة، فلاتر، وعرض أعمدة بحسب المحتوى */
-  function fmtSheet(ws, heads, rows) {
-    ws.views = [{ rightToLeft: true, state: "frozen", ySplit: 1 }];
-    ws.addRow(heads);
-    rows.forEach((r) => ws.addRow(r));
-    const hr = ws.getRow(1);
-    hr.font = { bold: true };
-    hr.alignment = { vertical: "middle", horizontal: "right" };
-    hr.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8EEF7" } };
-    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: Math.max(1, heads.length) } };
-    heads.forEach((h, i) => {
-      let w = cellStr(h).length;
-      rows.forEach((r) => { w = Math.max(w, cellStr(r[i]).length); });
-      ws.getColumn(i + 1).width = Math.min(45, Math.max(10, w + 3));
-    });
-  }
   async function exportBook(name, heads, rows) {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("النتائج");
@@ -2085,66 +2219,6 @@
       el.textContent = info.text;
       if (el.parentElement) el.parentElement.dataset.st = info.st;
     }
-  }
-
-  /* جدول النظام يدمج عدة بيانات في خلية واحدة (الطالب، المسار/الدورة، المجموعة/المدرب).
-     نفصلها هنا إلى أعمدة مستقلة، لكل نوع بيانات عموده، ونحتفظ بنص الدورة الأصلي لأغراض التصفية. */
-  function splitStudentCell(raw) {
-    let t = clean(raw);
-    const stu = (t.match(/STU-[\d-]+/) || [""])[0];
-    if (stu) t = t.replace(stu, " ");
-    const NO_EN = "لا يوجد اسم إنجليزي";
-    let name, en = "";
-    const k = t.indexOf(NO_EN);
-    if (k >= 0) { name = t.slice(0, k); t = t.slice(k + NO_EN.length); }
-    else {
-      const m = t.match(/[A-Za-z][A-Za-z .'\-]*[A-Za-z]/);
-      if (m) { const at = t.indexOf(m[0]); name = t.slice(0, at); en = m[0]; t = t.slice(at + m[0].length); }
-      else { const d = t.search(/\d/); name = d < 0 ? t : t.slice(0, d); t = d < 0 ? "" : t.slice(d); }
-    }
-    // ما بقي: «الهوية - الجوال» بفاصل بينهما. نقسمه بالفواصل لا بشكل الرقم، فالجوال قد يأتي بلا صفر أوله
-    const parts = t.split(/\s*[-–—·]\s*/).map(digits).filter(Boolean);
-    let id = "", phone = "";
-    if (parts.length >= 2) { id = parts[0]; phone = parts[parts.length - 1]; }
-    else if (parts.length === 1) { if (/^0?5\d{8}$/.test(parts[0])) phone = parts[0]; else id = parts[0]; }
-    if (/^5\d{8}$/.test(phone)) phone = "0" + phone;
-    // الاسم العربي يفصله النظام عمّا بعده بـ « / » أو شرطة: نزيل الفواصل من طرفيه (والإنجليزي كذلك)
-    const trimSep = (v) => clean(v).replace(/^[\s\/\|·\-–—،,:]+|[\s\/\|·\-–—،,:]+$/g, "");
-    return [trimSep(name), trimSep(en), stu, id, phone];
-  }
-  /* خلية «المجموعة / المدرب»: «S3G2 -» (بلا مدرب)، «G1 - د. أحمد»، أو «S3G1 اسراء خليل…» (رمز المجموعة ثم المدرب بلا فاصل) */
-  function splitGroupCell(raw) {
-    const d = clean(raw).split(/\s+-\s*/);
-    let g = clean(d[0]), tr = clean(d.slice(1).join(" - "));
-    if (!tr) {
-      let m = g.match(/^([A-Za-z]+\d*[A-Za-z]*\d*)\s+(.+)$/);              // رمز لاتيني: G1، S3G2
-      if (!m) m = g.match(/^(المجموعة\s+\S+)\s+(.+)$/);                   // المجموعة الاولى
-      if (m) { g = m[1]; tr = clean(m[2]); }
-    }
-    return [g, tr.replace(/^[-–—]+$/, "")];
-  }
-  function expandResult(r) {
-    if (!r || !Array.isArray(r.heads) || !Array.isArray(r.rows)) return r;
-    const at = (rx) => r.heads.findIndex((h) => rx.test(clean(h)));
-    const iS = at(/^الطالب$/), iC = at(/^المسار\s*\/\s*الدورة$/), iG = at(/^المجموعة\s*\/\s*المدرب$/);
-    if (iS < 0 && iC < 0 && iG < 0) return r;
-    const heads = [], plan = [];
-    r.heads.forEach((h, i) => {
-      if (i === iS) {
-        const hasPhone = r.heads.some((x) => clean(x) === "الجوال");   // تقرير له عمود جوال خاص: لا نكرره
-        heads.push("الاسم", "الاسم الإنجليزي", "رقم الطالب", "رقم الهوية"); if (!hasPhone) heads.push("الجوال");
-        plan.push((c) => { const v = splitStudentCell(c); return hasPhone ? v.slice(0, 4) : v; });
-      }
-      else if (i === iC) {
-        heads.push("المسار", "المرحلة");
-        plan.push((c) => { const t = clean(c); const m = t.match(/المرحلة\s*\S+/); return [clean(m ? t.replace(m[0], "") : t), m ? m[0] : ""]; });
-      } else if (i === iG) {
-        heads.push("المجموعة", "المدرب");
-        plan.push((c) => splitGroupCell(c));
-      } else { heads.push(h); plan.push((c) => [c]); }
-    });
-    const rows = r.rows.map((x) => ({ cells: [].concat(...plan.map((f, i) => f(x.cells[i]))), course: iC >= 0 ? clean(x.cells[iC]) : "", raw: x.cells }));
-    return Object.assign({}, r, { heads, rows, rawHeads: r.heads });
   }
 
   async function runCommands(commands, hooks) {
@@ -2282,6 +2356,14 @@
     render();
     refreshStatus();
     window.setInterval(refreshStatus, 8000);
+    /* اللوحة الرئيسية: تقارير محفوظة بنقرة وتذكير الأسبوع (المتجر يُحمَّل بعد هذا السكربت، فنؤخّر الرسم) */
+    window.setTimeout(renderDash, 1500);
+    window.addEventListener("hashchange", () => { if (location.hash === "#dashboard" || location.hash === "") renderDash(); });
+    document.addEventListener("click", (e) => {
+      const sv = e.target.closest && e.target.closest("[data-dash-saved]"), wk = e.target.closest && e.target.closest("[data-dash-weekly]");
+      if (sv) openCenterThen(() => runSavedById(sv.dataset.dashSaved));
+      else if (wk) openCenterThen(runWeekly);
+    });
     if (App.centerAgent) App.centerAgent.ready(1500).then((ok) => { if (ok) { refreshStatus(); if (!state.busy && !state.thinking && !state.plan) render(); } });
 
     box.addEventListener("click", async (e) => {
@@ -2367,6 +2449,22 @@
         } else if (act === "bundle-run") { return runBundle();
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
+        } else if (act === "grp-compliance") { return runCompliance();
+        } else if (act === "print-dq") { return lhPrint(dqBlocks(), "تقرير جودة بيانات الطلاب");
+        } else if (act === "word-dq") { return lhWord(dqBlocks(), "تقرير جودة بيانات الطلاب");
+        } else if (act === "print-grp") { return lhPrint(groupsBlocks(), "تقرير المجموعات والمدربين");
+        } else if (act === "word-grp") { return lhWord(groupsBlocks(), "تقرير المجموعات والمدربين");
+        } else if (act === "print-cmp") { return lhPrint(compareBlocks(), "تقرير مقارنة المراحل");
+        } else if (act === "word-cmp") { return lhWord(compareBlocks(), "تقرير مقارنة المراحل");
+        } else if (act === "print-sib") { return lhPrint(siblingsBlocks(), "تقرير مقارنة الإخوة");
+        } else if (act === "word-sib") { return lhWord(siblingsBlocks(), "تقرير مقارنة الإخوة");
+        } else if (act === "news-load") {
+          const it = whatsNew().find((x) => x.key === b.dataset.key); if (!it) return;
+          state.mode = "missing"; state.adding = ""; state.proposal = null;
+          Object.assign(state.mis, { kind: it.kind, tracks: it.tracks, stages: it.stages, status: it.status, out: null });
+        } else if (act === "news-dq") { state.mode = "dq"; state.adding = ""; state.proposal = null;
+        } else if (act === "weekly-run") { return runWeekly();
+        } else if (act === "weekly-snooze") { lsSet(SNOOZE_KEY, Date.now() + 2 * 86400000); ui.toast("سأذكّرك بعد يومين"); renderDash();
         } else if (act === "grp-propose") { state.grp.out.prop = proposeDistribution(state.grp.out);
         } else if (act === "wa-open") { waOpen(b.dataset.mode); return;
         } else if (act === "wa-copy") {
@@ -2405,7 +2503,7 @@
           const name = (window.prompt("اسم هذا التقرير المحفوظ:", "") || "").trim();
           if (!name) return;
           state.saved.push({ id: String(Date.now()), name: name.slice(0, 40), mode: m, cfg: cfgOf(m) });
-          lsSet(SV_KEY, state.saved); ui.toast("حُفظ «" + name + "»");
+          lsSet(SV_KEY, state.saved); ui.toast("حُفظ «" + name + "»"); renderDash();
         } else if (act === "sv-load" || act === "sv-run") {
           const it = state.saved.find((x) => x.id === b.dataset.id);
           if (!it) return;
@@ -2414,7 +2512,7 @@
           if (act === "sv-run") { const rb = box.querySelector('[data-cc="' + RUN_BTN[it.mode] + '"]'); if (rb && !rb.disabled) rb.click(); }
           return;
         } else if (act === "sv-del") {
-          state.saved = state.saved.filter((x) => x.id !== b.dataset.id); lsSet(SV_KEY, state.saved);
+          state.saved = state.saved.filter((x) => x.id !== b.dataset.id); lsSet(SV_KEY, state.saved); renderDash();
         } else if (act === "toggle-mask") {
           state.mask = !state.mask; try { localStorage.setItem(MASK_KEY, state.mask ? "1" : ""); } catch (e) { /* خاص */ }
         } else if (act === "wipe-now") { return wipeData("مُسحت بيانات هذه الشاشة");
