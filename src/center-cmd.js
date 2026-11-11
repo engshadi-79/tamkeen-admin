@@ -34,7 +34,7 @@
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
-    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", out: null },   // إحصاءات قياس الأثر
+    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1322,7 +1322,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-imp", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1332,7 +1332,7 @@
         if (hasCache && plan.every((x) => localList(x))) return 0;
         return plan.length;
       }
-      if (act === "run-imp") return 1;
+      if (act === "run-imp" || act === "imp-apply") return 1;
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
       if (act === "run-dq") return hasCache ? 0 : T(state.dq.tracks);
@@ -1718,20 +1718,21 @@
   const trackIdx = (heads) => impHasCol(heads, /^(ال)?مسار$/);
   const stageIdx = (heads) => { const a = impHasCol(heads, /^(ال)?مرحلة$/); return a >= 0 ? a : impHasCol(heads, /دور|مرحل/); };
   const stageOfCell = (v) => stageOf(v) || clean(v);
+  const courseIdx = (heads) => impHasCol(heads, /^(ال)?(مساق|دورة|الدورة)$/);
   function impOptions() {
-    const tr = new Set(), st = new Set();
+    const tr = new Set(), st = new Set(), co = new Set();
     impTables().forEach((t) => {
-      const a = trackIdx(t.heads), b = stageIdx(t.heads);
-      t.rows.forEach((r) => { if (a >= 0 && clean(r[a])) tr.add(clean(r[a]).replace(/^مسار\s*/, "")); if (b >= 0 && clean(r[b])) st.add(stageOfCell(r[b])); });
+      const a = trackIdx(t.heads), b = stageIdx(t.heads), k = courseIdx(t.heads);
+      t.rows.forEach((r) => { if (k >= 0 && clean(r[k])) co.add(clean(r[k])); if (a >= 0 && clean(r[a])) tr.add(clean(r[a]).replace(/^مسار\s*/, "")); if (b >= 0 && clean(r[b])) st.add(stageOfCell(r[b])); });
     });
-    return { tracks: [...tr].sort((x, y) => x.localeCompare(y, "ar")), stages: [...st].sort((x, y) => x.localeCompare(y, "ar")) };
+    return { courses: [...co].sort((x, y) => x.localeCompare(y, "ar")), tracks: [...tr].sort((x, y) => x.localeCompare(y, "ar")), stages: [...st].sort((x, y) => x.localeCompare(y, "ar")) };
   }
   /* الجداول بعد التصفية. جدول بلا عمود المسار/المرحلة لا يُصفّى بالمعيار الذي ليس فيه */
   function impFiltered() {
     const f = state.imp;
     return impTables().map((t) => {
-      const a = trackIdx(t.heads), b = stageIdx(t.heads);
-      const rows = t.rows.filter((r) => (!f.track || a < 0 || clean(r[a]).replace(/^مسار\s*/, "") === f.track) && (!f.stage || b < 0 || stageOfCell(r[b]) === f.stage));
+      const a = trackIdx(t.heads), b = stageIdx(t.heads), k = courseIdx(t.heads);
+      const rows = t.rows.filter((r) => (!f.course || k < 0 || clean(r[k]) === f.course) && (!f.track || a < 0 || clean(r[a]).replace(/^مسار\s*/, "") === f.track) && (!f.stage || b < 0 || stageOfCell(r[b]) === f.stage));
       return Object.assign({}, t, { rows, noTrack: !!f.track && a < 0, noStage: !!f.stage && b < 0 });
     });
   }
@@ -1746,12 +1747,13 @@
     const c = state.imp, p = {};
     if (c.from) p.date_from = c.from;
     p.date_to = c.to || ui.todayISO();
+    Object.keys(c.srv || {}).forEach((k) => { if (/^[A-Za-z_][\w\[\]]*$/.test(k) && c.srv[k] !== "" && !/^date_(from|to)$/.test(k)) p[k] = c.srv[k]; });
     String(c.extra || "").split(/[&\n]+/).map((x) => x.trim()).filter(Boolean).forEach((kv) => { const [k, ...v] = kv.split("="); if (/^[a-z_][a-z0-9_]*(\[\])?$/i.test(k.trim())) p[k.trim()] = v.join("=").trim(); });
     return p;
   };
   async function runImpact() {
     const c = state.imp;
-    state.busy = true; state.resultError = ""; c.out = null; c.track = ""; c.stage = ""; state.progress = "";
+    state.busy = true; state.resultError = ""; c.out = null; c.track = ""; c.stage = ""; c.course = ""; state.progress = "";
     render(); refreshStatus();
     try {
       requireAgent15();
@@ -1774,21 +1776,31 @@
       <footer class="cc-actions"><div class="cc-sum"><b>أمر قراءة واحد</b><span>${esc(c.from || "…")} ← ${esc(c.to || ui.todayISO())}</span></div>
         <div class="cc-act"><button type="button" class="btn navy" data-cc="run-imp" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الإحصاءات"}</button></div></footer></section>`;
   }
+  /* اختيار المرحلة/المسار/المساق/الحالة من قوائم صفحة النظام نفسها، ثم إعادة الجلب بضغطة منك */
+  function impServerFilters(o) {
+    const fs = (o.filters || []).filter((x) => x.name && !/^date_(from|to)$/.test(x.name) && x.type === "select" && (x.options || []).length > 1);
+    if (!fs.length) return "";
+    const cur = (x) => (x.name in state.imp.srv ? state.imp.srv[x.name] : x.value || "");
+    return `<details class="cc-adv" open><summary><span>اختر من قوائم النظام</span><small>${fs.map((x) => esc(x.label)).join("، ")}</small></summary>
+      <div class="cc-grid">${fs.map((x) => `<label class="cc-field"><span>${esc(x.label)}</span><select data-impsrv="${esc(x.name)}">${x.options.map((q) => `<option value="${esc(q.v)}" ${String(cur(x)) === String(q.v) ? "selected" : ""}>${esc(q.t || "الكل")}</option>`).join("")}</select></label>`).join("")}</div>
+      <div class="cc-row"><button type="button" class="btn navy small" data-cc="imp-apply" ${state.busy ? "disabled" : ""}>طبّق وأعد الجلب</button><span class="cc-note">يُرسَل اختيارك إلى صفحة النظام فتعيد حسابها، ويُقرأ أمر واحد.</span></div></details>`;
+  }
   function impResult() {
     const o = state.imp.out;
     if (!o) return "";
     const opt = impOptions(), tabs = impFiltered(), f = state.imp;
     const sel = (k, list, label) => `<label class="cc-field"><span>${label}</span><select data-imp="${k}"><option value="">الكل</option>${list.map((x) => `<option value="${esc(x)}" ${f[k] === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
-    const hasFilter = opt.tracks.length || opt.stages.length;
+    const hasFilter = opt.tracks.length || opt.stages.length || opt.courses.length;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> إحصاءات قياس الأثر</h3>
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(tabs.length)}</b> جدولاً</span><span class="cc-stat"><b>${ui.fmt(tabs.reduce((a, t) => a + t.rows.length, 0))}</b> صفاً بعد التصفية</span>
         ${(o.stats || []).slice(0, 12).map((x) => `<span class="cc-stat"><b>${esc(x.value)}</b> ${esc(x.label)}</span>`).join("")}
         ${tabs.some((t) => t.rows.length) ? '<button type="button" class="btn secondary small" data-cc="export-imp">تنزيل Excel</button>' : ""}</div>
-      ${hasFilter ? `<div class="cc-grid">${opt.tracks.length ? sel("track", opt.tracks, "المسار") : ""}${opt.stages.length ? sel("stage", opt.stages, "المرحلة") : ""}</div>` : '<p class="cc-note">لا عمود «مسار» ولا «مرحلة» في جداول هذه الصفحة، فلا تصفية بهما. (إن كانت الصفحة تقبل معاملات للتصفية فاكتبها في «معاملات إضافية».)</p>'}
+      ${hasFilter ? `<div class="cc-grid">${opt.tracks.length ? sel("track", opt.tracks, "المسار") : ""}${opt.stages.length ? sel("stage", opt.stages, "المرحلة") : ""}${opt.courses.length ? sel("course", opt.courses, "المساق") : ""}</div>` : '<p class="cc-note">لا عمود «مسار» ولا «مرحلة» في جداول هذه الصفحة، فلا تصفية بهما. (إن كانت الصفحة تقبل معاملات للتصفية فاكتبها في «معاملات إضافية».)</p>'}
       ${!tabs.length ? `<p class="cc-alert warn">لم أجد جداول في الصفحة${o.text ? ". هذا مقتطف مما قرأتُه: " + esc(o.text.slice(0, 300)) : ""}. أرسل لي بنية الصفحة (سكربت tools/ksach-pages.js) لأضبط قراءتها.</p>` : ""}
       ${tabs.map((t) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)} صفاً</span></div></header>
         ${t.noTrack || t.noStage ? `<p class="cc-note">هذا الجدول بلا عمود ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"}، فيظهر كاملاً.</p>` : ""}
         ${t.rows.length ? dataTable("imp-" + t.i, t.heads, t.rows) : '<p class="cc-note">لا صفوف مطابقة للتصفية.</p>'}</article>`).join("")}
+      ${impServerFilters(o)}
       ${(o.filters || []).length ? `<details class="cc-adv"><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}
       <p class="cc-note">قُرئت ${esc(new Date(o.at).toLocaleString("ar"))}. التصفية هنا محلية في صفحتك، فلا تُرسل شيئاً إلى النظام.</p></section>`;
   }
@@ -2613,7 +2625,7 @@
         } else if (act === "bundle-run") { return runBundle();
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
-        } else if (act === "run-imp") { return runImpact();
+        } else if (act === "run-imp" || act === "imp-apply") { return runImpact();
         } else if (act === "export-imp") { return exportImp();
         } else if (act === "grp-compliance") { return runCompliance();
         } else if (act === "print-dq") { return lhPrint(dqBlocks(), "تقرير جودة بيانات الطلاب");
@@ -2794,6 +2806,7 @@
         if (t.checked && at < 0) a.push(t.value); else if (!t.checked && at >= 0) a.splice(at, 1);
         return;
       }
+      if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp) { state.imp[t.dataset.imp] = t.value; render(); return; }
       if (t.dataset.grp) {
         const k = t.dataset.grp, c = state.grp;
