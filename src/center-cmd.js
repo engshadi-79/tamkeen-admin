@@ -1735,10 +1735,11 @@
       const a = trackIdx(t.heads), b = stageIdx(t.heads), k = courseIdx(t.heads);
       const anyStage = b < 0 && t.rows.some((r) => r.some((c) => stageOf(c)));
       const anyTrack = a < 0 && trNames.length && t.rows.some((r) => r.some((c) => trNames.some((n) => clean(c).includes(n))));
-      const okStage = (r) => !(f.stages || []).length || (b >= 0 ? f.stages.includes(stageOfCell(r[b])) : anyStage ? r.some((c) => f.stages.includes(stageOf(c))) : true);
+      const tStage = stageOf(t.title);   // المرحلة قد تكون في عنوان الجدول لا في أعمدته
+      const okStage = (r) => !(f.stages || []).length || (b >= 0 ? f.stages.includes(stageOfCell(r[b])) : anyStage ? r.some((c) => f.stages.includes(stageOf(c))) : tStage ? f.stages.includes(tStage) : true);
       const okTrack = (r) => !trNames.length || (a >= 0 ? trNames.includes(clean(r[a]).replace(/^مسار\s*/, "")) : anyTrack ? r.some((c) => trNames.some((n) => clean(c).includes(n))) : true);
       const rows = t.rows.filter((r) => (!f.course || k < 0 || clean(r[k]) === f.course) && okTrack(r) && okStage(r));
-      return Object.assign({}, t, { rows, noTrack: trNames.length > 0 && a < 0 && !anyTrack, noStage: (f.stages || []).length > 0 && b < 0 && !anyStage });
+      return Object.assign({}, t, { rows, noTrack: trNames.length > 0 && a < 0 && !anyTrack, noStage: (f.stages || []).length > 0 && b < 0 && !anyStage && !tStage });
     });
   }
   const IMP_PAGES = [["impact", "الملخص"], ["pre-post", "قبلي / بعدي"], ["impact-m", "قياس الأثر"], ["questions", "إحصائيات الأسئلة"], ["responses", "نسب الاستجابة"]];
@@ -1813,7 +1814,7 @@
       ${hasFilter ? `<div class="cc-grid">${opt.courses.length ? sel("course", opt.courses, "المساق") : ""}</div>` : '<p class="cc-note">التصفية بالمسارات والمراحل المختارة أعلاه تُطبَّق على كل جدول فيه عمود أو نص يدل عليها.</p>'}
       ${!tabs.length ? `<p class="cc-alert warn">لم أجد جداول في الصفحة${o.text ? ". هذا مقتطف مما قرأتُه: " + esc(o.text.slice(0, 300)) : ""}. أرسل لي بنية الصفحة (سكربت tools/ksach-pages.js) لأضبط قراءتها.</p>` : ""}
       ${tabs.map((t) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)} صفاً</span></div></header>
-        ${t.noTrack || t.noStage ? `<p class="cc-note">هذا الجدول بلا عمود ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"}، فيظهر كاملاً.</p>` : ""}
+        ${t.noTrack || t.noStage ? `<p class="cc-alert warn">لا أجد في هذا الجدول ما يدل على ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"} (لا عمود ولا نص في الصفوف ولا في عنوانه «${esc(t.title)}»)، فلا يمكن تصفيته وهو يظهر كاملاً.</p>` : ""}
         ${t.rows.length ? dataTable("imp-" + t.i, t.heads, t.rows) : '<p class="cc-note">لا صفوف مطابقة للتصفية.</p>'}</article>`).join("")}
       ${impServerFilters(o)}
       ${(o.filters || []).length ? `<details class="cc-adv"><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}

@@ -189,7 +189,7 @@ async function suite() {
   const tick = (k, text) => { const lb = [...b.querySelectorAll('[data-imp="' + k + '"]')].find((x) => x.parentNode.textContent.includes(text)); if (lb) lb.click(); return !!lb; };
   ok("أزرار اختيار المسار والمرحلة (مربعات) موجودة", b.querySelectorAll('[data-imp="stages"]').length === 3 && b.querySelectorAll('[data-imp="tracks"]').length > 3, [b.querySelectorAll('[data-imp="stages"]').length, b.querySelectorAll('[data-imp="tracks"]').length]);
   tick("tracks", "الحلاقة الرجالية");
-  ok("تصفية المسار: الجدول فيه عمود مسار يُصفّى، وجدول الحالة بلا عمود مسار يبقى كاملاً مع تنبيه", rowsOf("imp-0") === 2 && rowsOf("imp-1") === 2 && /بلا عمود المسار/.test(b.textContent), [rowsOf("imp-0"), rowsOf("imp-1")]);
+  ok("تصفية المسار: الجدول فيه عمود مسار يُصفّى، وجدول الحالة بلا عمود مسار يبقى كاملاً مع تنبيه", rowsOf("imp-0") === 2 && rowsOf("imp-1") === 2 && /ما يدل على المسار/.test(b.textContent), [rowsOf("imp-0"), rowsOf("imp-1")]);
   tick("stages", "المرحلة الثانية");
   ok("تصفية المسار والمرحلة معاً: صف واحد", rowsOf("imp-0") === 1, rowsOf("imp-0"));
   let capImp = null; const odImp = App.ui.download; App.ui.download = (n, blob) => { capImp = { n, blob }; };
