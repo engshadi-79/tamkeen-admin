@@ -186,9 +186,11 @@ async function suite() {
   ok("قياس الأثر: يصل التقرير بجدوليه وأرقامه وقائمة التصفية", !!io0 && io0.tables.length === 2 && io0.stats[0].value === "137" && io0.filters[0].name === "status" && calls.some((x) => /^impact/.test(x)), JSON.stringify({ out: !!io0, err: c.state.resultError, tables: io0 && io0.tables.length, stats: io0 && io0.stats, filters: io0 && io0.filters, calls: calls.slice(0, 5) }));
   const rowsOf = (k) => b.querySelectorAll('[data-tblbox="' + k + '"] tbody tr').length;
   ok("بلا تصفية: كل الصفوف", rowsOf("imp-0") === 4 && rowsOf("imp-1") === 2, [rowsOf("imp-0"), rowsOf("imp-1")]);
-  let sel = b.querySelector('[data-imp="track"]'); sel.value = "الحلاقة الرجالية"; sel.dispatchEvent(new Event("change", { bubbles: true }));
+  const tick = (k, text) => { const lb = [...b.querySelectorAll('[data-imp="' + k + '"]')].find((x) => x.parentNode.textContent.includes(text)); if (lb) lb.click(); return !!lb; };
+  ok("أزرار اختيار المسار والمرحلة (مربعات) موجودة", b.querySelectorAll('[data-imp="stages"]').length === 3 && b.querySelectorAll('[data-imp="tracks"]').length > 3, [b.querySelectorAll('[data-imp="stages"]').length, b.querySelectorAll('[data-imp="tracks"]').length]);
+  tick("tracks", "الحلاقة الرجالية");
   ok("تصفية المسار: الجدول فيه عمود مسار يُصفّى، وجدول الحالة بلا عمود مسار يبقى كاملاً مع تنبيه", rowsOf("imp-0") === 2 && rowsOf("imp-1") === 2 && /بلا عمود المسار/.test(b.textContent), [rowsOf("imp-0"), rowsOf("imp-1")]);
-  sel = b.querySelector('[data-imp="stage"]'); sel.value = "المرحلة الثانية"; sel.dispatchEvent(new Event("change", { bubbles: true }));
+  tick("stages", "المرحلة الثانية");
   ok("تصفية المسار والمرحلة معاً: صف واحد", rowsOf("imp-0") === 1, rowsOf("imp-0"));
   let capImp = null; const odImp = App.ui.download; App.ui.download = (n, blob) => { capImp = { n, blob }; };
   b.querySelector('[data-cc="export-imp"]').click(); for (let i = 0; i < 40 && !capImp; i++) await wait(150); App.ui.download = odImp;
@@ -202,7 +204,7 @@ async function suite() {
     for (let i = 0; i < 60 && !c.state.imp.out && !c.state.resultError; i++) await wait(200); await wait(200);
     ok("«طبّق وأعد الجلب»: يُرسَل الاختيار معاملاً ويُقرأ أمر واحد", calls.length === 1 && !!c.state.imp.out, JSON.stringify(calls));
   }
-  c.state.imp.track = ""; c.state.imp.stage = ""; c.state.imp.out = null;
+  c.state.imp.tracks = []; c.state.imp.stages = []; c.state.imp.out = null;
 
   // ===== 8) الإخوة: اختيار المراحل والمقارنة بين المراحل =====
   DATA = [mk("أحمد خالد علي أبو نصير", "401", "0591000001", "1", S3, "G1 - "), mk("علي خالد علي أبو نصير", "402", "0591000001", "2", S1, "G1 - "), mk("منى فؤاد حسين قاسم", "407", "0594000004", "3", S3, "G1 - "), mk("سلمى فؤاد حسين قاسم", "409", "0594000004", "4", S3, "G1 - ")];
