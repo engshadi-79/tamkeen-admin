@@ -23,7 +23,7 @@
     ["GET", /^\/admin\/student-pledges(\?[^#]*)?$/],         // قائمة تعهدات الطلاب (قراءة فقط)
     ["GET", /^\/admin\/evaluation-submissions(\?[^#]*)?$/],  // قائمة إرسالات الاستبيانات (قراءة فقط)
     ["GET", /^\/admin\/reports\/evaluation-missing-submissions(\?[^#]*)?$/],  // تقرير «لم يعبئوا الاستبيان» (قراءة فقط)
-    ["GET", /^\/admin\/evaluation-impact-reports\/summary(\?[^#]*)?$/],  // إحصاءات قياس الأثر (قراءة فقط)
+    ["GET", /^\/admin\/evaluation-impact-reports\/(summary|pre-post|impact|questions|responses)(\?[^#]*)?$/],  // إحصاءات قياس الأثر (قراءة فقط)
   ];
   const guard = (method, path) => {
     const u = new URL(path, location.origin);
@@ -277,7 +277,7 @@
   /* ===== صفحات تقارير للقراءة فقط: كل جداولها وأرقامها وقوائم التصفية فيها =====
      لا نعرف بنية كل صفحة سلفاً، فنقرأ عامّاً: كل جدول بعنوانه، والأرقام الظاهرة في البطاقات، وحقول نموذج التصفية (لمعرفة
      معاملات الرابط المتاحة). الطلب GET واحد (مع متابعة ترقيم الصفحات على أكبر جدول)، وللرابط المسموح به فقط (ALLOW). */
-  const PAGES = { impact: "/admin/evaluation-impact-reports/summary" };
+  const PAGES = { impact: "/admin/evaluation-impact-reports/summary", "pre-post": "/admin/evaluation-impact-reports/pre-post", "impact-m": "/admin/evaluation-impact-reports/impact", questions: "/admin/evaluation-impact-reports/questions", responses: "/admin/evaluation-impact-reports/responses" };
   const headingOf = (el) => {
     const cap = el.querySelector("caption");
     if (cap && clean(cap.textContent)) return clean(cap.textContent).slice(0, 120);
