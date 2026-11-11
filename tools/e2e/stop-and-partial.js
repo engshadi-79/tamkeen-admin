@@ -79,6 +79,7 @@ http.createServer((req, res) => {
     const app = new CDP(tt.webSocketDebuggerUrl); await app.send("Runtime.enable");
     await waitFor(() => app.eval("typeof App !== 'undefined' && !!App.centerAgent"), 10000, "وحدة center-agent");
     await waitFor(() => app.eval("App.centerAgent.ready(1500)"), 12000, "الإضافة");
+    await app.eval("App.centerAgent.allowSynthetic = true; 1");   // الاختبار يستدعي run مباشرة بلا ضغطة حقيقية
     const v = await app.eval("App.centerAgent.version()");
     step("إصدار الإضافة", /^1\.4/.test(v), v);
     step("الصفحة تعرض دالة الإيقاف", await app.eval("typeof App.centerAgent.stop === 'function'"));

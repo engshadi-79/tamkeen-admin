@@ -86,6 +86,11 @@ http.createServer((req, res) => {
     const stub = await open(browser, "http://localhost:4196/");
     await waitFor(() => stub.c.eval("typeof App !== 'undefined' && !!App.centerAgent"), 10000, "وحدة center-agent");
     const ready = await waitFor(() => stub.c.eval("App.centerAgent.ready(1500)"), 12000, "الإضافة تعلن جاهزيتها");
+    // الحارس: بلا ضغطة مستخدم حقيقية لا تُرسَل أي قراءة إلى نظام المركز
+    await stub.c.eval("window.__denied = null; App.centerAgent.run([{type:'list',label:'x',params:{track_id:'2'}}], {}).then(() => { window.__denied = 'ran'; }).catch((e) => { window.__denied = e.message; }); 1");
+    const denied = await waitFor(() => stub.c.eval("window.__denied"), 5000, "رفض القراءة بلا ضغطة");
+    step("القراءة بلا ضغطة حقيقية تُرفض قبل أن تصل إلى نظام المركز", /إلا بضغطة منك/.test(String(denied)), denied);
+    await stub.c.eval("App.centerAgent.allowSynthetic = true; 1");   // الاختبار يستدعي run مباشرة بلا ضغطة حقيقية
     step("الصفحة تتعرّف على الإضافة تلقائياً", ready === true, "version=" + await stub.c.eval("App.centerAgent.version()"));
 
     const NID = "48" + String(Math.floor(Math.random() * 1e7)).padStart(7, "0");
@@ -160,6 +165,7 @@ http.createServer((req, res) => {
       document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); const v=document.getElementById('view-converter'); v.classList.add('active'); v.style.display='block';
       document.querySelector('[data-cv-tab="center"]').click(); return 1})()`);
     await waitFor(() => app.c.eval("App.centerAgent.isReady()"), 12000, "الإضافة في صفحة تمكين الحقيقية");
+    await app.c.eval("App.centerAgent.allowSynthetic = true; 1");   // ضغطات الاختبار برمجية لا حقيقية
     // الحالة تتحدّث بعد وصول إعلان الإضافة (وفي الاستعمال الحقيقي خلال لحظة)؛ ننتظرها
     const statusText = await waitFor(() => app.c.eval("(()=>{const t=(document.getElementById('cc-status')||{}).textContent||''; return /متصلة/.test(t)?t:''})()"), 20000, "إعلان الاتصال في واجهة تمكين");
     step("واجهة تمكين تعلن أن الإضافة متصلة", /متصلة/.test(statusText || ""), statusText);
