@@ -4,7 +4,7 @@
 
    حدوده:
    - لا يطلب كلمة مرور ولا يقرأ كوكيز ولا يخزّن رمز الجلسة.
-   - لا يرسل إلا أربعة أنواع طلبات (انظر ALLOW) وأي غيرها يُرفض.
+   - لا يرسل إلا أنواع طلبات محددة (انظر ALLOW) وأي غيرها يُرفض.
    - لا يكتب شيئاً قبل أن تضغط «نفّذ» بعد أن ترى جدول المعاينة.
    - يتجاوز من هو مسجَّل أصلاً (بالبحث برقم الهوية) فلا يُكرّر أحداً.
    - يتوقف عند ثلاثة إخفاقات متتالية، ويمكنك إيقافه في أي لحظة. */
@@ -23,6 +23,7 @@
     ["GET", /^\/admin\/student-pledges(\?[^#]*)?$/],         // قائمة تعهدات الطلاب (قراءة فقط)
     ["GET", /^\/admin\/evaluation-submissions(\?[^#]*)?$/],  // قائمة إرسالات الاستبيانات (قراءة فقط)
     ["GET", /^\/admin\/reports\/evaluation-missing-submissions(\?[^#]*)?$/],  // تقرير «لم يعبئوا الاستبيان» (قراءة فقط)
+    ["GET", /^\/admin\/evaluation-impact-reports\/summary(\?[^#]*)?$/],  // إحصاءات قياس الأثر (قراءة فقط)
   ];
   const guard = (method, path) => {
     const u = new URL(path, location.origin);
@@ -273,6 +274,78 @@
     return out;
   }
 
+  /* ===== صفحات تقارير للقراءة فقط: كل جداولها وأرقامها وقوائم التصفية فيها =====
+     لا نعرف بنية كل صفحة سلفاً، فنقرأ عامّاً: كل جدول بعنوانه، والأرقام الظاهرة في البطاقات، وحقول نموذج التصفية (لمعرفة
+     معاملات الرابط المتاحة). الطلب GET واحد (مع متابعة ترقيم الصفحات على أكبر جدول)، وللرابط المسموح به فقط (ALLOW). */
+  const PAGES = { impact: "/admin/evaluation-impact-reports/summary" };
+  const headingOf = (el) => {
+    const cap = el.querySelector("caption");
+    if (cap && clean(cap.textContent)) return clean(cap.textContent).slice(0, 120);
+    const card = el.closest(".card, section, .box, .panel");
+    if (card) { const t = card.querySelector(".card-header, .card-title, .box-title, h1, h2, h3, h4, h5, h6"); if (t && !t.contains(el)) return clean(t.textContent).slice(0, 120); }
+    let p = el.previousElementSibling;
+    for (let i = 0; p && i < 4; i++, p = p.previousElementSibling) { if (/^H[1-6]$/.test(p.tagName)) return clean(p.textContent).slice(0, 120); }
+    return "";
+  };
+  function tablesOf(doc) {
+    return [...doc.querySelectorAll("table")].map((t) => {
+      let allHeads = [...t.querySelectorAll("thead th")].map((th) => clean(th.textContent));
+      let trs = [...t.querySelectorAll("tbody tr")];
+      if (!allHeads.length) { const first = t.querySelector("tr"); if (first) { allHeads = [...first.children].map((c) => clean(c.textContent)); trs = [...t.querySelectorAll("tr")].slice(1); } }
+      const keep = allHeads.map((h) => !/إجراء|عمليات|خيارات|actions?/i.test(h));
+      const heads = allHeads.filter((h, i) => keep[i]);
+      const rows = trs.map((tr) => ({ cells: [...tr.children].map(cellText).filter((c, i) => keep[i] !== false) })).filter((r) => r.cells.some(Boolean));
+      return { title: headingOf(t), heads, rows };
+    }).filter((t) => t.heads.length && t.rows.length);
+  }
+  function statsOf(doc) {
+    const out = [], seen = new Set();
+    doc.querySelectorAll(".card, .stat, .stats-card, .small-box, .info-box, .metric, [class*='stat-'], [class*='kpi']").forEach((el) => {
+      if (el.querySelector("table")) return;
+      const t = clean(el.textContent);
+      if (!t || t.length > 90 || seen.has(t)) return;
+      const m = t.match(/^(.*?)(-?[\d٠-٩][\d٠-٩.,]*%?)(.*)$/);
+      if (!m) return;
+      const label = clean(m[1] + " " + m[3]);
+      if (!label) return;
+      seen.add(t); out.push({ label: label.slice(0, 70), value: m[2] });
+    });
+    return out.slice(0, 40);
+  }
+  function filtersOf(doc) {
+    const form = [...doc.querySelectorAll("form")].find((f) => (f.getAttribute("method") || "get").toLowerCase() === "get" && f.querySelector("select, input[type=date]"));
+    if (!form) return [];
+    return [...form.querySelectorAll("select, input")].map((el) => {
+      const name = el.getAttribute("name"), type = (el.getAttribute("type") || el.tagName).toLowerCase();
+      if (!name || name === "_token" || ["hidden", "submit", "button"].includes(type)) return null;
+      const f = { name, label: fieldLabel(el, doc) || name, type: el.tagName === "SELECT" ? "select" : type, value: el.tagName === "SELECT" ? ((el.options[el.selectedIndex] || {}).value || "") : el.value };
+      if (el.tagName === "SELECT") f.options = [...el.options].slice(0, 80).map((o) => ({ v: o.value, t: clean(o.textContent) }));
+      return f;
+    }).filter(Boolean).slice(0, 20);
+  }
+  async function cmdPage(cmd, index) {
+    const base = PAGES[cmd.source];
+    if (!base) throw new Error("صفحة تقرير غير معروفة");
+    const out = { index, type: "page", source: cmd.source, label: cmd.label || "", params: cmd.params || {}, tables: [], stats: [], filters: [], text: "" };
+    say("قراءة التقرير…");
+    await sleep(GET_GAP);
+    let { doc } = await http("GET", base + "?" + qs(cmd.params || {}));
+    out.tables = tablesOf(doc); out.stats = statsOf(doc); out.filters = filtersOf(doc);
+    out.text = clean((doc.querySelector("main, .content, .container-fluid, body") || {}).textContent || "").slice(0, 1200);
+    const main = out.tables.length ? out.tables.reduce((a, b) => (b.rows.length > a.rows.length ? b : a)) : null;
+    let next = nextPath(doc);
+    for (let pg = 2; main && next && pg <= 30 && !stopped; pg++) {
+      say("قراءة التقرير — صفحة " + pg + " (" + main.rows.length + " صفاً)");
+      await sleep(GET_GAP);
+      ({ doc } = await http("GET", next));
+      const t = tablesOf(doc).find((x) => x.heads.join("|") === main.heads.join("|"));
+      if (!t) break;
+      main.rows.push(...t.rows); next = nextPath(doc);
+    }
+    log("التقرير: " + out.tables.length + " جدول، " + out.stats.length + " رقم");
+    return out;
+  }
+
   /* قيم الصف تُطابَق مع قوائم النموذج الحيّ قبل الإرسال */
   function liveForm(doc) {
     const form = [...doc.querySelectorAll("form")].find((f) =>
@@ -417,7 +490,7 @@
     const cmd = pack.commands[i];
     window.__kxCmd = { i: i + 1, n: pack.commands.length };
     try {
-      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister }[cmd.type];
+      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister, page: cmdPage }[cmd.type];
       if (!fn) { results.push({ index: i, type: cmd.type, error: "نوع أمر غير معروف" }); continue; }
       results.push(await fn(cmd, i));
     } catch (e) {

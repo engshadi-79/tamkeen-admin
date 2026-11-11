@@ -81,7 +81,7 @@ http.createServer((req, res) => {
     await waitFor(() => app.eval("App.centerAgent.ready(1500)"), 12000, "الإضافة");
     await app.eval("App.centerAgent.allowSynthetic = true; 1");   // الاختبار يستدعي run مباشرة بلا ضغطة حقيقية
     const v = await app.eval("App.centerAgent.version()");
-    step("إصدار الإضافة", /^1\.4/.test(v), v);
+    step("إصدار الإضافة", /^1\.[45]/.test(v), v);
     step("الصفحة تعرض دالة الإيقاف", await app.eval("typeof App.centerAgent.stop === 'function'"));
 
     // ===== نتائج تباعاً =====

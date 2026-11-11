@@ -34,6 +34,7 @@
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
+    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1237,9 +1238,9 @@
 
   /* ===== تخزين محلي (هذا المتصفح فقط): التقارير المحفوظة، سجل العمليات، الإشعار، لقطة البيانات ===== */
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
-  const CFG = { report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
-  const MODE_NAME = { report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
-  const RUN_BTN = { report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
+  const CFG = { impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
+  const MODE_NAME = { impact: "قياس الأثر", report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
+  const RUN_BTN = { impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
   /* نسخة من إعدادات التبويب بلا نتائجه ولا بياناته */
   const cfgOf = (mode) => JSON.parse(JSON.stringify(state[CFG[mode]], (key, v) => (key === "out" || key === "rows" || key === "msg" || key === "diff" ? undefined : v)));
   function applyCfg(mode, cfg) {
@@ -1269,6 +1270,7 @@
     if (mode === "missing") { const o = state.mis.out; return o ? o.rows.length + " طالباً لم يُكمل (" + ((MIS_KINDS.find((k) => k.k === o.kind) || {}).t || "") + ")" : ""; }
     if (mode === "dq") { const o = state.dq.out; return o ? o.issues.length + " ملاحظة من " + o.total + " طالباً" : ""; }
     if (mode === "groups") { const o = state.grp.out; return o ? o.groups.length + " مجموعة، " + o.unassigned + " غير موزع" : ""; }
+    if (mode === "impact") { const o = state.imp.out; return o ? (o.tables || []).length + " جدولاً" : ""; }
     if (mode === "student") { const o = state.stu.out; return o ? "ملف طالب" : ""; }
     return "";
   }
@@ -1320,7 +1322,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-imp", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1330,6 +1332,7 @@
         if (hasCache && plan.every((x) => localList(x))) return 0;
         return plan.length;
       }
+      if (act === "run-imp") return 1;
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
       if (act === "run-dq") return hasCache ? 0 : T(state.dq.tracks);
@@ -1507,7 +1510,7 @@
   const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.cache || state.grp.out || state.stu.out);
   function wipeData(why) {
     state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null;
-    state.cache = null; state.grp.out = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
+    state.cache = null; state.grp.out = null; state.imp.out = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
     Object.keys(tblData).forEach((k) => delete tblData[k]); Object.keys(tblState).forEach((k) => delete tblState[k]);
     render();
     if (why) ui.toast(why);
@@ -1703,6 +1706,97 @@
       if (state.resultError || !c.out) return;
     }
     return how === "word" ? wordSummary() : printSummary();
+  }
+
+  /* ===== إحصاءات قياس الأثر: صفحة تقرير النظام بجداولها كلها، مع تصفية محلية بالمسار والمرحلة ===== */
+  const impHasCol = (heads, rx) => heads.findIndex((h) => rx.test(clean(h)));
+  /* نفكّ عمود «المسار / الدورة» المدمج إن وُجد ليصير مساراً ومرحلة، كما في بقية التقارير */
+  const impTables = () => ((state.imp.out && state.imp.out.tables) || []).map((t, i) => {
+    const e = expandResult({ heads: t.heads, rows: t.rows.map((r) => ({ cells: r.cells })) });
+    return { i, title: t.title || "جدول " + (i + 1), heads: e.heads, rows: e.rows.map((r) => r.cells) };
+  });
+  const trackIdx = (heads) => impHasCol(heads, /^(ال)?مسار$/);
+  const stageIdx = (heads) => { const a = impHasCol(heads, /^(ال)?مرحلة$/); return a >= 0 ? a : impHasCol(heads, /دور|مرحل/); };
+  const stageOfCell = (v) => stageOf(v) || clean(v);
+  function impOptions() {
+    const tr = new Set(), st = new Set();
+    impTables().forEach((t) => {
+      const a = trackIdx(t.heads), b = stageIdx(t.heads);
+      t.rows.forEach((r) => { if (a >= 0 && clean(r[a])) tr.add(clean(r[a]).replace(/^مسار\s*/, "")); if (b >= 0 && clean(r[b])) st.add(stageOfCell(r[b])); });
+    });
+    return { tracks: [...tr].sort((x, y) => x.localeCompare(y, "ar")), stages: [...st].sort((x, y) => x.localeCompare(y, "ar")) };
+  }
+  /* الجداول بعد التصفية. جدول بلا عمود المسار/المرحلة لا يُصفّى بالمعيار الذي ليس فيه */
+  function impFiltered() {
+    const f = state.imp;
+    return impTables().map((t) => {
+      const a = trackIdx(t.heads), b = stageIdx(t.heads);
+      const rows = t.rows.filter((r) => (!f.track || a < 0 || clean(r[a]).replace(/^مسار\s*/, "") === f.track) && (!f.stage || b < 0 || stageOfCell(r[b]) === f.stage));
+      return Object.assign({}, t, { rows, noTrack: !!f.track && a < 0, noStage: !!f.stage && b < 0 });
+    });
+  }
+  function requireAgent15() {
+    const v = String((App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || "");
+    const n = v.split(".").map(Number);
+    if (!(n.length >= 2 && (n[0] > 1 || (n[0] === 1 && n[1] >= 5)))) throw new Error(v
+      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.0) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
+      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.0 فأحدث) ولا تدعمه الجلسة المحلية.");
+  }
+  const impParams = () => {
+    const c = state.imp, p = {};
+    if (c.from) p.date_from = c.from;
+    p.date_to = c.to || ui.todayISO();
+    String(c.extra || "").split(/[&\n]+/).map((x) => x.trim()).filter(Boolean).forEach((kv) => { const [k, ...v] = kv.split("="); if (/^[a-z_][a-z0-9_]*(\[\])?$/i.test(k.trim())) p[k.trim()] = v.join("=").trim(); });
+    return p;
+  };
+  async function runImpact() {
+    const c = state.imp;
+    state.busy = true; state.resultError = ""; c.out = null; c.track = ""; c.stage = ""; state.progress = "";
+    render(); refreshStatus();
+    try {
+      requireAgent15();
+      const res = await runCommands([{ type: "page", source: "impact", label: "إحصاءات قياس الأثر", params: impParams() }]);
+      const r = res[0];
+      if (!r || r.type !== "page") throw new Error((r && r.error) || "لم يصل التقرير من الوكيل.");
+      c.out = Object.assign({ at: new Date() }, r);
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  function impView() {
+    const c = state.imp;
+    return `<section class="cc-card" id="cc-imp">
+      <header class="cc-card-h"><h3>إحصاءات قياس الأثر</h3><p>يقرأ صفحة «ملخص قياس الأثر» في نظام المركز لفترة تحددها، بكل جداولها وأرقامها، ثم تصفّيها هنا بالمسار والمرحلة. للقراءة فقط، وبطلب منك وحدك.</p></header>
+      <div class="cc-card-b"><div class="cc-grid">
+        <label class="cc-field"><span>من تاريخ</span><input type="date" data-imp="from" value="${esc(c.from)}"></label>
+        <label class="cc-field"><span>إلى تاريخ (فارغ = اليوم)</span><input type="date" data-imp="to" value="${esc(c.to)}"></label>
+        <label class="cc-field cc-wide"><span>معاملات إضافية للرابط (اختياري، مثل <code>status=all</code>؛ كلٌّ في سطر أو يفصلها &amp;)</span><input type="text" data-imp="extra" value="${esc(c.extra)}" placeholder="status=all"></label>
+      </div><p class="cc-note">الرابط المقروء: <code dir="ltr">/admin/evaluation-impact-reports/summary?${esc(new URLSearchParams(impParams()).toString())}</code>. «كل الحالات» هي الوضع الافتراضي لهذه الصفحة؛ وبعد القراءة تُعرض لك قوائم التصفية التي في صفحة النظام لتعرف معاملاتها.</p></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>أمر قراءة واحد</b><span>${esc(c.from || "…")} ← ${esc(c.to || ui.todayISO())}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-imp" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الإحصاءات"}</button></div></footer></section>`;
+  }
+  function impResult() {
+    const o = state.imp.out;
+    if (!o) return "";
+    const opt = impOptions(), tabs = impFiltered(), f = state.imp;
+    const sel = (k, list, label) => `<label class="cc-field"><span>${label}</span><select data-imp="${k}"><option value="">الكل</option>${list.map((x) => `<option value="${esc(x)}" ${f[k] === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
+    const hasFilter = opt.tracks.length || opt.stages.length;
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> إحصاءات قياس الأثر</h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(tabs.length)}</b> جدولاً</span><span class="cc-stat"><b>${ui.fmt(tabs.reduce((a, t) => a + t.rows.length, 0))}</b> صفاً بعد التصفية</span>
+        ${(o.stats || []).slice(0, 12).map((x) => `<span class="cc-stat"><b>${esc(x.value)}</b> ${esc(x.label)}</span>`).join("")}
+        ${tabs.some((t) => t.rows.length) ? '<button type="button" class="btn secondary small" data-cc="export-imp">تنزيل Excel</button>' : ""}</div>
+      ${hasFilter ? `<div class="cc-grid">${opt.tracks.length ? sel("track", opt.tracks, "المسار") : ""}${opt.stages.length ? sel("stage", opt.stages, "المرحلة") : ""}</div>` : '<p class="cc-note">لا عمود «مسار» ولا «مرحلة» في جداول هذه الصفحة، فلا تصفية بهما. (إن كانت الصفحة تقبل معاملات للتصفية فاكتبها في «معاملات إضافية».)</p>'}
+      ${!tabs.length ? `<p class="cc-alert warn">لم أجد جداول في الصفحة${o.text ? ". هذا مقتطف مما قرأتُه: " + esc(o.text.slice(0, 300)) : ""}. أرسل لي بنية الصفحة (سكربت tools/ksach-pages.js) لأضبط قراءتها.</p>` : ""}
+      ${tabs.map((t) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)} صفاً</span></div></header>
+        ${t.noTrack || t.noStage ? `<p class="cc-note">هذا الجدول بلا عمود ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"}، فيظهر كاملاً.</p>` : ""}
+        ${t.rows.length ? dataTable("imp-" + t.i, t.heads, t.rows) : '<p class="cc-note">لا صفوف مطابقة للتصفية.</p>'}</article>`).join("")}
+      ${(o.filters || []).length ? `<details class="cc-adv"><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}
+      <p class="cc-note">قُرئت ${esc(new Date(o.at).toLocaleString("ar"))}. التصفية هنا محلية في صفحتك، فلا تُرسل شيئاً إلى النظام.</p></section>`;
+  }
+  async function exportImp() {
+    const tabs = impFiltered().filter((t) => t.rows.length); if (!tabs.length) return;
+    const wb = new ExcelJS.Workbook(), used = new Set();
+    tabs.forEach((t, i) => { let nm = (String(i + 1) + "-" + t.title).replace(/[\\/?*[\]:]/g, " ").slice(0, 31); while (used.has(nm)) nm = nm.slice(0, 28) + "·" + used.size; used.add(nm); fmtSheet(wb.addWorksheet(nm), t.heads, t.rows); });
+    ui.download("إحصاءات قياس الأثر " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
 
   /* ===== المجموعات والمدربون + اقتراح توزيع غير الموزعين ===== */
@@ -1984,6 +2078,7 @@
     if (mode === "missing") return runMissing();
     if (mode === "dq") return runDq();
     if (mode === "groups") return runGroups();
+    if (mode === "impact") return runImpact();
   }
   function collectSheets(mode, name) {
     if (mode === "report") return ((state.results && state.results.results) || []).map((r, i) => (r && r.type === "list" ? (() => { const [h, rr] = shown(r.heads, r.rows.map((x) => x.cells)); return { name: state.labels[i] || name, heads: h, rows: rr }; })() : null)).filter(Boolean);
@@ -1991,6 +2086,7 @@
     if (mode === "siblings") return state.sib.out ? [{ name, heads: sibHeads(), rows: state.sib.out.rows }] : [];
     if (mode === "missing") return state.mis.out ? [{ name, heads: misHeads(), rows: misTable() }] : [];
     if (mode === "dq") return state.dq.out ? [{ name, heads: dqHeads(), rows: dqTable() }] : [];
+    if (mode === "impact") return impFiltered().filter((t) => t.rows.length).map((t, i) => ({ name: name + " - " + (t.title || "جدول " + (i + 1)), heads: t.heads, rows: t.rows }));
     if (mode === "groups") return state.grp.out ? [{ name: name + " - مجموعات", heads: grpGroupHeads(), rows: grpGroupTable() }, { name: name + " - مدربون", heads: grpTrainerHeads(), rows: grpTrainerTable() }] : [];
     return [];
   }
@@ -2213,16 +2309,17 @@
         <button type="button" role="tab" class="${mode === "compare" ? "on" : ""}" aria-selected="${mode === "compare"}" data-cc="mode" data-m="compare"><b>مقارنة المراحل</b><small>من سجّل في أكثر من مرحلة</small></button>
         <button type="button" role="tab" class="${mode === "siblings" ? "on" : ""}" aria-selected="${mode === "siblings"}" data-cc="mode" data-m="siblings"><b>مقارنة الإخوة</b><small>طلاب يجمعهم هاتف أو عائلة</small></button>
         <button type="button" role="tab" class="${mode === "missing" ? "on" : ""}" aria-selected="${mode === "missing"}" data-cc="mode" data-m="missing"><b>استبيانات وتعهدات</b><small>من لم يعبّئ أو يوقّع</small></button>
+        <button type="button" role="tab" class="${mode === "impact" ? "on" : ""}" aria-selected="${mode === "impact"}" data-cc="mode" data-m="impact"><b>قياس الأثر</b><small>إحصاءات الاستبيان بتصفية المسار والمرحلة</small></button>
         <button type="button" role="tab" class="${mode === "dq" ? "on" : ""}" aria-selected="${mode === "dq"}" data-cc="mode" data-m="dq"><b>فحص البيانات</b><small>أخطاء الجودة وتغيّر القوائم</small></button>
         <button type="button" role="tab" class="${mode === "groups" ? "on" : ""}" aria-selected="${mode === "groups"}" data-cc="mode" data-m="groups"><b>المجموعات والمدربون</b><small>التوازن، حمل المدربين، التوزيع</small></button>
         <button type="button" role="tab" class="${mode === "student" ? "on" : ""}" aria-selected="${mode === "student"}" data-cc="mode" data-m="student"><b>ملف الطالب</b><small>كل شيء عن طالب واحد</small></button>
         <button type="button" role="tab" class="${mode === "ask" ? "on" : ""}" aria-selected="${mode === "ask"}" data-cc="mode" data-m="ask"><b>اكتب طلبك</b><small>بحث، أو تسجيل طلاب من Excel</small></button>
       </nav>
       ${savedBar(mode)}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
       ${settingsCard()}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
@@ -2516,6 +2613,8 @@
         } else if (act === "bundle-run") { return runBundle();
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
+        } else if (act === "run-imp") { return runImpact();
+        } else if (act === "export-imp") { return exportImp();
         } else if (act === "grp-compliance") { return runCompliance();
         } else if (act === "print-dq") { return lhPrint(dqBlocks(), "تقرير جودة بيانات الطلاب");
         } else if (act === "word-dq") { return lhWord(dqBlocks(), "تقرير جودة بيانات الطلاب");
@@ -2695,6 +2794,7 @@
         if (t.checked && at < 0) a.push(t.value); else if (!t.checked && at >= 0) a.splice(at, 1);
         return;
       }
+      if (t.dataset.imp) { state.imp[t.dataset.imp] = t.value; render(); return; }
       if (t.dataset.grp) {
         const k = t.dataset.grp, c = state.grp;
         if (k === "tracks" || k === "stages") { const v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); }
