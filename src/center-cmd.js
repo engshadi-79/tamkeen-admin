@@ -34,7 +34,7 @@
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
-    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
+    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], page: "impact", course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1741,12 +1741,15 @@
       return Object.assign({}, t, { rows, noTrack: trNames.length > 0 && a < 0 && !anyTrack, noStage: (f.stages || []).length > 0 && b < 0 && !anyStage });
     });
   }
+  const IMP_PAGES = [["impact", "الملخص"], ["pre-post", "قبلي / بعدي"], ["impact-m", "قياس الأثر"], ["questions", "إحصائيات الأسئلة"], ["responses", "نسب الاستجابة"]];
+  const IMP_PATH = { impact: "summary", "pre-post": "pre-post", "impact-m": "impact", questions: "questions", responses: "responses" };
   function requireAgent15() {
     const v = String((App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || "");
-    const n = v.split(".").map(Number);
-    if (!(n.length >= 2 && (n[0] > 1 || (n[0] === 1 && n[1] >= 5)))) throw new Error(v
-      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.0) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
-      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.0 فأحدث) ولا تدعمه الجلسة المحلية.");
+    const n = v.split(".").map(Number), need = state.imp.page === "impact" ? 0 : 1;
+    const ok = n.length >= 2 && (n[0] > 1 || (n[0] === 1 && (n[1] > 5 || (n[1] === 5 && (n[2] || 0) >= need))));
+    if (!ok) throw new Error(v
+      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.1) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
+      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.1 فأحدث) ولا تدعمه الجلسة المحلية.");
   }
   const impParams = () => {
     const c = state.imp, p = {};
@@ -1762,7 +1765,7 @@
     render(); refreshStatus();
     try {
       requireAgent15();
-      const res = await runCommands([{ type: "page", source: "impact", label: "إحصاءات قياس الأثر", params: impParams() }]);
+      const res = await runCommands([{ type: "page", source: state.imp.page || "impact", label: "إحصاءات قياس الأثر", params: impParams() }]);
       const r = res[0];
       if (!r || r.type !== "page") throw new Error((r && r.error) || "لم يصل التقرير من الوكيل.");
       c.out = Object.assign({ at: new Date() }, r);
@@ -1773,13 +1776,14 @@
     const c = state.imp;
     return `<section class="cc-card" id="cc-imp">
       <header class="cc-card-h"><h3>إحصاءات قياس الأثر</h3><p>يقرأ صفحة «ملخص قياس الأثر» في نظام المركز لفترة تحددها، بكل جداولها وأرقامها، ثم تصفّيها هنا بالمسار والمرحلة. للقراءة فقط، وبطلب منك وحدك.</p></header>
-      <div class="cc-card-b"><div class="cc-grid">
+      <div class="cc-card-b"><div class="cc-chips" role="tablist" aria-label="صفحات التقرير">${IMP_PAGES.map(([k, t]) => `<label class="cc-chk"><input type="radio" name="imp-page" data-imp="page" value="${k}" ${c.page === k ? "checked" : ""}> <span>${esc(t)}</span></label>`).join("")}</div>
+      <div class="cc-grid">
         <label class="cc-field"><span>من تاريخ</span><input type="date" data-imp="from" value="${esc(c.from)}"></label>
         <label class="cc-field"><span>إلى تاريخ (فارغ = اليوم)</span><input type="date" data-imp="to" value="${esc(c.to)}"></label>
         <label class="cc-field cc-wide"><span>معاملات إضافية للرابط (اختياري، مثل <code>status=all</code>؛ كلٌّ في سطر أو يفصلها &amp;)</span><input type="text" data-imp="extra" value="${esc(c.extra)}" placeholder="status=all"></label>
         <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => `<label class="cc-chk"><input type="checkbox" data-imp="tracks" value="${esc(o.v)}" ${c.tracks.includes(String(o.v)) ? "checked" : ""}> <span>${esc(o.t.replace(/^مسار\s*/, ""))}</span></label>`).join("")}</div></fieldset>
         <fieldset class="cc-fs"><legend>المراحل${c.stages.length ? ` <em>${ui.fmt(c.stages.length)}</em>` : ""}</legend><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="checkbox" data-imp="stages" value="${esc(g.t)}" ${c.stages.includes(g.t) ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}</div><p class="cc-note">اتركها فارغة لتشمل كل المراحل. تُطبَّق على الجداول بعد الجلب دون قراءة جديدة.</p></fieldset>
-      </div><p class="cc-note">الرابط المقروء: <code dir="ltr">/admin/evaluation-impact-reports/summary?${esc(new URLSearchParams(impParams()).toString())}</code>. «كل الحالات» هي الوضع الافتراضي لهذه الصفحة؛ وبعد القراءة تُعرض لك قوائم التصفية التي في صفحة النظام لتعرف معاملاتها.</p></div>
+      </div><p class="cc-note">الرابط المقروء: <code dir="ltr">/admin/evaluation-impact-reports/${IMP_PATH[c.page] || "summary"}?${esc(new URLSearchParams(impParams()).toString())}</code>. «كل الحالات» هي الوضع الافتراضي لهذه الصفحة؛ وبعد القراءة تُعرض لك قوائم التصفية التي في صفحة النظام لتعرف معاملاتها.</p></div>
       <footer class="cc-actions"><div class="cc-sum"><b>أمر قراءة واحد</b><span>${esc(c.from || "…")} ← ${esc(c.to || ui.todayISO())}</span></div>
         <div class="cc-act"><button type="button" class="btn navy" data-cc="run-imp" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الإحصاءات"}</button></div></footer></section>`;
   }
@@ -2814,6 +2818,7 @@
         return;
       }
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
+      if (t.dataset.imp === "page") { state.imp.page = t.value; state.imp.out = null; state.imp.srv = {}; state.resultError = ""; render(); return; }
       if (t.dataset.imp === "tracks" || t.dataset.imp === "stages") { const c = state.imp, k = t.dataset.imp, v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); render(); return; }
       if (t.dataset.imp) { state.imp[t.dataset.imp] = t.value; render(); return; }
       if (t.dataset.grp) {

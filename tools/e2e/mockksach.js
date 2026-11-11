@@ -100,7 +100,7 @@ http.createServer((req, res) => {
       <label><input type="checkbox" name="must_change_password" value="1" checked> إلزام</label>
       <button>حفظ</button></form>`));
   }
-  if (req.method === "GET" && url.pathname === "/admin/evaluation-impact-reports/summary") {
+  if (req.method === "GET" && /^\/admin\/evaluation-impact-reports\/(summary|pre-post|impact|questions|responses)$/.test(url.pathname)) {
     const rows = [["الحلاقة الرجالية", "الأولى", "40", "8.5"], ["الحلاقة الرجالية", "الثانية", "30", "9.1"], ["التجميل النسائي - كوافير", "الثانية", "55", "7.8"], ["التطريز والخياطة", "الثالثة", "12", "9.4"]];
     const body = rows.map((r) => "<tr>" + r.map((c) => "<td>" + c + "</td>").join("") + "</tr>").join("");
     return send(200, layout(`<h1>ملخص قياس الأثر</h1>

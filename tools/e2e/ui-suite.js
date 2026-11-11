@@ -14,7 +14,7 @@ async function suite() {
   const calls = [];
   let DATA = [], MISSING = {}, PLEDGED = [], SUBS = [], PARTIAL = false;
   const agent = {
-    isReady: () => true, ready: async () => true, version: () => "1.5.0", stop() { calls.push("stop"); },
+    isReady: () => true, ready: async () => true, version: () => "1.5.1", stop() { calls.push("stop"); },
     run: async (cmds, opts) => {
       const res = cmds.map((cm) => {
         calls.push((cm.source || cm.type) + (cm.params && cm.params.status ? ":" + cm.params.status : ""));
@@ -204,6 +204,15 @@ async function suite() {
     for (let i = 0; i < 60 && !c.state.imp.out && !c.state.resultError; i++) await wait(200); await wait(200);
     ok("«طبّق وأعد الجلب»: يُرسَل الاختيار معاملاً ويُقرأ أمر واحد", calls.length === 1 && !!c.state.imp.out, JSON.stringify(calls));
   }
+  // تابات الصفحات الأخرى (قبلي/بعدي، إحصائيات الأسئلة…)
+  const pg = [...b.querySelectorAll('[data-imp="page"]')];
+  ok("خمس صفحات للتقرير بدل واحدة", pg.length === 5, pg.length);
+  const qp = pg.find((x) => x.value === "questions"); qp.click(); await wait(100);
+  ok("تبديل الصفحة لا يقرأ شيئاً من النظام", !c.state.imp.out && c.state.imp.page === "questions", c.state.imp.page);
+  calls.length = 0; b.querySelector('[data-cc="run-imp"]').click();
+  for (let i = 0; i < 60 && !c.state.imp.out && !c.state.resultError; i++) await wait(200); await wait(200);
+  ok("«إحصائيات الأسئلة»: يُرسَل أمر صفحة بمصدرها ويصل الناتج", calls.length === 1 && /^questions/.test(calls[0]) && !!c.state.imp.out, JSON.stringify(calls));
+  c.state.imp.page = "impact";
   c.state.imp.tracks = []; c.state.imp.stages = []; c.state.imp.out = null;
 
   // ===== 8) الإخوة: اختيار المراحل والمقارنة بين المراحل =====
