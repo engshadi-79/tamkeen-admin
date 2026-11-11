@@ -100,6 +100,15 @@ http.createServer((req, res) => {
       <label><input type="checkbox" name="must_change_password" value="1" checked> إلزام</label>
       <button>حفظ</button></form>`));
   }
+  if (req.method === "GET" && url.pathname === "/admin/evaluation-impact-reports/summary") {
+    const rows = [["الحلاقة الرجالية", "الأولى", "40", "8.5"], ["الحلاقة الرجالية", "الثانية", "30", "9.1"], ["التجميل النسائي - كوافير", "الثانية", "55", "7.8"], ["التطريز والخياطة", "الثالثة", "12", "9.4"]];
+    const body = rows.map((r) => "<tr>" + r.map((c) => "<td>" + c + "</td>").join("") + "</tr>").join("");
+    return send(200, layout(`<h1>ملخص قياس الأثر</h1>
+      <form method="get" action="/admin/evaluation-impact-reports/summary"><label for="st">الحالة</label><select id="st" name="status"><option value="">الكل</option><option value="completed">مكتمل</option></select><input type="date" name="date_from"><input type="date" name="date_to"><button>عرض</button></form>
+      <div class="card"><b>137</b> إرسالاً</div><div class="card"><b>75%</b> نسبة الاستكمال</div>
+      <div class="card"><div class="card-header">حسب المسار والمرحلة</div><table><thead><tr><th>المسار</th><th>المرحلة</th><th>عدد الإرسالات</th><th>متوسط الدرجة</th></tr></thead><tbody>${body}</tbody></table></div>
+      <div class="card"><div class="card-header">حسب الحالة</div><table><thead><tr><th>الحالة</th><th>العدد</th></tr></thead><tbody><tr><td>مكتمل</td><td>100</td></tr><tr><td>جزئي</td><td>37</td></tr></tbody></table></div>`));
+  }
   if (req.method === "GET" && url.pathname === "/admin/students") return send(200, listPage(url));
   if (req.method === "GET" && url.pathname === "/admin/students/create") return send(200, createPage());
   if (req.method === "POST" && url.pathname === "/admin/students") {

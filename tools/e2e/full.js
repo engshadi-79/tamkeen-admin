@@ -133,6 +133,17 @@ http.createServer((req, res) => {
     await waitFor(() => stub.c.eval("!!window.__out || !!window.__err"), 40000, "نتائج الاستعلام");
     const r3 = JSON.parse(await stub.c.eval("JSON.stringify(window.__out || {err: window.__err})"));
     step("الاستعلام يُنفَّذ بلا موافقة ويعود", r3.results && r3.results[0].items[0].count === 1, JSON.stringify(r3.results && r3.results[0].items[0].count));
+    // صفحة تقرير (قياس الأثر): كل الجداول والأرقام وقائمة التصفية، بطلب GET واحد للرابط المسموح فقط
+    await stub.c.eval(`window.__out = null; window.__err = null;
+      App.centerAgent.run([{type:'page',source:'impact',label:'أثر',params:{date_from:'2026-09-01',date_to:'2026-11-11'}}], {})
+        .then((d) => { window.__out = d; }).catch((e) => { window.__err = e.message; }); 1`);
+    await waitFor(() => stub.c.eval("!!window.__out || !!window.__err"), 40000, "قراءة صفحة قياس الأثر");
+    const rp = JSON.parse(await stub.c.eval("JSON.stringify(window.__out || {err: window.__err})"));
+    const P = rp.results && rp.results[0];
+    step("صفحة قياس الأثر: جدولان بعناوينهما وصفوفهما", P && P.type === "page" && P.tables.length === 2 && P.tables[0].title === "حسب المسار والمرحلة" && P.tables[0].rows.length === 4 && P.tables[0].heads.includes("المرحلة"), JSON.stringify(P && P.tables && P.tables.map((t) => t.title + ":" + t.rows.length)));
+    step("وأرقام البطاقات وقائمة التصفية (الحالة)", P && P.stats.some((s) => s.value === "137") && P.stats.some((s) => s.value === "75%") && P.filters.some((f) => f.name === "status" && f.options.length === 2), JSON.stringify(P && { stats: P.stats, filters: P.filters.map((f) => f.name) }));
+    const hp = JSON.parse(await (await fetch("http://localhost:4197/__hits")).text());
+    step("طُلب الرابط المسموح وحده لقراءة التقرير (GET)", hp.filter((x) => /evaluation-impact-reports/.test(x)).length === 1 && hp.filter((x) => /^POST/.test(x) && /impact/.test(x)).length === 0, JSON.stringify(hp.filter((x) => /impact/.test(x))));
     // قائمة بكل البيانات: الأعمدة تتجاوز أعمدة الجدول إلى حقول نموذج التعديل
     await stub.c.eval(`window.__out = null; window.__err = null; window.__ev = [];
       App.centerAgent.run([{type:'list',label:'d',params:{track_id:'2',per_page:'3'},details:true}], { onProgress: (t) => window.__ev.push(t) })
