@@ -144,6 +144,16 @@ http.createServer((req, res) => {
     step("وأرقام البطاقات وقائمة التصفية (الحالة)", P && P.stats.some((s) => s.value === "137") && P.stats.some((s) => s.value === "75%") && P.filters.some((f) => f.name === "status" && f.options.length === 2), JSON.stringify(P && { stats: P.stats, filters: P.filters.map((f) => f.name) }));
     const hp = JSON.parse(await (await fetch("http://localhost:4197/__hits")).text());
     step("طُلب الرابط المسموح وحده لقراءة التقرير (GET)", hp.filter((x) => /evaluation-impact-reports/.test(x)).length === 1 && hp.filter((x) => /^POST/.test(x) && /impact/.test(x)).length === 0, JSON.stringify(hp.filter((x) => /impact/.test(x))));
+    // قبلي/بعدي: الصفحة تفتح بمرحلة افتراضية؛ الوكيل يوسّعها إلى «الكل» بقراءة إضافية واحدة
+    await fetch("http://localhost:4197/__hits?reset=1").catch(() => {});
+    await stub.c.eval(`window.__out = null; window.__err = null;
+      App.centerAgent.run([{type:'page',source:'pre-post',label:'قبلي',params:{date_from:'2026-09-01',date_to:'2026-11-11'}}], {})
+        .then((d) => { window.__out = d; }).catch((e) => { window.__err = e.message; }); 1`);
+    await waitFor(() => stub.c.eval("!!window.__out || !!window.__err"), 40000, "قراءة صفحة قبلي/بعدي");
+    const rq = JSON.parse(await stub.c.eval("JSON.stringify(window.__out || {err: window.__err})"));
+    const Q = rq.results && rq.results[0];
+    const hq = JSON.parse(await (await fetch("http://localhost:4197/__hits")).text()).filter((x) => /pre-post/.test(x));
+    step("قبلي/بعدي: التصفية الافتراضية (مرحلة) تُوسَّع إلى الكل", Q && Q.params && Q.params.stage === "" && (Q.widened || []).length === 1 && hq.length >= 2, JSON.stringify({ params: Q && Q.params, widened: Q && Q.widened, hq }));
     // قائمة بكل البيانات: الأعمدة تتجاوز أعمدة الجدول إلى حقول نموذج التعديل
     await stub.c.eval(`window.__out = null; window.__err = null; window.__ev = [];
       App.centerAgent.run([{type:'list',label:'d',params:{track_id:'2',per_page:'3'},details:true}], { onProgress: (t) => window.__ev.push(t) })
