@@ -194,6 +194,14 @@ async function suite() {
   b.querySelector('[data-cc="export-imp"]').click(); for (let i = 0; i < 40 && !capImp; i++) await wait(150); App.ui.download = odImp;
   const wbI = new ExcelJS.Workbook(); await wbI.xlsx.load(await capImp.blob.arrayBuffer());
   ok("تنزيل Excel: الجدول المصفّى وحده بصف واحد (وجدول الحالة كاملاً)", wbI.worksheets.length === 2 && wbI.worksheets[0].rowCount === 2 && wbI.worksheets[1].rowCount === 3, wbI.worksheets.map((w) => w.rowCount));
+  const sv = b.querySelector('[data-impsrv="status"]');
+  ok("قياس الأثر: قائمة الحالة من النظام تظهر للاختيار", !!sv, "no select");
+  if (sv) {
+    sv.value = "completed"; sv.dispatchEvent(new Event("change", { bubbles: true }));
+    calls.length = 0; b.querySelector('[data-cc="imp-apply"]').click();
+    for (let i = 0; i < 60 && !c.state.imp.out && !c.state.resultError; i++) await wait(200); await wait(200);
+    ok("«طبّق وأعد الجلب»: يُرسَل الاختيار معاملاً ويُقرأ أمر واحد", calls.length === 1 && !!c.state.imp.out, JSON.stringify(calls));
+  }
   c.state.imp.track = ""; c.state.imp.stage = ""; c.state.imp.out = null;
 
   // ===== 8) الإخوة: اختيار المراحل والمقارنة بين المراحل =====
