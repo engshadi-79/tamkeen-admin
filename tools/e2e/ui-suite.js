@@ -152,6 +152,27 @@ async function suite() {
   const pr7 = (document.getElementById("print-root") || {}).textContent || "";
   ok("المجموعات: طباعة على الترويسة الرسمية بجدول الالتزام", printed7 === 1 && /تقرير المجموعات والمدربين/.test(pr7) && /الالتزام بالمتطلبات/.test(pr7), pr7.slice(0, 80));
 
+  // ===== ٧ب) تنبيه القراءة الواسعة + عدّاد أوامر القراءة + استعمال الذاكرة في بقية التبويبات =====
+  c.state.mis = Object.assign(c.state.mis, { kind: "all", tracks: [], stages: [], status: "active", verify: true, out: null });
+  c.state.mode = "missing"; c.state.wide = null; c.state.wideLimit = 8; c.render();   // حدّ أصغر لأن النظام الوهمي فيه مسارات أقل من الحقيقي
+  b.querySelector('[data-cc="run-mis"]').click(); await wait(300);
+  ok("قراءة واسعة: يظهر تنبيه بتقدير الأوامر ولا يبدأ التنفيذ", !!b.querySelector(".cc-wide-warn") && !c.state.busy && Number((b.querySelector(".cc-wide-warn b") || {}).textContent.replace(/\D/g, "")) >= 8, (b.querySelector(".cc-wide-warn") || {}).textContent);
+  b.querySelector('[data-cc="wide-edit"]').click(); await wait(100);
+  ok("«حدّد النطاق» يخفي التنبيه ولا يبدأ شيئاً", !b.querySelector(".cc-wide-warn") && !c.state.busy, JSON.stringify({ wide: !!b.querySelector(".cc-wide-warn"), busy: c.state.busy, sw: c.state.wide, mode: c.state.mode, err: c.state.resultError }));
+  b.querySelector('[data-cc="run-mis"]').click(); await wait(200); b.querySelector('[data-cc="wide-go"]').click();
+  for (let i = 0; i < 100 && !(c.state.mis.out || c.state.resultError); i++) await wait(200);
+  await wait(300);
+  const lg = c.state.runLog[0] || {};
+  ok("«تابع على أي حال» ينفّذ، والسجل يحفظ عدد أوامر القراءة", !!c.state.mis.out && lg.mode === "missing" && lg.sent >= 8 && lg.cached === 0, JSON.stringify({ out: !!c.state.mis.out, lg, err: c.state.resultError, busy: c.state.busy, wide: c.state.wide }));
+  c.state.mode = "report"; c.render(); b.querySelector('[data-cc="preload"]').click();
+  for (let i = 0; i < 100 && !c.state.cache && !c.state.resultError; i++) await wait(200);
+  c.state.wideLimit = 0;
+  c.state.dq = Object.assign(c.state.dq, { tracks: ["1"], stages: [], status: "", out: null, rows: null, diff: null });
+  await run("dq", "run-dq", 900); for (let i = 0; i < 50 && c.state.busy; i++) await wait(200); await wait(300);
+  const lg2 = c.state.runLog[0] || {};
+  ok("الذاكرة المحمّلة تخدم فحص البيانات: لا أمر قراءة جديداً", !!c.state.cache && lg2.mode === "dq" && lg2.sent === 0 && lg2.cached >= 1 && !!c.state.dq.out, JSON.stringify({ cache: !!c.state.cache, lg2, dq: !!c.state.dq.out, err: c.state.resultError, wide: c.state.wide }));
+  c.state.cache = null;
+
   // ===== 8) الإخوة: اختيار المراحل والمقارنة بين المراحل =====
   DATA = [mk("أحمد خالد علي أبو نصير", "401", "0591000001", "1", S3, "G1 - "), mk("علي خالد علي أبو نصير", "402", "0591000001", "2", S1, "G1 - "), mk("منى فؤاد حسين قاسم", "407", "0594000004", "3", S3, "G1 - "), mk("سلمى فؤاد حسين قاسم", "409", "0594000004", "4", S3, "G1 - ")];
   const sibRun = async (cfg) => { c.state.mode = "siblings"; c.state.sib = Object.assign({ tracks: ["1"], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, stages: [], baseStage: "المرحلة الثالثة", cmpStages: [], out: null }, cfg); c.render(); b.querySelector('[data-cc="run-sib"]').click(); await wait(700); return c.state.sib.out; };

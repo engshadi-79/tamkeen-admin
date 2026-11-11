@@ -37,7 +37,7 @@
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
-    saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
+    wide: null, wideOk: false, wideLimit: 0, saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false, sec: false, errs: false, wa: false }, // حالة الأقسام القابلة للطي
     extraNote: "",
@@ -757,7 +757,7 @@
       const tracks = trackOpts().filter((o) => !c.tracks.length || c.tracks.includes(String(o.v)));
       // الذاكرة المحمّلة تغني عن الجلب؛ إلا مع تصفية بالحالة فنجلب (لا عمود حالة في الجدول)
       let lists;
-      if (state.cache && !c.status) lists = state.cache.items.filter((it) => tracks.some((o) => String(o.v) === it.trackId));
+      if (state.cache && !c.status) { lists = state.cache.items.filter((it) => tracks.some((o) => String(o.v) === it.trackId)); runStats.cached += lists.length; }
       else lists = (await runCommands(tracks.map((o) => ({ type: "list", label: o.t, params: Object.assign({ track_id: String(o.v) }, c.status ? { status: c.status } : {}) })))).filter((r) => r && r.type === "list");
       const people = new Map();
       lists.forEach((r) => {
@@ -1274,9 +1274,10 @@
   }
   /* سجل بلا بيانات شخصية: التبويب والزمن والعدد فقط */
   function logRun(mode, ms) {
-    const e = { at: new Date().toISOString(), mode, ms, info: runSummary(mode), ok: !state.resultError, by: (curUser() || {}).name || "" };
+    const e = { at: new Date().toISOString(), mode, ms, info: runSummary(mode), ok: !state.resultError, by: (curUser() || {}).name || "", sent: runStats.sent, cached: runStats.cached };
     state.runLog = [e].concat(state.runLog).slice(0, 40);
     lsSet(LOG_KEY, state.runLog);
+    if (e.ok && (e.sent || e.cached)) ui.toast("اكتمل: " + (e.sent ? "قُرئ " + ui.fmt(e.sent) + " أمراً من نظام المركز" : "بلا قراءة من نظام المركز") + (e.cached ? (e.sent ? "، و" : "، ") + ui.fmt(e.cached) + " من الذاكرة" + (state.cache ? " (محمّلة منذ " + ui.fmt(Math.max(0, Math.round((Date.now() - state.cache.at.getTime()) / 60000))) + " دقيقة)" : "") : ""));
     if (e.ok && mode === "missing" && state.mis.out && (state.mis.out.kind === "all" || state.mis.out.kind === "risk")) markWeekly();
   }
   function notifyDone(mode, ms) {
@@ -1286,9 +1287,9 @@
   function logCard() {
     const rows = state.runLog.slice(0, 15);
     return `<details class="cc-help" data-open="log" ${state.open.log ? "open" : ""}><summary>سجل العمليات (${ui.fmt(state.runLog.length)})</summary>
-      ${rows.length ? `<table class="cc-table"><thead><tr><th>الوقت</th><th>بواسطة</th><th>التبويب</th><th>النتيجة</th><th>المدة</th></tr></thead><tbody>${rows.map((e) => `<tr><td>${esc(new Date(e.at).toLocaleString("ar"))}</td><td>${esc(e.by || "—")}</td><td>${esc(MODE_NAME[e.mode] || e.mode)}</td><td>${e.ok ? "" : "✗ "}${esc(e.info || "—")}</td><td>${esc(fmtElapsed(e.ms || 0))}</td></tr>`).join("")}</tbody></table>
+      ${rows.length ? `<table class="cc-table"><thead><tr><th>الوقت</th><th>بواسطة</th><th>التبويب</th><th>النتيجة</th><th>المدة</th><th>أوامر القراءة</th></tr></thead><tbody>${rows.map((e) => `<tr><td>${esc(new Date(e.at).toLocaleString("ar"))}</td><td>${esc(e.by || "—")}</td><td>${esc(MODE_NAME[e.mode] || e.mode)}</td><td>${e.ok ? "" : "✗ "}${esc(e.info || "—")}</td><td>${esc(fmtElapsed(e.ms || 0))}</td><td>${e.sent == null ? "—" : ui.fmt(e.sent) + (e.cached ? ` <small>(+${ui.fmt(e.cached)} من الذاكرة)</small>` : "")}</td></tr>`).join("")}</tbody></table>
       <button type="button" class="cc-link" data-cc="clear-log">مسح السجل</button>` : '<p class="cc-note">لا عمليات مسجّلة بعد.</p>'}
-      <p class="cc-note">يُحفظ في هذا المتصفح فقط، ولا يحوي أسماء ولا أرقاماً شخصية.</p></details>`;
+      <p class="cc-note">«أوامر القراءة» = ما أُرسل إلى نظام المركز في ذلك التشغيل (قد يقرأ الأمر الواحد عدة صفحات)، وبين القوسين ما خُدم من الذاكرة. يُحفظ في هذا المتصفح فقط، ولا يحوي أسماء ولا أرقاماً شخصية.</p></details>`;
   }
   const stopSupported = () => { const n = String((App.centerAgent && App.centerAgent.version && App.centerAgent.version()) || "").split(".").map(Number); return n.length >= 2 && (n[0] > 1 || (n[0] === 1 && n[1] >= 4)); };
 
@@ -1317,6 +1318,40 @@
         ${dq ? `<div class="cc-news-row"><div class="cc-news-t"><b>فحص البيانات</b><span class="cc-note">آخر لقطة ${esc(agoDays(dq.at))} (${ui.fmt(dq.rows.length)} طالباً)</span></div><div class="cc-news-v"></div><button type="button" class="cc-link" data-cc="news-dq">افتح فحص البيانات</button></div>` : ""}</div>
       <p class="cc-note">تُحسب من اللقطات المحفوظة في هذا المتصفح، فلا تقرأ شيئاً من نظام المركز.</p></details>`;
   }
+  /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
+  const WIDE_LIMIT = 15;
+  const RUN_ACTS = ["run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  function estimateReads(act) {
+    const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
+    const hasCache = !!state.cache;
+    try {
+      if (act === "run-selection") {
+        const plan = buildSelection();
+        if (hasCache && plan.every((x) => localList(x))) return 0;
+        return plan.length;
+      }
+      if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
+      if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
+      if (act === "run-dq") return hasCache ? 0 : T(state.dq.tracks);
+      if (act === "run-grp") return hasCache ? 0 : T(state.grp.tracks);
+      if (act === "run-mis" || act === "grp-compliance") {
+        const c = act === "run-mis" ? state.mis : { kind: "all", tracks: state.grp.tracks, stages: STAGES.filter((x) => state.grp.stages.includes(x.t)).map((x) => x.k), verify: true };
+        const t = T(c.tracks);
+        const survey = c.stages.length ? courseOpts().filter((x) => c.stages.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track))).length : Math.max(1, c.tracks.length);
+        const pledge = (hasCache ? 0 : t) + 1, verify = c.verify ? t : 0;
+        if (c.kind === "all" || c.kind === "risk") return 3 * survey + pledge + verify;
+        if (c.kind === "pledge") return pledge;
+        return survey + verify;
+      }
+    } catch (e) { /* تقدير فقط: لا يمنع التنفيذ */ }
+    return 0;
+  }
+  function wideBanner() {
+    const w = state.wide;
+    if (!w) return "";
+    return `<div class="cc-alert warn cc-wide-warn" role="alert"><span>عملية واسعة: ستُنفَّذ نحو <b>${ui.fmt(w.n)}</b> أمر قراءة على نظام المركز. حدّد المسار أو المرحلة لتقليلها، أو حمّل البيانات مرة واحدة في «تقرير جاهز» فتُخدم التقارير التالية من الذاكرة.</span><span class="cc-row"><button type="button" class="btn secondary small" data-cc="wide-edit">حدّد النطاق</button><button type="button" class="btn navy small" data-cc="wide-go">تابع على أي حال</button></span></div>`;
+  }
+
   /* ===== التذكير الأسبوعي بالتقرير الشامل ===== */
   const WEEKLY_KEY = "tamkeen-admin:cc-weekly", SNOOZE_KEY = "tamkeen-admin:cc-weekly-snooze";
   const markWeekly = () => { lsSet(WEEKLY_KEY, { at: new Date().toISOString() }); renderDash(); try { if (App.dashboard && App.dashboard.render) App.dashboard.render(); } catch (e) { /* اللوحة غير جاهزة */ } };
@@ -1369,7 +1404,7 @@
     try {
       const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id));
       let lists;
-      if (state.cache && !c.status) lists = state.cache.items.filter((it) => trackIds.includes(it.trackId)).map((it) => ({ heads: it.heads, rows: it.rows, tid: it.trackId }));
+      if (state.cache && !c.status) { lists = state.cache.items.filter((it) => trackIds.includes(it.trackId)).map((it) => ({ heads: it.heads, rows: it.rows, tid: it.trackId })); runStats.cached += lists.length; }
       else {
         const res = await runCommands(trackIds.map((id) => ({ type: "list", label: optLabel("track_id", id), params: Object.assign({ track_id: id }, c.status ? { status: c.status } : {}) })));
         lists = res.map((r, i) => (r && r.type === "list" ? { heads: r.heads, rows: r.rows, tid: trackIds[i] } : null)).filter(Boolean);
@@ -2161,7 +2196,7 @@
     const mode = state.adding || state.proposal ? "ask" : state.mode;
     const info = statusInfo();
     const viaExt = App.centerAgent && App.centerAgent.isReady();
-    if (state.busy && !state._wasBusy) { state._runStart = Date.now(); state._runMode = mode; state.stopping = false; }
+    if (state.busy && !state._wasBusy) { state._runStart = Date.now(); state._runMode = mode; state.stopping = false; runStats = { sent: 0, cached: 0 }; }
     if (!state.busy && state._wasBusy) { const ms = Date.now() - state._runStart; logRun(state._runMode, ms); notifyDone(state._runMode, ms); }
     state._wasBusy = !!state.busy;
     if (state.busy && !state.progStart) { state.progStart = Date.now(); Object.keys(tblState).forEach((k) => delete tblState[k]); }
@@ -2171,6 +2206,7 @@
       ${updateBanner()}
       ${state.busy ? busyBanner() : ""}
       ${weeklyBanner()}
+      ${wideBanner()}
       ${newsCard()}
       <nav class="cc-modes" role="tablist" aria-label="نوع الأمر">
         <button type="button" role="tab" class="${mode === "report" ? "on" : ""}" aria-selected="${mode === "report"}" data-cc="mode" data-m="report"><b>تقرير جاهز</b><small>اختر المسار والمرحلة ثم نفّذ</small></button>
@@ -2221,7 +2257,30 @@
     }
   }
 
+  /* ===== عدّاد أوامر القراءة لكل تشغيل: ما أُرسل إلى نظام المركز وما خُدم من ذاكرة الصفحة =====
+     «أمر» = قراءة قائمة أو تقرير واحد؛ وقد يقرأ الأمر الواحد عدة صفحات من النظام. */
+  let runStats = { sent: 0, cached: 0 };
+  /* قوائم الطلاب (بلا مصدر خاص) تُحسب من الذاكرة المحمّلة إن كفت، فلا تُرسَل إلى النظام */
+  const cachedResult = (cmd) => {
+    if (!state.cache || !cmd || cmd.type !== "list" || cmd.source) return null;
+    try { return localList({ command: cmd }); } catch (e) { return null; }
+  };
   async function runCommands(commands, hooks) {
+    hooks = hooks || {};
+    const local = commands.map((c) => (hooks.noCache ? null : cachedResult(c)));
+    const idx = [], todo = [];
+    commands.forEach((c, i) => { if (!local[i]) { idx.push(i); todo.push(c); } });
+    runStats.sent += todo.length; runStats.cached += commands.length - todo.length;
+    const results = new Array(commands.length);
+    local.forEach((r, i) => { if (r) { results[i] = r; if (hooks.onPartial) hooks.onPartial(i, r); } });
+    if (todo.length) {
+      const got = await sendCommands(todo, Object.assign({}, hooks, { onPartial: hooks.onPartial ? (i, r) => hooks.onPartial(idx[i], r) : undefined }));
+      idx.forEach((orig, k) => { results[orig] = got[k]; });
+    }
+    return results;
+  }
+
+  async function sendCommands(commands, hooks) {
     hooks = hooks || {};
     let results;
     if (App.centerAgent && await App.centerAgent.ready(500)) {
@@ -2257,7 +2316,7 @@
     state.busy = true; state.resultError = ""; state.results = null; state.progress = ""; state.labels = [];
     render(); refreshStatus();
     try {
-      const results = await runCommands(tracks.map((o) => Object.assign({ type: "list", label: o.t, params: { track_id: String(o.v) } }, details ? { details: true } : {})));
+      const results = await runCommands(tracks.map((o) => Object.assign({ type: "list", label: o.t, params: { track_id: String(o.v) } }, details ? { details: true } : {})), { noCache: true });
       const items = [];
       results.forEach((r, k) => { if (r && r.type === "list") items.push({ trackId: String(tracks[k].v), heads: r.heads, rawHeads: r.rawHeads, rows: r.rows, details: r.details }); });
       if (!items.length) throw new Error("لم تصل بيانات من الوكيل.");
@@ -2374,6 +2433,14 @@
       // لا يبدأ تنفيذ جديد أثناء تنفيذ جارٍ (يمنع عمليتين متداخلتين على الوكيل)
       if (state.busy && ["run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "run-stu", "stu-pick", "manager-print", "manager-word", "preload", "preload-details", "interpret", "bundle-run", "register-run"].includes(act)) {
         return ui.toast("هناك عملية جارية الآن؛ انتظر انتهاءها أو اضغط «إيقاف».");
+      }
+      /* قراءة واسعة: نتوقف ونُظهر التنبيه مرة، وبـ«تابع على أي حال» نعيد النقر على الزر نفسه مرة واحدة */
+      if (act === "wide-edit") { state.wide = null; render(); const card = box.querySelector(".cc-card"); if (card && card.scrollIntoView) card.scrollIntoView({ block: "start" }); return; }
+      if (act === "wide-go") { const go = state.wide && state.wide.act; state.wide = null; state.wideOk = true; render(); const rb = go && box.querySelector('[data-cc="' + go + '"]'); if (rb && !rb.disabled) rb.click(); else state.wideOk = false; return; }
+      if (RUN_ACTS.includes(act)) {
+        if (state.wideOk) state.wideOk = false;
+        else { const n = estimateReads(act); if (n >= (state.wideLimit || WIDE_LIMIT)) { state.wide = { act, n }; render(); const bn = box.querySelector(".cc-wide-warn"); if (bn && bn.scrollIntoView) bn.scrollIntoView({ block: "center" }); return; } }
+        state.wide = null;
       }
       try {
         if (act === "interpret") {
