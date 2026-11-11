@@ -34,7 +34,7 @@
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
-    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
+    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1730,10 +1730,15 @@
   /* الجداول بعد التصفية. جدول بلا عمود المسار/المرحلة لا يُصفّى بالمعيار الذي ليس فيه */
   function impFiltered() {
     const f = state.imp;
+    const trNames = (f.tracks || []).map((id) => { const o = trackOpts().find((x) => String(x.v) === String(id)); return o ? o.t.replace(/^مسار\s*/, "") : ""; }).filter(Boolean);
     return impTables().map((t) => {
       const a = trackIdx(t.heads), b = stageIdx(t.heads), k = courseIdx(t.heads);
-      const rows = t.rows.filter((r) => (!f.course || k < 0 || clean(r[k]) === f.course) && (!f.track || a < 0 || clean(r[a]).replace(/^مسار\s*/, "") === f.track) && (!f.stage || b < 0 || stageOfCell(r[b]) === f.stage));
-      return Object.assign({}, t, { rows, noTrack: !!f.track && a < 0, noStage: !!f.stage && b < 0 });
+      const anyStage = b < 0 && t.rows.some((r) => r.some((c) => stageOf(c)));
+      const anyTrack = a < 0 && trNames.length && t.rows.some((r) => r.some((c) => trNames.some((n) => clean(c).includes(n))));
+      const okStage = (r) => !(f.stages || []).length || (b >= 0 ? f.stages.includes(stageOfCell(r[b])) : anyStage ? r.some((c) => f.stages.includes(stageOf(c))) : true);
+      const okTrack = (r) => !trNames.length || (a >= 0 ? trNames.includes(clean(r[a]).replace(/^مسار\s*/, "")) : anyTrack ? r.some((c) => trNames.some((n) => clean(c).includes(n))) : true);
+      const rows = t.rows.filter((r) => (!f.course || k < 0 || clean(r[k]) === f.course) && okTrack(r) && okStage(r));
+      return Object.assign({}, t, { rows, noTrack: trNames.length > 0 && a < 0 && !anyTrack, noStage: (f.stages || []).length > 0 && b < 0 && !anyStage });
     });
   }
   function requireAgent15() {
@@ -1753,7 +1758,7 @@
   };
   async function runImpact() {
     const c = state.imp;
-    state.busy = true; state.resultError = ""; c.out = null; c.track = ""; c.stage = ""; c.course = ""; state.progress = "";
+    state.busy = true; state.resultError = ""; c.out = null; c.course = ""; state.progress = "";
     render(); refreshStatus();
     try {
       requireAgent15();
@@ -1772,6 +1777,8 @@
         <label class="cc-field"><span>من تاريخ</span><input type="date" data-imp="from" value="${esc(c.from)}"></label>
         <label class="cc-field"><span>إلى تاريخ (فارغ = اليوم)</span><input type="date" data-imp="to" value="${esc(c.to)}"></label>
         <label class="cc-field cc-wide"><span>معاملات إضافية للرابط (اختياري، مثل <code>status=all</code>؛ كلٌّ في سطر أو يفصلها &amp;)</span><input type="text" data-imp="extra" value="${esc(c.extra)}" placeholder="status=all"></label>
+        <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => `<label class="cc-chk"><input type="checkbox" data-imp="tracks" value="${esc(o.v)}" ${c.tracks.includes(String(o.v)) ? "checked" : ""}> <span>${esc(o.t.replace(/^مسار\s*/, ""))}</span></label>`).join("")}</div></fieldset>
+        <fieldset class="cc-fs"><legend>المراحل${c.stages.length ? ` <em>${ui.fmt(c.stages.length)}</em>` : ""}</legend><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="checkbox" data-imp="stages" value="${esc(g.t)}" ${c.stages.includes(g.t) ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}</div><p class="cc-note">اتركها فارغة لتشمل كل المراحل. تُطبَّق على الجداول بعد الجلب دون قراءة جديدة.</p></fieldset>
       </div><p class="cc-note">الرابط المقروء: <code dir="ltr">/admin/evaluation-impact-reports/summary?${esc(new URLSearchParams(impParams()).toString())}</code>. «كل الحالات» هي الوضع الافتراضي لهذه الصفحة؛ وبعد القراءة تُعرض لك قوائم التصفية التي في صفحة النظام لتعرف معاملاتها.</p></div>
       <footer class="cc-actions"><div class="cc-sum"><b>أمر قراءة واحد</b><span>${esc(c.from || "…")} ← ${esc(c.to || ui.todayISO())}</span></div>
         <div class="cc-act"><button type="button" class="btn navy" data-cc="run-imp" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الإحصاءات"}</button></div></footer></section>`;
@@ -1790,12 +1797,12 @@
     if (!o) return "";
     const opt = impOptions(), tabs = impFiltered(), f = state.imp;
     const sel = (k, list, label) => `<label class="cc-field"><span>${label}</span><select data-imp="${k}"><option value="">الكل</option>${list.map((x) => `<option value="${esc(x)}" ${f[k] === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
-    const hasFilter = opt.tracks.length || opt.stages.length || opt.courses.length;
+    const hasFilter = opt.courses.length > 0;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> إحصاءات قياس الأثر</h3>
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(tabs.length)}</b> جدولاً</span><span class="cc-stat"><b>${ui.fmt(tabs.reduce((a, t) => a + t.rows.length, 0))}</b> صفاً بعد التصفية</span>
         ${(o.stats || []).slice(0, 12).map((x) => `<span class="cc-stat"><b>${esc(x.value)}</b> ${esc(x.label)}</span>`).join("")}
         ${tabs.some((t) => t.rows.length) ? '<button type="button" class="btn secondary small" data-cc="export-imp">تنزيل Excel</button>' : ""}</div>
-      ${hasFilter ? `<div class="cc-grid">${opt.tracks.length ? sel("track", opt.tracks, "المسار") : ""}${opt.stages.length ? sel("stage", opt.stages, "المرحلة") : ""}${opt.courses.length ? sel("course", opt.courses, "المساق") : ""}</div>` : '<p class="cc-note">لا عمود «مسار» ولا «مرحلة» في جداول هذه الصفحة، فلا تصفية بهما. (إن كانت الصفحة تقبل معاملات للتصفية فاكتبها في «معاملات إضافية».)</p>'}
+      ${hasFilter ? `<div class="cc-grid">${opt.courses.length ? sel("course", opt.courses, "المساق") : ""}</div>` : '<p class="cc-note">التصفية بالمسارات والمراحل المختارة أعلاه تُطبَّق على كل جدول فيه عمود أو نص يدل عليها.</p>'}
       ${!tabs.length ? `<p class="cc-alert warn">لم أجد جداول في الصفحة${o.text ? ". هذا مقتطف مما قرأتُه: " + esc(o.text.slice(0, 300)) : ""}. أرسل لي بنية الصفحة (سكربت tools/ksach-pages.js) لأضبط قراءتها.</p>` : ""}
       ${tabs.map((t) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)} صفاً</span></div></header>
         ${t.noTrack || t.noStage ? `<p class="cc-note">هذا الجدول بلا عمود ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"}، فيظهر كاملاً.</p>` : ""}
@@ -2807,6 +2814,7 @@
         return;
       }
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
+      if (t.dataset.imp === "tracks" || t.dataset.imp === "stages") { const c = state.imp, k = t.dataset.imp, v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); render(); return; }
       if (t.dataset.imp) { state.imp[t.dataset.imp] = t.value; render(); return; }
       if (t.dataset.grp) {
         const k = t.dataset.grp, c = state.grp;
