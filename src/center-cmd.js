@@ -2242,7 +2242,7 @@
   async function refreshStatus() {
     if (App.centerAgent && App.centerAgent.isReady()) {
       // إضافة المتصفح موصولة: لا حاجة للخادم المحلي
-      state.agentStatus = { ready: true, loggedIn: true, message: "إضافة «وكيل تمكين» متصلة ✓ — عند التنفيذ يفتح نظام المركز في متصفحك؛ سجّل دخولك فيه إن طُلب." };
+      state.agentStatus = { ready: true, loggedIn: true, message: "إضافة «وكيل تمكين» متصلة ✓ — لا يُقرأ شيء من نظام المركز إلا بضغطتك على زر التنفيذ؛ وعندها يفتح في متصفحك (سجّل دخولك فيه إن طُلب)." };
     } else {
       try {
         const res = await fetch("/api/status", { cache: "no-store" });

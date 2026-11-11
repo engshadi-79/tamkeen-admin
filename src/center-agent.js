@@ -34,11 +34,21 @@
     });
   }
 
+  /* ===== لا قراءة من نظام المركز إلا بطلب منك =====
+     run() هي الممرّ الوحيد إلى نظام المركز، وتُرفض ما لم تسبقها ضغطة مستخدم حقيقية (isTrusted) خلال 90 ثانية،
+     أو انتهاء خطوة سابقة من العملية نفسها خلال 90 ثانية (للحزم متعددة الخطوات).
+     فلا يبدأ مؤقّت ولا خطأ برمجي قراءةً من تلقاء نفسه. allowSynthetic للاختبارات الآلية وحدها. */
+  const GRACE = 90000;
+  let lastClick = 0, chainUntil = 0;
+  document.addEventListener("click", (e) => { if (e.isTrusted) lastClick = Date.now(); }, true);
+  const authorized = () => { const t = Date.now(); return api.allowSynthetic || t - lastClick <= GRACE || t <= chainUntil; };
+
   function run(commands, hooks) {
     hooks = hooks || {};
+    if (!authorized()) return Promise.reject(new Error("لم تُقرأ أي بيانات من نظام المركز: القراءة لا تبدأ إلا بضغطة منك على زر التنفيذ."));
     return new Promise((resolve, reject) => {
       let started = false, idle;
-      const done = (fn, v) => { clearTimeout(idle); clearTimeout(startT); listeners.delete(onMsg); fn(v); };
+      const done = (fn, v) => { clearTimeout(idle); clearTimeout(startT); listeners.delete(onMsg); chainUntil = Date.now() + GRACE; fn(v); };
       // لا حركة لدقيقتين بعد البدء: غالباً لم يسجّل المستخدم دخوله في نظام المركز
       const arm = () => {
         clearTimeout(idle);
@@ -77,6 +87,7 @@
   /* إيقاف التنفيذ الجاري: يحفظ الوكيل ما اكتمل ويعيده كنتائج (إضافة 1.4.0 فأحدث) */
   const stop = () => post({ type: "stop" });
 
-  App.centerAgent = { ready, run, stop, isReady: () => !!version, version: () => version };
+  const api = { ready, run, stop, isReady: () => !!version, version: () => version, allowSynthetic: false };
+  App.centerAgent = api;
   ready(1500);                                               // يتعرّف على الإضافة عند فتح الصفحة
 })(window.App = window.App || {});
