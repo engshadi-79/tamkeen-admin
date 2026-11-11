@@ -205,13 +205,19 @@ async function suite() {
     ok("«طبّق وأعد الجلب»: يُرسَل الاختيار معاملاً ويُقرأ أمر واحد", calls.length === 1 && !!c.state.imp.out, JSON.stringify(calls));
   }
   // تابات الصفحات الأخرى (قبلي/بعدي، إحصائيات الأسئلة…)
-  const pg = [...b.querySelectorAll('[data-imp="page"]')];
-  ok("خمس صفحات للتقرير بدل واحدة", pg.length === 5, pg.length);
-  const qp = pg.find((x) => x.value === "questions"); qp.click(); await wait(100);
-  ok("تبديل الصفحة لا يقرأ شيئاً من النظام", !c.state.imp.out && c.state.imp.page === "questions", c.state.imp.page);
+  const pg = [...b.querySelectorAll('[data-imp="pages"]')];
+  ok("خمسة تقارير يمكن اختيار أكثر من واحد منها", pg.length === 5, pg.length);
+  calls.length = 0; pg.find((x) => x.value === "questions").click(); await wait(100);
+  ok("اختيار تقرير ثانٍ لا يقرأ شيئاً ويُبقي الأول", calls.length === 0 && c.state.imp.pages.join() === "impact,questions", c.state.imp.pages.join());
   calls.length = 0; b.querySelector('[data-cc="run-imp"]').click();
   for (let i = 0; i < 60 && !c.state.imp.out && !c.state.resultError; i++) await wait(200); await wait(200);
-  ok("«إحصائيات الأسئلة»: يُرسَل أمر صفحة بمصدرها ويصل الناتج", calls.length === 1 && /^questions/.test(calls[0]) && !!c.state.imp.out, JSON.stringify(calls));
+  ok("تقريران: أمران يُرسلان ويصل ناتج كل منهما", calls.length === 2 && /^impact/.test(calls[0]) && /^questions/.test(calls[1]) && Object.keys(c.state.imp.outs).length === 2, JSON.stringify(calls));
+  ok("تبويب العرض بين التقريرين ظاهر", b.querySelectorAll('[data-imp="view"]').length === 2, b.querySelectorAll('[data-imp="view"]').length);
+  let capZ = null; const odZ = App.ui.download; App.ui.download = (n, blob) => { capZ = { n, blob }; };
+  b.querySelector('[data-cc="export-imp"]').click(); for (let i = 0; i < 60 && !capZ; i++) await wait(150); App.ui.download = odZ;
+  const zz = capZ && await JSZip.loadAsync(await capZ.blob.arrayBuffer());
+  ok("التنزيل ملف zip فيه ملف Excel لكل تقرير", !!zz && /\.zip$/.test(capZ.n) && Object.keys(zz.files).length === 2 && Object.keys(zz.files).every((n) => /\.xlsx$/.test(n)), capZ && capZ.n + " " + (zz ? Object.keys(zz.files).join("|") : ""));
+  c.state.imp.pages = ["impact"]; c.state.imp.outs = {};
   c.state.imp.page = "impact";
   c.state.imp.tracks = []; c.state.imp.stages = []; c.state.imp.out = null;
 

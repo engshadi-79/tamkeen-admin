@@ -34,7 +34,7 @@
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
-    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], page: "impact", course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
+    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1332,7 +1332,7 @@
         if (hasCache && plan.every((x) => localList(x))) return 0;
         return plan.length;
       }
-      if (act === "run-imp" || act === "imp-apply") return 1;
+      if (act === "run-imp" || act === "imp-apply") return state.imp.pages.length || 1;
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
       if (act === "run-dq") return hasCache ? 0 : T(state.dq.tracks);
@@ -1510,7 +1510,7 @@
   const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.cache || state.grp.out || state.stu.out);
   function wipeData(why) {
     state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null;
-    state.cache = null; state.grp.out = null; state.imp.out = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
+    state.cache = null; state.grp.out = null; state.imp.out = null; state.imp.outs = {}; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
     Object.keys(tblData).forEach((k) => delete tblData[k]); Object.keys(tblState).forEach((k) => delete tblState[k]);
     render();
     if (why) ui.toast(why);
@@ -1745,7 +1745,7 @@
   const IMP_PATH = { impact: "summary", "pre-post": "pre-post", "impact-m": "impact", questions: "questions", responses: "responses" };
   function requireAgent15() {
     const v = String((App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || "");
-    const n = v.split(".").map(Number), need = state.imp.page === "impact" ? 0 : 1;
+    const n = v.split(".").map(Number), need = state.imp.pages.every((x) => x === "impact") ? 0 : 1;
     const ok = n.length >= 2 && (n[0] > 1 || (n[0] === 1 && (n[1] > 5 || (n[1] === 5 && (n[2] || 0) >= need))));
     if (!ok) throw new Error(v
       ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.1) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
@@ -1761,14 +1761,16 @@
   };
   async function runImpact() {
     const c = state.imp;
-    state.busy = true; state.resultError = ""; c.out = null; c.course = ""; state.progress = "";
+    state.busy = true; state.resultError = ""; c.out = null; c.outs = {}; c.course = ""; state.progress = "";
     render(); refreshStatus();
     try {
       requireAgent15();
-      const res = await runCommands([{ type: "page", source: state.imp.page || "impact", label: "إحصاءات قياس الأثر", params: impParams() }]);
-      const r = res[0];
-      if (!r || r.type !== "page") throw new Error((r && r.error) || "لم يصل التقرير من الوكيل.");
-      c.out = Object.assign({ at: new Date() }, r);
+      const pages = c.pages.length ? c.pages.slice() : ["impact"];
+      const res = await runCommands(pages.map((pg) => ({ type: "page", source: pg, label: "إحصاءات: " + ((IMP_PAGES.find((x) => x[0] === pg) || [])[1] || pg), params: impParams() })));
+      pages.forEach((pg, i) => { const r = res[i]; if (r && r.type === "page") c.outs[pg] = Object.assign({ at: new Date() }, r); });
+      if (!Object.keys(c.outs).length) { const r0 = res[0]; throw new Error((r0 && r0.error) || "لم يصل التقرير من الوكيل."); }
+      c.view = pages.find((pg) => c.outs[pg]);
+      c.out = c.outs[c.view];
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
   }
@@ -1776,15 +1778,15 @@
     const c = state.imp;
     return `<section class="cc-card" id="cc-imp">
       <header class="cc-card-h"><h3>إحصاءات قياس الأثر</h3><p>يقرأ صفحة «ملخص قياس الأثر» في نظام المركز لفترة تحددها، بكل جداولها وأرقامها، ثم تصفّيها هنا بالمسار والمرحلة. للقراءة فقط، وبطلب منك وحدك.</p></header>
-      <div class="cc-card-b"><div class="cc-chips" role="tablist" aria-label="صفحات التقرير">${IMP_PAGES.map(([k, t]) => `<label class="cc-chk"><input type="radio" name="imp-page" data-imp="page" value="${k}" ${c.page === k ? "checked" : ""}> <span>${esc(t)}</span></label>`).join("")}</div>
+      <div class="cc-card-b"><div class="cc-chips" role="tablist" aria-label="التقارير المطلوبة">${IMP_PAGES.map(([k, t]) => `<label class="cc-chk"><input type="checkbox" data-imp="pages" value="${k}" ${c.pages.includes(k) ? "checked" : ""}> <span>${esc(t)}</span></label>`).join("")}</div>
       <div class="cc-grid">
         <label class="cc-field"><span>من تاريخ</span><input type="date" data-imp="from" value="${esc(c.from)}"></label>
         <label class="cc-field"><span>إلى تاريخ (فارغ = اليوم)</span><input type="date" data-imp="to" value="${esc(c.to)}"></label>
         <label class="cc-field cc-wide"><span>معاملات إضافية للرابط (اختياري، مثل <code>status=all</code>؛ كلٌّ في سطر أو يفصلها &amp;)</span><input type="text" data-imp="extra" value="${esc(c.extra)}" placeholder="status=all"></label>
         <fieldset class="cc-fs"><legend>المسارات${c.tracks.length ? ` <em>${ui.fmt(c.tracks.length)}</em>` : ""}</legend><div class="cc-chips">${trackOpts().map((o) => `<label class="cc-chk"><input type="checkbox" data-imp="tracks" value="${esc(o.v)}" ${c.tracks.includes(String(o.v)) ? "checked" : ""}> <span>${esc(o.t.replace(/^مسار\s*/, ""))}</span></label>`).join("")}</div></fieldset>
         <fieldset class="cc-fs"><legend>المراحل${c.stages.length ? ` <em>${ui.fmt(c.stages.length)}</em>` : ""}</legend><div class="cc-chips">${STAGES.map((g) => `<label class="cc-chk"><input type="checkbox" data-imp="stages" value="${esc(g.t)}" ${c.stages.includes(g.t) ? "checked" : ""}> <span>${esc(g.t)}</span></label>`).join("")}</div><p class="cc-note">اتركها فارغة لتشمل كل المراحل. تُطبَّق على الجداول بعد الجلب دون قراءة جديدة.</p></fieldset>
-      </div><p class="cc-note">الرابط المقروء: <code dir="ltr">/admin/evaluation-impact-reports/${IMP_PATH[c.page] || "summary"}?${esc(new URLSearchParams(impParams()).toString())}</code>. «كل الحالات» هي الوضع الافتراضي لهذه الصفحة؛ وبعد القراءة تُعرض لك قوائم التصفية التي في صفحة النظام لتعرف معاملاتها.</p></div>
-      <footer class="cc-actions"><div class="cc-sum"><b>أمر قراءة واحد</b><span>${esc(c.from || "…")} ← ${esc(c.to || ui.todayISO())}</span></div>
+      </div><p class="cc-note">الرابط المقروء: <code dir="ltr">/admin/evaluation-impact-reports/${IMP_PATH[c.pages[0]] || "summary"}?${esc(new URLSearchParams(impParams()).toString())}</code>${c.pages.length > 1 ? " وغيره من التقارير المختارة" : ""}. اختر أكثر من تقرير فيُنزَّل الناتج ملفاً مضغوطاً فيه ملف Excel لكل تقرير. «كل الحالات» هي الوضع الافتراضي لهذه الصفحة؛ وبعد القراءة تُعرض لك قوائم التصفية التي في صفحة النظام لتعرف معاملاتها.</p></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(c.pages.length || 1)} ${c.pages.length > 2 || !c.pages.length ? "أوامر" : c.pages.length === 2 ? "أمرا" : "أمر"} قراءة</b><span>${esc(c.from || "…")} ← ${esc(c.to || ui.todayISO())}</span></div>
         <div class="cc-act"><button type="button" class="btn navy" data-cc="run-imp" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الإحصاءات"}</button></div></footer></section>`;
   }
   /* اختيار المرحلة/المسار/المساق/الحالة من قوائم صفحة النظام نفسها، ثم إعادة الجلب بضغطة منك */
@@ -1803,6 +1805,7 @@
     const sel = (k, list, label) => `<label class="cc-field"><span>${label}</span><select data-imp="${k}"><option value="">الكل</option>${list.map((x) => `<option value="${esc(x)}" ${f[k] === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
     const hasFilter = opt.courses.length > 0;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> إحصاءات قياس الأثر</h3>
+      ${Object.keys(state.imp.outs).length > 1 ? `<div class="cc-chips" role="tablist" aria-label="التقرير المعروض">${IMP_PAGES.filter(([k]) => state.imp.outs[k]).map(([k, t]) => `<label class="cc-chk"><input type="radio" name="imp-view" data-imp="view" value="${k}" ${state.imp.view === k ? "checked" : ""}> <span>${esc(t)}</span></label>`).join("")}</div>` : ""}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(tabs.length)}</b> جدولاً</span><span class="cc-stat"><b>${ui.fmt(tabs.reduce((a, t) => a + t.rows.length, 0))}</b> صفاً بعد التصفية</span>
         ${(o.stats || []).slice(0, 12).map((x) => `<span class="cc-stat"><b>${esc(x.value)}</b> ${esc(x.label)}</span>`).join("")}
         ${tabs.some((t) => t.rows.length) ? '<button type="button" class="btn secondary small" data-cc="export-imp">تنزيل Excel</button>' : ""}</div>
@@ -1815,7 +1818,26 @@
       ${(o.filters || []).length ? `<details class="cc-adv"><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}
       <p class="cc-note">قُرئت ${esc(new Date(o.at).toLocaleString("ar"))}. التصفية هنا محلية في صفحتك، فلا تُرسل شيئاً إلى النظام.</p></section>`;
   }
+  async function impWorkbook(tabs) {
+    const wb = new ExcelJS.Workbook(), used = new Set();
+    tabs.forEach((t, i) => { let nm = (String(i + 1) + "-" + t.title).replace(/[\/?*[\]:]/g, " ").slice(0, 31); while (used.has(nm)) nm = nm.slice(0, 28) + "·" + used.size; used.add(nm); fmtSheet(wb.addWorksheet(nm), t.heads, t.rows); });
+    return wb.xlsx.writeBuffer();
+  }
+  async function exportImpZip() {
+    const c = state.imp, keep = { out: c.out, view: c.view, course: c.course }, zip = new JSZip();
+    try {
+      for (const [k, t] of IMP_PAGES) {
+        if (!c.outs[k]) continue;
+        c.out = c.outs[k]; c.view = k;
+        const tabs = impFiltered().filter((x) => x.rows.length);
+        if (tabs.length) zip.file(t.replace(/[\/?*:"<>|]/g, " ") + ".xlsx", await impWorkbook(tabs));
+      }
+    } finally { c.out = keep.out; c.view = keep.view; c.course = keep.course; }
+    if (!Object.keys(zip.files).length) { ui.toast("لا صفوف للتنزيل بعد التصفية."); return; }
+    ui.download("تقارير قياس الأثر " + ui.todayISO() + ".zip", await zip.generateAsync({ type: "blob" }));
+  }
   async function exportImp() {
+    if (Object.keys(state.imp.outs).length > 1) return exportImpZip();
     const tabs = impFiltered().filter((t) => t.rows.length); if (!tabs.length) return;
     const wb = new ExcelJS.Workbook(), used = new Set();
     tabs.forEach((t, i) => { let nm = (String(i + 1) + "-" + t.title).replace(/[\\/?*[\]:]/g, " ").slice(0, 31); while (used.has(nm)) nm = nm.slice(0, 28) + "·" + used.size; used.add(nm); fmtSheet(wb.addWorksheet(nm), t.heads, t.rows); });
@@ -2818,7 +2840,8 @@
         return;
       }
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
-      if (t.dataset.imp === "page") { state.imp.page = t.value; state.imp.out = null; state.imp.srv = {}; state.resultError = ""; render(); return; }
+      if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
+      if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }
       if (t.dataset.imp === "tracks" || t.dataset.imp === "stages") { const c = state.imp, k = t.dataset.imp, v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); render(); return; }
       if (t.dataset.imp) { state.imp[t.dataset.imp] = t.value; render(); return; }
       if (t.dataset.grp) {
