@@ -14,7 +14,7 @@ async function suite() {
   const calls = [];
   let DATA = [], MISSING = {}, PLEDGED = [], SUBS = [], PARTIAL = false;
   const agent = {
-    isReady: () => true, ready: async () => true, version: () => "1.5.1", stop() { calls.push("stop"); },
+    isReady: () => true, ready: async () => true, version: () => "1.5.2", stop() { calls.push("stop"); },
     run: async (cmds, opts) => {
       const res = cmds.map((cm) => {
         calls.push((cm.source || cm.type) + (cm.params && cm.params.status ? ":" + cm.params.status : ""));

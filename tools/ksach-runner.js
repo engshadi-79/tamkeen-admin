@@ -330,6 +330,23 @@
     say("قراءة التقرير…");
     await sleep(GET_GAP);
     let { doc } = await http("GET", base + "?" + qs(cmd.params || {}));
+    /* الصفحة قد تفتح بتصفية افتراضية (مثل مرحلة معيّنة). نريد الجميع ما لم يحدد المستخدم غير ذلك:
+       كل قائمة افتُرض لها قيمة غير فارغة ولم يُرسلها المستخدم وفيها خيار «الكل» تُعاد قراءتها بخيار «الكل» (قراءة إضافية واحدة) */
+    const widen = {};
+    filtersOf(doc).forEach((f) => {
+      if (f.type !== "select" || !f.value || (cmd.params || {})[f.name] !== undefined || /^date_(from|to)$/.test(f.name)) return;
+      const all = (f.options || []).find((o) => o.v === "") || (f.options || []).find((o) => /^(الكل|جميع|كل)/.test(o.t));
+      if (all) widen[f.name] = { v: all.v, was: ((f.options || []).find((o) => o.v === f.value) || {}).t || f.value, label: f.label };
+    });
+    if (Object.keys(widen).length) {
+      say("توسيع التصفية الافتراضية إلى «الكل»…");
+      const p2 = Object.assign({}, cmd.params || {});
+      Object.keys(widen).forEach((k) => { p2[k] = widen[k].v; });
+      await sleep(GET_GAP);
+      ({ doc } = await http("GET", base + "?" + qs(p2)));
+      out.params = p2;
+      out.widened = Object.keys(widen).map((k) => widen[k].label + ": " + widen[k].was + " ← الكل");
+    }
     out.tables = tablesOf(doc); out.stats = statsOf(doc); out.filters = filtersOf(doc);
     out.text = clean((doc.querySelector("main, .content, .container-fluid, body") || {}).textContent || "").slice(0, 1200);
     const main = out.tables.length ? out.tables.reduce((a, b) => (b.rows.length > a.rows.length ? b : a)) : null;

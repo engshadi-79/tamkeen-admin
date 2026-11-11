@@ -1745,11 +1745,11 @@
   const IMP_PATH = { impact: "summary", "pre-post": "pre-post", "impact-m": "impact", questions: "questions", responses: "responses" };
   function requireAgent15() {
     const v = String((App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || "");
-    const n = v.split(".").map(Number), need = state.imp.pages.every((x) => x === "impact") ? 0 : 1;
+    const n = v.split(".").map(Number), need = 2;
     const ok = n.length >= 2 && (n[0] > 1 || (n[0] === 1 && (n[1] > 5 || (n[1] === 5 && (n[2] || 0) >= need))));
     if (!ok) throw new Error(v
-      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.1) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
-      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.1 فأحدث) ولا تدعمه الجلسة المحلية.");
+      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.2) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
+      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.2 فأحدث) ولا تدعمه الجلسة المحلية.");
   }
   const impParams = () => {
     const c = state.imp, p = {};
@@ -1806,6 +1806,7 @@
     const hasFilter = opt.courses.length > 0;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> إحصاءات قياس الأثر</h3>
       ${Object.keys(state.imp.outs).length > 1 ? `<div class="cc-chips" role="tablist" aria-label="التقرير المعروض">${IMP_PAGES.filter(([k]) => state.imp.outs[k]).map(([k, t]) => `<label class="cc-chk"><input type="radio" name="imp-view" data-imp="view" value="${k}" ${state.imp.view === k ? "checked" : ""}> <span>${esc(t)}</span></label>`).join("")}</div>` : ""}
+      ${(o.widened || []).length ? `<p class="cc-note">وُسِّعت التصفية الافتراضية في صفحة النظام إلى الجميع: ${o.widened.map(esc).join("، ")}.</p>` : ""}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(tabs.length)}</b> جدولاً</span><span class="cc-stat"><b>${ui.fmt(tabs.reduce((a, t) => a + t.rows.length, 0))}</b> صفاً بعد التصفية</span>
         ${(o.stats || []).slice(0, 12).map((x) => `<span class="cc-stat"><b>${esc(x.value)}</b> ${esc(x.label)}</span>`).join("")}
         ${tabs.some((t) => t.rows.length) ? '<button type="button" class="btn secondary small" data-cc="export-imp">تنزيل Excel</button>' : ""}</div>
