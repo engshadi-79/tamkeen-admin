@@ -162,6 +162,16 @@ http.createServer((req, res) => {
     const rqs = JSON.parse(await stub.c.eval("JSON.stringify(window.__out || {err: window.__err})"));
     const QT = rqs.results && rqs.results[0] && rqs.results[0].tables && rqs.results[0].tables[0];
     step("إحصائيات الأسئلة: سؤالان بنصهما ونموذجهما وعدد الإجابات والمتوسط والتوزيع", QT && QT.rows.length === 2 && QT.rows[0].cells[0].includes("قصات الشعر") && /التسويق الرقمي - قبلي/.test(QT.rows[0].cells[1]) && QT.rows[0].cells[2] === "مقياس 1-5" && QT.rows[0].cells[3] === "105" && QT.rows[0].cells[4] === "2.91" && QT.rows[0].cells.slice(5, 10).join() === "13,18,46,21,7", JSON.stringify(QT && QT.rows));
+    // الحضور والغياب: جلسات المجموعة ثم حضور كل جلسة، بقراءة GET فقط
+    await stub.c.eval(`window.__out = null; window.__err = null;
+      App.centerAgent.run([{type:'attendance',label:'حضور',params:{date_from:'2026-11-01',date_to:'2026-11-12'},groupCodes:['G2'],trackNames:[],stages:['الثان']}], {})
+        .then((d) => { window.__out = d; }).catch((e) => { window.__err = e.message; }); 1`);
+    await waitFor(() => stub.c.eval("!!window.__out || !!window.__err"), 60000, "قراءة الحضور");
+    const ra = JSON.parse(await stub.c.eval("JSON.stringify(window.__out || {err: window.__err})"));
+    const AT = ra.results && ra.results[0];
+    step("الحضور: جلستان للمجموعة G2 بطلابهما وحالاتهم", AT && AT.type === "attendance" && AT.sessions.length === 2 && AT.sessions[0].rows.length === 3 && AT.sessions[0].rows[0].status === "absent" && AT.sessions[0].rows[0].sid === "10" && /STU-2026-111/.test(AT.sessions[0].rows[0].stu) && AT.sessions[1].rows[1].status === "excused", JSON.stringify(AT && AT.sessions && AT.sessions.map((s) => s.id + ":" + s.rows.map((r) => r.status).join(","))));
+    const ha = JSON.parse(await (await fetch("http://localhost:4197/__hits")).text()).filter((x) => /training-attendances/.test(x));
+    step("الحضور: كل الطلبات GET ولا POST إطلاقاً", ha.length >= 4 && ha.every((x) => /^GET/.test(x)), JSON.stringify(ha));
     // قائمة بكل البيانات: الأعمدة تتجاوز أعمدة الجدول إلى حقول نموذج التعديل
     await stub.c.eval(`window.__out = null; window.__err = null; window.__ev = [];
       App.centerAgent.run([{type:'list',label:'d',params:{track_id:'2',per_page:'3'},details:true}], { onProgress: (t) => window.__ev.push(t) })

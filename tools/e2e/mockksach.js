@@ -100,6 +100,20 @@ http.createServer((req, res) => {
       <label><input type="checkbox" name="must_change_password" value="1" checked> إلزام</label>
       <button>حفظ</button></form>`));
   }
+  const ATT = { 1349: ["مسار التطريز والخياطة المرحلة الثانية", "G2", [["10", "ابتسام أحمد STU-2026-111", "absent"], ["11", "إخلاص محمد STU-2026-222", "present"], ["12", "سلمى علي STU-2026-333", "late"]]], 1350: ["مسار الحلاقة الرجالية المرحلة الثانية", "G2", [["10", "ابتسام أحمد STU-2026-111", "absent"], ["13", "منى سعيد STU-2026-444", "excused"]]], 1351: ["مسار التطريز والخياطة المرحلة الثالثة", "S3G1", []] };
+  if (req.method === "GET" && url.pathname === "/admin/training-attendances") {
+    const g = url.searchParams.get("training_group_id") || "";
+    const map = { "22": "1349", "23": "1350", "24": "1351" };
+    const ids = g ? [map[g]].filter(Boolean) : ["1349", "1350", "1351"];
+    const rows = ids.map((id) => `<tr><td>جلسة تدريبية 12</td><td>${ATT[id][0]}</td><td>${ATT[id][1]}</td><td>مدرب</td><td>2026-11-11 09:00:00 - 14:00:00</td><td>${ATT[id][2].length}</td><td><a href="/admin/training-attendances/${id}/edit">تسجيل الحضور</a></td></tr>`).join("");
+    return send(200, layout(`<h1>الحضور والانصراف</h1><form method="get" action="/admin/training-attendances"><select name="training_group_id"><option value="">الكل</option><option value="22">مسار التطريز والخياطة - G2</option><option value="23">مسار الحلاقة الرجالية - G2</option><option value="24">مسار التطريز والخياطة - S3G1</option></select><input type="date" name="date_from"><input type="date" name="date_to"><button>عرض</button></form><table><thead><tr><th>الجلسة</th><th>المسار / الدورة</th><th>المجموعة</th><th>المدرب</th><th>الموعد</th><th>سجلات الحضور</th><th></th></tr></thead><tbody>${rows}</tbody></table>`));
+  }
+  const attEdit = url.pathname.match(/^\/admin\/training-attendances\/(\d+)\/edit$/);
+  if (req.method === "GET" && attEdit && ATT[attEdit[1]]) {
+    const st = ATT[attEdit[1]][2];
+    const rows = st.map((s, i) => `<tr><td><input type="hidden" name="attendances[${i}][student_id]" value="${s[0]}"><div>${s[1]}</div><select name="attendances[${i}][status]">${[["present", "حاضر"], ["late", "متأخر"], ["absent", "غائب"], ["excused", "غياب بعذر"]].map(([v, t]) => `<option value="${v}" ${s[2] === v ? "selected" : ""}>${t}</option>`).join("")}</select></td><td><input type="time" name="attendances[${i}][checked_in_at]"></td></tr>`).join("");
+    return send(200, layout(`<h1>تسجيل الحضور</h1><form method="post" action="/admin/training-attendances/${attEdit[1]}"><input type="hidden" name="_token" value="x"><table><thead><tr><th>الطالب</th><th>دخول</th></tr></thead><tbody>${rows}</tbody></table></form>`));
+  }
   if (req.method === "GET" && url.pathname === "/admin/evaluation-impact-reports/questions") {
     const tr = url.searchParams.get("track_id") || "";
     const card = (q, f, n, m, d) => `<div class="card"><div class="qh"><b>${q}</b><div class="sub">${f}</div></div><div class="st"><span>عدد الإجابات: ${n}</span><span>المتوسط: ${m}</span><span>النوع: مقياس 1-5</span></div><div class="bx">${d.map((v, i) => `<div><small>${i + 1}</small><b>${v}</b></div>`).join("")}</div></div>`;

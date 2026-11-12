@@ -14,12 +14,13 @@ async function suite() {
   const calls = [];
   let DATA = [], MISSING = {}, PLEDGED = [], SUBS = [], PARTIAL = false;
   const agent = {
-    isReady: () => true, ready: async () => true, version: () => "1.5.6", stop() { calls.push("stop"); },
+    isReady: () => true, ready: async () => true, version: () => "1.5.7", stop() { calls.push("stop"); },
     run: async (cmds, opts) => {
       const res = cmds.map((cm) => {
         calls.push((cm.source || cm.type) + (cm.params && cm.params.status ? ":" + cm.params.status : ""));
         calls.last = cm.params;
         (calls.plist = calls.plist || []).push(cm.params);
+        if (cm.type === "attendance") { const mkS = (id, d, st) => ({ id, title: "جلسة " + id, track: "مسار الحلاقة الرجالية المرحلة الثانية", group: "G2", trainer: "مدرب", date: d, rows: [{ sid: "1", name: "طالب كثير الغياب", stu: "STU-1-1", status: st }, { sid: "2", name: "طالب منتظم", stu: "STU-2-2", status: id === 4 ? "excused" : "present" }] }); return { type: "attendance", label: cm.label, params: cm.params, listed: 4, truncated: false, note: "", sessions: [mkS(1, "2026-11-08", "absent"), mkS(2, "2026-11-09", "absent"), mkS(3, "2026-11-10", "absent"), mkS(4, "2026-11-11", "absent")] }; }
         if (cm.type === "page") return { type: "page", source: cm.source, label: cm.label, params: cm.params, stats: [{ label: "إرسالاً", value: "137" }], filters: [{ name: "status", label: "الحالة", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "completed", t: "مكتمل" }] }, { name: "training_group_id", label: "المجموعة", type: "select", value: "", options: [{ v: "", t: "كل المجموعات" }, { v: "5", t: "G1 - د. أحمد" }, { v: "6", t: "G2 - د. سارة" }] }, { name: "track_id", label: "المسار", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "1", t: "مسار الحلاقة الرجالية" }, { v: "2", t: "مسار التسويق الرقمي" }] }, { name: "training_course_id", label: "الدورة التدريبية", type: "select", value: "", options: [{ v: "", t: "كل الدورات" }, { v: "9", t: "المرحلة الثانية - مسار الحلاقة الرجالية" }, { v: "10", t: "المرحلة الأولى - مسار الحلاقة الرجالية" }, { v: "11", t: "المرحلة الثانية - مسار التطريز والخياطة" }] }],
           tables: [{ title: "حسب المسار والمرحلة", heads: ["المسار", "المرحلة", "عدد الإرسالات"], rows: [{ cells: ["الحلاقة الرجالية", "الأولى", "40"] }, { cells: ["الحلاقة الرجالية", "الثانية", "30"] }, { cells: ["التجميل النسائي - كوافير", "الثانية", "55"] }, { cells: ["التطريز والخياطة", "الثالثة", "12"] }] },
                    { title: "حسب الحالة", heads: ["الحالة", "العدد"], rows: [{ cells: ["مكتمل", "100"] }, { cells: ["جزئي", "37"] }] }], text: "" };
@@ -352,6 +353,20 @@ async function suite() {
   c.state.imp.view = "questions"; c.state.imp.pages = ["questions"]; c.state.imp.out = c.state.imp.outs.questions; c.render();
   ok("الأسئلة مرتبة من الأضعف إلى الأقوى", [...b.querySelectorAll('[data-tblbox="imp-0"] tbody tr')].map((r) => r.cells[0].textContent.trim()).join() === "ضعيف,وسط,قوي", [...b.querySelectorAll('[data-tblbox="imp-0"] tbody tr')].map((r) => r.cells[0].textContent.trim()).join());
   c.state.imp.pages = ["impact"]; c.state.imp.view = "impact"; c.state.imp.outs = {}; c.state.imp.out = null; localStorage.removeItem("tamkeen-admin:cc-imp-snaps");
+  // الحضور والغياب: تجميع لكل طالب وتنبيه عند تجاوز 3 غيابات
+  c.state.mode = "attend"; c.state.att = Object.assign(c.state.att, { from: "2026-11-08", to: "2026-11-11", thr: 3, excused: false, max: 80, tracks: [], stages: [], out: null }); c.state.groups = []; c.render();
+  ok("تبويب الحضور والغياب: حقول وزر الجلب", !!b.querySelector('[data-att="from"]') && !!b.querySelector('[data-att="thr"]') && !!b.querySelector('[data-cc="run-att"]'), "view");
+  c.state.wideLimit = 1000; c.state.wide = null;
+  calls.length = 0; b.querySelector('[data-cc="run-att"]').click();
+  for (let i = 0; i < 60 && !c.state.att.out && !c.state.resultError; i++) await wait(200); await wait(300);
+  const ao = c.state.att.out;
+  ok("الحضور: طالبان من أربع جلسات، وأمر قراءة واحد", !!ao && ao.students.length === 2 && ao.sessions === 4 && calls.length === 1 && /^attendance/.test(calls[0]), JSON.stringify({ calls, err: c.state.resultError, n: ao && ao.students.length }));
+  const attRows = [...b.querySelectorAll('[data-tblbox="att-0"] tbody tr')].map((r) => r.textContent.replace(/\s+/g, " "));
+  ok("الطالب الذي غاب 4 مرات يظهر أولاً بعلامة التنبيه", attRows.length === 2 && /طالب كثير الغياب/.test(attRows[0]) && /⚠ تجاوز 3/.test(attRows[0]) && !/⚠/.test(attRows[1]), JSON.stringify(attRows));
+  ok("شريط التنبيه: طالب واحد تجاوز 3 غيابات", /طالباً تجاوزوا 3 غيابات/.test(b.textContent) && !!b.querySelector('[data-cc="att-copy"]'), "banner");
+  c.state.att.thr = 5; c.render();
+  ok("رفع الحد إلى 5: لا تنبيه", !/⚠ تجاوز/.test(b.textContent) && /لا طالب تجاوز 5/.test(b.textContent), "thr");
+  c.state.att.thr = 3; c.state.att.out = null; c.state.mode = "report"; c.state.wideLimit = 0;
   // النطاق الموحّد: اختيار مسار ومرحلة من الشريط يسري على كل التبويبات
   c.state.groups = []; [c.state.sel, c.state.mis, c.state.cmp, c.state.sib, c.state.dq, c.state.grp, c.state.imp].forEach((x) => { x.tracks = []; if ("stages" in x) x.stages = []; });
   c.state.mode = "report"; c.state.gopen = "tracks"; c.render();

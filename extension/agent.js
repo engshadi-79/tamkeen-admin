@@ -25,6 +25,8 @@ window.__kxStart = async () => {
     ["GET", /^\/admin\/evaluation-submissions(\?[^#]*)?$/],  // قائمة إرسالات الاستبيانات (قراءة فقط)
     ["GET", /^\/admin\/reports\/evaluation-missing-submissions(\?[^#]*)?$/],  // تقرير «لم يعبئوا الاستبيان» (قراءة فقط)
     ["GET", /^\/admin\/evaluation-impact-reports\/(summary|pre-post|impact|questions|responses)(\?[^#]*)?$/],  // إحصاءات قياس الأثر (قراءة فقط)
+    ["GET", /^\/admin\/training-attendances(\?[^#]*)?$/],          // قائمة جلسات الحضور (قراءة فقط)
+    ["GET", /^\/admin\/training-attendances\/\d+\/edit$/],       // حضور جلسة واحدة — قراءة فقط، لا يُحفَظ منه شيء
   ];
   const guard = (method, path) => {
     const u = new URL(path, location.origin);
@@ -389,6 +391,70 @@ window.__kxStart = async () => {
     }).filter(Boolean).slice(0, 20);
     return list;
   }
+  /* ===== الحضور والغياب: جلسات الفترة (الحاصلة على سجلات) ثم حضور كل جلسة. للقراءة فقط ===== */
+  async function cmdAttendance(cmd, index) {
+    const base = "/admin/training-attendances";
+    const out = { index, type: "attendance", label: cmd.label || "", params: cmd.params || {}, sessions: [], listed: 0, truncated: false, note: "" };
+    const cap = Math.max(1, Math.min(Number(cmd.max) || 80, 200));
+    say("قراءة قائمة الجلسات…");
+    await sleep(GET_GAP);
+    let { doc } = await http("GET", base + "?" + qs(cmd.params || {}));
+    const codes = (cmd.groupCodes || []).map(clean), names = (cmd.trackNames || []).map(clean), stages = cmd.stages || [];
+    const stageOfCode = (c) => (/^S3/i.test(c) ? "الثالث" : /^G\d/i.test(c) ? "الثان" : "الاولى");
+    const gsel = doc.querySelector('select[name="training_group_id"]');
+    let targets = [null];
+    if (gsel && (codes.length || names.length || stages.length)) {
+      targets = [...gsel.options].filter((o) => {
+        if (!o.value) return false;
+        const t = clean(o.textContent), code = clean(t.split(" - ").pop());
+        return (!codes.length || codes.includes(code)) && (!names.length || names.some((n) => t.includes(n))) && (!stages.length || stages.includes(stageOfCode(code)));
+      }).map((o) => ({ v: o.value, t: clean(o.textContent) }));
+      if (!targets.length) { out.note = "لا مجموعة في النظام تطابق الاختيار."; return out; }
+    }
+    const found = [];
+    let pages = 0;
+    for (const tg of targets) {
+      if (stopped || pages >= 40) break;
+      let d = doc;
+      if (tg) { say("قراءة جلسات: " + tg.t); await sleep(GET_GAP); ({ doc: d } = await http("GET", base + "?" + qs(Object.assign({}, cmd.params || {}, { training_group_id: tg.v })))); }
+      pages++;
+      for (let pg = 1; d && pg <= 12 && pages <= 40 && !stopped; pg++) {
+        const t = d.querySelector("table");
+        if (t) [...t.querySelectorAll("tbody tr")].forEach((tr) => {
+          const c = [...tr.children].map((x) => clean(x.textContent)), a = tr.querySelector('a[href*="/edit"]');
+          if (!a || c.length < 6) return;
+          const href = new URL(a.getAttribute("href"), location.origin).pathname;
+          found.push({ id: (href.match(/\/(\d+)\/edit/) || [])[1], path: href, title: c[0], track: c[1], group: c[2], trainer: c[3], date: (c[4] || "").slice(0, 10), records: parseInt(c[5], 10) || 0 });
+        });
+        const nx = nextPath(d);
+        if (!nx) break;
+        say("قراءة قائمة الجلسات — صفحة " + (pg + 1)); await sleep(GET_GAP); pages++;
+        ({ doc: d } = await http("GET", nx));
+      }
+    }
+    const withRecs = found.filter((s) => s.records > 0 && s.id);
+    out.listed = withRecs.length;
+    const todo = withRecs.slice(0, cap);
+    out.truncated = withRecs.length > todo.length;
+    for (let i = 0; i < todo.length && !stopped; i++) {
+      const s = todo[i];
+      say("قراءة حضور الجلسة " + (i + 1) + " من " + todo.length);
+      await sleep(GET_GAP);
+      const { doc: sd } = await http("GET", s.path);
+      const rows = [];
+      sd.querySelectorAll('select[name$="[status]"]').forEach((sel) => {
+        const tr = sel.closest("tr"); if (!tr) return;
+        const sid = (tr.querySelector('input[name$="[student_id]"]') || {}).value || "";
+        const cell = tr.children[0].cloneNode(true);
+        cell.querySelectorAll("select, option, input, button, form, a.btn").forEach((n) => n.remove());
+        const txt = clean(cell.textContent), stu = (txt.match(/STU-[\d-]+/) || [""])[0];
+        rows.push({ sid, name: clean(txt.replace(stu, "")), stu, status: sel.value || ((sel.options[sel.selectedIndex] || {}).value) || "" });
+      });
+      out.sessions.push({ id: s.id, title: s.title, track: s.track, group: s.group, trainer: s.trainer, date: s.date, rows });
+    }
+    log("الحضور: " + out.sessions.length + " جلسة من " + out.listed);
+    return out;
+  }
   async function cmdPage(cmd, index) {
     const base = PAGES[cmd.source];
     if (!base) throw new Error("صفحة تقرير غير معروفة");
@@ -591,7 +657,7 @@ window.__kxStart = async () => {
     const cmd = pack.commands[i];
     window.__kxCmd = { i: i + 1, n: pack.commands.length };
     try {
-      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister, page: cmdPage }[cmd.type];
+      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister, page: cmdPage, attendance: cmdAttendance }[cmd.type];
       if (!fn) { results.push({ index: i, type: cmd.type, error: "نوع أمر غير معروف" }); continue; }
       results.push(await fn(cmd, i));
     } catch (e) {
