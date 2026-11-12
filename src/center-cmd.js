@@ -34,7 +34,7 @@
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
-    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
+    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1738,7 +1738,8 @@
       const tStage = stageOf(t.title);   // المرحلة قد تكون في عنوان الجدول لا في أعمدته
       const okStage = (r) => !(f.stages || []).length || (b >= 0 ? f.stages.includes(stageOfCell(r[b])) : anyStage ? r.some((c) => f.stages.includes(stageOf(c))) : tStage ? f.stages.includes(tStage) : true);
       const okTrack = (r) => !trNames.length || (a >= 0 ? trNames.includes(clean(r[a]).replace(/^مسار\s*/, "")) : anyTrack ? r.some((c) => trNames.some((n) => clean(c).includes(n))) : true);
-      const rows = t.rows.filter((r) => (!f.course || k < 0 || clean(r[k]) === f.course) && okTrack(r) && okStage(r));
+      const z = impHasCol(t.heads, /^عدد الإجابات$/);
+      const rows = t.rows.filter((r) => (!f.course || k < 0 || clean(r[k]) === f.course) && okTrack(r) && okStage(r) && !(f.hideZero && z >= 0 && Number(String(r[z]).replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/,/g, "")) === 0));
       return Object.assign({}, t, { rows, noTrack: trNames.length > 0 && a < 0 && !anyTrack, noStage: (f.stages || []).length > 0 && b < 0 && !anyStage && !tStage });
     });
   }
@@ -1866,6 +1867,7 @@
         ${t.noTrack || t.noStage ? `<p class="cc-alert warn">لا أجد في هذا الجدول ما يدل على ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"} (لا عمود ولا نص في الصفوف ولا في عنوانه «${esc(t.title)}»)، فلا يمكن تصفيته وهو يظهر كاملاً.</p>` : ""}
         ${t.rows.length ? dataTable("imp-" + t.i, t.heads, t.rows) : '<p class="cc-note">لا صفوف مطابقة للتصفية.</p>'}</article>`).join("")}
       ${(o.courses || []).length ? `<p class="cc-note">دُمجت ${ui.fmt(o.courses.length)} قراءة من صفحة النظام (مضاف عمود «${esc(o.tables[0] && o.tables[0].heads[o.tables[0].heads.length - 1] || "الدورة التدريبية")}»): ${o.courses.map(esc).join("، ")}. بطاقات الأرقام العلوية لا تُدمج.</p>` : ""}
+      ${(o.tables || []).some((t) => t.heads.includes("عدد الإجابات")) ? `<label class="cc-chk"><input type="checkbox" data-imp="hideZero" ${state.imp.hideZero ? "checked" : ""}> <span>إخفاء الأسئلة التي لا إجابات عليها (${ui.fmt((o.tables || []).reduce((a, t) => { const z = t.heads.indexOf("عدد الإجابات"); return a + (z < 0 ? 0 : t.rows.filter((r) => Number(String(r.cells[z]).replace(/,/g, "")) === 0).length); }, 0))} سؤالاً)</span></label><p class="cc-note">سبب الأصفار: صفحة النظام تعرض أسئلة كل النماذج لكل دورة، فتظهر أسئلة نموذج مسار آخر بلا إجابات في هذه الدورة.</p>` : ""}
       ${(o.stagesAtFetch && o.stagesAtFetch.join() !== (state.imp.stages || []).join()) ? '<p class="cc-alert warn" role="alert">غيّرتَ المراحل بعد الجلب؛ اضغط «اجلب الإحصاءات» ليُقرأ ما يطابق اختيارك الجديد.</p>' : ""}
       ${impServerFilters(o)}
       ${(o.filters || []).length ? `<details class="cc-adv" ${(state.imp.stages || []).length && tabs.some((t) => t.noStage) ? "open" : ""}><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}
@@ -2896,6 +2898,7 @@
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
       if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }
+      if (t.dataset.imp === "hideZero") { state.imp.hideZero = !!t.checked; render(); return; }
       if (t.dataset.imp === "tracks" || t.dataset.imp === "stages") { const c = state.imp, k = t.dataset.imp, v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); render(); return; }
       if (t.dataset.imp) { state.imp[t.dataset.imp] = t.value; render(); return; }
       if (t.dataset.grp) {
