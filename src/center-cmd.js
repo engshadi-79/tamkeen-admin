@@ -1746,17 +1746,17 @@
   const IMP_PATH = { impact: "summary", "pre-post": "pre-post", "impact-m": "impact", questions: "questions", responses: "responses" };
   function requireAgent15() {
     const v = String((App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || "");
-    const n = v.split(".").map(Number), need = 2;
+    const n = v.split(".").map(Number), need = 3;
     const ok = n.length >= 2 && (n[0] > 1 || (n[0] === 1 && (n[1] > 5 || (n[1] === 5 && (n[2] || 0) >= need))));
     if (!ok) throw new Error(v
-      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.2) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
-      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.2 فأحدث) ولا تدعمه الجلسة المحلية.");
+      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.3) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
+      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.3 فأحدث) ولا تدعمه الجلسة المحلية.");
   }
   const impParams = () => {
     const c = state.imp, p = {};
     if (c.from) p.date_from = c.from;
     p.date_to = c.to || ui.todayISO();
-    Object.keys(c.srv || {}).forEach((k) => { if (/^[A-Za-z_][\w\[\]]*$/.test(k) && c.srv[k] !== "" && !/^date_(from|to)$/.test(k)) p[k] = c.srv[k]; });
+    Object.keys(c.srv || {}).forEach((k) => { if (/^[A-Za-z_][\w\[\]]*$/.test(k) && c.srv[k] !== "" && !(Array.isArray(c.srv[k]) && !c.srv[k].length) && !/^date_(from|to)$/.test(k)) p[k] = c.srv[k]; });
     String(c.extra || "").split(/[&\n]+/).map((x) => x.trim()).filter(Boolean).forEach((kv) => { const [k, ...v] = kv.split("="); if (/^[a-z_][a-z0-9_]*(\[\])?$/i.test(k.trim())) p[k.trim()] = v.join("=").trim(); });
     return p;
   };
@@ -1792,11 +1792,12 @@
   }
   /* اختيار المرحلة/المسار/المساق/الحالة من قوائم صفحة النظام نفسها، ثم إعادة الجلب بضغطة منك */
   function impServerFilters(o) {
-    const fs = (o.filters || []).filter((x) => x.name && !/^date_(from|to)$/.test(x.name) && x.type === "select" && (x.options || []).length > 1);
+    const fs = (o.filters || []).filter((x) => x.name && !/^date_(from|to)$/.test(x.name) && (x.type === "select" || x.type === "checkbox") && (x.options || []).length > 1);
     if (!fs.length) return "";
     const cur = (x) => (x.name in state.imp.srv ? state.imp.srv[x.name] : x.value || "");
+    const grp = (x) => { const cv = x.name in state.imp.srv ? state.imp.srv[x.name] : (x.value || []); return `<fieldset class="cc-fs"><legend>${esc(x.label)}${cv.length ? ` <em>${ui.fmt(cv.length)}</em>` : ""}</legend><div class="cc-chips">${x.options.map((q) => `<label class="cc-chk"><input type="checkbox" data-impsrvc="${esc(x.name)}" value="${esc(q.v)}" ${cv.map(String).includes(String(q.v)) ? "checked" : ""}> <span>${esc(q.t)}</span></label>`).join("")}</div></fieldset>`; };
     return `<details class="cc-adv" open><summary><span>اختر من قوائم النظام</span><small>${fs.map((x) => esc(x.label)).join("، ")}</small></summary>
-      <div class="cc-grid">${fs.map((x) => `<label class="cc-field"><span>${esc(x.label)}</span><select data-impsrv="${esc(x.name)}">${x.options.map((q) => `<option value="${esc(q.v)}" ${String(cur(x)) === String(q.v) ? "selected" : ""}>${esc(q.t || "الكل")}</option>`).join("")}</select></label>`).join("")}</div>
+      <div class="cc-grid">${fs.map((x) => x.type === "checkbox" ? grp(x) : `<label class="cc-field"><span>${esc(x.label)}</span><select data-impsrv="${esc(x.name)}">${x.options.map((q) => `<option value="${esc(q.v)}" ${String(cur(x)) === String(q.v) ? "selected" : ""}>${esc(q.t || "الكل")}</option>`).join("")}</select></label>`).join("")}</div>
       <div class="cc-row"><button type="button" class="btn navy small" data-cc="imp-apply" ${state.busy ? "disabled" : ""}>طبّق وأعد الجلب</button><span class="cc-note">يُرسَل اختيارك إلى صفحة النظام فتعيد حسابها، ويُقرأ أمر واحد.</span></div></details>`;
   }
   function impResult() {
@@ -2841,6 +2842,7 @@
         if (t.checked && at < 0) a.push(t.value); else if (!t.checked && at >= 0) a.splice(at, 1);
         return;
       }
+      if (t.dataset.impsrvc) { const k = t.dataset.impsrvc, o = state.imp.out, f = o && (o.filters || []).find((x) => x.name === k); let cur = Array.isArray(state.imp.srv[k]) ? state.imp.srv[k].slice() : (f && f.value ? f.value.slice() : []); const v = String(t.value), at = cur.indexOf(v); if (t.checked && at < 0) cur.push(v); else if (!t.checked && at >= 0) cur.splice(at, 1); state.imp.srv[k] = cur; render(); return; }
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
       if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }

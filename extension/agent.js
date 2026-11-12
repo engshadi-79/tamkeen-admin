@@ -139,8 +139,8 @@ window.__kxStart = async () => {
     const u = new URL(a.getAttribute("href"), location.origin);
     return u.pathname + u.search;
   };
-  const qs = (o) => Object.keys(o).filter((k) => o[k] !== "" && o[k] != null)
-    .map((k) => encodeURIComponent(k) + "=" + encodeURIComponent(o[k])).join("&");
+  const qs = (o) => Object.keys(o).filter((k) => o[k] !== "" && o[k] != null && !(Array.isArray(o[k]) && !o[k].length))
+    .map((k) => (Array.isArray(o[k]) ? o[k].map((v) => encodeURIComponent(k) + "=" + encodeURIComponent(v)).join("&") : encodeURIComponent(k) + "=" + encodeURIComponent(o[k]))).join("&");
 
   /* ===== الأوامر ===== */
   /* بيانات الطالب من نموذج تعديله: لكل حقل عنوانه وقيمته كما تُعرض (نص الخيار المحدَّد
@@ -279,13 +279,33 @@ window.__kxStart = async () => {
      لا نعرف بنية كل صفحة سلفاً، فنقرأ عامّاً: كل جدول بعنوانه، والأرقام الظاهرة في البطاقات، وحقول نموذج التصفية (لمعرفة
      معاملات الرابط المتاحة). الطلب GET واحد (مع متابعة ترقيم الصفحات على أكبر جدول)، وللرابط المسموح به فقط (ALLOW). */
   const PAGES = { impact: "/admin/evaluation-impact-reports/summary", "pre-post": "/admin/evaluation-impact-reports/pre-post", "impact-m": "/admin/evaluation-impact-reports/impact", questions: "/admin/evaluation-impact-reports/questions", responses: "/admin/evaluation-impact-reports/responses" };
+  /* عنوان التبويب الذي يحوي الجدول (إن كان داخل لوح تبويب) */
+  const paneLabel = (el) => {
+    const pane = el.closest(".tab-pane, [role=tabpanel], .accordion-collapse, .collapse");
+    if (!pane) return "";
+    const doc = el.ownerDocument, id = pane.id; let a = null;
+    if (id) a = doc.querySelector('[href="#' + CSS.escape(id) + '"], [data-bs-target="#' + CSS.escape(id) + '"], [data-target="#' + CSS.escape(id) + '"], [aria-controls="' + CSS.escape(id) + '"]');
+    if (!a && pane.getAttribute("aria-labelledby")) a = doc.getElementById(pane.getAttribute("aria-labelledby"));
+    return a ? clean(a.textContent).slice(0, 80) : "";
+  };
   const headingOf = (el) => {
+    const h = headingBase(el), p = paneLabel(el);
+    return [p, h].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(" — ").slice(0, 160);
+  };
+  const headingBase = (el) => {
     const cap = el.querySelector("caption");
     if (cap && clean(cap.textContent)) return clean(cap.textContent).slice(0, 120);
     const card = el.closest(".card, section, .box, .panel");
     if (card) { const t = card.querySelector(".card-header, .card-title, .box-title, h1, h2, h3, h4, h5, h6"); if (t && !t.contains(el)) return clean(t.textContent).slice(0, 120); }
     let p = el.previousElementSibling;
     for (let i = 0; p && i < 4; i++, p = p.previousElementSibling) { if (/^H[1-6]$/.test(p.tagName)) return clean(p.textContent).slice(0, 120); }
+    /* احتياطاً: أقرب نص قصير قبل الجدول أو قبل حاويته (عنوان بلا وسم عنوان) */
+    for (let n = el, d = 0; n && n.parentElement && d < 5; n = n.parentElement, d++) {
+      for (let q = n.previousElementSibling, i = 0; q && i < 3; q = q.previousElementSibling, i++) {
+        const t = clean(q.textContent);
+        if (t && t.length <= 120 && !q.querySelector("table, form, select, input")) return t;
+      }
+    }
     return "";
   };
   function tablesOf(doc) {
@@ -316,13 +336,22 @@ window.__kxStart = async () => {
   function filtersOf(doc) {
     const form = [...doc.querySelectorAll("form")].find((f) => (f.getAttribute("method") || "get").toLowerCase() === "get" && f.querySelector("select, input[type=date]"));
     if (!form) return [];
-    return [...form.querySelectorAll("select, input")].map((el) => {
+    const groups = {};
+    const list = [...form.querySelectorAll("select, input")].map((el) => {
       const name = el.getAttribute("name"), type = (el.getAttribute("type") || el.tagName).toLowerCase();
       if (!name || name === "_token" || ["hidden", "submit", "button"].includes(type)) return null;
+      if (type === "checkbox" || type === "radio") {
+        const lab = el.closest("label"), id = el.getAttribute("id"), l2 = id && doc.querySelector('label[for="' + CSS.escape(id) + '"]');
+        const opt = { v: el.value, t: clean((lab || l2 || {}).textContent || el.value), on: el.checked };
+        if (!groups[name]) { const fs = el.closest("fieldset"), lg = fs && fs.querySelector("legend"); groups[name] = { name, label: (lg ? clean(lg.textContent) : "") || name, type: "checkbox", value: [], options: [] }; }
+        groups[name].options.push(opt); if (el.checked) groups[name].value.push(el.value);
+        return groups[name].options.length === 1 ? groups[name] : null;
+      }
       const f = { name, label: fieldLabel(el, doc) || name, type: el.tagName === "SELECT" ? "select" : type, value: el.tagName === "SELECT" ? ((el.options[el.selectedIndex] || {}).value || "") : el.value };
       if (el.tagName === "SELECT") f.options = [...el.options].slice(0, 80).map((o) => ({ v: o.value, t: clean(o.textContent) }));
       return f;
     }).filter(Boolean).slice(0, 20);
+    return list;
   }
   async function cmdPage(cmd, index) {
     const base = PAGES[cmd.source];
@@ -335,6 +364,8 @@ window.__kxStart = async () => {
        كل قائمة افتُرض لها قيمة غير فارغة ولم يُرسلها المستخدم وفيها خيار «الكل» تُعاد قراءتها بخيار «الكل» (قراءة إضافية واحدة) */
     const widen = {};
     filtersOf(doc).forEach((f) => {
+      /* مربعات اختيار محدّدة افتراضياً (مثل مرحلة) ولم يرسلها المستخدم: نتركها كلها بلا تحديد لتشمل الجميع */
+      if (f.type === "checkbox" && f.value.length && (cmd.params || {})[f.name] === undefined) { widen[f.name] = { v: [], was: f.options.filter((o) => o.on).map((o) => o.t).join("، "), label: f.label }; return; }
       if (f.type !== "select" || !f.value || (cmd.params || {})[f.name] !== undefined || /^date_(from|to)$/.test(f.name)) return;
       const all = (f.options || []).find((o) => o.v === "") || (f.options || []).find((o) => /^(الكل|جميع|كل)/.test(o.t));
       if (all) widen[f.name] = { v: all.v, was: ((f.options || []).find((o) => o.v === f.value) || {}).t || f.value, label: f.label };
