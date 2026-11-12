@@ -234,6 +234,12 @@ async function suite() {
   calls.length = 0; calls.plist = []; b.querySelector('[data-cc="run-imp"]').click();
   for (let i = 0; i < 80 && !calls.plist.length; i++) await wait(200); await wait(400);
   ok("مع مسار الحلاقة: دورة واحدة فقط (9) بلا قراءة استكشاف", calls.length === 1 && (calls.plist[0] || {}).training_course_id === "9", JSON.stringify(calls.plist));
+  // الأسئلة بلا إجابات تُخفى افتراضياً ويمكن إظهارها
+  c.state.imp.out = { type: "page", at: new Date(), filters: [], stats: [], tables: [{ title: "أسئلة", heads: ["السؤال", "عدد الإجابات"], rows: [{ cells: ["س1", "105"] }, { cells: ["س2", "0"] }] }] }; c.state.imp.hideZero = true; c.render();
+  ok("إخفاء الأسئلة بلا إجابات (افتراضياً)", rowsOf("imp-0") === 1, rowsOf("imp-0"));
+  const hz = b.querySelector('[data-imp="hideZero"]'); hz.click(); await wait(100);
+  ok("وإظهارها بإلغاء الخيار", rowsOf("imp-0") === 2, rowsOf("imp-0"));
+  c.state.imp.hideZero = true; c.state.imp.out = null;
   c.state.imp.stages = []; c.state.imp.tracks = []; c.state.imp.known = [];
   c.state.imp.pages = ["impact"]; c.state.imp.outs = {};
   c.state.imp.page = "impact";
