@@ -36,6 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
+    att: { from: "", to: "", thr: 3, excused: false, max: 80, tracks: [], stages: [], out: null },   // الحضور والغياب
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
     groups: [], gopen: "", wide: null, wideOk: false, wideLimit: 0, saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
@@ -1238,9 +1239,9 @@
 
   /* ===== تخزين محلي (هذا المتصفح فقط): التقارير المحفوظة، سجل العمليات، الإشعار، لقطة البيانات ===== */
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
-  const CFG = { impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
-  const MODE_NAME = { impact: "قياس الأثر", report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
-  const RUN_BTN = { impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
+  const CFG = { attend: "att", impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
+  const MODE_NAME = { attend: "الحضور والغياب", impact: "قياس الأثر", report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
+  const RUN_BTN = { attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
   /* نسخة من إعدادات التبويب بلا نتائجه ولا بياناته */
   const cfgOf = (mode) => JSON.parse(JSON.stringify(state[CFG[mode]], (key, v) => (key === "out" || key === "rows" || key === "msg" || key === "diff" ? undefined : v)));
   function applyCfg(mode, cfg) {
@@ -1270,6 +1271,7 @@
     if (mode === "missing") { const o = state.mis.out; return o ? o.rows.length + " طالباً لم يُكمل (" + ((MIS_KINDS.find((k) => k.k === o.kind) || {}).t || "") + ")" : ""; }
     if (mode === "dq") { const o = state.dq.out; return o ? o.issues.length + " ملاحظة من " + o.total + " طالباً" : ""; }
     if (mode === "groups") { const o = state.grp.out; return o ? o.groups.length + " مجموعة، " + o.unassigned + " غير موزع" : ""; }
+    if (mode === "attend") { const o = state.att.out; return o ? o.students.length + " طالباً من " + o.sessions + " جلسة" : ""; }
     if (mode === "impact") { const o = state.imp.out; return o ? (o.tables || []).length + " جدولاً" : ""; }
     if (mode === "student") { const o = state.stu.out; return o ? "ملف طالب" : ""; }
     return "";
@@ -1322,7 +1324,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-att", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1333,6 +1335,7 @@
         return plan.length;
       }
       if (act === "load-groups") return 1;
+      if (act === "run-att") { const c = state.att, d = Math.max(1, Math.round((Date.parse(c.to || ui.todayISO()) - Date.parse(c.from || ui.todayISO())) / 86400000) + 1); return 1 + Math.min(Number(c.max) || 80, d * Math.max(1, (state.groups || []).length || (c.tracks.length || 5))); }
       if (act === "run-imp" || act === "imp-apply") { const c = state.imp, cv = impCourseVariants(c.known), tv = impTrackVariants(c.known); let n = 0; (c.pages.length ? c.pages : ["impact"]).forEach((pg) => { n += cv ? Math.max(1, cv.list.length) : pg === "questions" && tv ? Math.max(1, tv.list.length) : 1; }); return n + ((c.stages || []).length && !cv || c.pages.includes("questions") && !tv ? 1 : 0); }
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
@@ -1508,10 +1511,10 @@
   const curUser = () => { try { return (App.cloud && App.cloud.user && App.cloud.user()) || null; } catch (e) { return null; } };
   /* حصر التبويب بمدير النظام (إعداد مشترك يحفظه المدير) */
   const centerAllowed = () => { const st = (App.store && App.store.get && App.store.get()) || {}; const u = curUser(); return !st.centerAdminOnly || !u || !!u.admin; };
-  const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.cache || state.grp.out || state.stu.out);
+  const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.cache || state.grp.out || state.stu.out || state.att.out);
   function wipeData(why) {
     state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null;
-    state.cache = null; state.grp.out = null; state.imp.out = null; state.imp.outs = {}; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
+    state.cache = null; state.grp.out = null; state.imp.out = null; state.imp.outs = {}; state.att.out = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
     Object.keys(tblData).forEach((k) => delete tblData[k]); Object.keys(tblState).forEach((k) => delete tblState[k]);
     render();
     if (why) ui.toast(why);
@@ -1750,11 +1753,11 @@
   const IMP_PATH = { impact: "summary", "pre-post": "pre-post", "impact-m": "impact", questions: "questions", responses: "responses" };
   function requireAgent15() {
     const v = String((App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || "");
-    const n = v.split(".").map(Number), need = 6;
+    const n = v.split(".").map(Number), need = state.mode === "attend" ? 7 : 6;
     const ok = n.length >= 2 && (n[0] > 1 || (n[0] === 1 && (n[1] > 5 || (n[1] === 5 && (n[2] || 0) >= need))));
     if (!ok) throw new Error(v
-      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.6) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
-      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.6 فأحدث) ولا تدعمه الجلسة المحلية.");
+      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.${need}) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
+      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.${need} فأحدث) ولا تدعمه الجلسة المحلية.");
   }
   const impTrackNames = () => (state.imp.tracks || []).map((id) => { const o = trackOpts().find((x) => String(x.v) === String(id)); return o ? o.t.replace(/^مسار\s*/, "") : ""; }).filter(Boolean);
   /* الدورات التدريبية (قائمة صفحة النظام: «المرحلة الثانية - مسار …») المطابقة للمراحل والمسارات المختارة */
@@ -1831,6 +1834,79 @@
       c.out = c.outs[c.view];
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
+  }
+  /* ===== الحضور والغياب: تجميع حضور الجلسات لكل طالب وتنبيه عند تجاوز الحد ===== */
+  const ATT_ST = { present: "حاضر", late: "متأخر", absent: "غائب", excused: "بعذر" };
+  const attTrackName = (t) => String(t || "").replace(/\s*المرحلة.*$/, "").replace(/^مسار\s*/, "");
+  const trackNamesOf = (ids) => (ids || []).map((id) => { const o = trackOpts().find((x) => String(x.v) === String(id)); return o ? o.t.replace(/^مسار\s*/, "") : ""; }).filter(Boolean);
+  function attAggregate(sessions) {
+    const by = new Map();
+    sessions.forEach((se) => (se.rows || []).forEach((r) => {
+      const key = r.sid || r.name;
+      const e = by.get(key) || by.set(key, { name: r.name, stu: r.stu, track: attTrackName(se.track), group: se.group, present: 0, late: 0, absent: 0, excused: 0, sessions: 0, lastAbsent: "" }).get(key);
+      e.sessions++; if (e[r.status] != null) e[r.status]++;
+      if (r.status === "absent" && se.date > e.lastAbsent) e.lastAbsent = se.date;
+    }));
+    return [...by.values()];
+  }
+  const attCount = (e) => e.absent + (state.att.excused ? e.excused : 0);
+  const attFlagged = () => ((state.att.out && state.att.out.students) || []).filter((e) => attCount(e) > Number(state.att.thr || 3));
+  const attHeads = () => ["الطالب", "الرقم", "المسار", "المجموعة", "غائب", "بعذر", "متأخر", "حاضر", "الجلسات", "آخر غياب", "التنبيه"];
+  const attTable = () => ((state.att.out && state.att.out.students) || []).slice().sort((a, b) => attCount(b) - attCount(a) || a.name.localeCompare(b.name, "ar"))
+    .map((e) => [e.name, e.stu, e.track, e.group, e.absent, e.excused, e.late, e.present, e.sessions, e.lastAbsent || "—", attCount(e) > Number(state.att.thr || 3) ? "⚠ تجاوز " + state.att.thr : ""]);
+  const attDayHeads = () => ["الطالب", "المسار", "المجموعة", "الجلسة", "الحالة", "التاريخ"];
+  const attDayTable = () => {
+    const o = state.att.out; if (!o || !o.lastDay) return [];
+    const rows = [];
+    o.raw.filter((se) => se.date === o.lastDay).forEach((se) => se.rows.filter((r) => r.status === "absent" || r.status === "excused").forEach((r) => rows.push([r.name, attTrackName(se.track), se.group, se.title, ATT_ST[r.status], se.date])));
+    return rows;
+  };
+  function attSheets(name) {
+    if (!state.att.out) return [];
+    return [{ name: name + " - لكل طالب", heads: attHeads(), rows: attTable() }, { name: name + " - غائبو آخر يوم", heads: attDayHeads(), rows: attDayTable() }].filter((x) => x.rows.length);
+  }
+  async function runAttend() {
+    const c = state.att;
+    state.busy = true; state.resultError = ""; c.out = null; state.progress = "";
+    render(); refreshStatus();
+    try {
+      requireAgent15();
+      const today = ui.todayISO();
+      const params = { date_from: c.from || today, date_to: c.to || today };
+      const r = (await runCommands([{ type: "attendance", label: "الحضور والغياب", params, groupCodes: state.groups || [], trackNames: trackNamesOf(c.tracks), stages: (c.stages || []).map(stageK).filter(Boolean), max: Number(c.max) || 80 }]))[0];
+      if (!r || r.type !== "attendance") throw new Error((r && r.error) || "لم تصل نتيجة الحضور من الوكيل.");
+      const days = r.sessions.map((x) => x.date).sort();
+      c.out = { at: new Date(), raw: r.sessions, students: attAggregate(r.sessions), sessions: r.sessions.length, listed: r.listed, truncated: r.truncated, note: r.note, lastDay: days[days.length - 1] || "", from: params.date_from, to: params.date_to };
+      const n = attFlagged().length;
+      if (n) ui.toast("⚠ " + ui.fmt(n) + " طالباً تجاوزوا " + c.thr + " غيابات");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  function attView() {
+    const c = state.att, today = ui.todayISO();
+    return `<section class="cc-card" id="cc-att">
+      <header class="cc-card-h"><h3>الحضور والغياب</h3><p>يقرأ جلسات التدريب التي سُجّل حضورها في الفترة، ثم حضور كل جلسة، ويجمع غياب كل طالب. يُعلَّم من تجاوز الحد ويُنبَّه إليه. للقراءة فقط، وبطلب منك وحدك. حدّد المسار والمرحلة والمجموعة من شريط «النطاق».</p></header>
+      <div class="cc-card-b"><div class="cc-grid">
+        <label class="cc-field"><span>من تاريخ</span><input type="date" data-att="from" value="${esc(c.from || today)}"></label>
+        <label class="cc-field"><span>إلى تاريخ</span><input type="date" data-att="to" value="${esc(c.to || today)}"></label>
+        <label class="cc-field"><span>يُنبَّه إن زاد الغياب عن</span><input type="number" min="1" max="30" data-att="thr" value="${esc(c.thr)}"></label>
+        <label class="cc-field"><span>أقصى عدد جلسات تُقرأ</span><input type="number" min="1" max="200" data-att="max" value="${esc(c.max)}"></label>
+        <label class="cc-chk"><input type="checkbox" data-att="excused" ${c.excused ? "checked" : ""}> <span>احسب «غياب بعذر» ضمن الغياب</span></label>
+      </div><p class="cc-note">تُقرأ جلسات المجموعات المطابقة للنطاق (الكل إن لم تحدّد)، وقراءة لكل جلسة، فاجعل الفترة قصيرة. للتقرير اليومي اجعل التاريخين اليوم.</p></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-att"))} أمر قراءة (تقدير أقصى)</b><span>${esc(c.from || today)} ← ${esc(c.to || today)}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-att" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الحضور"}</button></div></footer></section>`;
+  }
+  function attResult() {
+    const o = state.att.out;
+    if (!o) return "";
+    const fl = attFlagged(), rows = attTable(), day = attDayTable();
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> الحضور والغياب</h3>
+      ${o.note ? `<p class="cc-alert warn">${esc(o.note)}</p>` : ""}
+      ${fl.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(fl.length)}</b> طالباً تجاوزوا ${esc(state.att.thr)} غيابات${state.att.excused ? " (بالعذر)" : ""}. يظهرون أولاً في الجدول بعلامة «⚠ تجاوز».</span><button type="button" class="btn secondary small" data-cc="att-copy">نسخ قائمة المتجاوزين</button></div>` : `<p class="cc-note">لا طالب تجاوز ${esc(state.att.thr)} غيابات في هذه الفترة.</p>`}
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.sessions)}</b> جلسة قُرئت${o.truncated ? ` من ${ui.fmt(o.listed)} (اقتُصر على الحد الأقصى؛ ارفعه أو قصّر الفترة)` : ""}</span><span class="cc-stat"><b>${ui.fmt(o.students.length)}</b> طالباً</span><span class="cc-stat"><b>${ui.fmt(o.students.reduce((a, e) => a + e.absent, 0))}</b> غياباً</span>${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-att">تنزيل Excel</button>' : ""}</div>
+      ${rows.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الغياب لكل طالب (${esc(o.from)} ← ${esc(o.to)})</h4><span class="cc-badge">${ui.fmt(rows.length)} طالباً</span></div></header>${dataTable("att-0", attHeads(), rows)}</article>` : '<p class="cc-note">لا جلسات بسجلات حضور في هذه الفترة والنطاق.</p>'}
+      ${day.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>غائبو آخر يوم (${esc(o.lastDay)})</h4><span class="cc-badge">${ui.fmt(day.length)}</span></div></header>${dataTable("att-1", attDayHeads(), day)}</article>` : ""}
+      <p class="cc-note">قُرئت ${esc(new Date(o.at).toLocaleString("ar"))}. لا يُكتب شيء في نظام المركز.</p></section>`;
   }
   function impView() {
     const c = state.imp;
@@ -2224,6 +2300,7 @@
     if (mode === "dq") return runDq();
     if (mode === "groups") return runGroups();
     if (mode === "impact") return runImpact();
+    if (mode === "attend") return runAttend();
   }
   function collectSheets(mode, name) {
     if (mode === "report") return ((state.results && state.results.results) || []).map((r, i) => (r && r.type === "list" ? (() => { const [h, rr] = shown(r.heads, r.rows.map((x) => x.cells)); return { name: state.labels[i] || name, heads: h, rows: rr }; })() : null)).filter(Boolean);
@@ -2231,6 +2308,7 @@
     if (mode === "siblings") return state.sib.out ? [{ name, heads: sibHeads(), rows: state.sib.out.rows }] : [];
     if (mode === "missing") return state.mis.out ? [{ name, heads: misHeads(), rows: misTable() }] : [];
     if (mode === "dq") return state.dq.out ? [{ name, heads: dqHeads(), rows: dqTable() }] : [];
+    if (mode === "attend") return attSheets(name);
     if (mode === "impact") return impFiltered().filter((t) => t.rows.length).map((t, i) => ({ name: name + " - " + (t.title || "جدول " + (i + 1)), heads: t.heads, rows: t.rows }));
     if (mode === "groups") return state.grp.out ? [{ name: name + " - مجموعات", heads: grpGroupHeads(), rows: grpGroupTable() }, { name: name + " - مدربون", heads: grpTrainerHeads(), rows: grpTrainerTable() }] : [];
     return [];
@@ -2452,10 +2530,10 @@
       ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
       ${settingsCard()}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
@@ -2530,15 +2608,15 @@
   }
   /* شريط التبويبات الأفقي: عناوين قصيرة في صف واحد مجمّعة، والشرح في التلميح */
   const MODE_GROUPS = [
-    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
+    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
     [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
     [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
   ];
-  const MODE_ICO = { report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const MODE_ICO = { attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
   const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" title="${esc(h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
-  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp }[mode] || state.sel);
+  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att }[mode] || state.sel);
   function scopeNow() {
     const c = scopeCfg(state.adding || state.proposal ? "ask" : state.mode);
     const byK = c === state.sel || c === state.mis;
@@ -2547,14 +2625,14 @@
   }
   function scopeSet(kind, value, on) {
     const upd = (c, key, v) => { const arr = (c[key] = c[key] || []); const at = arr.indexOf(v); if (on && at < 0) arr.push(v); else if (!on && at >= 0) arr.splice(at, 1); };
-    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp].forEach((c) => upd(c, "tracks", String(value)));
+    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att].forEach((c) => upd(c, "tracks", String(value)));
     else {
       [state.sel, state.mis].forEach((c) => upd(c, "stages", stageK(value)));
-      [state.sib, state.dq, state.grp, state.imp].forEach((c) => upd(c, "stages", value));
+      [state.sib, state.dq, state.grp, state.imp, state.att].forEach((c) => upd(c, "stages", value));
     }
   }
   function scopeClear() {
-    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
     state.groups = [];
   }
   /* القوائم المكررة داخل التبويبات (المسارات/المراحل) تُخفى لأن الشريط يتولاها */
@@ -2845,6 +2923,9 @@
         } else if (act === "run-imp" || act === "imp-apply") { return runImpact();
         } else if (act === "gtoggle") { const k = t.dataset.gk; state.gopen = state.gopen === k ? "" : k; render(); return;
         } else if (act === "gclear") { scopeClear(); render(); return;
+        } else if (act === "run-att") { return runAttend();
+        } else if (act === "export-att") { const sh = attSheets("الحضور والغياب"); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => fmtSheet(wb.addWorksheet(x.name.slice(0, 31)), x.heads, x.rows)); return ui.download("الحضور والغياب " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        } else if (act === "att-copy") { const t = "*طلاب تجاوزوا " + state.att.thr + " غيابات*\n" + attFlagged().sort((a, b) => attCount(b) - attCount(a)).map((e) => "• " + e.name + " — " + e.track + " (" + e.group + "): " + attCount(e) + " غيابات").join("\n"); try { await navigator.clipboard.writeText(t); ui.toast("نُسخت القائمة"); } catch (err) { ui.toast("تعذّر النسخ"); } return;
         } else if (act === "imp-snap-save") { impSnapSave(); render(); return;
         } else if (act === "imp-snap-del") { lsSet(IMP_SNAP_KEY, impSnaps().filter((x) => x.id !== state.imp.cmpWith)); state.imp.cmpWith = ""; render(); return;
         } else if (act === "imp-copy-wa") { try { await navigator.clipboard.writeText(impWaText()); ui.toast("نُسخ ملخص قياس الأثر؛ الصقه في واتساب"); } catch (err) { ui.toast("تعذّر النسخ"); } return;
@@ -3033,6 +3114,7 @@
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
       if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }
+      if (t.dataset.att) { const k = t.dataset.att; state.att[k] = t.type === "checkbox" ? !!t.checked : (k === "thr" || k === "max" ? Number(t.value) || 0 : t.value); if (t.type === "checkbox" || k === "thr") render(); return; }
       if (t.dataset.sc) { scopeSet(t.dataset.sc, t.value, t.checked); render(); return; }
       if (t.hasAttribute("data-gf")) { const v = String(t.value), at = state.groups.indexOf(v); if (t.checked && at < 0) state.groups.push(v); else if (!t.checked && at >= 0) state.groups.splice(at, 1); render(); return; }
       if (t.dataset.imp === "hideZero") { state.imp.hideZero = !!t.checked; render(); return; }
