@@ -169,5 +169,28 @@
     return { due: overdue && !(snoozeUntil && nowMs < snoozeUntil), days, never: !last };
   }
 
-  App.ccUtil = { clean, digits, cellStr, phoneNorm, lsGet, lsSet, maskCell, verNum, verLess, waIntl, waParts, fmtSheet, splitStudentCell, splitGroupCell, expandResult, pickBase, diffRows, compareLatest, rankCompliance, weeklyDue };
+  /* رقم من خلية: «49.54%» أو «109» أو «٢٫٩١»؛ غير رقمي ← NaN */
+  const numOf = (v) => {
+    const t = String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/٫/g, ".").replace(/[,٬\s%]/g, "");
+    return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+  };
+  /* مقارنة جدولين متماثلي الأعمدة: الأعمدة غير الرقمية مفتاح، والرقمية يُحسب فرقها */
+  function diffTables(cur, old) {
+    const heads = cur.heads, n = heads.length;
+    const isNum = heads.map((h, i) => { const vals = cur.rows.map((r) => r[i]).filter((x) => String(x).trim() !== ""); return vals.length > 0 && vals.filter((x) => !isNaN(numOf(x))).length >= vals.length * 0.8; });
+    const keyIdx = heads.map((h, i) => i).filter((i) => !isNum[i]), numIdx = heads.map((h, i) => i).filter((i) => isNum[i]);
+    const keyOf = (r) => keyIdx.map((i) => clean(r[i])).join("");
+    const oldBy = new Map(); (old.rows || []).forEach((r) => oldBy.set(keyOf(r), r));
+    const outHeads = keyIdx.map((i) => heads[i]);
+    numIdx.forEach((i) => outHeads.push(heads[i] + " (الآن)", heads[i] + " (السابق)", heads[i] + " (الفرق)"));
+    const fmt = (d) => (d === 0 ? "0" : (d > 0 ? "▲ +" : "▼ ") + (Math.round(d * 100) / 100));
+    const rows = cur.rows.map((r) => {
+      const o = oldBy.get(keyOf(r));
+      const cells = keyIdx.map((i) => r[i]);
+      numIdx.forEach((i) => { const a = numOf(r[i]), b = o ? numOf(o[i]) : NaN; cells.push(r[i], o ? o[i] : "جديد", isNaN(a) || isNaN(b) ? "" : fmt(a - b)); });
+      return cells;
+    });
+    return { heads: outHeads, rows, matched: rows.filter((_, k) => oldBy.has(keyOf(cur.rows[k]))).length };
+  }
+  App.ccUtil = { numOf, diffTables, clean, digits, cellStr, phoneNorm, lsGet, lsSet, maskCell, verNum, verLess, waIntl, waParts, fmtSheet, splitStudentCell, splitGroupCell, expandResult, pickBase, diffRows, compareLatest, rankCompliance, weeklyDue };
 })(window.App = window.App || {});

@@ -34,7 +34,7 @@
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
-    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
+    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1741,6 +1741,8 @@
       const okTrack = (r) => !trNames.length || (a >= 0 ? trNames.includes(clean(r[a]).replace(/^مسار\s*/, "")) : anyTrack ? r.some((c) => trNames.some((n) => clean(c).includes(n))) : true);
       const z = impHasCol(t.heads, /^عدد الإجابات$/);
       const rows = t.rows.filter((r) => (!f.course || k < 0 || clean(r[k]) === f.course) && okTrack(r) && okStage(r) && !(f.hideZero && z >= 0 && Number(String(r[z]).replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/,/g, "")) === 0));
+      const iq = impHasCol(t.heads, /^السؤال$/), im = impHasCol(t.heads, /^المتوسط$/);
+      if (iq >= 0 && im >= 0) rows.sort((a, b) => { const x = App.ccUtil.numOf(a[im]), y = App.ccUtil.numOf(b[im]); return (isNaN(x) ? 99 : x) - (isNaN(y) ? 99 : y); });   // الأضعف أولاً
       return Object.assign({}, t, { rows, noTrack: trNames.length > 0 && a < 0 && !anyTrack, noStage: (f.stages || []).length > 0 && b < 0 && !anyStage && !tStage });
     });
   }
@@ -1872,11 +1874,13 @@
       ${tabs.map((t) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)} صفاً</span></div></header>
         ${t.noTrack || t.noStage ? `<p class="cc-alert warn">لا أجد في هذا الجدول ما يدل على ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"} (لا عمود ولا نص في الصفوف ولا في عنوانه «${esc(t.title)}»)، فلا يمكن تصفيته وهو يظهر كاملاً.</p>` : ""}
         ${t.rows.length ? dataTable("imp-" + t.i, t.heads, t.rows) : '<p class="cc-note">لا صفوف مطابقة للتصفية.</p>'}</article>`).join("")}
+      ${(() => { const sn = impSnaps(); return `<div class="cc-row cc-imp-tools"><button type="button" class="btn secondary small" data-cc="imp-snap-save">احفظ لقطة للمقارنة</button>${impWaText() ? '<button type="button" class="btn secondary small" data-cc="imp-copy-wa">نسخ ملخص واتساب</button>' : ""}${sn.length ? `<label class="cc-field cc-inline"><span>قارن مع لقطة</span><select data-imp="cmpWith"><option value="">بلا مقارنة</option>${sn.map((x) => `<option value="${esc(x.id)}" ${state.imp.cmpWith === x.id ? "selected" : ""}>${esc(snapLabel(x))}</option>`).join("")}</select></label>${state.imp.cmpWith ? '<button type="button" class="cc-link" data-cc="imp-snap-del">احذف اللقطة</button>' : ""}` : ""}</div>`; })()}
       ${(o.courses || []).length ? `<p class="cc-note">دُمجت ${ui.fmt(o.courses.length)} قراءة من صفحة النظام (مضاف عمود «${esc(o.tables[0] && o.tables[0].heads[o.tables[0].heads.length - 1] || "الدورة التدريبية")}»): ${o.courses.map(esc).join("، ")}. بطاقات الأرقام العلوية لا تُدمج.</p>` : ""}
       ${(o.tables || []).some((t) => t.heads.includes("عدد الإجابات")) ? `<label class="cc-chk"><input type="checkbox" data-imp="hideZero" ${state.imp.hideZero ? "checked" : ""}> <span>إخفاء الأسئلة التي لا إجابات عليها (${ui.fmt((o.tables || []).reduce((a, t) => { const z = t.heads.indexOf("عدد الإجابات"); return a + (z < 0 ? 0 : t.rows.filter((r) => Number(String(r.cells[z]).replace(/,/g, "")) === 0).length); }, 0))} سؤالاً)</span></label><p class="cc-note">سبب الأصفار: صفحة النظام تعرض أسئلة كل النماذج لكل دورة، فتظهر أسئلة نموذج مسار آخر بلا إجابات في هذه الدورة.</p>` : ""}
       ${(o.stagesAtFetch && o.stagesAtFetch.join() !== (state.imp.stages || []).join()) ? '<p class="cc-alert warn" role="alert">غيّرتَ المراحل بعد الجلب؛ اضغط «اجلب الإحصاءات» ليُقرأ ما يطابق اختيارك الجديد.</p>' : ""}
       ${impServerFilters(o)}
       ${(o.filters || []).length ? `<details class="cc-adv" ${(state.imp.stages || []).length && tabs.some((t) => t.noStage) ? "open" : ""}><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}
+      ${impCompareView()}
       <p class="cc-note">قُرئت ${esc(new Date(o.at).toLocaleString("ar"))}. التصفية هنا محلية في صفحتك، فلا تُرسل شيئاً إلى النظام.</p></section>`;
   }
   async function impWorkbook(tabs) {
@@ -1896,6 +1900,41 @@
     } finally { c.out = keep.out; c.view = keep.view; c.course = keep.course; }
     if (!Object.keys(zip.files).length) { ui.toast("لا صفوف للتنزيل بعد التصفية."); return; }
     ui.download("تقارير قياس الأثر " + ui.todayISO() + ".zip", await zip.generateAsync({ type: "blob" }));
+  }
+  /* لقطات قياس الأثر: تُحفظ في هذا المتصفح للمقارنة لاحقاً بلا قراءة جديدة */
+  const IMP_SNAP_KEY = "tamkeen-admin:cc-imp-snaps";
+  const impSnaps = () => { const a = lsGet(IMP_SNAP_KEY, []); return Array.isArray(a) ? a : []; };
+  function impSnapSave() {
+    const c = state.imp, keep = { out: c.out, view: c.view }, pages = {};
+    try { Object.keys(c.outs).forEach((k) => { c.out = c.outs[k]; pages[k] = impTables().map((t) => ({ title: t.title, heads: t.heads, rows: t.rows.slice(0, 500) })); }); } finally { c.out = keep.out; c.view = keep.view; }
+    const list = impSnaps(); list.unshift({ id: String(Date.now()), at: new Date().toISOString(), from: c.from, to: c.to || ui.todayISO(), pages });
+    lsSet(IMP_SNAP_KEY, list.slice(0, 6));
+    ui.toast("حُفظت لقطة قياس الأثر للمقارنة لاحقاً");
+  }
+  const snapLabel = (sn) => new Date(sn.at).toLocaleDateString("ar") + " (" + sn.from + " ← " + sn.to + ")";
+  function impCompareView() {
+    const c = state.imp, sn = c.cmpWith && impSnaps().find((x) => x.id === c.cmpWith);
+    if (!sn) return "";
+    const old = sn.pages[c.view] || [];
+    const blocks = impFiltered().map((t, i) => {
+      const o = old.find((x) => x.title === t.title && x.heads.join("|") === t.heads.join("|"));
+      if (!o || !t.rows.length) return "";
+      const d = App.ccUtil.diffTables({ heads: t.heads, rows: t.rows }, o);
+      return `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)} — الآن مقابل السابق</h4><span class="cc-badge">${ui.fmt(d.matched)} صفاً متطابقاً</span></div></header>${dataTable("impcmp-" + i, d.heads, d.rows)}</article>`;
+    }).join("");
+    return `<h3 class="cc-results-title">المقارنة مع لقطة ${esc(snapLabel(sn))}</h3>${blocks || '<p class="cc-note">لا جداول مطابقة في هذه اللقطة لهذا التقرير (يلزم أن تكون اللقطة محفوظة من الصفحة نفسها بأعمدتها نفسها).</p>'}`;
+  }
+  /* ملخص جاهز للصق في واتساب من جدول الملخص (نسبة الاستجابة لكل مسار ونوع) */
+  function impWaText() {
+    const t = impFiltered().find((x) => impHasCol(x.heads, /نسبة الاستجابة/) >= 0 && impHasCol(x.heads, /^(ال)?مسار$/) >= 0 && x.rows.length);
+    if (!t) return "";
+    const I = (rx) => impHasCol(t.heads, rx), iT = I(/^(ال)?مسار$/), iK = I(/^النوع$/), iR = I(/نسبة الاستجابة/), iA = I(/أجابوا/), iG = I(/المستهدفون/), iM = I(/المتوسط|متوسط/);
+    const cell = (r, i) => (i >= 0 ? clean(r[i]) : "");
+    const by = new Map(); t.rows.forEach((r) => { const k = cell(r, iT).replace(/^مسار\s*/, ""); if (!by.has(k)) by.set(k, []); by.get(k).push(r); });
+    const c = state.imp, lines = ["*ملخص قياس الأثر*", "الفترة: " + (c.from || "…") + " إلى " + (c.to || ui.todayISO())];
+    if ((c.stages || []).length) lines.push("المرحلة: " + c.stages.join("، "));
+    by.forEach((rows, k) => { lines.push("", "*" + k + "*"); rows.forEach((r) => lines.push("• " + (cell(r, iK) || "—") + ": استجابة " + cell(r, iR) + (iA >= 0 && iG >= 0 ? " (" + cell(r, iA) + " من " + cell(r, iG) + ")" : "") + (iM >= 0 && cell(r, iM) ? "، متوسط " + cell(r, iM) : ""))); });
+    return lines.join("\n");
   }
   async function exportImp() {
     if (Object.keys(state.imp.outs).length > 1) return exportImpZip();
@@ -2806,6 +2845,9 @@
         } else if (act === "run-imp" || act === "imp-apply") { return runImpact();
         } else if (act === "gtoggle") { const k = t.dataset.gk; state.gopen = state.gopen === k ? "" : k; render(); return;
         } else if (act === "gclear") { scopeClear(); render(); return;
+        } else if (act === "imp-snap-save") { impSnapSave(); render(); return;
+        } else if (act === "imp-snap-del") { lsSet(IMP_SNAP_KEY, impSnaps().filter((x) => x.id !== state.imp.cmpWith)); state.imp.cmpWith = ""; render(); return;
+        } else if (act === "imp-copy-wa") { try { await navigator.clipboard.writeText(impWaText()); ui.toast("نُسخ ملخص قياس الأثر؛ الصقه في واتساب"); } catch (err) { ui.toast("تعذّر النسخ"); } return;
         } else if (act === "load-groups") { return loadGroups();
         } else if (act === "export-imp") { return exportImp();
         } else if (act === "grp-compliance") { return runCompliance();
