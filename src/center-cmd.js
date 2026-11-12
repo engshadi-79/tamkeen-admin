@@ -1332,7 +1332,7 @@
         if (hasCache && plan.every((x) => localList(x))) return 0;
         return plan.length;
       }
-      if (act === "run-imp" || act === "imp-apply") { const c = state.imp, np = c.pages.length || 1, cv = impCourseVariants(c.known); return cv ? np * Math.max(1, cv.list.length) : np + ((c.stages || []).length ? 1 : 0); }
+      if (act === "run-imp" || act === "imp-apply") { const c = state.imp, cv = impCourseVariants(c.known), tv = impTrackVariants(c.known); let n = 0; (c.pages.length ? c.pages : ["impact"]).forEach((pg) => { n += cv ? Math.max(1, cv.list.length) : pg === "questions" && tv ? Math.max(1, tv.list.length) : 1; }); return n + ((c.stages || []).length && !cv || c.pages.includes("questions") && !tv ? 1 : 0); }
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
       if (act === "run-dq") return hasCache ? 0 : T(state.dq.tracks);
@@ -1746,11 +1746,11 @@
   const IMP_PATH = { impact: "summary", "pre-post": "pre-post", "impact-m": "impact", questions: "questions", responses: "responses" };
   function requireAgent15() {
     const v = String((App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || "");
-    const n = v.split(".").map(Number), need = 5;
+    const n = v.split(".").map(Number), need = 6;
     const ok = n.length >= 2 && (n[0] > 1 || (n[0] === 1 && (n[1] > 5 || (n[1] === 5 && (n[2] || 0) >= need))));
     if (!ok) throw new Error(v
-      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.5) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
-      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.5 فأحدث) ولا تدعمه الجلسة المحلية.");
+      ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.6) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
+      : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.6 فأحدث) ولا تدعمه الجلسة المحلية.");
   }
   const impTrackNames = () => (state.imp.tracks || []).map((id) => { const o = trackOpts().find((x) => String(x.v) === String(id)); return o ? o.t.replace(/^مسار\s*/, "") : ""; }).filter(Boolean);
   /* الدورات التدريبية (قائمة صفحة النظام: «المرحلة الثانية - مسار …») المطابقة للمراحل والمسارات المختارة */
@@ -1761,11 +1761,18 @@
     return { name: f.name, list: f.options.filter((o) => o.v !== "" && st.includes(stageOf(o.t)) && (!tn.length || tn.some((n) => o.t.includes(n)))).map((o) => ({ v: o.v, t: o.t })) };
   }
   /* دمج نتائج عدة دورات في جداول واحدة مع عمود «الدورة التدريبية» */
-  function impMerge(parts) {
+  /* قائمة «المسار» في صفحة النظام: خيار لكل مسار مختار (أو كل المسارات إن لم تختر) */
+  function impTrackVariants(filters) {
+    const f = (filters || []).find((x) => x.type === "select" && (/^track/i.test(x.name) || /^المسار$/.test(clean(x.label || ""))));
+    if (!f) return null;
+    const tn = impTrackNames();
+    return { name: f.name, list: f.options.filter((o) => o.v !== "" && (!tn.length || tn.some((n) => o.t.includes(n)))).map((o) => ({ v: o.v, t: o.t.replace(/^مسار\s*/, "") })) };
+  }
+  function impMerge(parts, col) {
     const tables = [];
     parts.forEach(({ label, r }) => (r.tables || []).forEach((t) => {
       let m = tables.find((x) => x.title === t.title && x.heads.slice(0, -1).join("|") === t.heads.join("|"));
-      if (!m) { m = { title: t.title, heads: t.heads.concat(["الدورة التدريبية"]), rows: [] }; tables.push(m); }
+      if (!m) { m = { title: t.title, heads: t.heads.concat([col || "الدورة التدريبية"]), rows: [] }; tables.push(m); }
       t.rows.forEach((row) => m.rows.push({ cells: row.cells.concat([label]) }));
     }));
     return Object.assign({}, parts[0].r, { tables, stats: [], courses: parts.map((x) => x.label) });
@@ -1786,26 +1793,29 @@
       requireAgent15();
       const pages = c.pages.length ? c.pages.slice() : ["impact"];
       const lab = (pg) => "إحصاءات: " + ((IMP_PAGES.find((x) => x[0] === pg) || [])[1] || pg);
-      let known = c.known || [], res0 = null;
-      /* المرحلة تُفصل في النظام عبر قائمة «الدورة التدريبية»: نحتاج خياراتها (قراءة واحدة أولى إن لم تكن معروفة) */
-      if ((c.stages || []).length && !impCourseFilter(known)) {
-        res0 = await runCommands([{ type: "page", source: pages[0], label: lab(pages[0]), params: impParams() }]);
-        if (res0[0] && res0[0].type === "page") known = c.known = res0[0].filters || [];
+      let known = c.known || [];
+      const needCourse = (c.stages || []).length > 0, needTrack = pages.includes("questions");
+      /* خيارات قوائم النظام (الدورة، المسار) تُعرف بقراءة واحدة أولى إن لم تكن محفوظة */
+      if ((needCourse && !impCourseFilter(known)) || (needTrack && !(known || []).some((x) => /^track/i.test(x.name)))) {
+        const r0 = await runCommands([{ type: "page", source: pages[0], label: lab(pages[0]), params: impParams() }]);
+        if (r0[0] && r0[0].type === "page") known = c.known = r0[0].filters || [];
       }
       const cv = impCourseVariants(known);
-      if ((c.stages || []).length && impCourseFilter(known) && !(cv && cv.list.length)) throw new Error("لا توجد في النظام دورة تدريبية تطابق المراحل والمسارات المختارة.");
-      if (cv) {
-        const cmds = [];
-        pages.forEach((pg) => cv.list.forEach((o) => cmds.push({ pg, o, cmd: { type: "page", source: pg, label: lab(pg) + " — " + o.t, params: Object.assign(impParams(), { [cv.name]: o.v }) } })));
-        const rs = await runCommands(cmds.map((x) => x.cmd));
-        pages.forEach((pg) => {
-          const parts = cmds.map((x, i) => ({ x, r: rs[i] })).filter((y) => y.x.pg === pg && y.r && y.r.type === "page").map((y) => ({ label: y.x.o.t, r: y.r }));
-          if (parts.length) c.outs[pg] = Object.assign({ at: new Date(), stagesAtFetch: c.stages.slice() }, impMerge(parts));
-        });
-      } else {
-        const res = await runCommands(pages.map((pg, i) => ({ type: "page", source: pg, label: lab(pg), params: impParams() })));
-        pages.forEach((pg, i) => { const r = res[i]; if (r && r.type === "page") c.outs[pg] = Object.assign({ at: new Date() }, r); });
-      }
+      if (needCourse && impCourseFilter(known) && !(cv && cv.list.length)) throw new Error("لا توجد في النظام دورة تدريبية تطابق المراحل والمسارات المختارة.");
+      const varsFor = (pg) => {
+        if (cv) return { col: "الدورة التدريبية", name: cv.name, list: cv.list };
+        const tv = pg === "questions" ? impTrackVariants(known) : null;
+        return tv && tv.list.length ? { col: "المسار", name: tv.name, list: tv.list } : null;
+      };
+      const cmds = [];
+      pages.forEach((pg) => { const v = varsFor(pg); if (v) v.list.forEach((o) => cmds.push({ pg, col: v.col, o, cmd: { type: "page", source: pg, label: lab(pg) + " — " + o.t, params: Object.assign(impParams(), { [v.name]: o.v }) } })); else cmds.push({ pg, cmd: { type: "page", source: pg, label: lab(pg), params: impParams() } }); });
+      const rs = await runCommands(cmds.map((x) => x.cmd));
+      pages.forEach((pg) => {
+        const mine = cmds.map((x, i) => ({ x, r: rs[i] })).filter((y) => y.x.pg === pg && y.r && y.r.type === "page");
+        if (!mine.length) return;
+        if (mine[0].x.o) c.outs[pg] = Object.assign({ at: new Date(), stagesAtFetch: c.stages.slice() }, impMerge(mine.map((y) => ({ label: y.x.o.t, r: y.r })), mine[0].x.col));
+        else c.outs[pg] = Object.assign({ at: new Date() }, mine[0].r);
+      });
       if (!Object.keys(c.outs).length) throw new Error("لم يصل التقرير من الوكيل.");
       c.view = pages.find((pg) => c.outs[pg]);
       c.known = (c.outs[c.view].filters || []).length ? c.outs[c.view].filters : known;
@@ -1855,7 +1865,7 @@
       ${tabs.map((t) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)} صفاً</span></div></header>
         ${t.noTrack || t.noStage ? `<p class="cc-alert warn">لا أجد في هذا الجدول ما يدل على ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"} (لا عمود ولا نص في الصفوف ولا في عنوانه «${esc(t.title)}»)، فلا يمكن تصفيته وهو يظهر كاملاً.</p>` : ""}
         ${t.rows.length ? dataTable("imp-" + t.i, t.heads, t.rows) : '<p class="cc-note">لا صفوف مطابقة للتصفية.</p>'}</article>`).join("")}
-      ${(o.courses || []).length ? `<p class="cc-note">دُمجت ${ui.fmt(o.courses.length)} دورة من صفحة النظام (مضاف عمود «الدورة التدريبية»): ${o.courses.map(esc).join("، ")}. بطاقات الأرقام العلوية لا تُدمج.</p>` : ""}
+      ${(o.courses || []).length ? `<p class="cc-note">دُمجت ${ui.fmt(o.courses.length)} قراءة من صفحة النظام (مضاف عمود «${esc(o.tables[0] && o.tables[0].heads[o.tables[0].heads.length - 1] || "الدورة التدريبية")}»): ${o.courses.map(esc).join("، ")}. بطاقات الأرقام العلوية لا تُدمج.</p>` : ""}
       ${(o.stagesAtFetch && o.stagesAtFetch.join() !== (state.imp.stages || []).join()) ? '<p class="cc-alert warn" role="alert">غيّرتَ المراحل بعد الجلب؛ اضغط «اجلب الإحصاءات» ليُقرأ ما يطابق اختيارك الجديد.</p>' : ""}
       ${impServerFilters(o)}
       ${(o.filters || []).length ? `<details class="cc-adv" ${(state.imp.stages || []).length && tabs.some((t) => t.noStage) ? "open" : ""}><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}

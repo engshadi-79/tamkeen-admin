@@ -154,6 +154,14 @@ http.createServer((req, res) => {
     const Q = rq.results && rq.results[0];
     const hq = JSON.parse(await (await fetch("http://localhost:4197/__hits")).text()).filter((x) => /pre-post/.test(x));
     step("قبلي/بعدي: التصفية الافتراضية (مرحلة) تُوسَّع إلى الكل", Q && Q.params && Q.params.stage === "" && (Q.widened || []).length === 2 && Q.filters.some((f) => f.name === "stages[]" && f.type === "checkbox" && f.options.length === 3) && (Q.params["stages[]"] || []).length === 0 && hq.length >= 2, JSON.stringify({ params: Q && Q.params, widened: Q && Q.widened, hq }));
+    // إحصائيات الأسئلة: بطاقة لكل سؤال تُحلَّل إلى صفوف
+    await stub.c.eval(`window.__out = null; window.__err = null;
+      App.centerAgent.run([{type:'page',source:'questions',label:'أسئلة',params:{track_id:'2'}}], {})
+        .then((d) => { window.__out = d; }).catch((e) => { window.__err = e.message; }); 1`);
+    await waitFor(() => stub.c.eval("!!window.__out || !!window.__err"), 40000, "قراءة صفحة الأسئلة");
+    const rqs = JSON.parse(await stub.c.eval("JSON.stringify(window.__out || {err: window.__err})"));
+    const QT = rqs.results && rqs.results[0] && rqs.results[0].tables && rqs.results[0].tables[0];
+    step("إحصائيات الأسئلة: سؤالان بنصهما ونموذجهما وعدد الإجابات والمتوسط والتوزيع", QT && QT.rows.length === 2 && QT.rows[0].cells[0].includes("قصات الشعر") && /التسويق الرقمي - قبلي/.test(QT.rows[0].cells[1]) && QT.rows[0].cells[2] === "مقياس 1-5" && QT.rows[0].cells[3] === "105" && QT.rows[0].cells[4] === "2.91" && QT.rows[0].cells.slice(5, 10).join() === "13,18,46,21,7", JSON.stringify(QT && QT.rows));
     // قائمة بكل البيانات: الأعمدة تتجاوز أعمدة الجدول إلى حقول نموذج التعديل
     await stub.c.eval(`window.__out = null; window.__err = null; window.__ev = [];
       App.centerAgent.run([{type:'list',label:'d',params:{track_id:'2',per_page:'3'},details:true}], { onProgress: (t) => window.__ev.push(t) })
