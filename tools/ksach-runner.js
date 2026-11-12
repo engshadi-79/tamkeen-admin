@@ -291,7 +291,18 @@
     const h = headingBase(el), p = paneLabel(el);
     return [p, h].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(" — ").slice(0, 160);
   };
-  const headingBase = (el) => {
+  /* أقرب نص يسبق العنصر في الصفحة (مثل نص السؤال فوق بطاقة أرقامه)، صعوداً عبر الحاويات */
+  const prevText = (el, max) => {
+    for (let n = el, d = 0; n && n.parentElement && d < 6; n = n.parentElement, d++) {
+      for (let q = n.previousElementSibling, i = 0; q && i < 3; q = q.previousElementSibling, i++) {
+        const t = clean(q.textContent);
+        if (t && t.length >= 4 && t.length <= max && /[^\d\s.,%]/.test(t) && !q.querySelector("table, form, select, input")) return t;
+      }
+    }
+    return "";
+  };
+  const headingBase = (el, max) => {
+    max = max || 120;
     const cap = el.querySelector("caption");
     if (cap && clean(cap.textContent)) return clean(cap.textContent).slice(0, 120);
     const card = el.closest(".card, section, .box, .panel");
@@ -302,7 +313,7 @@
     for (let n = el, d = 0; n && n.parentElement && d < 5; n = n.parentElement, d++) {
       for (let q = n.previousElementSibling, i = 0; q && i < 3; q = q.previousElementSibling, i++) {
         const t = clean(q.textContent);
-        if (t && t.length <= 120 && !q.querySelector("table, form, select, input")) return t;
+        if (t && t.length <= max && !q.querySelector("table, form, select, input")) return t;
       }
     }
     return "";
@@ -389,7 +400,7 @@
       body.querySelectorAll(".card, .panel, .box, [class*='question']").forEach((el) => {
         if (el.querySelector(".card, .panel, .box")) return;
         const h = el.querySelector(".card-header, .card-title, .box-title, h1, h2, h3, h4, h5, h6, b, strong");
-        const title = h ? clean(h.textContent).slice(0, 160) : "";
+        const title = (h ? clean(h.textContent).slice(0, 300) : "") || prevText(el, 500);
         const txt = clean(el.textContent).replace(title, "").trim();
         if ((title || txt) && (title + txt).length > 3) rows.push({ cells: [title, txt.slice(0, 500)] });
       });
