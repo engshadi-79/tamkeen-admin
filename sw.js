@@ -1,12 +1,13 @@
 /* عامل الخدمة: يخزّن ملفات الأداة نفسها حتى تفتح بسرعة وعند ضعف الإنترنت.
    البيانات لا تُخزَّن هنا؛ فهي في المتصفح وفي خادم المركز. */
-const CACHE = "tamkeen-shell-v286";
+const CACHE = "tamkeen-shell-v288";
 const SHELL = [
   "./",
   "./index.html",
   "./styles/theme.css",
   "./styles/executive.css",
   "./styles/center.css",
+  "./styles/center-clean.css",
   "./manifest.webmanifest",
   "./assets/letterhead/page.jpg",
   "./assets/logo.png",
