@@ -18,6 +18,7 @@ async function suite() {
     run: async (cmds, opts) => {
       const res = cmds.map((cm) => {
         calls.push((cm.source || cm.type) + (cm.params && cm.params.status ? ":" + cm.params.status : ""));
+        calls.last = cm.params;
         if (cm.type === "page") return { type: "page", source: cm.source, label: cm.label, params: cm.params, stats: [{ label: "إرسالاً", value: "137" }], filters: [{ name: "status", label: "الحالة", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "completed", t: "مكتمل" }] }],
           tables: [{ title: "حسب المسار والمرحلة", heads: ["المسار", "المرحلة", "عدد الإرسالات"], rows: [{ cells: ["الحلاقة الرجالية", "الأولى", "40"] }, { cells: ["الحلاقة الرجالية", "الثانية", "30"] }, { cells: ["التجميل النسائي - كوافير", "الثانية", "55"] }, { cells: ["التطريز والخياطة", "الثالثة", "12"] }] },
                    { title: "حسب الحالة", heads: ["الحالة", "العدد"], rows: [{ cells: ["مكتمل", "100"] }, { cells: ["جزئي", "37"] }] }], text: "" };
@@ -217,6 +218,14 @@ async function suite() {
   b.querySelector('[data-cc="export-imp"]').click(); for (let i = 0; i < 60 && !capZ; i++) await wait(150); App.ui.download = odZ;
   const zz = capZ && await JSZip.loadAsync(await capZ.blob.arrayBuffer());
   ok("التنزيل ملف zip فيه ملف Excel لكل تقرير", !!zz && /\.zip$/.test(capZ.n) && Object.keys(zz.files).length === 2 && Object.keys(zz.files).every((n) => /\.xlsx$/.test(n)), capZ && capZ.n + " " + (zz ? Object.keys(zz.files).join("|") : ""));
+  // ربط المرحلة المختارة بقائمة في صفحة النظام تذكر المراحل
+  c.state.imp.known = [{ name: "stages[]", label: "المراحل", type: "checkbox", value: ["1"], options: [{ v: "1", t: "المرحلة الأولى" }, { v: "2", t: "المرحلة الثانية" }, { v: "3", t: "المرحلة الثالثة" }] }];
+  c.state.imp.stages = ["المرحلة الثانية"]; c.state.imp.srv = {};
+  c.state.imp.pages = ["impact"]; c.state.imp.outs = {}; c.render();
+  calls.length = 0; calls.last = null; b.querySelector('[data-cc="run-imp"]').click();
+  for (let i = 0; i < 60 && !calls.last; i++) await wait(200); await wait(300);
+  ok("المرحلة المختارة تُترجم إلى معامل صفحة النظام (stages[]=2)", !!calls.last && JSON.stringify(calls.last["stages[]"]) === '["2"]', JSON.stringify(calls.last));
+  c.state.imp.stages = []; c.state.imp.known = [];
   c.state.imp.pages = ["impact"]; c.state.imp.outs = {};
   c.state.imp.page = "impact";
   c.state.imp.tracks = []; c.state.imp.stages = []; c.state.imp.out = null;

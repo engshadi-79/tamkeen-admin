@@ -34,7 +34,7 @@
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
-    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
+    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1752,10 +1752,25 @@
       ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.3) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
       : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.3 فأحدث) ولا تدعمه الجلسة المحلية.");
   }
+  /* ربط المراحل المختارة بقوائم صفحة النظام التي خياراتها تذكر المرحلة (مثل دورة/مرحلة/مجموعة) */
+  function impStageMap(filters) {
+    const st = state.imp.stages || [];
+    if (!st.length) return [];
+    const out = [];
+    (filters || []).forEach((f) => {
+      if (!f.name || /^date_(from|to)$/.test(f.name) || !(f.type === "select" || f.type === "checkbox")) return;
+      const pick = (f.options || []).filter((o) => o.v !== "" && st.includes(stageOf(o.t))).map((o) => o.v);
+      if (!pick.length) return;
+      if (f.type === "select" && st.length > 1) return;       // قائمة منسدلة تقبل قيمة واحدة فقط
+      out.push({ name: f.name, label: f.label, type: f.type, value: f.type === "select" ? pick[0] : pick });
+    });
+    return out;
+  }
   const impParams = () => {
     const c = state.imp, p = {};
     if (c.from) p.date_from = c.from;
     p.date_to = c.to || ui.todayISO();
+    impStageMap(c.known).forEach((m) => { if (!(m.name in (c.srv || {}))) p[m.name] = m.value; });
     Object.keys(c.srv || {}).forEach((k) => { if (/^[A-Za-z_][\w\[\]]*$/.test(k) && c.srv[k] !== "" && !(Array.isArray(c.srv[k]) && !c.srv[k].length) && !/^date_(from|to)$/.test(k)) p[k] = c.srv[k]; });
     String(c.extra || "").split(/[&\n]+/).map((x) => x.trim()).filter(Boolean).forEach((kv) => { const [k, ...v] = kv.split("="); if (/^[a-z_][a-z0-9_]*(\[\])?$/i.test(k.trim())) p[k.trim()] = v.join("=").trim(); });
     return p;
@@ -1771,6 +1786,7 @@
       pages.forEach((pg, i) => { const r = res[i]; if (r && r.type === "page") c.outs[pg] = Object.assign({ at: new Date() }, r); });
       if (!Object.keys(c.outs).length) { const r0 = res[0]; throw new Error((r0 && r0.error) || "لم يصل التقرير من الوكيل."); }
       c.view = pages.find((pg) => c.outs[pg]);
+      c.known = (c.outs[c.view].filters || []);
       c.out = c.outs[c.view];
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
@@ -1817,8 +1833,12 @@
       ${tabs.map((t) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)} صفاً</span></div></header>
         ${t.noTrack || t.noStage ? `<p class="cc-alert warn">لا أجد في هذا الجدول ما يدل على ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"} (لا عمود ولا نص في الصفوف ولا في عنوانه «${esc(t.title)}»)، فلا يمكن تصفيته وهو يظهر كاملاً.</p>` : ""}
         ${t.rows.length ? dataTable("imp-" + t.i, t.heads, t.rows) : '<p class="cc-note">لا صفوف مطابقة للتصفية.</p>'}</article>`).join("")}
+      ${(() => { const st = state.imp.stages || []; if (!st.length || !tabs.some((t) => t.noStage)) return ""; const mp = impStageMap(o.filters); const done = mp.length && mp.every((m) => JSON.stringify(o.params && o.params[m.name]) === JSON.stringify(m.value));
+        return done ? `<p class="cc-note">المرحلة مطبَّقة من صفحة النظام نفسها (${mp.map((m) => esc(m.label)).join("، ")}).</p>`
+          : mp.length ? `<div class="cc-alert warn" role="alert"><span>صفوف هذا التقرير لا تذكر المرحلة، لكن صفحة النظام فيها «${mp.map((m) => esc(m.label)).join("، ")}» تفصلها. اضغط لإعادة الجلب بالمرحلة المختارة.</span><button type="button" class="btn navy small" data-cc="imp-apply" ${state.busy ? "disabled" : ""}>طبّق المرحلة من النظام</button></div>`
+          : `<div class="cc-alert warn" role="alert">هذا التقرير لا يفصل المراحل: صفوفه بلا مرحلة، وصفحة النظام لا تقدّم قائمة تذكر المراحل (انظر «قوائم التصفية في صفحة النظام» أدناه)، فأرقامه لكل المراحل معاً ولا يمكن حصر المرحلة هنا.</div>`; })()}
       ${impServerFilters(o)}
-      ${(o.filters || []).length ? `<details class="cc-adv"><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}
+      ${(o.filters || []).length ? `<details class="cc-adv" ${(state.imp.stages || []).length && tabs.some((t) => t.noStage) ? "open" : ""}><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}
       <p class="cc-note">قُرئت ${esc(new Date(o.at).toLocaleString("ar"))}. التصفية هنا محلية في صفحتك، فلا تُرسل شيئاً إلى النظام.</p></section>`;
   }
   async function impWorkbook(tabs) {
