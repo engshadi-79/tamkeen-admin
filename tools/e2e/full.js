@@ -153,7 +153,7 @@ http.createServer((req, res) => {
     const rq = JSON.parse(await stub.c.eval("JSON.stringify(window.__out || {err: window.__err})"));
     const Q = rq.results && rq.results[0];
     const hq = JSON.parse(await (await fetch("http://localhost:4197/__hits")).text()).filter((x) => /pre-post/.test(x));
-    step("قبلي/بعدي: التصفية الافتراضية (مرحلة) تُوسَّع إلى الكل", Q && Q.params && Q.params.stage === "" && (Q.widened || []).length === 1 && hq.length >= 2, JSON.stringify({ params: Q && Q.params, widened: Q && Q.widened, hq }));
+    step("قبلي/بعدي: التصفية الافتراضية (مرحلة) تُوسَّع إلى الكل", Q && Q.params && Q.params.stage === "" && (Q.widened || []).length === 2 && Q.filters.some((f) => f.name === "stages[]" && f.type === "checkbox" && f.options.length === 3) && (Q.params["stages[]"] || []).length === 0 && hq.length >= 2, JSON.stringify({ params: Q && Q.params, widened: Q && Q.widened, hq }));
     // قائمة بكل البيانات: الأعمدة تتجاوز أعمدة الجدول إلى حقول نموذج التعديل
     await stub.c.eval(`window.__out = null; window.__err = null; window.__ev = [];
       App.centerAgent.run([{type:'list',label:'d',params:{track_id:'2',per_page:'3'},details:true}], { onProgress: (t) => window.__ev.push(t) })
