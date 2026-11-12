@@ -1,0 +1,16 @@
+/* أوامر المركز: شريط تبويبات أفقي أنظف وشريط نطاق مدمج */
+html:root:root .cc-modes { display: flex; flex-wrap: wrap; grid-template-columns: none; gap: 2px; padding: 5px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+html:root:root .cc-modes button { display: block; flex: 0 0 auto; padding: 9px 15px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font: inherit; cursor: pointer; white-space: nowrap; transition: background .12s, color .12s; }
+html:root:root .cc-modes button b { font-size: .95rem; font-weight: 600; }
+html:root:root .cc-modes button:hover { background: rgba(15, 118, 110, .08); color: var(--ink); }
+html:root:root .cc-modes button.on { background: var(--navy); color: #fff; }
+html:root:root .cc-modes button:focus-visible { outline: 2px solid #0f766e; outline-offset: 1px; }
+.cc-modes .cc-sep { flex: 0 0 1px; width: 1px; margin: 7px 6px; background: var(--line); }
+.cc-gbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; padding: 8px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.cc-gl { color: var(--muted); font-size: .82rem; }
+.cc-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--ink); font: inherit; font-size: .9rem; cursor: pointer; }
+.cc-pill b { font-weight: 600; }
+.cc-pill.on { background: rgba(15, 118, 110, .12); border-color: #0f766e; color: #0b5d56; }
+.cc-link { border: 0; background: none; color: #0f766e; font: inherit; font-size: .85rem; cursor: pointer; padding: 4px 6px; }
+.cc-gpanel { flex: 1 0 100%; padding-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+@media (max-width: 640px) { html:root:root .cc-modes button { padding: 8px 11px; } }

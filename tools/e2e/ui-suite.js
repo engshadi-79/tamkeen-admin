@@ -242,7 +242,7 @@ async function suite() {
   c.state.imp.hideZero = true; c.state.imp.out = null;
   // تصفية المجموعة تسري على كل التقارير
   DATA = [mk("طالب أ", "41", "059", "1", S2, "G1 - "), mk("طالب ب", "42", "059", "2", S2, "G2 - ")]; PARTIAL = false;
-  c.state.groups = ["G1"]; c.state.results = null; c.state.mode = "report"; c.state.sel = { tracks: ["1"], stages: [], status: "", group_status: "", details: false, extra: {} }; c.render();
+  c.state.gopen = true; c.state.groups = ["G1"]; c.state.results = null; c.state.mode = "report"; c.state.sel = { tracks: ["1"], stages: [], status: "", group_status: "", details: false, extra: {} }; c.render();
   ok("شريط المجموعات ظاهر في التقارير", !!b.querySelector("[data-gf]") || /تظهر المجموعات بعد/.test(b.textContent), "bar");
   b.querySelector('[data-cc="run-selection"]').click();
   for (let i = 0; i < 60 && !c.state.results; i++) await wait(200); await wait(300);
@@ -250,7 +250,7 @@ async function suite() {
   ok("المجموعة G1 وحدها: طالب واحد من اثنين", !!gr && gr.rows.length === 1, gr && JSON.stringify(gr.rows.map((x) => x.cells[2])));
   c.state.groups = []; c.state.results = null;
   // قائمة المجموعات: قراءة واحدة بضغطة، وتُحفظ فتظهر مربعات
-  localStorage.removeItem("tamkeen_cc_group_list"); c.state.imp.known = []; c.state.cache = null; c.state.mode = "report"; c.render();
+  c.state.gopen = true; localStorage.removeItem("tamkeen_cc_group_list"); c.state.imp.known = []; c.state.cache = null; c.state.mode = "report"; c.render();
   ok("بلا مجموعات محفوظة: زر التحميل ظاهر", !!b.querySelector('[data-cc="load-groups"]') && b.querySelectorAll("[data-gf]").length === 0, b.querySelectorAll("[data-gf]").length);
   calls.length = 0; b.querySelector('[data-cc="load-groups"]').click();
   for (let i = 0; i < 60 && b.querySelectorAll("[data-gf]").length === 0; i++) await wait(200); await wait(200);

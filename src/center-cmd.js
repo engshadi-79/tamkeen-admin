@@ -38,7 +38,7 @@
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
-    groups: [], wide: null, wideOk: false, wideLimit: 0, saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
+    groups: [], gopen: false, wide: null, wideOk: false, wideLimit: 0, saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false, sec: false, errs: false, wa: false }, // حالة الأقسام القابلة للطي
     extraNote: "",
@@ -2410,17 +2410,7 @@
       ${weeklyBanner()}
       ${wideBanner()}
       ${newsCard()}
-      <nav class="cc-modes" role="tablist" aria-label="نوع الأمر">
-        <button type="button" role="tab" class="${mode === "report" ? "on" : ""}" aria-selected="${mode === "report"}" data-cc="mode" data-m="report"><b>تقرير جاهز</b><small>اختر المسار والمرحلة ثم نفّذ</small></button>
-        <button type="button" role="tab" class="${mode === "compare" ? "on" : ""}" aria-selected="${mode === "compare"}" data-cc="mode" data-m="compare"><b>مقارنة المراحل</b><small>من سجّل في أكثر من مرحلة</small></button>
-        <button type="button" role="tab" class="${mode === "siblings" ? "on" : ""}" aria-selected="${mode === "siblings"}" data-cc="mode" data-m="siblings"><b>مقارنة الإخوة</b><small>طلاب يجمعهم هاتف أو عائلة</small></button>
-        <button type="button" role="tab" class="${mode === "missing" ? "on" : ""}" aria-selected="${mode === "missing"}" data-cc="mode" data-m="missing"><b>استبيانات وتعهدات</b><small>من لم يعبّئ أو يوقّع</small></button>
-        <button type="button" role="tab" class="${mode === "impact" ? "on" : ""}" aria-selected="${mode === "impact"}" data-cc="mode" data-m="impact"><b>قياس الأثر</b><small>إحصاءات الاستبيان بتصفية المسار والمرحلة</small></button>
-        <button type="button" role="tab" class="${mode === "dq" ? "on" : ""}" aria-selected="${mode === "dq"}" data-cc="mode" data-m="dq"><b>فحص البيانات</b><small>أخطاء الجودة وتغيّر القوائم</small></button>
-        <button type="button" role="tab" class="${mode === "groups" ? "on" : ""}" aria-selected="${mode === "groups"}" data-cc="mode" data-m="groups"><b>المجموعات والمدربون</b><small>التوازن، حمل المدربين، التوزيع</small></button>
-        <button type="button" role="tab" class="${mode === "student" ? "on" : ""}" aria-selected="${mode === "student"}" data-cc="mode" data-m="student"><b>ملف الطالب</b><small>كل شيء عن طالب واحد</small></button>
-        <button type="button" role="tab" class="${mode === "ask" ? "on" : ""}" aria-selected="${mode === "ask"}" data-cc="mode" data-m="ask"><b>اكتب طلبك</b><small>بحث، أو تسجيل طلاب من Excel</small></button>
-      </nav>
+      ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
       ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
@@ -2498,11 +2488,22 @@
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
   }
+  /* شريط التبويبات الأفقي: عناوين قصيرة في صف واحد مجمّعة، والشرح في التلميح */
+  const MODE_GROUPS = [
+    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
+    [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
+    [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
+  ];
+  const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" title="${esc(h)}"><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
   function groupBar() {
     const opts = groupOptions(), on = state.groups || [];
-    return `<fieldset class="cc-fs cc-gfilter"><legend>المجموعات (تُطبَّق على كل التقارير)${on.length ? ` <em>${ui.fmt(on.length)}</em>` : ""}</legend>
-      ${opts.length ? `<div class="cc-chips">${opts.map((g) => `<label class="cc-chk"><input type="checkbox" data-gf value="${esc(g)}" ${on.includes(g) ? "checked" : ""}> <span>${esc(g)}</span></label>`).join("")}</div>` : '<p class="cc-note">لا مجموعات محفوظة بعد. اضغط «حمّل قائمة المجموعات» (قراءة واحدة) فتُحفظ هنا وتظهر في كل زيارة.</p>'}
-      <div class="cc-row"><button type="button" class="btn secondary small" data-cc="load-groups" ${state.busy ? "disabled" : ""}>${opts.length ? "حدّث قائمة المجموعات" : "حمّل قائمة المجموعات"}</button><span class="cc-note">اتركها فارغة لتشمل كل المجموعات. في «قياس الأثر» تُقرأ كل مجموعة مختارة على حدة من صفحة النظام، ولا تُدمج معها المرحلة.</span></div></fieldset>`;
+    const sum = on.length ? on.slice(0, 3).join("، ") + (on.length > 3 ? " +" + (on.length - 3) : "") : "الكل";
+    const panel = state.gopen ? `<div class="cc-gpanel">
+        ${opts.length ? `<div class="cc-chips">${opts.map((g) => `<label class="cc-chk"><input type="checkbox" data-gf value="${esc(g)}" ${on.includes(g) ? "checked" : ""}> <span>${esc(g)}</span></label>`).join("")}</div>` : '<p class="cc-note">لا مجموعات محفوظة بعد. اضغط «حمّل قائمة المجموعات» (قراءة واحدة) فتُحفظ وتظهر في كل زيارة.</p>'}
+        <div class="cc-row"><button type="button" class="btn secondary small" data-cc="load-groups" ${state.busy ? "disabled" : ""}>${opts.length ? "حدّث قائمة المجموعات" : "حمّل قائمة المجموعات"}</button><span class="cc-note">تُطبَّق على كل التقارير. اتركها فارغة لتشمل الكل. في «قياس الأثر» تُقرأ كل مجموعة على حدة من صفحة النظام.</span></div></div>` : "";
+    return `<div class="cc-gbar"><span class="cc-gl">النطاق</span>
+      <button type="button" class="cc-pill ${on.length ? "on" : ""}" data-cc="gtoggle" aria-expanded="${!!state.gopen}">المجموعات: <b>${esc(sum)}</b> <span aria-hidden="true">${state.gopen ? "▴" : "▾"}</span></button>
+      ${on.length ? '<button type="button" class="cc-link" data-cc="gclear">مسح</button>' : ""}${panel}</div>`;
   }
   let runStats = { sent: 0, cached: 0 };
   /* قوائم الطلاب (بلا مصدر خاص) تُحسب من الذاكرة المحمّلة إن كفت، فلا تُرسَل إلى النظام */
@@ -2764,6 +2765,8 @@
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
         } else if (act === "run-imp" || act === "imp-apply") { return runImpact();
+        } else if (act === "gtoggle") { state.gopen = !state.gopen; render(); return;
+        } else if (act === "gclear") { state.groups = []; render(); return;
         } else if (act === "load-groups") { return loadGroups();
         } else if (act === "export-imp") { return exportImp();
         } else if (act === "grp-compliance") { return runCompliance();
