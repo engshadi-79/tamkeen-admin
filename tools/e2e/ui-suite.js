@@ -334,6 +334,15 @@ async function suite() {
   const blocked = !b.querySelector(".cc-modes"); App.cloud.user = () => ({ name: "مدير", admin: true }); c.render();
   const allowed = !!b.querySelector(".cc-modes"); delete st.centerAdminOnly; App.cloud.user = ou;
   ok("حصر التبويب بالمدير", blocked && allowed);
+  // «تنزيل الكل»: ملف Excel لكل مسار داخل ملف مضغوط واحد
+  c.state.mode = "report"; c.state.labels = ["مسار الحلاقة الرجالية", "مسار التسويق الرقمي"];
+  c.state.results = { results: [{ type: "list", heads: ["الاسم", "المجموعة"], rows: [{ cells: ["أ", "G1"] }] }, { type: "list", heads: ["الاسم", "المجموعة"], rows: [{ cells: ["ب", "G2"] }, { cells: ["ج", "G2"] }] }] }; c.render();
+  let capA = null; const odA = App.ui.download; App.ui.download = (n, blob) => { capA = { n, blob }; };
+  b.querySelector('[data-cc="export-all"]').click(); for (let i = 0; i < 60 && !capA; i++) await wait(150); App.ui.download = odA;
+  const za = capA && await JSZip.loadAsync(await capA.blob.arrayBuffer());
+  const namesA = za ? Object.keys(za.files).sort() : [];
+  ok("تنزيل الكل: zip فيه ملف Excel لكل مسار", !!capA && /\.zip$/.test(capA.n) && namesA.length === 2 && namesA.includes("الحلاقة الرجالية.xlsx") && namesA.includes("التسويق الرقمي.xlsx"), JSON.stringify(namesA));
+  c.state.results = null;
   ok("جدول الاختبارات يقبل بيانات المركز", typeof (App.examSheet || {}).useData === "function");
 
   return R;

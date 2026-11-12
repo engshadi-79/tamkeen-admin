@@ -610,7 +610,7 @@
     const dnote = (d) => d && d.error ? `<p class="cc-alert warn">${esc(d.error)}</p>` : d ? `<p class="cc-note">بيانات كاملة لـ${ui.fmt(d.read)} من ${ui.fmt(d.of)}${d.capped ? " (الحد الأقصى للقراءة الكاملة؛ قسّم الطلب)" : ""}.</p>` : "";
     const lists = res.results.filter((r) => r.type === "list");
     const total = lists.reduce((a, r) => a + visibleRows(r).length, 0);
-    const head = lists.length ? `<div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(total)}</b> صفاً</span><span class="cc-stat"><b>${ui.fmt(lists.length)}</b> ${lists.length === 1 ? "جدول" : "جداول"}</span>${lists.length > 1 ? '<button type="button" class="btn secondary small" data-cc="export-all">تنزيل الكل في ملف واحد</button>' : ""}</div>` : "";
+    const head = lists.length ? `<div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(total)}</b> صفاً</span><span class="cc-stat"><b>${ui.fmt(lists.length)}</b> ${lists.length === 1 ? "جدول" : "جداول"}</span>${lists.length > 1 ? '<button type="button" class="btn secondary small" data-cc="export-all" title="ملف Excel لكل مسار، مجمّعة في ملف مضغوط واحد">تنزيل الكل (ملف Excel لكل مسار في ملف مضغوط)</button>' : ""}</div>` : "";
     const tools = colsBar() + formsCard();
     const body = res.results.map((r, i) => {
       if (r.type === "pending") return `<article class="cc-res"><p class="cc-note">⏳ قيد التنفيذ… ${esc(state.labels[i] || "أمر " + (i + 1))}</p></article>`;
@@ -2728,18 +2728,20 @@
           const r = state.results.results[i];
           return exportBook((state.labels[i] || "قائمة الطلاب").replace(/[\\/:*?"<>|]/g, " ").slice(0, 80) + ".xlsx", ...shown(r.heads, visibleRows(r).map((x) => x.cells)));
         } else if (act === "export-all") {
-          const wb = new ExcelJS.Workbook();
-          const used = new Set();
-          state.results.results.forEach((r, k) => {
-            if (r.type !== "list") return;
-            let name = (state.labels[k] || "قائمة " + (k + 1)).replace(/^مسار\s*/, "").replace(/[\\/?*[\]:]/g, " ").slice(0, 28).trim() || "ورقة";
-            while (used.has(name)) name = name.slice(0, 26) + " " + (used.size + 1);
+          /* ملف Excel مستقل لكل مسار/قائمة، مجمّعة في ملف مضغوط واحد */
+          const zip = new JSZip(), used = new Set();
+          for (const [k, r] of state.results.results.entries()) {
+            if (r.type !== "list") continue;
+            let name = (state.labels[k] || "قائمة " + (k + 1)).replace(/^مسار\s*/, "").replace(/[\/:*?"<>|]/g, " ").trim().slice(0, 80) || "قائمة";
+            const base = name; let n = 2; while (used.has(name)) name = base + " " + (n++);
             used.add(name);
-            const ws = wb.addWorksheet(name);
+            const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet(name.slice(0, 28).replace(/[\[\]]/g, " "));
             const [hh, rr] = shown(r.heads, visibleRows(r).map((x) => x.cells));
             fmtSheet(ws, hh, rr);
-          });
-          return ui.download("تقرير المركز.xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+            zip.file(name + ".xlsx", await wb.xlsx.writeBuffer());
+          }
+          if (!Object.keys(zip.files).length) return;
+          return ui.download("تقرير المركز " + ui.todayISO() + ".zip", await zip.generateAsync({ type: "blob" }));
         } else if (act === "run-selection") {
           const plan = buildSelection();
           state.fallbackNote = ""; state.extraNote = "";
