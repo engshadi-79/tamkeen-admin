@@ -1332,7 +1332,7 @@
         if (hasCache && plan.every((x) => localList(x))) return 0;
         return plan.length;
       }
-      if (act === "run-imp" || act === "imp-apply") return state.imp.pages.length || 1;
+      if (act === "run-imp" || act === "imp-apply") { const c = state.imp, np = c.pages.length || 1, cv = impCourseVariants(c.known); return cv ? np * Math.max(1, cv.list.length) : np + ((c.stages || []).length ? 1 : 0); }
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
       if (act === "run-dq") return hasCache ? 0 : T(state.dq.tracks);
@@ -1752,26 +1752,28 @@
       ? `إضافة «وكيل تمكين» في متصفحك قديمة (الإصدار ${v}) ولا تدعم هذا التقرير. أعد تنزيلها (الإصدار 1.5.3) من https://tamkeen-admin.vercel.app/extension/tamkeen-center-agent.zip ثم اضغط 🔄 على بطاقتها في chrome://extensions وأعد المحاولة.`
       : "هذا التقرير يعمل عبر إضافة «وكيل تمكين» (الإصدار 1.5.3 فأحدث) ولا تدعمه الجلسة المحلية.");
   }
-  /* ربط المراحل المختارة بقوائم صفحة النظام التي خياراتها تذكر المرحلة (مثل دورة/مرحلة/مجموعة) */
-  function impStageMap(filters) {
-    const st = state.imp.stages || [];
-    if (!st.length) return [];
-    const out = [];
-    (filters || []).forEach((f) => {
-      if (!f.name || /^date_(from|to)$/.test(f.name) || !(f.type === "select" || f.type === "checkbox")) return;
-      if (/group/i.test(f.name) || /مجموعة|مدرب/.test(f.label || "")) return;   // «المجموعة الثانية» ليست المرحلة الثانية
-      const pick = (f.options || []).filter((o) => o.v !== "" && st.includes(stageOf(o.t))).map((o) => o.v);
-      if (!pick.length) return;
-      if (f.type === "select" && st.length > 1) return;       // قائمة منسدلة تقبل قيمة واحدة فقط
-      out.push({ name: f.name, label: f.label, type: f.type, value: f.type === "select" ? pick[0] : pick });
-    });
-    return out;
+  const impTrackNames = () => (state.imp.tracks || []).map((id) => { const o = trackOpts().find((x) => String(x.v) === String(id)); return o ? o.t.replace(/^مسار\s*/, "") : ""; }).filter(Boolean);
+  /* الدورات التدريبية (قائمة صفحة النظام: «المرحلة الثانية - مسار …») المطابقة للمراحل والمسارات المختارة */
+  const impCourseFilter = (filters) => (filters || []).find((f) => f.type === "select" && (/course/i.test(f.name) || /دورة/.test(f.label || "")) && (f.options || []).some((o) => stageOf(o.t)));
+  function impCourseVariants(filters) {
+    const st = state.imp.stages || [], f = impCourseFilter(filters), tn = impTrackNames();
+    if (!st.length || !f) return null;
+    return { name: f.name, list: f.options.filter((o) => o.v !== "" && st.includes(stageOf(o.t)) && (!tn.length || tn.some((n) => o.t.includes(n)))).map((o) => ({ v: o.v, t: o.t })) };
+  }
+  /* دمج نتائج عدة دورات في جداول واحدة مع عمود «الدورة التدريبية» */
+  function impMerge(parts) {
+    const tables = [];
+    parts.forEach(({ label, r }) => (r.tables || []).forEach((t) => {
+      let m = tables.find((x) => x.title === t.title && x.heads.slice(0, -1).join("|") === t.heads.join("|"));
+      if (!m) { m = { title: t.title, heads: t.heads.concat(["الدورة التدريبية"]), rows: [] }; tables.push(m); }
+      t.rows.forEach((row) => m.rows.push({ cells: row.cells.concat([label]) }));
+    }));
+    return Object.assign({}, parts[0].r, { tables, stats: [], courses: parts.map((x) => x.label) });
   }
   const impParams = () => {
     const c = state.imp, p = {};
     if (c.from) p.date_from = c.from;
     p.date_to = c.to || ui.todayISO();
-    impStageMap(c.known).forEach((m) => { if (!(m.name in (c.srv || {}))) p[m.name] = m.value; });
     Object.keys(c.srv || {}).forEach((k) => { if (/^[A-Za-z_][\w\[\]]*$/.test(k) && c.srv[k] !== "" && !(Array.isArray(c.srv[k]) && !c.srv[k].length) && !/^date_(from|to)$/.test(k)) p[k] = c.srv[k]; });
     String(c.extra || "").split(/[&\n]+/).map((x) => x.trim()).filter(Boolean).forEach((kv) => { const [k, ...v] = kv.split("="); if (/^[a-z_][a-z0-9_]*(\[\])?$/i.test(k.trim())) p[k.trim()] = v.join("=").trim(); });
     return p;
@@ -1783,11 +1785,30 @@
     try {
       requireAgent15();
       const pages = c.pages.length ? c.pages.slice() : ["impact"];
-      const res = await runCommands(pages.map((pg) => ({ type: "page", source: pg, label: "إحصاءات: " + ((IMP_PAGES.find((x) => x[0] === pg) || [])[1] || pg), params: impParams() })));
-      pages.forEach((pg, i) => { const r = res[i]; if (r && r.type === "page") c.outs[pg] = Object.assign({ at: new Date() }, r); });
-      if (!Object.keys(c.outs).length) { const r0 = res[0]; throw new Error((r0 && r0.error) || "لم يصل التقرير من الوكيل."); }
+      const lab = (pg) => "إحصاءات: " + ((IMP_PAGES.find((x) => x[0] === pg) || [])[1] || pg);
+      let known = c.known || [], res0 = null;
+      /* المرحلة تُفصل في النظام عبر قائمة «الدورة التدريبية»: نحتاج خياراتها (قراءة واحدة أولى إن لم تكن معروفة) */
+      if ((c.stages || []).length && !impCourseFilter(known)) {
+        res0 = await runCommands([{ type: "page", source: pages[0], label: lab(pages[0]), params: impParams() }]);
+        if (res0[0] && res0[0].type === "page") known = c.known = res0[0].filters || [];
+      }
+      const cv = impCourseVariants(known);
+      if ((c.stages || []).length && impCourseFilter(known) && !(cv && cv.list.length)) throw new Error("لا توجد في النظام دورة تدريبية تطابق المراحل والمسارات المختارة.");
+      if (cv) {
+        const cmds = [];
+        pages.forEach((pg) => cv.list.forEach((o) => cmds.push({ pg, o, cmd: { type: "page", source: pg, label: lab(pg) + " — " + o.t, params: Object.assign(impParams(), { [cv.name]: o.v }) } })));
+        const rs = await runCommands(cmds.map((x) => x.cmd));
+        pages.forEach((pg) => {
+          const parts = cmds.map((x, i) => ({ x, r: rs[i] })).filter((y) => y.x.pg === pg && y.r && y.r.type === "page").map((y) => ({ label: y.x.o.t, r: y.r }));
+          if (parts.length) c.outs[pg] = Object.assign({ at: new Date(), stagesAtFetch: c.stages.slice() }, impMerge(parts));
+        });
+      } else {
+        const res = await runCommands(pages.map((pg, i) => ({ type: "page", source: pg, label: lab(pg), params: impParams() })));
+        pages.forEach((pg, i) => { const r = res[i]; if (r && r.type === "page") c.outs[pg] = Object.assign({ at: new Date() }, r); });
+      }
+      if (!Object.keys(c.outs).length) throw new Error("لم يصل التقرير من الوكيل.");
       c.view = pages.find((pg) => c.outs[pg]);
-      c.known = (c.outs[c.view].filters || []);
+      c.known = (c.outs[c.view].filters || []).length ? c.outs[c.view].filters : known;
       c.out = c.outs[c.view];
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
@@ -1834,10 +1855,8 @@
       ${tabs.map((t) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)} صفاً</span></div></header>
         ${t.noTrack || t.noStage ? `<p class="cc-alert warn">لا أجد في هذا الجدول ما يدل على ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"} (لا عمود ولا نص في الصفوف ولا في عنوانه «${esc(t.title)}»)، فلا يمكن تصفيته وهو يظهر كاملاً.</p>` : ""}
         ${t.rows.length ? dataTable("imp-" + t.i, t.heads, t.rows) : '<p class="cc-note">لا صفوف مطابقة للتصفية.</p>'}</article>`).join("")}
-      ${(() => { const st = state.imp.stages || []; if (!st.length || !tabs.some((t) => t.noStage)) return ""; const mp = impStageMap(o.filters); const done = mp.length && mp.every((m) => JSON.stringify(o.params && o.params[m.name]) === JSON.stringify(m.value));
-        return done ? `<p class="cc-note">المرحلة مطبَّقة من صفحة النظام نفسها (${mp.map((m) => esc(m.label)).join("، ")}).</p>`
-          : mp.length ? `<div class="cc-alert warn" role="alert"><span>صفوف هذا التقرير لا تذكر المرحلة، لكن صفحة النظام فيها «${mp.map((m) => esc(m.label)).join("، ")}» تفصلها. اضغط لإعادة الجلب بالمرحلة المختارة.</span><button type="button" class="btn navy small" data-cc="imp-apply" ${state.busy ? "disabled" : ""}>طبّق المرحلة من النظام</button></div>`
-          : `<div class="cc-alert warn" role="alert">هذا التقرير لا يفصل المراحل: صفوفه بلا مرحلة، وصفحة النظام لا تقدّم قائمة تذكر المراحل (انظر «قوائم التصفية في صفحة النظام» أدناه)، فأرقامه لكل المراحل معاً ولا يمكن حصر المرحلة هنا.</div>`; })()}
+      ${(o.courses || []).length ? `<p class="cc-note">دُمجت ${ui.fmt(o.courses.length)} دورة من صفحة النظام (مضاف عمود «الدورة التدريبية»): ${o.courses.map(esc).join("، ")}. بطاقات الأرقام العلوية لا تُدمج.</p>` : ""}
+      ${(o.stagesAtFetch && o.stagesAtFetch.join() !== (state.imp.stages || []).join()) ? '<p class="cc-alert warn" role="alert">غيّرتَ المراحل بعد الجلب؛ اضغط «اجلب الإحصاءات» ليُقرأ ما يطابق اختيارك الجديد.</p>' : ""}
       ${impServerFilters(o)}
       ${(o.filters || []).length ? `<details class="cc-adv" ${(state.imp.stages || []).length && tabs.some((t) => t.noStage) ? "open" : ""}><summary><span>قوائم التصفية في صفحة النظام</span><small>معاملات الرابط المتاحة</small></summary><div class="cc-note">${o.filters.map((x) => `<div><code dir="ltr">${esc(x.name)}</code> — ${esc(x.label)}${x.options ? ": " + x.options.slice(0, 12).map((p) => esc(p.t) + ` (<code dir="ltr">${esc(p.v)}</code>)`).join("، ") : ""}</div>`).join("")}</div></details>` : ""}
       <p class="cc-note">قُرئت ${esc(new Date(o.at).toLocaleString("ar"))}. التصفية هنا محلية في صفحتك، فلا تُرسل شيئاً إلى النظام.</p></section>`;
