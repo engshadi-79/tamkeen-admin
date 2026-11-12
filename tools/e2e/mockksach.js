@@ -100,6 +100,14 @@ http.createServer((req, res) => {
       <label><input type="checkbox" name="must_change_password" value="1" checked> إلزام</label>
       <button>حفظ</button></form>`));
   }
+  if (req.method === "GET" && url.pathname === "/admin/evaluation-impact-reports/questions") {
+    const tr = url.searchParams.get("track_id") || "";
+    const card = (q, f, n, m, d) => `<div class="card"><div class="qh"><b>${q}</b><div class="sub">${f}</div></div><div class="st"><span>عدد الإجابات: ${n}</span><span>المتوسط: ${m}</span><span>النوع: مقياس 1-5</span></div><div class="bx">${d.map((v, i) => `<div><small>${i + 1}</small><b>${v}</b></div>`).join("")}</div></div>`;
+    return send(200, layout(`<h1>ملخص أثر الاستبيانات</h1>
+      <form method="get"><select name="track_id"><option value="">الكل</option><option value="1" ${tr === "1" ? "selected" : ""}>مسار الحلاقة الرجالية</option><option value="2" ${tr === "2" ? "selected" : ""}>مسار التسويق الرقمي</option></select><input type="date" name="date_from"><button>عرض</button></form>
+      ${card("1. أعرف أنواع قصات الشعر الحديثة.", "استبانة مسار " + (tr === "2" ? "التسويق الرقمي" : "الحلاقة الرجالية") + " - قبلي", 105, "2.91", [13, 18, 46, 21, 7])}
+      ${card("أستطيع استخدام ماكينة الحلاقة بكفاءة.", "استبانة مسار " + (tr === "2" ? "التسويق الرقمي" : "الحلاقة الرجالية") + " - قبلي", 105, "2.59", [25, 23, 33, 18, 6])}`));
+  }
   if (req.method === "GET" && /^\/admin\/evaluation-impact-reports\/(summary|pre-post|impact|questions|responses)$/.test(url.pathname)) {
     const rows = [["الحلاقة الرجالية", "الأولى", "40", "8.5"], ["الحلاقة الرجالية", "الثانية", "30", "9.1"], ["التجميل النسائي - كوافير", "الثانية", "55", "7.8"], ["التطريز والخياطة", "الثالثة", "12", "9.4"]];
     const body = rows.map((r) => "<tr>" + r.map((c) => "<td>" + c + "</td>").join("") + "</tr>").join("");

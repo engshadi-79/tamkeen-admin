@@ -329,6 +329,31 @@
       return { title: headingOf(t), heads, rows };
     }).filter((t) => t.heads.length && t.rows.length);
   }
+  /* صفحة «إحصائيات الأسئلة»: بطاقة لكل سؤال (نص السؤال، النموذج، عدد الإجابات، المتوسط، النوع، وتوزيع الدرجات) */
+  function questionsOf(doc) {
+    const all = [...doc.querySelectorAll("body *")];
+    const isLeaf = (el) => /عدد الإجابات/.test(el.textContent) && ![...el.children].some((c) => /عدد الإجابات/.test(c.textContent));
+    const leaves = all.filter(isLeaf);
+    const heads = ["السؤال", "النموذج", "النوع", "عدد الإجابات", "المتوسط", "1", "2", "3", "4", "5", "التوزيع"];
+    const rows = [], seen = new Set();
+    leaves.forEach((leaf) => {
+      let card = leaf;
+      while (card.parentElement && card.parentElement !== doc.body && leaves.filter((l) => card.parentElement.contains(l)).length === 1) card = card.parentElement;
+      if (seen.has(card)) return; seen.add(card);
+      const parts = [...card.querySelectorAll("*")].filter((e) => !e.children.length).map((e) => clean(e.textContent)).filter(Boolean);
+      const txt = clean(card.textContent);
+      const num = (re) => { const m = txt.match(re); return m ? m[1] : ""; };
+      const question = parts[0] || "", form = parts[1] && !/عدد الإجابات|المتوسط|النوع/.test(parts[1]) ? parts[1] : "";
+      const typeLeaf = (parts.find((x) => /^النوع/.test(x)) || "").replace(/^النوع\s*:?\s*/, "");
+      const type = typeLeaf || (txt.match(/النوع\s*:\s*([^:]*?)(?=\s*(?:\d+\s+\d+|$))/) || [])[1] || "";
+      const after = parts.slice(parts.findIndex((x) => /^النوع/.test(x)) + 1);
+      const dist = [];
+      for (let i = 0; i + 1 < after.length; i += 2) if (/^[\d٠-٩]+$/.test(after[i]) && /^[\d٠-٩.,%]+$/.test(after[i + 1])) dist.push([after[i], after[i + 1]]); else break;
+      const g = (k) => (dist.find((d) => d[0] === k) || [])[1] || "";
+      rows.push({ cells: [question, form, clean(type), num(/عدد الإجابات\s*:\s*([\d٠-٩.,]+)/), num(/المتوسط\s*:\s*([\d٠-٩.,]+)/), g("1"), g("2"), g("3"), g("4"), g("5"), dist.map((d) => d[0] + ": " + d[1]).join(" | ")] });
+    });
+    return { title: "الأسئلة ونتائجها", heads, rows };
+  }
   function statsOf(doc) {
     const out = [], seen = new Set();
     doc.querySelectorAll(".card, .stat, .stats-card, .small-box, .info-box, .metric, [class*='stat-'], [class*='kpi']").forEach((el) => {
@@ -389,7 +414,8 @@
       out.params = p2;
       out.widened = Object.keys(widen).map((k) => widen[k].label + ": " + widen[k].was + " ← الكل");
     }
-    out.tables = tablesOf(doc); out.stats = statsOf(doc); out.filters = filtersOf(doc);
+    const getTables = (d) => { if (cmd.source === "questions") { const q = questionsOf(d); if (q.rows.length) return [q]; } return tablesOf(d); };
+    out.tables = getTables(doc); out.stats = statsOf(doc); out.filters = filtersOf(doc);
     /* نص المحتوى بلا القائمة الجانبية والتصفية */
     const body = (doc.querySelector("main, .content-wrapper, .content, .container-fluid, body") || doc.body).cloneNode(true);
     body.querySelectorAll("aside, nav, header, footer, .sidebar, .main-sidebar, .navbar, script, style, select, form").forEach((n) => n.remove());
@@ -412,7 +438,7 @@
       say("قراءة التقرير — صفحة " + pg + " (" + main.rows.length + " صفاً)");
       await sleep(GET_GAP);
       ({ doc } = await http("GET", next));
-      const t = tablesOf(doc).find((x) => x.heads.join("|") === main.heads.join("|"));
+      const t = getTables(doc).find((x) => x.heads.join("|") === main.heads.join("|"));
       if (!t) break;
       main.rows.push(...t.rows); next = nextPath(doc);
     }

@@ -39,7 +39,7 @@ setTimeout(() => {
   for (const t of tests) {
     killBrowsers();
     console.log("\n=== " + t + " ===");
-    const r = spawnSync(process.execPath, [path.join(__dirname, t)], { env: Object.assign({}, process.env, { BROWSER, KX_EXT: EXT }), encoding: "utf8", timeout: 300000 });
+    const r = spawnSync(process.execPath, [path.join(__dirname, t)], { env: Object.assign({}, process.env, { BROWSER, KX_EXT: EXT }), encoding: "utf8", timeout: 900000 });
     const out = (r.stdout || "") + (r.stderr || "");
     console.log(out.split("\n").filter((l) => /^[✓✗]|إخفاق|خطأ/.test(l)).join("\n"));
     const m = out.match(/(\d+) إخفاق من (\d+)/);

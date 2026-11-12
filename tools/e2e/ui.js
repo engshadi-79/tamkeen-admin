@@ -69,7 +69,7 @@ http.createServer((req, res) => {
 (async () => {
   const edge = spawn(process.env.BROWSER, [
     "--headless=new", "--remote-debugging-port=" + PORT, "--user-data-dir=" + PROFILE,
-    "--no-first-run", "--no-default-browser-check", "about:blank",
+    "--no-first-run", "--no-default-browser-check", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--disable-features=IntensiveWakeUpThrottling", "about:blank",
   ], { stdio: "ignore" });
   try {
     const ver = await waitFor(() => getJson("/json/version"), 20000, "المتصفح");

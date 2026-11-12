@@ -1,7 +1,7 @@
 /* اختبارات واجهة «أوامر المركز» — تُنفَّذ داخل الصفحة نفسها بوكيل وهمي (بلا إضافة ولا نظام مركز).
    يقرؤها ui.js كنص ويشغّلها. كل فحص: ok(الاسم، الشرط، تفصيل). */
 async function suite() {
-  const R = [];
+  const R = []; window.__R = R;
   const ok = (n, c, d) => R.push((c ? "✓ " : "✗ ") + n + (d ? " — " + d : ""));
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const c = App.centerCmd, b = document.getElementById("cc-body");
@@ -14,13 +14,13 @@ async function suite() {
   const calls = [];
   let DATA = [], MISSING = {}, PLEDGED = [], SUBS = [], PARTIAL = false;
   const agent = {
-    isReady: () => true, ready: async () => true, version: () => "1.5.5", stop() { calls.push("stop"); },
+    isReady: () => true, ready: async () => true, version: () => "1.5.6", stop() { calls.push("stop"); },
     run: async (cmds, opts) => {
       const res = cmds.map((cm) => {
         calls.push((cm.source || cm.type) + (cm.params && cm.params.status ? ":" + cm.params.status : ""));
         calls.last = cm.params;
         (calls.plist = calls.plist || []).push(cm.params);
-        if (cm.type === "page") return { type: "page", source: cm.source, label: cm.label, params: cm.params, stats: [{ label: "إرسالاً", value: "137" }], filters: [{ name: "status", label: "الحالة", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "completed", t: "مكتمل" }] }, { name: "training_course_id", label: "الدورة التدريبية", type: "select", value: "", options: [{ v: "", t: "كل الدورات" }, { v: "9", t: "المرحلة الثانية - مسار الحلاقة الرجالية" }, { v: "10", t: "المرحلة الأولى - مسار الحلاقة الرجالية" }, { v: "11", t: "المرحلة الثانية - مسار التطريز والخياطة" }] }],
+        if (cm.type === "page") return { type: "page", source: cm.source, label: cm.label, params: cm.params, stats: [{ label: "إرسالاً", value: "137" }], filters: [{ name: "status", label: "الحالة", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "completed", t: "مكتمل" }] }, { name: "track_id", label: "المسار", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "1", t: "مسار الحلاقة الرجالية" }, { v: "2", t: "مسار التسويق الرقمي" }] }, { name: "training_course_id", label: "الدورة التدريبية", type: "select", value: "", options: [{ v: "", t: "كل الدورات" }, { v: "9", t: "المرحلة الثانية - مسار الحلاقة الرجالية" }, { v: "10", t: "المرحلة الأولى - مسار الحلاقة الرجالية" }, { v: "11", t: "المرحلة الثانية - مسار التطريز والخياطة" }] }],
           tables: [{ title: "حسب المسار والمرحلة", heads: ["المسار", "المرحلة", "عدد الإرسالات"], rows: [{ cells: ["الحلاقة الرجالية", "الأولى", "40"] }, { cells: ["الحلاقة الرجالية", "الثانية", "30"] }, { cells: ["التجميل النسائي - كوافير", "الثانية", "55"] }, { cells: ["التطريز والخياطة", "الثالثة", "12"] }] },
                    { title: "حسب الحالة", heads: ["الحالة", "العدد"], rows: [{ cells: ["مكتمل", "100"] }, { cells: ["جزئي", "37"] }] }], text: "" };
         if (cm.type === "lookup") {
@@ -214,7 +214,8 @@ async function suite() {
   ok("اختيار تقرير ثانٍ لا يقرأ شيئاً ويُبقي الأول", calls.length === 0 && c.state.imp.pages.join() === "impact,questions", c.state.imp.pages.join());
   calls.length = 0; b.querySelector('[data-cc="run-imp"]').click();
   for (let i = 0; i < 60 && !c.state.imp.out && !c.state.resultError; i++) await wait(200); await wait(200);
-  ok("تقريران: أمران يُرسلان ويصل ناتج كل منهما", calls.length === 2 && /^impact/.test(calls[0]) && /^questions/.test(calls[1]) && Object.keys(c.state.imp.outs).length === 2, JSON.stringify(calls));
+  ok("تقريران: الملخص بقراءة، والأسئلة بقراءة لكل مسار (2) ويصل ناتج كل منهما", calls.length === 3 && /^impact/.test(calls[0]) && calls.filter((x) => /^questions/.test(x)).length === 2 && Object.keys(c.state.imp.outs).length === 2, JSON.stringify(calls));
+  ok("تقرير الأسئلة مدموج بعمود «المسار»", (c.state.imp.outs.questions.tables[0].heads.slice(-1)[0] === "المسار") && c.state.imp.outs.questions.courses.length === 2, JSON.stringify(c.state.imp.outs.questions.courses));
   ok("تبويب العرض بين التقريرين ظاهر", b.querySelectorAll('[data-imp="view"]').length === 2, b.querySelectorAll('[data-imp="view"]').length);
   let capZ = null; const odZ = App.ui.download; App.ui.download = (n, blob) => { capZ = { n, blob }; };
   b.querySelector('[data-cc="export-imp"]').click(); for (let i = 0; i < 60 && !capZ; i++) await wait(150); App.ui.download = odZ;
