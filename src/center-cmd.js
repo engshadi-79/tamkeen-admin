@@ -38,7 +38,7 @@
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
-    groups: [], gopen: false, wide: null, wideOk: false, wideLimit: 0, saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
+    groups: [], gopen: "", wide: null, wideOk: false, wideLimit: 0, saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false, sec: false, errs: false, wa: false }, // حالة الأقسام القابلة للطي
     extraNote: "",
@@ -2423,6 +2423,7 @@
         ? "تعمل الأوامر في متصفحك عبر إضافة «وكيل تمكين». سجّل دخولك في نظام المركز مرة واحدة؛ والبحث والقوائم تُنفَّذ مباشرة، أما التسجيل فتراجع معاينته هنا وتوافق قبل أن يُكتب شيء. لا تصل كلمة مرورك أو جلستك إلى تمكين."
         : "تعمل الجلسة في نافذة Edge المحلية. سجّل الدخول فيها مرة واحدة؛ بعدها ينفّذ الوكيل البحث والقوائم والتسجيل ويعرض النتيجة هنا. أو ثبّت إضافة «وكيل تمكين» في Chrome لتعمل دون خادم محلي."}</p></details>
     </div>`;
+    hideScopeDupes(box);
   }
 
   /* ===== التنزيل ===== */
@@ -2494,16 +2495,54 @@
     [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
     [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
   ];
-  const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" title="${esc(h)}"><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
+  const MODE_ICO = { report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" title="${esc(h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
+  /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
+  const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
+  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp }[mode] || state.sel);
+  function scopeNow() {
+    const c = scopeCfg(state.adding || state.proposal ? "ask" : state.mode);
+    const byK = c === state.sel || c === state.mis;
+    const stages = (c.stages || []).map((x) => (byK ? (STAGES.find((g) => g.k === x) || {}).t : x)).filter(Boolean);
+    return { tracks: (c.tracks || []).map(String), stages, hasStages: "stages" in c };
+  }
+  function scopeSet(kind, value, on) {
+    const upd = (c, key, v) => { const arr = (c[key] = c[key] || []); const at = arr.indexOf(v); if (on && at < 0) arr.push(v); else if (!on && at >= 0) arr.splice(at, 1); };
+    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp].forEach((c) => upd(c, "tracks", String(value)));
+    else {
+      [state.sel, state.mis].forEach((c) => upd(c, "stages", stageK(value)));
+      [state.sib, state.dq, state.grp, state.imp].forEach((c) => upd(c, "stages", value));
+    }
+  }
+  function scopeClear() {
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
+    state.groups = [];
+  }
+  /* القوائم المكررة داخل التبويبات (المسارات/المراحل) تُخفى لأن الشريط يتولاها */
+  function hideScopeDupes(box) {
+    const own = 'input[data-sel="tracks"],input[data-sel="stages"],input[data-mis="tracks"],input[data-mis="stages"],input[data-cmp="tracks"],input[data-sib="tracks"],input[data-sib="stages"],input[data-dq="tracks"],input[data-dq="stages"],input[data-grp="tracks"],input[data-grp="stages"],input[data-imp="tracks"],input[data-imp="stages"]';
+    box.querySelectorAll("fieldset.cc-fs").forEach((f) => {
+      if (f.closest(".cc-gbar")) return;
+      const ins = f.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+      if (ins.length && [...ins].every((i) => i.matches(own))) f.hidden = true;
+    });
+  }
   function groupBar() {
-    const opts = groupOptions(), on = state.groups || [];
-    const sum = on.length ? on.slice(0, 3).join("، ") + (on.length > 3 ? " +" + (on.length - 3) : "") : "الكل";
-    const panel = state.gopen ? `<div class="cc-gpanel">
-        ${opts.length ? `<div class="cc-chips">${opts.map((g) => `<label class="cc-chk"><input type="checkbox" data-gf value="${esc(g)}" ${on.includes(g) ? "checked" : ""}> <span>${esc(g)}</span></label>`).join("")}</div>` : '<p class="cc-note">لا مجموعات محفوظة بعد. اضغط «حمّل قائمة المجموعات» (قراءة واحدة) فتُحفظ وتظهر في كل زيارة.</p>'}
-        <div class="cc-row"><button type="button" class="btn secondary small" data-cc="load-groups" ${state.busy ? "disabled" : ""}>${opts.length ? "حدّث قائمة المجموعات" : "حمّل قائمة المجموعات"}</button><span class="cc-note">تُطبَّق على كل التقارير. اتركها فارغة لتشمل الكل. في «قياس الأثر» تُقرأ كل مجموعة على حدة من صفحة النظام.</span></div></div>` : "";
+    const opts = groupOptions(), on = state.groups || [], sc = scopeNow();
+    const sum = (list, all) => (list.length ? list.slice(0, 2).join("، ") + (list.length > 2 ? " +" + (list.length - 2) : "") : all);
+    const trNames = sc.tracks.map((id) => { const o = trackOpts().find((x) => String(x.v) === id); return o ? o.t.replace(/^مسار\s*/, "") : id; });
+    const open = state.gopen;   // اللوح مفتوح؛ الأقراص تبدّله
+    const pill = (key, label, list, all, has) => has === false ? "" : `<button type="button" class="cc-pill ${list.length ? "on" : ""}" data-cc="gtoggle" data-gk="${key}" aria-expanded="${open === key}">${label}: <b>${esc(sum(list, all))}</b> <span aria-hidden="true">${open === key ? "▴" : "▾"}</span></button>`;
+    const chips = (name, items, onList) => `<div class="cc-chips">${items.map(([v, t]) => `<label class="cc-chk"><input type="checkbox" ${name} value="${esc(v)}" ${onList.includes(String(v)) ? "checked" : ""}> <span>${esc(t)}</span></label>`).join("")}</div>`;
+    let panel = "";
+    if (open === "tracks") panel = chips("data-sc=\"tracks\"", trackOpts().map((o) => [o.v, o.t.replace(/^مسار\s*/, "")]), sc.tracks);
+    else if (open === "stages") panel = chips("data-sc=\"stages\"", STAGES.map((g) => [g.t, g.t]), sc.stages) + '<p class="cc-note">اتركها فارغة لتشمل كل المراحل.</p>';
+    else if (open === "groups") panel = `${opts.length ? chips("data-gf", opts.map((g) => [g, g]), on) : '<p class="cc-note">لا مجموعات محفوظة بعد. اضغط «حمّل قائمة المجموعات» (قراءة واحدة) فتُحفظ وتظهر في كل زيارة.</p>'}
+        <div class="cc-row"><button type="button" class="btn secondary small" data-cc="load-groups" ${state.busy ? "disabled" : ""}>${opts.length ? "حدّث قائمة المجموعات" : "حمّل قائمة المجموعات"}</button><span class="cc-note">في «قياس الأثر» تُقرأ كل مجموعة على حدة من صفحة النظام.</span></div>`;
+    const any = sc.tracks.length || sc.stages.length || on.length;
     return `<div class="cc-gbar"><span class="cc-gl">النطاق</span>
-      <button type="button" class="cc-pill ${on.length ? "on" : ""}" data-cc="gtoggle" aria-expanded="${!!state.gopen}">المجموعات: <b>${esc(sum)}</b> <span aria-hidden="true">${state.gopen ? "▴" : "▾"}</span></button>
-      ${on.length ? '<button type="button" class="cc-link" data-cc="gclear">مسح</button>' : ""}${panel}</div>`;
+      ${pill("tracks", "المسارات", trNames, "الكل")}${pill("stages", "المراحل", sc.stages.map((t) => t.replace(/^المرحلة\s*/, "")), "الكل", sc.hasStages)}${pill("groups", "المجموعات", on, "الكل")}
+      ${any ? '<button type="button" class="cc-link" data-cc="gclear">مسح الكل</button>' : ""}${panel ? `<div class="cc-gpanel">${panel}</div>` : ""}</div>`;
   }
   let runStats = { sent: 0, cached: 0 };
   /* قوائم الطلاب (بلا مصدر خاص) تُحسب من الذاكرة المحمّلة إن كفت، فلا تُرسَل إلى النظام */
@@ -2765,8 +2804,8 @@
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
         } else if (act === "run-imp" || act === "imp-apply") { return runImpact();
-        } else if (act === "gtoggle") { state.gopen = !state.gopen; render(); return;
-        } else if (act === "gclear") { state.groups = []; render(); return;
+        } else if (act === "gtoggle") { const k = t.dataset.gk; state.gopen = state.gopen === k ? "" : k; render(); return;
+        } else if (act === "gclear") { scopeClear(); render(); return;
         } else if (act === "load-groups") { return loadGroups();
         } else if (act === "export-imp") { return exportImp();
         } else if (act === "grp-compliance") { return runCompliance();
@@ -2952,6 +2991,7 @@
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
       if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }
+      if (t.dataset.sc) { scopeSet(t.dataset.sc, t.value, t.checked); render(); return; }
       if (t.hasAttribute("data-gf")) { const v = String(t.value), at = state.groups.indexOf(v); if (t.checked && at < 0) state.groups.push(v); else if (!t.checked && at >= 0) state.groups.splice(at, 1); render(); return; }
       if (t.dataset.imp === "hideZero") { state.imp.hideZero = !!t.checked; render(); return; }
       if (t.dataset.imp === "tracks" || t.dataset.imp === "stages") { const c = state.imp, k = t.dataset.imp, v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); render(); return; }

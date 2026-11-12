@@ -14,3 +14,5 @@ html:root:root .cc-modes button:focus-visible { outline: 2px solid #0f766e; outl
 .cc-link { border: 0; background: none; color: #0f766e; font: inherit; font-size: .85rem; cursor: pointer; padding: 4px 6px; }
 .cc-gpanel { flex: 1 0 100%; padding-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
 @media (max-width: 640px) { html:root:root .cc-modes button { padding: 8px 11px; } }
+html:root:root .cc-modes button { display: inline-flex; align-items: center; gap: 7px; }
+.cc-ico { font-size: 1rem; line-height: 1; }
