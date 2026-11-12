@@ -242,7 +242,7 @@ async function suite() {
   c.state.imp.hideZero = true; c.state.imp.out = null;
   // تصفية المجموعة تسري على كل التقارير
   DATA = [mk("طالب أ", "41", "059", "1", S2, "G1 - "), mk("طالب ب", "42", "059", "2", S2, "G2 - ")]; PARTIAL = false;
-  c.state.gopen = true; c.state.groups = ["G1"]; c.state.results = null; c.state.mode = "report"; c.state.sel = { tracks: ["1"], stages: [], status: "", group_status: "", details: false, extra: {} }; c.render();
+  c.state.gopen = "groups"; c.state.groups = ["G1"]; c.state.results = null; c.state.mode = "report"; c.state.sel = { tracks: ["1"], stages: [], status: "", group_status: "", details: false, extra: {} }; c.render();
   ok("شريط المجموعات ظاهر في التقارير", !!b.querySelector("[data-gf]") || /تظهر المجموعات بعد/.test(b.textContent), "bar");
   b.querySelector('[data-cc="run-selection"]').click();
   for (let i = 0; i < 60 && !c.state.results; i++) await wait(200); await wait(300);
@@ -250,7 +250,7 @@ async function suite() {
   ok("المجموعة G1 وحدها: طالب واحد من اثنين", !!gr && gr.rows.length === 1, gr && JSON.stringify(gr.rows.map((x) => x.cells[2])));
   c.state.groups = []; c.state.results = null;
   // قائمة المجموعات: قراءة واحدة بضغطة، وتُحفظ فتظهر مربعات
-  c.state.gopen = true; localStorage.removeItem("tamkeen_cc_group_list"); c.state.imp.known = []; c.state.cache = null; c.state.mode = "report"; c.render();
+  c.state.gopen = "groups"; localStorage.removeItem("tamkeen_cc_group_list"); c.state.imp.known = []; c.state.cache = null; c.state.mode = "report"; c.render();
   ok("بلا مجموعات محفوظة: زر التحميل ظاهر", !!b.querySelector('[data-cc="load-groups"]') && b.querySelectorAll("[data-gf]").length === 0, b.querySelectorAll("[data-gf]").length);
   calls.length = 0; b.querySelector('[data-cc="load-groups"]').click();
   for (let i = 0; i < 60 && b.querySelectorAll("[data-gf]").length === 0; i++) await wait(200); await wait(200);
@@ -334,6 +334,16 @@ async function suite() {
   const blocked = !b.querySelector(".cc-modes"); App.cloud.user = () => ({ name: "مدير", admin: true }); c.render();
   const allowed = !!b.querySelector(".cc-modes"); delete st.centerAdminOnly; App.cloud.user = ou;
   ok("حصر التبويب بالمدير", blocked && allowed);
+  // النطاق الموحّد: اختيار مسار ومرحلة من الشريط يسري على كل التبويبات
+  c.state.groups = []; [c.state.sel, c.state.mis, c.state.cmp, c.state.sib, c.state.dq, c.state.grp, c.state.imp].forEach((x) => { x.tracks = []; if ("stages" in x) x.stages = []; });
+  c.state.mode = "report"; c.state.gopen = "tracks"; c.render();
+  const sc1 = b.querySelector('[data-sc="tracks"]'); sc1.click(); await wait(100);
+  c.state.gopen = "stages"; c.render(); b.querySelector('[data-sc="stages"][value="المرحلة الثانية"]').click(); await wait(100);
+  ok("النطاق: المسار والمرحلة يسريان على كل التبويبات", c.state.dq.tracks.length === 1 && c.state.imp.tracks.length === 1 && c.state.sel.tracks.length === 1 && c.state.sel.stages.join() === "الثان" && c.state.dq.stages.join() === "المرحلة الثانية" && c.state.mis.stages.join() === "الثان", JSON.stringify({ dq: c.state.dq.stages, sel: c.state.sel.stages, mis: c.state.mis.stages }));
+  ok("القوائم المكررة داخل التبويب مخفية والشريط ظاهر", [...b.querySelectorAll("fieldset.cc-fs")].filter((f) => !f.closest(".cc-gbar") && /^(المسارات|المراحل)/.test((f.querySelector("legend") || {}).textContent || "")).every((f) => f.hidden) && !!b.querySelector(".cc-gbar"), "dupes");
+  b.querySelector('[data-cc="gclear"]').click(); await wait(100);
+  ok("«مسح الكل» يفرّغ النطاق في كل التبويبات", c.state.dq.tracks.length === 0 && c.state.sel.stages.length === 0 && c.state.imp.stages.length === 0, "clear");
+  c.state.gopen = "";
   // «تنزيل الكل»: ملف Excel لكل مسار داخل ملف مضغوط واحد
   c.state.mode = "report"; c.state.labels = ["مسار الحلاقة الرجالية", "مسار التسويق الرقمي"];
   c.state.results = { results: [{ type: "list", heads: ["الاسم", "المجموعة"], rows: [{ cells: ["أ", "G1"] }] }, { type: "list", heads: ["الاسم", "المجموعة"], rows: [{ cells: ["ب", "G2"] }, { cells: ["ج", "G2"] }] }] }; c.render();
