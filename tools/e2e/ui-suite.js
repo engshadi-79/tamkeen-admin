@@ -19,7 +19,8 @@ async function suite() {
       const res = cmds.map((cm) => {
         calls.push((cm.source || cm.type) + (cm.params && cm.params.status ? ":" + cm.params.status : ""));
         calls.last = cm.params;
-        if (cm.type === "page") return { type: "page", source: cm.source, label: cm.label, params: cm.params, stats: [{ label: "إرسالاً", value: "137" }], filters: [{ name: "status", label: "الحالة", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "completed", t: "مكتمل" }] }],
+        (calls.plist = calls.plist || []).push(cm.params);
+        if (cm.type === "page") return { type: "page", source: cm.source, label: cm.label, params: cm.params, stats: [{ label: "إرسالاً", value: "137" }], filters: [{ name: "status", label: "الحالة", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "completed", t: "مكتمل" }] }, { name: "training_course_id", label: "الدورة التدريبية", type: "select", value: "", options: [{ v: "", t: "كل الدورات" }, { v: "9", t: "المرحلة الثانية - مسار الحلاقة الرجالية" }, { v: "10", t: "المرحلة الأولى - مسار الحلاقة الرجالية" }, { v: "11", t: "المرحلة الثانية - مسار التطريز والخياطة" }] }],
           tables: [{ title: "حسب المسار والمرحلة", heads: ["المسار", "المرحلة", "عدد الإرسالات"], rows: [{ cells: ["الحلاقة الرجالية", "الأولى", "40"] }, { cells: ["الحلاقة الرجالية", "الثانية", "30"] }, { cells: ["التجميل النسائي - كوافير", "الثانية", "55"] }, { cells: ["التطريز والخياطة", "الثالثة", "12"] }] },
                    { title: "حسب الحالة", heads: ["الحالة", "العدد"], rows: [{ cells: ["مكتمل", "100"] }, { cells: ["جزئي", "37"] }] }], text: "" };
         if (cm.type === "lookup") {
@@ -197,6 +198,7 @@ async function suite() {
   b.querySelector('[data-cc="export-imp"]').click(); for (let i = 0; i < 40 && !capImp; i++) await wait(150); App.ui.download = odImp;
   const wbI = new ExcelJS.Workbook(); await wbI.xlsx.load(await capImp.blob.arrayBuffer());
   ok("تنزيل Excel: الجدول المصفّى وحده بصف واحد (وجدول الحالة كاملاً)", wbI.worksheets.length === 2 && wbI.worksheets[0].rowCount === 2 && wbI.worksheets[1].rowCount === 3, wbI.worksheets.map((w) => w.rowCount));
+  c.state.imp.stages = []; c.state.imp.tracks = []; c.state.imp.known = []; c.render();
   const sv = b.querySelector('[data-impsrv="status"]');
   ok("قياس الأثر: قائمة الحالة من النظام تظهر للاختيار", !!sv, "no select");
   if (sv) {
@@ -218,14 +220,20 @@ async function suite() {
   b.querySelector('[data-cc="export-imp"]').click(); for (let i = 0; i < 60 && !capZ; i++) await wait(150); App.ui.download = odZ;
   const zz = capZ && await JSZip.loadAsync(await capZ.blob.arrayBuffer());
   ok("التنزيل ملف zip فيه ملف Excel لكل تقرير", !!zz && /\.zip$/.test(capZ.n) && Object.keys(zz.files).length === 2 && Object.keys(zz.files).every((n) => /\.xlsx$/.test(n)), capZ && capZ.n + " " + (zz ? Object.keys(zz.files).join("|") : ""));
-  // ربط المرحلة المختارة بقائمة في صفحة النظام تذكر المراحل
-  c.state.imp.known = [{ name: "stages[]", label: "المراحل", type: "checkbox", value: ["1"], options: [{ v: "1", t: "المرحلة الأولى" }, { v: "2", t: "المرحلة الثانية" }, { v: "3", t: "المرحلة الثالثة" }] }];
-  c.state.imp.stages = ["المرحلة الثانية"]; c.state.imp.srv = {};
+  // المرحلة تُفصل بقائمة «الدورة التدريبية» في صفحة النظام: قراءة لكل دورة مطابقة ثم دمجها
+  c.state.imp.stages = ["المرحلة الثانية"]; c.state.imp.srv = {}; c.state.imp.known = [];
   c.state.imp.pages = ["impact"]; c.state.imp.outs = {}; c.render();
-  calls.length = 0; calls.last = null; b.querySelector('[data-cc="run-imp"]').click();
-  for (let i = 0; i < 60 && !calls.last; i++) await wait(200); await wait(300);
-  ok("المرحلة المختارة تُترجم إلى معامل صفحة النظام (stages[]=2)", !!calls.last && JSON.stringify(calls.last["stages[]"]) === '["2"]', JSON.stringify(calls.last));
-  c.state.imp.stages = []; c.state.imp.known = [];
+  calls.length = 0; calls.plist = []; b.querySelector('[data-cc="run-imp"]').click();
+  for (let i = 0; i < 80 && !(c.state.imp.out && c.state.imp.out.courses); i++) await wait(200); await wait(300);
+  const cids = (calls.plist || []).map((p) => p.training_course_id).filter(Boolean).sort().join();
+  ok("المرحلة الثانية: قراءة استكشاف ثم قراءة لكل دورة مطابقة (9 و11) فقط", calls.length === 3 && cids === "11,9", JSON.stringify({ n: calls.length, cids }));
+  const mo = c.state.imp.out;
+  ok("الجداول مدموجة بعمود «الدورة التدريبية» ودورتان", !!mo && mo.courses.length === 2 && mo.tables[0].heads.includes("الدورة التدريبية") && mo.tables[0].rows.length === 8, mo && JSON.stringify({ c: mo.courses, h: mo.tables[0].heads, n: mo.tables[0].rows.length }));
+  c.state.imp.tracks = [String(([...b.querySelectorAll('[data-imp="tracks"]')].find((x) => x.parentNode.textContent.includes("الحلاقة الرجالية")) || {}).value)]; 
+  calls.length = 0; calls.plist = []; b.querySelector('[data-cc="run-imp"]').click();
+  for (let i = 0; i < 80 && !calls.plist.length; i++) await wait(200); await wait(400);
+  ok("مع مسار الحلاقة: دورة واحدة فقط (9) بلا قراءة استكشاف", calls.length === 1 && (calls.plist[0] || {}).training_course_id === "9", JSON.stringify(calls.plist));
+  c.state.imp.stages = []; c.state.imp.tracks = []; c.state.imp.known = [];
   c.state.imp.pages = ["impact"]; c.state.imp.outs = {};
   c.state.imp.page = "impact";
   c.state.imp.tracks = []; c.state.imp.stages = []; c.state.imp.out = null;
