@@ -48,5 +48,9 @@ check("قبل 3 أيام: غير مستحق", !U.weeklyDue({ at: iso(3 * day) },
 check("قبل 8 أيام: مستحق", U.weeklyDue({ at: iso(8 * day) }, 0, now).due);
 check("التأجيل يخفيه حتى موعده", !U.weeklyDue({ at: iso(8 * day) }, now + day, now).due && U.weeklyDue({ at: iso(8 * day) }, now - 1, now).due);
 
+console.log("[N] مقارنة اللقطات");
+check("أرقام عربية وفاصلة ونسبة", U.numOf("٢٫٩١") === 2.91 && U.numOf("49.54%") === 49.54 && isNaN(U.numOf("نص")));
+const dt = U.diffTables({ heads: ["المسار", "أجابوا", "المتوسط"], rows: [["الحلاقة", "54", "2.71"], ["التسويق", "10", "3.5"]] }, { heads: ["المسار", "أجابوا", "المتوسط"], rows: [["الحلاقة", "50", "2.91"]] });
+check("الفرق بين لقطتين", dt.heads.join("|") === "المسار|أجابوا (الآن)|أجابوا (السابق)|أجابوا (الفرق)|المتوسط (الآن)|المتوسط (السابق)|المتوسط (الفرق)" && dt.rows[0][3] === "▲ +4" && dt.rows[0][6] === "▼ -0.2" && dt.rows[1][2] === "جديد" && dt.matched === 1, dt);
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);

@@ -334,6 +334,24 @@ async function suite() {
   const blocked = !b.querySelector(".cc-modes"); App.cloud.user = () => ({ name: "مدير", admin: true }); c.render();
   const allowed = !!b.querySelector(".cc-modes"); delete st.centerAdminOnly; App.cloud.user = ou;
   ok("حصر التبويب بالمدير", blocked && allowed);
+  // لقطات قياس الأثر: حفظ ثم مقارنة، وملخص واتساب، وترتيب الأسئلة من الأضعف
+  localStorage.removeItem("tamkeen-admin:cc-imp-snaps");
+  const sumTab = (a54, avg) => ({ title: "ملخص", heads: ["النموذج", "المسار", "النوع", "الطلاب المستهدفون", "أجابوا", "نسبة الاستجابة", "متوسط الدرجة"], rows: [{ cells: ["استبانة الحلاقة - قبلي", "مسار الحلاقة الرجالية", "تقييم قبلي", "109", String(a54), "49.54%", avg] }] });
+  c.state.imp.page = "impact"; c.state.imp.pages = ["impact"]; c.state.imp.view = "impact"; c.state.imp.tracks = []; c.state.imp.stages = []; c.state.imp.cmpWith = "";
+  c.state.imp.outs = { impact: { type: "page", at: new Date(), filters: [], stats: [], tables: [sumTab(54, "2.71")] } }; c.state.imp.out = c.state.imp.outs.impact; c.state.mode = "impact"; c.render();
+  b.querySelector('[data-cc="imp-snap-save"]').click(); await wait(150);
+  ok("حفظ لقطة قياس الأثر", JSON.parse(localStorage.getItem("tamkeen-admin:cc-imp-snaps") || "[]").length === 1, localStorage.getItem("tamkeen-admin:cc-imp-snaps") && "saved");
+  c.state.imp.outs = { impact: { type: "page", at: new Date(), filters: [], stats: [], tables: [sumTab(60, "2.91")] } }; c.state.imp.out = c.state.imp.outs.impact; c.render();
+  const snSel = b.querySelector('[data-imp="cmpWith"]'); snSel.value = snSel.options[1].value; snSel.dispatchEvent(new Event("change", { bubbles: true })); await wait(150);
+  ok("المقارنة مع اللقطة: الفرق ▲ +6 في أجابوا", /▲ \+6/.test(b.textContent) && /الآن مقابل السابق/.test(b.textContent), "diff");
+  let waTxt2 = ""; const oc = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { waTxt2 = x; } }, configurable: true });
+  b.querySelector('[data-cc="imp-copy-wa"]').click(); await wait(150);
+  ok("ملخص واتساب: مسار ونوع ونسبة ومتوسط", /\*مسار الحلاقة الرجالية\*|\*الحلاقة الرجالية\*/.test(waTxt2) && /تقييم قبلي: استجابة 49.54%/.test(waTxt2) && /متوسط 2.91/.test(waTxt2), waTxt2.slice(0, 160));
+  try { Object.defineProperty(navigator, "clipboard", { value: oc, configurable: true }); } catch (e) { /* */ }
+  c.state.imp.cmpWith = ""; c.state.imp.outs = { questions: { type: "page", at: new Date(), filters: [], stats: [], tables: [{ title: "أسئلة", heads: ["السؤال", "المتوسط"], rows: [{ cells: ["قوي", "4.5"] }, { cells: ["ضعيف", "1.2"] }, { cells: ["وسط", "3.0"] }] }] } };
+  c.state.imp.view = "questions"; c.state.imp.pages = ["questions"]; c.state.imp.out = c.state.imp.outs.questions; c.render();
+  ok("الأسئلة مرتبة من الأضعف إلى الأقوى", [...b.querySelectorAll('[data-tblbox="imp-0"] tbody tr')].map((r) => r.cells[0].textContent.trim()).join() === "ضعيف,وسط,قوي", [...b.querySelectorAll('[data-tblbox="imp-0"] tbody tr')].map((r) => r.cells[0].textContent.trim()).join());
+  c.state.imp.pages = ["impact"]; c.state.imp.view = "impact"; c.state.imp.outs = {}; c.state.imp.out = null; localStorage.removeItem("tamkeen-admin:cc-imp-snaps");
   // النطاق الموحّد: اختيار مسار ومرحلة من الشريط يسري على كل التبويبات
   c.state.groups = []; [c.state.sel, c.state.mis, c.state.cmp, c.state.sib, c.state.dq, c.state.grp, c.state.imp].forEach((x) => { x.tracks = []; if ("stages" in x) x.stages = []; });
   c.state.mode = "report"; c.state.gopen = "tracks"; c.render();
