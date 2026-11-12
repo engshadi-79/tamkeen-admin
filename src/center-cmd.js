@@ -1759,6 +1759,7 @@
     const out = [];
     (filters || []).forEach((f) => {
       if (!f.name || /^date_(from|to)$/.test(f.name) || !(f.type === "select" || f.type === "checkbox")) return;
+      if (/group/i.test(f.name) || /مجموعة|مدرب/.test(f.label || "")) return;   // «المجموعة الثانية» ليست المرحلة الثانية
       const pick = (f.options || []).filter((o) => o.v !== "" && st.includes(stageOf(o.t))).map((o) => o.v);
       if (!pick.length) return;
       if (f.type === "select" && st.length > 1) return;       // قائمة منسدلة تقبل قيمة واحدة فقط
