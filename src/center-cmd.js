@@ -38,7 +38,7 @@
     stu: { q: "", out: null, pick: null },
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
-    wide: null, wideOk: false, wideLimit: 0, saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
+    groups: [], wide: null, wideOk: false, wideLimit: 0, saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
     mode: "report",      // report: تقرير جاهز | ask: اكتب طلبك
     open: { adv: false, cols: false, forms: true, remind: false, log: false, snap: false, sec: false, errs: false, wa: false }, // حالة الأقسام القابلة للطي
     extraNote: "",
@@ -758,7 +758,7 @@
       const tracks = trackOpts().filter((o) => !c.tracks.length || c.tracks.includes(String(o.v)));
       // الذاكرة المحمّلة تغني عن الجلب؛ إلا مع تصفية بالحالة فنجلب (لا عمود حالة في الجدول)
       let lists;
-      if (state.cache && !c.status) { lists = state.cache.items.filter((it) => tracks.some((o) => String(o.v) === it.trackId)); runStats.cached += lists.length; }
+      if (state.cache && !c.status) { lists = state.cache.items.filter((it) => tracks.some((o) => String(o.v) === it.trackId)).map((it) => Object.assign({}, it, { rows: grpRows(it.heads, it.rows) })); runStats.cached += lists.length; }
       else lists = (await runCommands(tracks.map((o) => ({ type: "list", label: o.t, params: Object.assign({ track_id: String(o.v) }, c.status ? { status: c.status } : {}) })))).filter((r) => r && r.type === "list");
       const people = new Map();
       lists.forEach((r) => {
@@ -1407,7 +1407,7 @@
     try {
       const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id));
       let lists;
-      if (state.cache && !c.status) { lists = state.cache.items.filter((it) => trackIds.includes(it.trackId)).map((it) => ({ heads: it.heads, rows: it.rows, tid: it.trackId })); runStats.cached += lists.length; }
+      if (state.cache && !c.status) { lists = state.cache.items.filter((it) => trackIds.includes(it.trackId)).map((it) => ({ heads: it.heads, rows: grpRows(it.heads, it.rows), tid: it.trackId })); runStats.cached += lists.length; }
       else {
         const res = await runCommands(trackIds.map((id) => ({ type: "list", label: optLabel("track_id", id), params: Object.assign({ track_id: id }, c.status ? { status: c.status } : {}) })));
         lists = res.map((r, i) => (r && r.type === "list" ? { heads: r.heads, rows: r.rows, tid: trackIds[i] } : null)).filter(Boolean);
@@ -1795,15 +1795,20 @@
       const pages = c.pages.length ? c.pages.slice() : ["impact"];
       const lab = (pg) => "إحصاءات: " + ((IMP_PAGES.find((x) => x[0] === pg) || [])[1] || pg);
       let known = c.known || [];
-      const needCourse = (c.stages || []).length > 0, needTrack = pages.includes("questions");
+      const needCourse = (c.stages || []).length > 0, needTrack = pages.includes("questions"), needGroup = (state.groups || []).length > 0;
+      const hasGroupF = (k) => (k || []).some((f) => f.type === "select" && (/group/i.test(f.name || "") || /مجموعة/.test(f.label || "")));
       /* خيارات قوائم النظام (الدورة، المسار) تُعرف بقراءة واحدة أولى إن لم تكن محفوظة */
-      if ((needCourse && !impCourseFilter(known)) || (needTrack && !(known || []).some((x) => /^track/i.test(x.name)))) {
+      if ((needGroup && !hasGroupF(known)) || (needCourse && !impCourseFilter(known)) || (needTrack && !(known || []).some((x) => /^track/i.test(x.name)))) {
         const r0 = await runCommands([{ type: "page", source: pages[0], label: lab(pages[0]), params: impParams() }]);
         if (r0[0] && r0[0].type === "page") known = c.known = r0[0].filters || [];
       }
       const cv = impCourseVariants(known);
       if (needCourse && impCourseFilter(known) && !(cv && cv.list.length)) throw new Error("لا توجد في النظام دورة تدريبية تطابق المراحل والمسارات المختارة.");
+      const gf = needGroup ? (known || []).find((f) => f.type === "select" && (/group/i.test(f.name || "") || /مجموعة/.test(f.label || ""))) : null;
+      const gvars = gf ? { col: "المجموعة", name: gf.name, list: gf.options.filter((o) => o.v !== "" && state.groups.includes(grpCode(o.t))).map((o) => ({ v: o.v, t: o.t })) } : null;
+      if (needGroup && gf && !gvars.list.length) throw new Error("لا توجد في صفحة النظام مجموعة تطابق المجموعات المختارة.");
       const varsFor = (pg) => {
+        if (gvars) return gvars;
         if (cv) return { col: "الدورة التدريبية", name: cv.name, list: cv.list };
         const tv = pg === "questions" ? impTrackVariants(known) : null;
         return tv && tv.list.length ? { col: "المسار", name: tv.name, list: tv.list } : null;
@@ -2416,6 +2421,7 @@
         <button type="button" role="tab" class="${mode === "ask" ? "on" : ""}" aria-selected="${mode === "ask"}" data-cc="mode" data-m="ask"><b>اكتب طلبك</b><small>بحث، أو تسجيل طلاب من Excel</small></button>
       </nav>
       ${savedBar(mode)}
+      ${groupBar()}
       ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
@@ -2456,6 +2462,29 @@
 
   /* ===== عدّاد أوامر القراءة لكل تشغيل: ما أُرسل إلى نظام المركز وما خُدم من ذاكرة الصفحة =====
      «أمر» = قراءة قائمة أو تقرير واحد؛ وقد يقرأ الأمر الواحد عدة صفحات من النظام. */
+  /* ===== تصفية بالمجموعة تُطبَّق على كل التقارير (محلياً على عمود «المجموعة») ===== */
+  const grpCode = (cell) => App.ccUtil.splitGroupCell(cell)[0];
+  function grpRows(heads, rows) {
+    if (!(state.groups || []).length) return rows;
+    const i = (heads || []).findIndex((h) => /^المجموعة/.test(clean(h)));
+    if (i < 0) return rows;
+    const S = new Set(state.groups);
+    return rows.filter((x) => S.has(grpCode(x.cells[i])));
+  }
+  const gfResult = (r) => (r && r.type === "list" && Array.isArray(r.rows) && (state.groups || []).length ? Object.assign({}, r, { rows: grpRows(r.heads, r.rows) }) : r);
+  function groupOptions() {
+    const set = new Set();
+    if (state.cache) state.cache.items.forEach((it) => { const i = it.heads.findIndex((h) => /^المجموعة/.test(clean(h))); if (i >= 0) it.rows.forEach((x) => { const g = grpCode(x.cells[i]); if (g) set.add(g); }); });
+    ((state.imp.known || []).find((f) => /group/i.test(f.name || "") || /مجموعة/.test(f.label || "")) || { options: [] }).options.forEach((o) => { if (o.v !== "" && o.t) set.add(grpCode(o.t)); });
+    (state.groups || []).forEach((g) => set.add(g));
+    return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b, "ar", { numeric: true }));
+  }
+  function groupBar() {
+    const opts = groupOptions(), on = state.groups || [];
+    return `<fieldset class="cc-fs cc-gfilter"><legend>المجموعات (تُطبَّق على كل التقارير)${on.length ? ` <em>${ui.fmt(on.length)}</em>` : ""}</legend>
+      ${opts.length ? `<div class="cc-chips">${opts.map((g) => `<label class="cc-chk"><input type="checkbox" data-gf value="${esc(g)}" ${on.includes(g) ? "checked" : ""}> <span>${esc(g)}</span></label>`).join("")}</div>` : '<p class="cc-note">تظهر المجموعات بعد تحميل البيانات (تقرير جاهز ← «حمّل كل البيانات») أو بعد أول جلب في «قياس الأثر».</p>'}
+      <p class="cc-note">اتركها فارغة لتشمل كل المجموعات. في «قياس الأثر» تُقرأ كل مجموعة مختارة على حدة من صفحة النظام، ولا تُدمج معها المرحلة.</p></fieldset>`;
+  }
   let runStats = { sent: 0, cached: 0 };
   /* قوائم الطلاب (بلا مصدر خاص) تُحسب من الذاكرة المحمّلة إن كفت، فلا تُرسَل إلى النظام */
   const cachedResult = (cmd) => {
@@ -2474,7 +2503,7 @@
       const got = await sendCommands(todo, Object.assign({}, hooks, { onPartial: hooks.onPartial ? (i, r) => hooks.onPartial(idx[i], r) : undefined }));
       idx.forEach((orig, k) => { results[orig] = got[k]; });
     }
-    return results;
+    return hooks.noGroup ? results : results.map(gfResult);
   }
 
   async function sendCommands(commands, hooks) {
@@ -2513,7 +2542,7 @@
     state.busy = true; state.resultError = ""; state.results = null; state.progress = ""; state.labels = [];
     render(); refreshStatus();
     try {
-      const results = await runCommands(tracks.map((o) => Object.assign({ type: "list", label: o.t, params: { track_id: String(o.v) } }, details ? { details: true } : {})), { noCache: true });
+      const results = await runCommands(tracks.map((o) => Object.assign({ type: "list", label: o.t, params: { track_id: String(o.v) } }, details ? { details: true } : {})), { noCache: true, noGroup: true });
       const items = [];
       results.forEach((r, k) => { if (r && r.type === "list") items.push({ trackId: String(tracks[k].v), heads: r.heads, rawHeads: r.rawHeads, rows: r.rows, details: r.details }); });
       if (!items.length) throw new Error("لم تصل بيانات من الوكيل.");
@@ -2898,6 +2927,7 @@
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
       if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }
+      if (t.hasAttribute("data-gf")) { const v = String(t.value), at = state.groups.indexOf(v); if (t.checked && at < 0) state.groups.push(v); else if (!t.checked && at >= 0) state.groups.splice(at, 1); render(); return; }
       if (t.dataset.imp === "hideZero") { state.imp.hideZero = !!t.checked; render(); return; }
       if (t.dataset.imp === "tracks" || t.dataset.imp === "stages") { const c = state.imp, k = t.dataset.imp, v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); render(); return; }
       if (t.dataset.imp) { state.imp[t.dataset.imp] = t.value; render(); return; }

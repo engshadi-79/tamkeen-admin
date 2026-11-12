@@ -240,6 +240,15 @@ async function suite() {
   const hz = b.querySelector('[data-imp="hideZero"]'); hz.click(); await wait(100);
   ok("وإظهارها بإلغاء الخيار", rowsOf("imp-0") === 2, rowsOf("imp-0"));
   c.state.imp.hideZero = true; c.state.imp.out = null;
+  // تصفية المجموعة تسري على كل التقارير
+  DATA = [mk("طالب أ", "41", "059", "1", S2, "G1 - "), mk("طالب ب", "42", "059", "2", S2, "G2 - ")]; PARTIAL = false;
+  c.state.groups = ["G1"]; c.state.results = null; c.state.mode = "report"; c.state.sel = { tracks: ["1"], stages: [], status: "", group_status: "", details: false, extra: {} }; c.render();
+  ok("شريط المجموعات ظاهر في التقارير", !!b.querySelector("[data-gf]") || /تظهر المجموعات بعد/.test(b.textContent), "bar");
+  b.querySelector('[data-cc="run-selection"]').click();
+  for (let i = 0; i < 60 && !c.state.results; i++) await wait(200); await wait(300);
+  const gr = c.state.results && c.state.results.results && c.state.results.results[0];
+  ok("المجموعة G1 وحدها: طالب واحد من اثنين", !!gr && gr.rows.length === 1, gr && JSON.stringify(gr.rows.map((x) => x.cells[2])));
+  c.state.groups = []; c.state.results = null;
   c.state.imp.stages = []; c.state.imp.tracks = []; c.state.imp.known = [];
   c.state.imp.pages = ["impact"]; c.state.imp.outs = {};
   c.state.imp.page = "impact";
