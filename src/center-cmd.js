@@ -1322,7 +1322,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1332,6 +1332,7 @@
         if (hasCache && plan.every((x) => localList(x))) return 0;
         return plan.length;
       }
+      if (act === "load-groups") return 1;
       if (act === "run-imp" || act === "imp-apply") { const c = state.imp, cv = impCourseVariants(c.known), tv = impTrackVariants(c.known); let n = 0; (c.pages.length ? c.pages : ["impact"]).forEach((pg) => { n += cv ? Math.max(1, cv.list.length) : pg === "questions" && tv ? Math.max(1, tv.list.length) : 1; }); return n + ((c.stages || []).length && !cv || c.pages.includes("questions") && !tv ? 1 : 0); }
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
@@ -2472,18 +2473,36 @@
     return rows.filter((x) => S.has(grpCode(x.cells[i])));
   }
   const gfResult = (r) => (r && r.type === "list" && Array.isArray(r.rows) && (state.groups || []).length ? Object.assign({}, r, { rows: grpRows(r.heads, r.rows) }) : r);
+  const GRPLIST_KEY = "tamkeen_cc_group_list";
   function groupOptions() {
-    const set = new Set();
+    const stored = lsGet(GRPLIST_KEY, []);
+    const set = new Set(Array.isArray(stored) ? stored : []);
     if (state.cache) state.cache.items.forEach((it) => { const i = it.heads.findIndex((h) => /^المجموعة/.test(clean(h))); if (i >= 0) it.rows.forEach((x) => { const g = grpCode(x.cells[i]); if (g) set.add(g); }); });
     ((state.imp.known || []).find((f) => /group/i.test(f.name || "") || /مجموعة/.test(f.label || "")) || { options: [] }).options.forEach((o) => { if (o.v !== "" && o.t) set.add(grpCode(o.t)); });
     (state.groups || []).forEach((g) => set.add(g));
+    if (set.size !== (Array.isArray(stored) ? stored.length : 0)) lsSet(GRPLIST_KEY, [...set].filter(Boolean));   // تُحفظ القائمة فتظهر في كل زيارة
     return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b, "ar", { numeric: true }));
+  }
+  async function loadGroups() {
+    state.busy = true; state.resultError = ""; render(); refreshStatus();
+    try {
+      requireAgent15();
+      const r = (await runCommands([{ type: "page", source: "impact", label: "قائمة المجموعات", params: { date_from: state.imp.from || "", date_to: state.imp.to || ui.todayISO() } }], { noGroup: true }))[0];
+      if (!r || r.type !== "page") throw new Error((r && r.error) || "لم تصل الصفحة من الوكيل.");
+      state.imp.known = r.filters || state.imp.known;
+      const f = (r.filters || []).find((x) => x.type === "select" && (/group/i.test(x.name || "") || /مجموعة/.test(x.label || "")));
+      if (!f) throw new Error("لا توجد قائمة مجموعات في صفحة النظام.");
+      const names = f.options.filter((o) => o.v !== "" && o.t).map((o) => grpCode(o.t));
+      lsSet(GRPLIST_KEY, [...new Set(names)].filter(Boolean));
+      ui.toast("حُفظت " + ui.fmt(new Set(names).size) + " مجموعة.");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
   }
   function groupBar() {
     const opts = groupOptions(), on = state.groups || [];
     return `<fieldset class="cc-fs cc-gfilter"><legend>المجموعات (تُطبَّق على كل التقارير)${on.length ? ` <em>${ui.fmt(on.length)}</em>` : ""}</legend>
-      ${opts.length ? `<div class="cc-chips">${opts.map((g) => `<label class="cc-chk"><input type="checkbox" data-gf value="${esc(g)}" ${on.includes(g) ? "checked" : ""}> <span>${esc(g)}</span></label>`).join("")}</div>` : '<p class="cc-note">تظهر المجموعات بعد تحميل البيانات (تقرير جاهز ← «حمّل كل البيانات») أو بعد أول جلب في «قياس الأثر».</p>'}
-      <p class="cc-note">اتركها فارغة لتشمل كل المجموعات. في «قياس الأثر» تُقرأ كل مجموعة مختارة على حدة من صفحة النظام، ولا تُدمج معها المرحلة.</p></fieldset>`;
+      ${opts.length ? `<div class="cc-chips">${opts.map((g) => `<label class="cc-chk"><input type="checkbox" data-gf value="${esc(g)}" ${on.includes(g) ? "checked" : ""}> <span>${esc(g)}</span></label>`).join("")}</div>` : '<p class="cc-note">لا مجموعات محفوظة بعد. اضغط «حمّل قائمة المجموعات» (قراءة واحدة) فتُحفظ هنا وتظهر في كل زيارة.</p>'}
+      <div class="cc-row"><button type="button" class="btn secondary small" data-cc="load-groups" ${state.busy ? "disabled" : ""}>${opts.length ? "حدّث قائمة المجموعات" : "حمّل قائمة المجموعات"}</button><span class="cc-note">اتركها فارغة لتشمل كل المجموعات. في «قياس الأثر» تُقرأ كل مجموعة مختارة على حدة من صفحة النظام، ولا تُدمج معها المرحلة.</span></div></fieldset>`;
   }
   let runStats = { sent: 0, cached: 0 };
   /* قوائم الطلاب (بلا مصدر خاص) تُحسب من الذاكرة المحمّلة إن كفت، فلا تُرسَل إلى النظام */
@@ -2743,6 +2762,7 @@
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
         } else if (act === "run-imp" || act === "imp-apply") { return runImpact();
+        } else if (act === "load-groups") { return loadGroups();
         } else if (act === "export-imp") { return exportImp();
         } else if (act === "grp-compliance") { return runCompliance();
         } else if (act === "print-dq") { return lhPrint(dqBlocks(), "تقرير جودة بيانات الطلاب");

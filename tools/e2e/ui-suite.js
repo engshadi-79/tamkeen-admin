@@ -20,7 +20,7 @@ async function suite() {
         calls.push((cm.source || cm.type) + (cm.params && cm.params.status ? ":" + cm.params.status : ""));
         calls.last = cm.params;
         (calls.plist = calls.plist || []).push(cm.params);
-        if (cm.type === "page") return { type: "page", source: cm.source, label: cm.label, params: cm.params, stats: [{ label: "إرسالاً", value: "137" }], filters: [{ name: "status", label: "الحالة", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "completed", t: "مكتمل" }] }, { name: "track_id", label: "المسار", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "1", t: "مسار الحلاقة الرجالية" }, { v: "2", t: "مسار التسويق الرقمي" }] }, { name: "training_course_id", label: "الدورة التدريبية", type: "select", value: "", options: [{ v: "", t: "كل الدورات" }, { v: "9", t: "المرحلة الثانية - مسار الحلاقة الرجالية" }, { v: "10", t: "المرحلة الأولى - مسار الحلاقة الرجالية" }, { v: "11", t: "المرحلة الثانية - مسار التطريز والخياطة" }] }],
+        if (cm.type === "page") return { type: "page", source: cm.source, label: cm.label, params: cm.params, stats: [{ label: "إرسالاً", value: "137" }], filters: [{ name: "status", label: "الحالة", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "completed", t: "مكتمل" }] }, { name: "training_group_id", label: "المجموعة", type: "select", value: "", options: [{ v: "", t: "كل المجموعات" }, { v: "5", t: "G1 - د. أحمد" }, { v: "6", t: "G2 - د. سارة" }] }, { name: "track_id", label: "المسار", type: "select", value: "", options: [{ v: "", t: "الكل" }, { v: "1", t: "مسار الحلاقة الرجالية" }, { v: "2", t: "مسار التسويق الرقمي" }] }, { name: "training_course_id", label: "الدورة التدريبية", type: "select", value: "", options: [{ v: "", t: "كل الدورات" }, { v: "9", t: "المرحلة الثانية - مسار الحلاقة الرجالية" }, { v: "10", t: "المرحلة الأولى - مسار الحلاقة الرجالية" }, { v: "11", t: "المرحلة الثانية - مسار التطريز والخياطة" }] }],
           tables: [{ title: "حسب المسار والمرحلة", heads: ["المسار", "المرحلة", "عدد الإرسالات"], rows: [{ cells: ["الحلاقة الرجالية", "الأولى", "40"] }, { cells: ["الحلاقة الرجالية", "الثانية", "30"] }, { cells: ["التجميل النسائي - كوافير", "الثانية", "55"] }, { cells: ["التطريز والخياطة", "الثالثة", "12"] }] },
                    { title: "حسب الحالة", heads: ["الحالة", "العدد"], rows: [{ cells: ["مكتمل", "100"] }, { cells: ["جزئي", "37"] }] }], text: "" };
         if (cm.type === "lookup") {
@@ -249,6 +249,12 @@ async function suite() {
   const gr = c.state.results && c.state.results.results && c.state.results.results[0];
   ok("المجموعة G1 وحدها: طالب واحد من اثنين", !!gr && gr.rows.length === 1, gr && JSON.stringify(gr.rows.map((x) => x.cells[2])));
   c.state.groups = []; c.state.results = null;
+  // قائمة المجموعات: قراءة واحدة بضغطة، وتُحفظ فتظهر مربعات
+  localStorage.removeItem("tamkeen_cc_group_list"); c.state.imp.known = []; c.state.cache = null; c.state.mode = "report"; c.render();
+  ok("بلا مجموعات محفوظة: زر التحميل ظاهر", !!b.querySelector('[data-cc="load-groups"]') && b.querySelectorAll("[data-gf]").length === 0, b.querySelectorAll("[data-gf]").length);
+  calls.length = 0; b.querySelector('[data-cc="load-groups"]').click();
+  for (let i = 0; i < 60 && b.querySelectorAll("[data-gf]").length === 0; i++) await wait(200); await wait(200);
+  ok("«حمّل قائمة المجموعات»: قراءة واحدة تُظهر G1 وG2 وتُحفظ", calls.length === 1 && b.querySelectorAll("[data-gf]").length === 2 && /G1/.test(localStorage.getItem("tamkeen_cc_group_list") || ""), JSON.stringify({ calls, n: b.querySelectorAll("[data-gf]").length }));
   c.state.imp.stages = []; c.state.imp.tracks = []; c.state.imp.known = [];
   c.state.imp.pages = ["impact"]; c.state.imp.outs = {};
   c.state.imp.page = "impact";
