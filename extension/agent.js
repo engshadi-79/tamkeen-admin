@@ -380,7 +380,22 @@ window.__kxStart = async () => {
       out.widened = Object.keys(widen).map((k) => widen[k].label + ": " + widen[k].was + " ← الكل");
     }
     out.tables = tablesOf(doc); out.stats = statsOf(doc); out.filters = filtersOf(doc);
-    out.text = clean((doc.querySelector("main, .content, .container-fluid, body") || {}).textContent || "").slice(0, 1200);
+    /* نص المحتوى بلا القائمة الجانبية والتصفية */
+    const body = (doc.querySelector("main, .content-wrapper, .content, .container-fluid, body") || doc.body).cloneNode(true);
+    body.querySelectorAll("aside, nav, header, footer, .sidebar, .main-sidebar, .navbar, script, style, select, form").forEach((n) => n.remove());
+    out.text = clean(body.textContent || "").slice(0, 3000);
+    /* صفحة بلا جداول (بطاقات ورسوم): كل بطاقة طرفية تصير صفاً «العنوان | المحتوى» */
+    if (!out.tables.length) {
+      const rows = [];
+      body.querySelectorAll(".card, .panel, .box, [class*='question']").forEach((el) => {
+        if (el.querySelector(".card, .panel, .box")) return;
+        const h = el.querySelector(".card-header, .card-title, .box-title, h1, h2, h3, h4, h5, h6, b, strong");
+        const title = h ? clean(h.textContent).slice(0, 160) : "";
+        const txt = clean(el.textContent).replace(title, "").trim();
+        if ((title || txt) && (title + txt).length > 3) rows.push({ cells: [title, txt.slice(0, 500)] });
+      });
+      if (rows.length) out.tables.push({ title: "محتوى الصفحة", heads: ["العنوان", "المحتوى"], rows: rows.slice(0, 200) });
+    }
     const main = out.tables.length ? out.tables.reduce((a, b) => (b.rows.length > a.rows.length ? b : a)) : null;
     let next = nextPath(doc);
     for (let pg = 2; main && next && pg <= 30 && !stopped; pg++) {
