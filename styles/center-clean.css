@@ -35,3 +35,5 @@ html:root:root .cc-modes button { display: inline-flex; align-items: center; gap
 .frm-dropcard{margin-top:14px}.frm-drophead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.frm-drophead h3{margin:0}
 .frm-note{color:var(--muted,#5b687a);font-size:12.5px;margin:8px 0}.frm-err{color:#b42318;font-weight:600}
 .frm-key{display:inline-flex;gap:8px;align-items:center;font-size:12.5px;margin:4px 0 10px}.frm-key input{padding:6px 9px;border:1px solid var(--line,#d5dce6);border-radius:8px}
+.frm-person{display:inline-flex;align-items:center;gap:4px;border-color:#9fc9c4}.frm-person .material-symbols-outlined{font-size:17px}.frm-person b{background:#e6f4f2;color:#0f766e;border-radius:999px;padding:0 7px;font-size:11.5px}.frm-person.on b{background:#fff}
+.frm-date{display:flex;align-items:center;gap:4px;margin-top:4px!important;color:#0f766e!important;font-weight:600}.frm-date .material-symbols-outlined{font-size:16px}

@@ -168,10 +168,27 @@
   const rowsOf = (f) => Math.max(3, Math.min(80, Number(state.rows[f.id] || f.rows) || f.rows));
   const blocksOf = (f) => f.build({ ...state.ctx }, f.rows ? rowsOf(f) : 0);
 
+  const catsHtml = (people) => CATS.map(([k, t]) => `<button type="button" class="frm-cat${state.cat === k ? " on" : ""}" data-frm-cat="${k}">${t}</button>`).join("") +
+    people.map((n) => `<button type="button" class="frm-cat frm-person${state.cat === "by:" + n ? " on" : ""}" data-frm-cat="${esc("by:" + n)}"><span class="material-symbols-outlined" aria-hidden="true">person</span>${esc(n)} <b>${(drop.files || []).filter((f) => (f.by || "بلا اسم") === n).length}</b></button>`).join("");
   function render() {
     const host = $("frm-body");
     if (!host) return;
     const q = state.q.trim();
+    const person = state.cat.indexOf("by:") === 0 ? state.cat.slice(3) : null;
+    const people = [...new Set((drop.files || []).map((f) => f.by || "بلا اسم"))].sort((a, b) => a.localeCompare(b, "ar"));
+    const icoOf = (n) => (/pdf$/i.test(n) ? "picture_as_pdf" : /xlsx?$/i.test(n) ? "table_chart" : /(png|jpe?g|webp)$/i.test(n) ? "image" : /(zip|rar|7z)$/i.test(n) ? "folder_zip" : "description");
+    const dropHtml = person === null ? "" : (drop.files || []).filter((f) => (f.by || "بلا اسم") === person && (!q || f.name.includes(q))).map((f) => `<article class="frm-card frm-mine">
+        <div class="frm-ico"><span class="material-symbols-outlined" aria-hidden="true">${icoOf(f.name)}</span></div>
+        <div class="frm-main"><h3>${esc(f.name.replace(/\.[^.]+$/, ""))}</h3><p>${esc(f.name)} · ${fmtSize(f.size)}</p><p class="frm-date"><span class="material-symbols-outlined" aria-hidden="true">event</span>${esc(new Date(f.at).toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" }))} · ${esc(new Date(f.at).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }))}</p></div>
+        <div class="frm-act no-print">
+          <button type="button" class="btn navy" data-drop="get" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">download</span>تنزيل</button>
+          <button type="button" class="btn secondary" data-drop="print" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">print</span>طباعة / PDF</button>
+        </div></article>`).join("");
+    if (person !== null) {
+      $("frm-cats").innerHTML = catsHtml(people);
+      host.innerHTML = dropHtml || `<p class="frm-empty">لا ملفات لهذا الشخص${q ? " تطابق البحث" : ""}.</p>`;
+      return renderDrop();
+    }
     const list = state.cat === "mine" ? [] : FORMS.filter((f) => (state.cat === "all" || f.cat === state.cat) && (!q || (f.title + f.desc).includes(q)));
     const mine = state.cat === "all" || state.cat === "mine" ? state.mine.filter((m) => !q || m.name.includes(q)) : [];
     const mineHtml = mine.map((m) => `<article class="frm-card frm-mine" data-id="${esc(m.id)}">
@@ -185,7 +202,8 @@
           <button type="button" class="btn secondary" data-frm="m-del" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>
         </div></article>`).join("");
     renderDrop();
-    $("frm-cats").innerHTML = CATS.map(([k, t]) => `<button type="button" class="frm-cat${state.cat === k ? " on" : ""}" data-frm-cat="${k}">${t}</button>`).join("");
+    $("frm-cats").innerHTML = catsHtml(people);
+    if (dropKey() && drop.files === null && !drop.busy && !drop.tried) { drop.tried = true; dropAct("load"); }
     host.innerHTML = mineHtml + (list.length ? list.map((f) => `<article class="frm-card" data-id="${f.id}">
         <div class="frm-ico"><span class="material-symbols-outlined" aria-hidden="true">${f.ico}</span></div>
         <div class="frm-main"><h3>${esc(f.title)}</h3><p>${esc(f.desc)}</p>
@@ -282,6 +300,20 @@
       ui.toast("تعذّر تحويل الملف للطباعة، نُزّل واطبعه من Word");
     }
   }
+  /* طباعة ملف بحسب نوعه: PDF يُفتح بزر الطباعة المدمج، الصورة صفحة طباعة، docx يُحوَّل، وغير ذلك يُنزَّل */
+  function printBlob(blob, file, title) {
+    if (/\.docx$/i.test(file)) return printDocx(blob, title);
+    if (!/\.(pdf|png|jpe?g|webp)$/i.test(file)) { ui.toast("هذا النوع لا يُطبع من المتصفح؛ نُزّل الملف وافتحه لطباعته"); return ui.download(file, blob); }
+    if (/pdf$/i.test(file)) {
+      const w = window.open(URL.createObjectURL(new Blob([blob], { type: "application/pdf" })), "_blank");
+      if (!w) ui.toast("اسمح بالنوافذ المنبثقة، أو نزّل الملف واطبعه");
+      return;
+    }
+    const w = window.open("", "_blank");
+    if (!w) return ui.toast("اسمح بالنوافذ المنبثقة لطباعة النموذج");
+    w.document.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title><style>@page{margin:8mm}body{margin:0}img{width:100%}</style></head><body><img src="${URL.createObjectURL(blob)}" onload="setTimeout(function(){window.print()},200)"></body></html>`);
+    w.document.close();
+  }
   async function mineAct(kind, id) {
     const m = state.mine.find((x) => x.id === id);
     if (!m) return;
@@ -290,21 +322,7 @@
       const f = await App.filesStore.get(m.pid || m.fid);
       if (!f) return ui.toast("الملف غير موجود على هذا الجهاز");
       if (m.pid) { const w2 = window.open(URL.createObjectURL(f.blob), "_blank"); if (!w2) ui.toast("اسمح بالنوافذ المنبثقة، أو نزّل الملف واطبعه"); return; }
-      if (/\.docx$/i.test(m.file)) return printDocx(f.blob, m.name);
-      if (!/pdf|png|jpe?g|webp/i.test(m.file)) { ui.toast("ملفات Excel وWord القديمة (doc) لا تُطبع من المتصفح؛ نُزّل الملف وافتحه لطباعته"); return App.filesStore.open(m.fid); }
-      const url = URL.createObjectURL(f.blob);
-      if (/pdf$/i.test(m.file)) {
-        /* PDF: يُفتح في تبويب جديد يعرض زر الطباعة المدمج */
-        const w = window.open(url, "_blank");
-        if (!w) ui.toast("اسمح بالنوافذ المنبثقة، أو نزّل الملف واطبعه");
-        return;
-      }
-      /* صورة: صفحة طباعة مباشرة بمقاس الورقة */
-      const w = window.open("", "_blank");
-      if (!w) return ui.toast("اسمح بالنوافذ المنبثقة لطباعة النموذج");
-      w.document.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>${esc(m.name)}</title><style>@page{margin:8mm}body{margin:0}img{width:100%}</style></head><body><img src="${url}" onload="setTimeout(function(){window.print()},200)"></body></html>`);
-      w.document.close();
-      return;
+      return printBlob(f.blob, m.file, m.name);
     }
     if (kind === "m-pdf") {
       const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".pdf";
@@ -399,15 +417,17 @@
       if (!dropKey()) return ui.toast("اكتب رمز القراءة أولاً");
       drop.busy = true; drop.err = ""; renderDrop();
       try { const d = await dropCall("dropList"); drop.files = d.files || []; drop.folder = d.folder || ""; } catch (e) { drop.err = (e && e.message) || "تعذّر الاتصال بخادم Drive"; }
-      drop.busy = false; return renderDrop();
+      drop.busy = false; return render();
     }
-    if (kind === "get") {
-      ui.toast("جارٍ التنزيل…");
+    if (kind === "get" || kind === "print") {
+      ui.toast(kind === "print" ? "جارٍ تجهيز الملف للطباعة…" : "جارٍ التنزيل…");
       try {
         const d = await dropCall("dropFile", { id });
         const bin = atob(d.data), bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        ui.download(d.name, new Blob([bytes], { type: d.mime || "application/octet-stream" }));
+        const blob = new Blob([bytes], { type: d.mime || "application/octet-stream" });
+        if (kind === "print") printBlob(blob, d.name, d.name.replace(/\.[^.]+$/, ""));
+        else ui.download(d.name, blob);
       } catch (e) { ui.toast((e && e.message) || "تعذّر التنزيل"); }
     }
   }
