@@ -16,3 +16,18 @@ html:root:root .cc-modes button:focus-visible { outline: 2px solid #0f766e; outl
 @media (max-width: 640px) { html:root:root .cc-modes button { padding: 8px 11px; } }
 html:root:root .cc-modes button { display: inline-flex; align-items: center; gap: 7px; }
 .cc-ico { font-size: 1rem; line-height: 1; }
+
+/* ===== النماذج الجاهزة ===== */
+.frm-bar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.frm-bar label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#5b687a);min-width:150px;flex:1}
+.frm-bar input{padding:7px 9px;border:1px solid var(--line,#d5dce6);border-radius:8px;font:inherit}
+.frm-cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.frm-cat{border:1px solid var(--line,#d5dce6);background:#fff;border-radius:999px;padding:5px 14px;cursor:pointer;font:inherit}
+.frm-cat.on{background:#0f766e;color:#fff;border-color:#0f766e}
+.frm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+.frm-card{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line,#d5dce6);border-radius:12px;padding:12px;background:#fff;flex-wrap:wrap}
+.frm-ico{width:42px;height:42px;border-radius:10px;background:#e6f4f2;color:#0f766e;display:grid;place-items:center;flex:none}
+.frm-main{flex:1;min-width:160px}.frm-main h3{margin:0 0 3px;font-size:15px}.frm-main p{margin:0;color:var(--muted,#5b687a);font-size:12.5px}
+.frm-rows{display:inline-flex;gap:6px;align-items:center;margin-top:6px;font-size:12px}.frm-rows input{width:60px;padding:3px 6px;border:1px solid var(--line,#d5dce6);border-radius:6px}
+.frm-act{display:flex;gap:6px;flex-wrap:wrap;width:100%}
+.frm-empty{color:var(--muted,#5b687a)}
