@@ -77,7 +77,7 @@
         var res = await fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({ action: "dropUpload", name: f.file.name, mime: f.file.type, by: by, data: await b64(f.file) }) });
         var d = await res.json();
-        if (d.error) throw new Error(d.error === "UNAUTHORIZED" ? "الخادم لم يُحدَّث بعد" : d.error);
+        if (d.error) throw new Error((d.error === "UNAUTHORIZED" || d.error === "رمز غير صحيح") ? "الأرشفة لم تُفعَّل بعد، أبلغ صاحب الرابط" : d.error);
         f.done = true; f.cls = "ok"; f.msg = "✓ تم الحفظ";
       } catch (e) { f.cls = "bad"; f.msg = (e && e.message) || "تعذّر الرفع"; }
       f.busy = false; paint();
