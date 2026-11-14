@@ -374,7 +374,7 @@
   async function dropCall(action, extra) {
     const res = await fetch(dropUrl(), { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ action, key: dropKey() }, extra || {})) });
     const d = await res.json();
-    if (d.error) throw new Error(d.error === "UNAUTHORIZED" ? "خادم Drive لم يُحدَّث بعد إلى النسخة 14 (الصق Code.gs الجديد وانشره)" : d.error);
+    if (d.error) throw new Error((d.error === "UNAUTHORIZED" || d.error === "رمز غير صحيح") ? "مساعد Google لم يُحدَّث بعد (الصق SupabaseBackup.gs الجديد وانشره)" : d.error);
     return d;
   }
   const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " م.ب" : Math.max(1, Math.round(n / 1024)) + " ك.ب");
@@ -388,7 +388,7 @@
         <div class="btn-row"><button type="button" class="btn secondary" data-drop="copy"><span class="material-symbols-outlined btn-ico">link</span>نسخ رابط الرفع</button>
         <button type="button" class="btn navy" data-drop="load"><span class="material-symbols-outlined btn-ico">refresh</span>${drop.busy ? "جارٍ التحميل…" : drop.files ? "تحديث القائمة" : "عرض الملفات"}</button></div></div>
       <p class="frm-note">أرسل «رابط الرفع» لزميلك: يفتحه ويرفع ملفاته بلا دخول، فتُحفظ في Drive عندك داخل «أرشيف مساعد تمكين ← ملفات الزملاء». <span dir="ltr">${esc(link)}</span></p>
-      <label class="frm-key">رمز القراءة (الذي وضعته في Code.gs) <input type="password" id="frm-drop-key" value="${esc(dropKey())}" autocomplete="off"></label>
+      <label class="frm-key">رمز القراءة (يظهر في السجل بعد تشغيل setupDropKey) <input type="password" id="frm-drop-key" value="${esc(dropKey())}" autocomplete="off"></label>
       ${drop.err ? `<p class="frm-err">${esc(drop.err)}</p>` : ""}
       ${drop.files ? (list.length ? `<table class="cc-table"><thead><tr><th>الملف</th><th>رفعه</th><th>تاريخ الإضافة</th><th>الحجم</th><th></th></tr></thead><tbody>${list.map((f) => `<tr><td>${esc(f.name)}</td><td>${esc(f.by || "—")}</td><td>${esc(new Date(f.at).toLocaleString("ar"))}</td><td>${fmtSize(f.size)}</td><td><button type="button" class="cc-link" data-drop="get" data-id="${esc(f.id)}">تنزيل</button></td></tr>`).join("")}</tbody></table>${drop.folder ? `<p class="frm-note"><a href="${esc(drop.folder)}" target="_blank" rel="noopener">فتح المجلد في Google Drive</a></p>` : ""}` : `<p class="frm-empty">لا ملفات مرفوعة بعد.</p>`) : ""}`;
   }

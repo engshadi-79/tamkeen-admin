@@ -65,6 +65,12 @@ function doPost(e) {
       if (String(req.key || "") !== sbWatchKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز غير صحيح" }); }
       return sbOut_(req.action === "watchPing" ? sbWatchPing_() : sbWatchUpload_(req));
     }
+    // أرشفة ملفات الزملاء: الرفع مفتوح لمن يعرف صفحة الرفع، والعرض والتنزيل برمز القراءة DROP_KEY
+    if (req.action === "dropUpload") return sbOut_(sbDropUpload_(req));
+    if (req.action === "dropList" || req.action === "dropFile") {
+      if (String(req.key || "") !== sbDropKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز القراءة غير صحيح" }); }
+      return sbOut_(req.action === "dropList" ? sbDropList_() : sbDropFile_(req.id));
+    }
     if (String(req.key || "") !== sbKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز غير صحيح" }); }
     if (req.action === "ocr") return sbOut_(sbOcr_(req));
     if (req.action === "driveFile") return sbOut_(sbDriveFile_(req.id));
@@ -132,8 +138,70 @@ function setupWatchKey() {
   return { key: key, folder: folder.getUrl() };
 }
 
+/* ===== أرشفة ملفات الزملاء =====
+   الزميل يرفع من صفحة drop.html بلا دخول؛ الملفات في «أرشيف مساعد تمكين / ملفات الزملاء».
+   العرض والتنزيل من تاب «النماذج الجاهزة» برمز القراءة: شغّل setupDropKey مرة وانسخ الرمز من السجل. */
+const SB_DROP_FOLDER = "ملفات الزملاء";
+const SB_DROP_MAX_MB = 15;   // أقصى حجم للملف الواحد
+const SB_DROP_DAILY = 150;   // أقصى عدد ملفات في اليوم (حماية من الإساءة)
+
+function sbDropFolder_() { return sbSub_(sbRoot_(), SB_DROP_FOLDER); }
+function sbDropKey_() {
+  const key = PropertiesService.getScriptProperties().getProperty("DROP_KEY");
+  if (!key || key.length < 6) throw new Error("لا يوجد رمز قراءة: شغّل الدالة setupDropKey مرة واحدة ثم انسخ الرمز من السجل");
+  return key;
+}
+/* شغّلها مرة من محرر السكربت: تولّد رمز القراءة وتطبعه ليُكتب في تاب «النماذج الجاهزة» */
+function setupDropKey() {
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty("DROP_KEY");
+  if (!key || key.length < 6) {
+    key = Utilities.getUuid().replace(/-/g, "").slice(0, 12);
+    props.setProperty("DROP_KEY", key);
+  }
+  Logger.log("رمز القراءة: " + key);
+  Logger.log("مجلد ملفات الزملاء: " + sbDropFolder_().getUrl());
+  return { key: key };
+}
+function sbDropUpload_(req) {
+  const name = String(req.name || "").replace(/[\/:*?"<>|]+/g, " ").trim().slice(0, 120);
+  if (!name || !req.data) throw new Error("اختر ملفاً أولاً");
+  if (String(req.data).length > SB_DROP_MAX_MB * 1024 * 1024 * 1.37) throw new Error("الملف أكبر من " + SB_DROP_MAX_MB + " ميغابايت");
+  const props = PropertiesService.getScriptProperties();
+  const day = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  let cnt = {};
+  try { cnt = JSON.parse(props.getProperty("DROP_COUNT") || "{}"); } catch (err) { /* يُعاد العدّ */ }
+  const n = cnt.day === day ? cnt.n : 0;
+  if (n >= SB_DROP_DAILY) throw new Error("بلغ الرفع حدّه اليومي، حاول غداً");
+  const blob = Utilities.newBlob(Utilities.base64Decode(String(req.data)), req.mime || "application/octet-stream", name);
+  const file = sbDropFolder_().createFile(blob);
+  file.setDescription(JSON.stringify({ by: String(req.by || "").slice(0, 60) }));
+  props.setProperty("DROP_COUNT", JSON.stringify({ day: day, n: n + 1 }));
+  return { ok: true, name: name };
+}
+function sbDropList_() {
+  const out = [];
+  const folder = sbDropFolder_();
+  const it = folder.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    let d = {};
+    try { d = JSON.parse(f.getDescription() || "{}"); } catch (err) { /* وصف حر */ }
+    out.push({ id: f.getId(), name: f.getName(), by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
+  }
+  out.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+  return { files: out, folder: folder.getUrl() };
+}
+function sbDropFile_(id) {
+  const file = DriveApp.getFileById(String(id || ""));
+  const ps = file.getParents();
+  if (!ps.hasNext() || ps.next().getId() !== sbDropFolder_().getId()) throw new Error("الملف خارج مجلد ملفات الزملاء");
+  const blob = file.getBlob();
+  return { name: file.getName(), mime: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) };
+}
+
 function doGet() {
-  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين" });
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 1 });
 }
 
 function sbOut_(obj) {

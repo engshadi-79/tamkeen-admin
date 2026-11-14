@@ -7,13 +7,6 @@
 
 const ADMIN_KEY = "PUT-ADMIN-CODE-HERE";
 const ROOT_NAME = "أرشيف مساعد تمكين";
-/* أرشفة ملفات الزملاء: الرفع مفتوح لمن يعرف رابط صفحة الرفع (بلا دخول)،
-   أما عرض الملفات وتنزيلها فبرمز القراءة DROP_KEY فقط. ضع رمزاً من عندك هنا قبل النشر؛
-   ما دام على قيمته الافتراضية يبقى العرض والتنزيل معطّلَين. */
-const DROP_KEY = "PUT-READ-CODE-HERE";
-const DROP_FOLDER = "ملفات الزملاء";
-const DROP_MAX_MB = 15;      // أقصى حجم للملف الواحد
-const DROP_DAILY = 150;      // أقصى عدد ملفات تُرفع في اليوم (حماية من الإساءة)
 const DATA_NAME = "tamkeen-registry.json";
 const BACKUP_FOLDER = "نسخ احتياطية للسجل";
 const LOG_FOLDER = "سجل أحداث النظام";
@@ -58,16 +51,13 @@ function doPost(e) {
   try {
     // إجراءات قبل الدخول
     switch (req.action) {
-      case "status": return out_({ ok: true, version: 14, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
+      case "status": return out_({ ok: true, version: 13, hasUsers: Object.keys(users_()).length > 0, webUrl: ScriptApp.getService().getUrl() });
       case "setup": return out_(setup_(req));
       case "login": {
         const res = login_(req.username, req.password);
         log_(res.user.name, "دخول", "");
         return out_(res);
       }
-      case "dropUpload": return out_(dropUpload_(req));
-      case "dropList": return out_(dropList_(req.key));
-      case "dropFile": return out_(dropFile_(req.key, req.id));
       case "forgot": return out_(forgot_(req.username));
       case "reset": return out_(reset_(req.username, req.code, req.password));
     }
@@ -75,7 +65,7 @@ function doPost(e) {
     if (!user) return out_({ error: "UNAUTHORIZED" });
     logRequest_(user, req);
     switch (req.action) {
-      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 14, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
+      case "ping": return out_({ ok: true, owner: Session.getEffectiveUser().getEmail(), root: ROOT_NAME, version: 13, user: publicUser_(user), webUrl: ScriptApp.getService().getUrl() });
       case "logout": return out_(logout_(req.token));
       case "password": return out_(changePassword_(user, req.current, req.password));
       case "logoutAll": return out_((cleanSessions_(user.username), { ok: true }));
@@ -815,50 +805,6 @@ function search_(q) {
 }
 
 /* رفع ملف إلى مسار داخل الأرشيف، مثل ["أحمد", "2026", "09", "الوارد", "خطابات"] */
-/* ===== أرشفة ملفات الزملاء ===== */
-function dropFolder_() { return subFolder_(root_(), DROP_FOLDER); }
-function dropUpload_(req) {
-  const name = String(req.name || "").replace(/[\/:*?"<>|]+/g, " ").trim().slice(0, 120);
-  if (!name || !req.data) throw new Error("اختر ملفاً أولاً");
-  if (String(req.data).length > DROP_MAX_MB * 1024 * 1024 * 1.37) throw new Error("الملف أكبر من " + DROP_MAX_MB + " ميغابايت");
-  const props = PropertiesService.getScriptProperties();
-  const day = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
-  const cnt = JSON.parse(props.getProperty("DROP_COUNT") || "{}");
-  const n = cnt.day === day ? cnt.n : 0;
-  if (n >= DROP_DAILY) throw new Error("بلغ الرفع حدّه اليومي، حاول غداً");
-  const blob = Utilities.newBlob(Utilities.base64Decode(req.data), req.mime || "application/octet-stream", name);
-  const file = dropFolder_().createFile(blob);
-  file.setDescription(JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").slice(0, 120) }));
-  props.setProperty("DROP_COUNT", JSON.stringify({ day: day, n: n + 1 }));
-  log_(String(req.by || "زميل"), "رفع ملف للأرشفة", name);
-  return { ok: true, name: name };
-}
-function dropKey_(key) {
-  if (DROP_KEY === "PUT-READ-CODE-HERE") throw new Error("لم يُضبط رمز القراءة في الخادم بعد");
-  if (String(key || "") !== DROP_KEY) throw new Error("رمز القراءة غير صحيح");
-}
-function dropList_(key) {
-  dropKey_(key);
-  const out = [];
-  const it = dropFolder_().getFiles();
-  while (it.hasNext()) {
-    const f = it.next();
-    let d = {};
-    try { d = JSON.parse(f.getDescription() || "{}"); } catch (err) { /* وصف حر */ }
-    out.push({ id: f.getId(), name: f.getName(), title: d.title || "", by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
-  }
-  out.sort((a, b) => (a.at < b.at ? 1 : -1));
-  return { files: out, folder: dropFolder_().getUrl() };
-}
-function dropFile_(key, id) {
-  dropKey_(key);
-  const file = DriveApp.getFileById(id);
-  const ps = file.getParents();
-  if (!ps.hasNext() || ps.next().getId() !== dropFolder_().getId()) throw new Error("الملف خارج مجلد ملفات الزملاء");
-  const blob = file.getBlob();
-  return { name: file.getName(), mime: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) };
-}
-
 function upload_(req) {
   let folder = root_();
   (req.path || []).forEach((name) => { folder = subFolder_(folder, name); });
