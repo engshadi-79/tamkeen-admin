@@ -179,7 +179,7 @@
         <div class="frm-main"><h3>${esc(m.name)}</h3><p>${esc(m.file)} · نموذج من إضافتك</p></div>
         <div class="frm-act no-print">
           <button type="button" class="btn navy" data-frm="m-get" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">download</span>تنزيل</button>
-          <button type="button" class="btn secondary" data-frm="m-print" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">print</span>فتح للطباعة</button>
+          <button type="button" class="btn secondary" data-frm="m-print" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">print</span>طباعة / PDF</button>
           <button type="button" class="btn secondary" data-frm="m-ren" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">edit</span>تسمية</button>
           <button type="button" class="btn secondary" data-frm="m-del" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>
         </div></article>`).join("");
@@ -216,10 +216,19 @@
     if (kind === "m-print") {
       const f = await App.filesStore.get(m.fid);
       if (!f) return ui.toast("الملف غير موجود على هذا الجهاز");
+      if (!/pdf|png|jpe?g|webp/i.test(m.file)) { ui.toast("ملفات Word وExcel لا تُطبع من المتصفح؛ نُزّل الملف وافتحه لطباعته"); return App.filesStore.open(m.fid); }
       const url = URL.createObjectURL(f.blob);
-      const w = window.open(url, "_blank");
-      if (!w) ui.toast("اسمح بالنوافذ المنبثقة، أو نزّل الملف واطبعه");
-      else if (!/pdf|png|jpe?g|webp/i.test(m.file)) ui.toast("ملفات Word وExcel تُفتح بعد تنزيلها، اطبعها من برنامجها");
+      if (/pdf$/i.test(m.file)) {
+        /* PDF: يُفتح في تبويب جديد يعرض زر الطباعة المدمج */
+        const w = window.open(url, "_blank");
+        if (!w) ui.toast("اسمح بالنوافذ المنبثقة، أو نزّل الملف واطبعه");
+        return;
+      }
+      /* صورة: صفحة طباعة مباشرة بمقاس الورقة */
+      const w = window.open("", "_blank");
+      if (!w) return ui.toast("اسمح بالنوافذ المنبثقة لطباعة النموذج");
+      w.document.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>${esc(m.name)}</title><style>@page{margin:8mm}body{margin:0}img{width:100%}</style></head><body><img src="${url}" onload="setTimeout(function(){window.print()},200)"></body></html>`);
+      w.document.close();
       return;
     }
     if (kind === "m-ren") {
