@@ -184,6 +184,7 @@
           <button type="button" class="btn secondary" data-frm="m-ren" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">edit</span>تسمية</button>
           <button type="button" class="btn secondary" data-frm="m-del" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>
         </div></article>`).join("");
+    renderDrop();
     $("frm-cats").innerHTML = CATS.map(([k, t]) => `<button type="button" class="frm-cat${state.cat === k ? " on" : ""}" data-frm-cat="${k}">${t}</button>`).join("");
     host.innerHTML = mineHtml + (list.length ? list.map((f) => `<article class="frm-card" data-id="${f.id}">
         <div class="frm-ico"><span class="material-symbols-outlined" aria-hidden="true">${f.ico}</span></div>
@@ -352,14 +353,63 @@
       const b = e.target.closest("[data-frm]");
       if (b) { if (b.dataset.frm.startsWith("m-")) mineAct(b.dataset.frm, b.dataset.id); else act(b.dataset.frm, b.dataset.id); }
       if (e.target.closest("#frm-add")) addMine();
+      const d = e.target.closest("[data-drop]");
+      if (d) dropAct(d.dataset.drop, d.dataset.id);
       if (e.target.closest("#frm-zip")) allZip();
     });
     root.addEventListener("input", (e) => {
       const t = e.target;
       if (t.id === "frm-q") { state.q = t.value; render(); const q = $("frm-q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+      else if (t.id === "frm-drop-key") { try { localStorage.setItem(DROP_LS, t.value.trim()); } catch (er) { /* */ } }
       else if (t.dataset.frmCtx) state.ctx[t.dataset.frmCtx] = t.value;
       else if (t.dataset.frmRows) state.rows[t.dataset.frmRows] = t.value;
     });
+  }
+
+  /* ===== ملفات الزملاء: يرفعها الزميل من صفحة drop.html إلى Drive (خادم Apps Script)، وتُعرض هنا برمز القراءة ===== */
+  const DROP_LS = "tamkeen:drop-key";
+  const drop = { files: null, busy: false, err: "", folder: "" };
+  const dropUrl = () => (App.cloud && App.cloud.oldUrl) || "";
+  const dropKey = () => { try { return localStorage.getItem(DROP_LS) || ""; } catch (e) { return ""; } };
+  async function dropCall(action, extra) {
+    const res = await fetch(dropUrl(), { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ action, key: dropKey() }, extra || {})) });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error === "UNAUTHORIZED" ? "خادم Drive لم يُحدَّث بعد إلى النسخة 14 (الصق Code.gs الجديد وانشره)" : d.error);
+    return d;
+  }
+  const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " م.ب" : Math.max(1, Math.round(n / 1024)) + " ك.ب");
+  function renderDrop() {
+    const host = $("frm-drop");
+    if (!host) return;
+    const link = location.origin + location.pathname.replace(/[^/]*$/, "") + "drop.html";
+    const q = state.q.trim();
+    const list = (drop.files || []).filter((f) => !q || (f.name + f.by).includes(q));
+    host.innerHTML = `<div class="frm-drophead"><h3>ملفات الزملاء</h3>
+        <div class="btn-row"><button type="button" class="btn secondary" data-drop="copy"><span class="material-symbols-outlined btn-ico">link</span>نسخ رابط الرفع</button>
+        <button type="button" class="btn navy" data-drop="load"><span class="material-symbols-outlined btn-ico">refresh</span>${drop.busy ? "جارٍ التحميل…" : drop.files ? "تحديث القائمة" : "عرض الملفات"}</button></div></div>
+      <p class="frm-note">أرسل «رابط الرفع» لزميلك: يفتحه ويرفع ملفاته بلا دخول، فتُحفظ في Drive عندك داخل «أرشيف مساعد تمكين ← ملفات الزملاء». <span dir="ltr">${esc(link)}</span></p>
+      <label class="frm-key">رمز القراءة (الذي وضعته في Code.gs) <input type="password" id="frm-drop-key" value="${esc(dropKey())}" autocomplete="off"></label>
+      ${drop.err ? `<p class="frm-err">${esc(drop.err)}</p>` : ""}
+      ${drop.files ? (list.length ? `<table class="cc-table"><thead><tr><th>الملف</th><th>رفعه</th><th>تاريخ الإضافة</th><th>الحجم</th><th></th></tr></thead><tbody>${list.map((f) => `<tr><td>${esc(f.name)}</td><td>${esc(f.by || "—")}</td><td>${esc(new Date(f.at).toLocaleString("ar"))}</td><td>${fmtSize(f.size)}</td><td><button type="button" class="cc-link" data-drop="get" data-id="${esc(f.id)}">تنزيل</button></td></tr>`).join("")}</tbody></table>${drop.folder ? `<p class="frm-note"><a href="${esc(drop.folder)}" target="_blank" rel="noopener">فتح المجلد في Google Drive</a></p>` : ""}` : `<p class="frm-empty">لا ملفات مرفوعة بعد.</p>`) : ""}`;
+  }
+  async function dropAct(kind, id) {
+    if (kind === "copy") { ui.copyText(location.origin + location.pathname.replace(/[^/]*$/, "") + "drop.html"); return ui.toast("نُسخ رابط الرفع"); }
+    if (kind === "load") {
+      if (drop.busy) return;
+      if (!dropKey()) return ui.toast("اكتب رمز القراءة أولاً");
+      drop.busy = true; drop.err = ""; renderDrop();
+      try { const d = await dropCall("dropList"); drop.files = d.files || []; drop.folder = d.folder || ""; } catch (e) { drop.err = (e && e.message) || "تعذّر الاتصال بخادم Drive"; }
+      drop.busy = false; return renderDrop();
+    }
+    if (kind === "get") {
+      ui.toast("جارٍ التنزيل…");
+      try {
+        const d = await dropCall("dropFile", { id });
+        const bin = atob(d.data), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        ui.download(d.name, new Blob([bytes], { type: d.mime || "application/octet-stream" }));
+      } catch (e) { ui.toast((e && e.message) || "تعذّر التنزيل"); }
+    }
   }
 
   App.forms = { render, init, FORMS, blocksOf };

@@ -32,3 +32,6 @@ html:root:root .cc-modes button { display: inline-flex; align-items: center; gap
 .frm-act{display:flex;gap:6px;flex-wrap:wrap;width:100%}
 .frm-empty{color:var(--muted,#5b687a)}
 .frm-addbar{align-items:flex-end;background:#f4f8f8;border:1px dashed #9fc9c4;border-radius:10px;padding:10px}.frm-mine{border-color:#9fc9c4}
+.frm-dropcard{margin-top:14px}.frm-drophead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.frm-drophead h3{margin:0}
+.frm-note{color:var(--muted,#5b687a);font-size:12.5px;margin:8px 0}.frm-err{color:#b42318;font-weight:600}
+.frm-key{display:inline-flex;gap:8px;align-items:center;font-size:12.5px;margin:4px 0 10px}.frm-key input{padding:6px 9px;border:1px solid var(--line,#d5dce6);border-radius:8px}

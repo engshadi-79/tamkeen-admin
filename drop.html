@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>أرشفة الملفات — تمكين</title>
+<style>
+  body{font-family:"Segoe UI",Tahoma,Arial,sans-serif;background:#f4f6fa;margin:0;padding:20px;color:#1b2433}
+  .card{max-width:560px;margin:24px auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 2px 14px rgba(0,0,0,.08)}
+  h1{font-size:21px;margin:0 0 6px;color:#0f766e} p{color:#5b687a;font-size:14px;margin:0 0 16px}
+  label{display:block;font-size:13px;margin:12px 0 4px;font-weight:600}
+  input[type=text]{width:100%;box-sizing:border-box;padding:10px;border:1px solid #d5dce6;border-radius:9px;font:inherit}
+  .drop{border:2px dashed #9fc9c4;border-radius:12px;padding:26px 12px;text-align:center;background:#f4fbfa;cursor:pointer;margin-top:6px}
+  .drop.over{background:#dff4f1}
+  button{margin-top:16px;width:100%;padding:12px;border:0;border-radius:10px;background:#0f766e;color:#fff;font:inherit;font-size:16px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  ul{list-style:none;padding:0;margin:14px 0 0} li{padding:8px 10px;border:1px solid #e3e8ef;border-radius:9px;margin-bottom:6px;font-size:13.5px;display:flex;justify-content:space-between;gap:8px}
+  .ok{color:#0f766e;font-weight:700}.bad{color:#b42318;font-weight:700}.wait{color:#8a6d1a}
+  small{color:#5b687a}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>أرشفة الملفات</h1>
+  <p>ارفع ملفاتك هنا لتُحفظ في أرشيف المركز. لا حاجة لتسجيل الدخول. الحد الأقصى 15 ميغابايت للملف.</p>
+  <label for="by">اسمك</label>
+  <input type="text" id="by" maxlength="60" placeholder="مثال: أحمد">
+  <label>الملفات</label>
+  <div class="drop" id="drop">اضغط لاختيار الملفات أو اسحبها إلى هنا<br><small>Word، PDF، Excel، صور، ملفات مضغوطة …</small></div>
+  <input type="file" id="pick" multiple hidden>
+  <ul id="list"></ul>
+  <button id="go" disabled>رفع الملفات</button>
+</div>
+<script>
+(function () {
+  var URL_ = "https://script.google.com/macros/s/AKfycbyvEVh6eb827Ue-sgDtQNz1bHt-9wakgLZiVD1YNN0lIRofr5Q5CbxPBs_6jqVQsLwFbg/exec";
+  var MAX = 15 * 1024 * 1024;
+  var files = [];
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+  try { $("by").value = localStorage.getItem("tamkeen-drop-by") || ""; } catch (e) {}
+  function paint() {
+    $("list").innerHTML = files.map(function (f) {
+      return "<li><span>" + esc(f.file.name) + " <small>(" + (f.file.size / 1048576).toFixed(1) + " م.ب)</small></span><span class='" + (f.cls || "") + "'>" + esc(f.msg || "بانتظار الرفع") + "</span></li>";
+    }).join("");
+    $("go").disabled = !files.some(function (f) { return !f.done && !f.busy; });
+  }
+  function add(list) {
+    Array.prototype.forEach.call(list, function (file) {
+      if (file.size > MAX) files.push({ file: file, done: true, cls: "bad", msg: "أكبر من 15 م.ب" });
+      else files.push({ file: file });
+    });
+    paint();
+  }
+  $("drop").onclick = function () { $("pick").click(); };
+  $("pick").onchange = function () { add(this.files); this.value = ""; };
+  $("drop").ondragover = function (e) { e.preventDefault(); this.classList.add("over"); };
+  $("drop").ondragleave = function () { this.classList.remove("over"); };
+  $("drop").ondrop = function (e) { e.preventDefault(); this.classList.remove("over"); add(e.dataTransfer.files); };
+  function b64(file) {
+    return new Promise(function (res, rej) {
+      var r = new FileReader();
+      r.onload = function () { res(String(r.result).split(",")[1] || ""); };
+      r.onerror = rej; r.readAsDataURL(file);
+    });
+  }
+  $("go").onclick = async function () {
+    var by = $("by").value.trim();
+    if (!by) { $("by").focus(); alert("اكتب اسمك أولاً"); return; }
+    try { localStorage.setItem("tamkeen-drop-by", by); } catch (e) {}
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (f.done) continue;
+      f.busy = true; f.cls = "wait"; f.msg = "جارٍ الرفع…"; paint();
+      try {
+        var res = await fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "dropUpload", name: f.file.name, mime: f.file.type, by: by, data: await b64(f.file) }) });
+        var d = await res.json();
+        if (d.error) throw new Error(d.error === "UNAUTHORIZED" ? "الخادم لم يُحدَّث بعد" : d.error);
+        f.done = true; f.cls = "ok"; f.msg = "✓ تم الحفظ";
+      } catch (e) { f.cls = "bad"; f.msg = (e && e.message) || "تعذّر الرفع"; }
+      f.busy = false; paint();
+    }
+  };
+})();
+</script>
+</body>
+</html>
