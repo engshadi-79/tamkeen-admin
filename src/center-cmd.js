@@ -2921,7 +2921,7 @@
         } else if (act === "run-grp") { return runGroups();
         } else if (act === "export-grp") { return exportGrpBook();
         } else if (act === "run-imp" || act === "imp-apply") { return runImpact();
-        } else if (act === "gtoggle") { const k = t.dataset.gk; state.gopen = state.gopen === k ? "" : k; render(); return;
+        } else if (act === "gtoggle") { const k = b.dataset.gk; state.gopen = state.gopen === k ? "" : k; render(); return;
         } else if (act === "gclear") { scopeClear(); render(); return;
         } else if (act === "run-att") { return runAttend();
         } else if (act === "export-att") { const sh = attSheets("الحضور والغياب"); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => fmtSheet(wb.addWorksheet(x.name.slice(0, 31)), x.heads, x.rows)); return ui.download("الحضور والغياب " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
