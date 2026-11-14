@@ -176,10 +176,11 @@
     const mine = state.cat === "all" || state.cat === "mine" ? state.mine.filter((m) => !q || m.name.includes(q)) : [];
     const mineHtml = mine.map((m) => `<article class="frm-card frm-mine" data-id="${esc(m.id)}">
         <div class="frm-ico"><span class="material-symbols-outlined" aria-hidden="true">${/pdf$/i.test(m.file) ? "picture_as_pdf" : /xls/i.test(m.file) ? "table_chart" : /png|jpe?g|webp/i.test(m.file) ? "image" : "description"}</span></div>
-        <div class="frm-main"><h3>${esc(m.name)}</h3><p>${esc(m.file)} · نموذج من إضافتك</p></div>
+        <div class="frm-main"><h3>${esc(m.name)}</h3><p>${esc(m.file)} · ${m.pid ? "الطباعة من نسخة PDF مرفقة" : "نموذج من إضافتك"}</p></div>
         <div class="frm-act no-print">
           <button type="button" class="btn navy" data-frm="m-get" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">download</span>تنزيل</button>
           <button type="button" class="btn secondary" data-frm="m-print" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">print</span>طباعة / PDF</button>
+          ${/\.docx?$/i.test(m.file) ? `<button type="button" class="btn secondary" data-frm="m-pdf" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">picture_as_pdf</span>${m.pid ? "تغيير PDF" : "إرفاق PDF"}</button>` : ""}
           <button type="button" class="btn secondary" data-frm="m-ren" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">edit</span>تسمية</button>
           <button type="button" class="btn secondary" data-frm="m-del" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>
         </div></article>`).join("");
@@ -202,9 +203,11 @@
     const name = (nm.value || "").trim() || file.name.replace(/\.[^.]+$/, "");
     try {
       const fid = await App.filesStore.put(file, file.name);
-      state.mine.unshift({ id: App.store.uid(), name, file: file.name, fid, at: new Date().toISOString() });
+      const pf = $("frm-add-pdf") && $("frm-add-pdf").files[0];
+      const pid = pf ? await App.filesStore.put(pf, pf.name) : "";
+      state.mine.unshift({ id: App.store.uid(), name, file: file.name, fid, pid, at: new Date().toISOString() });
       saveMine(state.mine);
-      nm.value = ""; fl.value = "";
+      nm.value = ""; fl.value = ""; if ($("frm-add-pdf")) $("frm-add-pdf").value = "";
       state.cat = "mine"; render();
       ui.toast("أُضيف النموذج «" + name + "»");
     } catch (e) { ui.toast("تعذّر حفظ الملف على هذا الجهاز"); }
@@ -283,8 +286,9 @@
     if (!m) return;
     if (kind === "m-get") return App.filesStore.open(m.fid);
     if (kind === "m-print") {
-      const f = await App.filesStore.get(m.fid);
+      const f = await App.filesStore.get(m.pid || m.fid);
       if (!f) return ui.toast("الملف غير موجود على هذا الجهاز");
+      if (m.pid) { const w2 = window.open(URL.createObjectURL(f.blob), "_blank"); if (!w2) ui.toast("اسمح بالنوافذ المنبثقة، أو نزّل الملف واطبعه"); return; }
       if (/\.docx$/i.test(m.file)) return printDocx(f.blob, m.name);
       if (!/pdf|png|jpe?g|webp/i.test(m.file)) { ui.toast("ملفات Excel وWord القديمة (doc) لا تُطبع من المتصفح؛ نُزّل الملف وافتحه لطباعته"); return App.filesStore.open(m.fid); }
       const url = URL.createObjectURL(f.blob);
@@ -301,6 +305,14 @@
       w.document.close();
       return;
     }
+    if (kind === "m-pdf") {
+      const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".pdf";
+      inp.onchange = async () => {
+        const pf = inp.files[0]; if (!pf) return;
+        try { if (m.pid) await App.filesStore.remove(m.pid); m.pid = await App.filesStore.put(pf, pf.name); saveMine(state.mine); render(); ui.toast("أُرفقت نسخة PDF؛ ستُطبع منها"); } catch (e) { ui.toast("تعذّر حفظ ملف PDF"); }
+      };
+      inp.click(); return;
+    }
     if (kind === "m-ren") {
       const n = prompt("اسم النموذج", m.name);
       if (n && n.trim()) { m.name = n.trim(); saveMine(state.mine); render(); }
@@ -308,7 +320,7 @@
     }
     if (kind === "m-del") {
       if (!confirm("حذف النموذج «" + m.name + "» من هذا الجهاز؟")) return;
-      try { await App.filesStore.remove(m.fid); } catch (e) { /* */ }
+      try { await App.filesStore.remove(m.fid); if (m.pid) await App.filesStore.remove(m.pid); } catch (e) { /* */ }
       state.mine = state.mine.filter((x) => x.id !== id); saveMine(state.mine); render();
     }
   }
