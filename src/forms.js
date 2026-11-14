@@ -209,6 +209,75 @@
       ui.toast("أُضيف النموذج «" + name + "»");
     } catch (e) { ui.toast("تعذّر حفظ الملف على هذا الجهاز"); }
   }
+
+  /* طباعة ملف Word (docx): يُحوَّل إلى صفحة HTML قابلة للطباعة (فقرات وجداول وتنسيق الخط والمحاذاة والصور).
+     التحويل تقريبي؛ للمطابقة التامة مع الأصل نزّل الملف واطبعه من Word. */
+  async function printDocx(blob, title) {
+    if (!window.JSZip) return ui.toast("مكتبة فتح الملفات غير متاحة");
+    const w = window.open("", "_blank");
+    if (!w) return ui.toast("اسمح بالنوافذ المنبثقة لطباعة النموذج");
+    try {
+      const zip = await window.JSZip.loadAsync(blob);
+      const xml = await zip.file("word/document.xml").async("string");
+      const relsF = zip.file("word/_rels/document.xml.rels");
+      const rels = {};
+      if (relsF) new DOMParser().parseFromString(await relsF.async("string"), "text/xml").querySelectorAll("Relationship").forEach((r) => { rels[r.getAttribute("Id")] = r.getAttribute("Target"); });
+      const doc = new DOMParser().parseFromString(xml, "text/xml");
+      const NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+      const kids = (el, n) => [...el.children].filter((c) => c.localName === n);
+      const kid = (el, n) => kids(el, n)[0];
+      const val = (el) => (el ? el.getAttributeNS(NS, "val") || el.getAttribute("w:val") : null);
+      const imgs = {};
+      for (const id of Object.keys(rels)) {
+        const f = zip.file("word/" + rels[id].replace(/^\//, "").replace(/^word\//, ""));
+        if (f && /\.(png|jpe?g|gif|webp)$/i.test(rels[id])) imgs[id] = "data:image/" + rels[id].split(".").pop().toLowerCase().replace("jpg", "jpeg") + ";base64," + (await f.async("base64"));
+      }
+      const runHtml = (r) => {
+        const pr = kid(r, "rPr");
+        let out = "";
+        r.querySelectorAll("*").forEach((n) => {
+          if (n.localName === "t") out += esc(n.textContent);
+          else if (n.localName === "tab") out += "&emsp;";
+          else if (n.localName === "br") out += "<br>";
+          else if (n.localName === "blip") { const id = n.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed"); if (imgs[id]) out += `<img src="${imgs[id]}" style="max-width:100%">`; }
+        });
+        if (!out) return "";
+        if (pr) {
+          const sz = val(kid(pr, "sz")); let st = "";
+          if (sz) st += `font-size:${Number(sz) / 2}pt;`;
+          if (kid(pr, "b") && val(kid(pr, "b")) !== "0") out = `<b>${out}</b>`;
+          if (kid(pr, "i") && val(kid(pr, "i")) !== "0") out = `<i>${out}</i>`;
+          if (kid(pr, "u") && val(kid(pr, "u")) !== "none") out = `<u>${out}</u>`;
+          if (st) out = `<span style="${st}">${out}</span>`;
+        }
+        return out;
+      };
+      const paraHtml = (p) => {
+        const pr = kid(p, "pPr"); let st = "";
+        const jc = pr && val(kid(pr, "jc"));
+        const rtl = pr && kid(pr, "bidi");
+        const al = { center: "center", both: "justify", left: rtl ? "right" : "left", right: rtl ? "left" : "right", start: "right", end: "left" }[jc];
+        if (al) st += `text-align:${al};`;
+        const h = (p.textContent || "").trim() === "" && !p.querySelector("blip") ? "&nbsp;" : [...p.querySelectorAll("r")].map(runHtml).join("");
+        return `<p style="${st}">${h}</p>`;
+      };
+      const tblHtml = (t) => `<table>${kids(t, "tr").map((tr) => `<tr>${kids(tr, "tc").map((tc) => {
+        const span = val(kid(kid(tc, "tcPr") || tc, "gridSpan"));
+        return `<td${span ? ` colspan="${span}"` : ""}>${blocks(tc)}</td>`;
+      }).join("")}</tr>`).join("")}</table>`;
+      const blocks = (el) => kids(el, "p").length + kids(el, "tbl").length === 0 ? "" : [...el.children].map((c) => (c.localName === "p" ? paraHtml(c) : c.localName === "tbl" ? tblHtml(c) : "")).join("");
+      const body = doc.getElementsByTagNameNS(NS, "body")[0] || doc.documentElement;
+      w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+        @page{margin:15mm}body{font:14pt/1.6 "Sakkal Majalla","Traditional Arabic","Segoe UI",Tahoma,sans-serif;margin:0;color:#000}
+        p{margin:0 0 2pt}table{border-collapse:collapse;width:100%;margin:4pt 0}td{border:1px solid #444;padding:3pt 6pt;vertical-align:top}
+      </style></head><body>${blocks(body)}<script>setTimeout(function(){window.print()},400)<\/script></body></html>`);
+      w.document.close();
+      ui.toast("الطباعة تقريبية؛ للمطابقة التامة نزّل الملف واطبعه من Word");
+    } catch (e) {
+      console.error(e); w.close();
+      ui.toast("تعذّر تحويل الملف للطباعة، نُزّل واطبعه من Word");
+    }
+  }
   async function mineAct(kind, id) {
     const m = state.mine.find((x) => x.id === id);
     if (!m) return;
@@ -216,7 +285,8 @@
     if (kind === "m-print") {
       const f = await App.filesStore.get(m.fid);
       if (!f) return ui.toast("الملف غير موجود على هذا الجهاز");
-      if (!/pdf|png|jpe?g|webp/i.test(m.file)) { ui.toast("ملفات Word وExcel لا تُطبع من المتصفح؛ نُزّل الملف وافتحه لطباعته"); return App.filesStore.open(m.fid); }
+      if (/\.docx$/i.test(m.file)) return printDocx(f.blob, m.name);
+      if (!/pdf|png|jpe?g|webp/i.test(m.file)) { ui.toast("ملفات Excel وWord القديمة (doc) لا تُطبع من المتصفح؛ نُزّل الملف وافتحه لطباعته"); return App.filesStore.open(m.fid); }
       const url = URL.createObjectURL(f.blob);
       if (/pdf$/i.test(m.file)) {
         /* PDF: يُفتح في تبويب جديد يعرض زر الطباعة المدمج */
