@@ -1873,7 +1873,7 @@
       requireAgent15();
       const today = ui.todayISO();
       const params = { date_from: c.from || today, date_to: c.to || today };
-      const r = (await runCommands([{ type: "attendance", label: "الحضور والغياب", params, groupCodes: state.groups || [], trackNames: trackNamesOf(c.tracks), stages: (c.stages || []).map(stageK).filter(Boolean), max: Number(c.max) || 80 }]))[0];
+      const r = (await runCommands([{ type: "attendance", label: "الحضور والغياب", params, groupCodes: state.groups || [], trackNames: trackNamesOf(c.tracks), stages: (state.groups || []).length ? [] : (c.stages || []).map(stageK).filter(Boolean), max: Number(c.max) || 80 }]))[0];   // المجموعة المحدَّدة تغني عن المرحلة
       if (!r || r.type !== "attendance") throw new Error((r && r.error) || "لم تصل نتيجة الحضور من الوكيل.");
       const days = r.sessions.map((x) => x.date).sort();
       c.out = { at: new Date(), raw: r.sessions, students: attAggregate(r.sessions), sessions: r.sessions.length, listed: r.listed, truncated: r.truncated, note: r.note, lastDay: days[days.length - 1] || "", from: params.date_from, to: params.date_to };
@@ -1901,7 +1901,7 @@
     if (!o) return "";
     const fl = attFlagged(), rows = attTable(), day = attDayTable();
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> الحضور والغياب</h3>
-      ${o.note ? `<p class="cc-alert warn">${esc(o.note)}</p>` : ""}
+      ${o.note ? `<p class="cc-alert warn">${esc(o.note)} ${(state.groups || []).length && (state.att.tracks || []).length ? "جرّب إزالة اختيار المسارات، فقد لا توجد المجموعات المختارة في تلك المسارات." : ""} (G1 وG2 للمرحلة الثانية، وS3G1 وS3G2 للثالثة.)</p>` : ""}
       ${fl.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(fl.length)}</b> طالباً تجاوزوا ${esc(state.att.thr)} غيابات${state.att.excused ? " (بالعذر)" : ""}. يظهرون أولاً في الجدول بعلامة «⚠ تجاوز».</span><button type="button" class="btn secondary small" data-cc="att-copy">نسخ قائمة المتجاوزين</button></div>` : `<p class="cc-note">لا طالب تجاوز ${esc(state.att.thr)} غيابات في هذه الفترة.</p>`}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.sessions)}</b> جلسة قُرئت${o.truncated ? ` من ${ui.fmt(o.listed)} (اقتُصر على الحد الأقصى؛ ارفعه أو قصّر الفترة)` : ""}</span><span class="cc-stat"><b>${ui.fmt(o.students.length)}</b> طالباً</span><span class="cc-stat"><b>${ui.fmt(o.students.reduce((a, e) => a + e.absent, 0))}</b> غياباً</span>${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-att">تنزيل Excel</button>' : ""}</div>
       ${rows.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الغياب لكل طالب (${esc(o.from)} ← ${esc(o.to)})</h4><span class="cc-badge">${ui.fmt(rows.length)} طالباً</span></div></header>${dataTable("att-0", attHeads(), rows)}</article>` : '<p class="cc-note">لا جلسات بسجلات حضور في هذه الفترة والنطاق.</p>'}
