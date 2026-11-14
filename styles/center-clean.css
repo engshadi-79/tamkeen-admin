@@ -31,3 +31,4 @@ html:root:root .cc-modes button { display: inline-flex; align-items: center; gap
 .frm-rows{display:inline-flex;gap:6px;align-items:center;margin-top:6px;font-size:12px}.frm-rows input{width:60px;padding:3px 6px;border:1px solid var(--line,#d5dce6);border-radius:6px}
 .frm-act{display:flex;gap:6px;flex-wrap:wrap;width:100%}
 .frm-empty{color:var(--muted,#5b687a)}
+.frm-addbar{align-items:flex-end;background:#f4f8f8;border:1px dashed #9fc9c4;border-radius:10px;padding:10px}.frm-mine{border-color:#9fc9c4}

@@ -903,6 +903,11 @@
             <label>التاريخ <input data-frm-ctx="date" placeholder="اختياري، مثل 2026-11-15"></label>
             <label class="frm-search">بحث <input id="frm-q" type="search" placeholder="اسم النموذج"></label>
           </div>
+          <div class="frm-bar frm-addbar no-print">
+            <label>اسم النموذج <input id="frm-add-name" placeholder="مثال: نموذج زيارة أولياء الأمور"></label>
+            <label>الملف (Word أو PDF أو Excel أو صورة) <input id="frm-add-file" type="file" accept=".doc,.docx,.pdf,.xls,.xlsx,.png,.jpg,.jpeg,.webp"></label>
+            <button class="btn" id="frm-add" type="button"><span class="material-symbols-outlined btn-ico">add</span>إضافة نموذج</button>
+          </div>
           <div class="frm-cats no-print" id="frm-cats"></div>
           <div class="frm-grid" id="frm-body"></div>
         </div>
@@ -1620,7 +1625,7 @@
   <script src="src/center-cmd.js?v=439"></script>
   <script src="vendor/supabase.min.js"></script>
   <script src="src/hospitality.js?v=340"></script>
-  <script src="src/forms.js?v=440"></script>
+  <script src="src/forms.js?v=441"></script>
   <script src="src/sheets.js?v=340"></script>
   <script src="src/history.js?v=340"></script>
   <script src="src/roster-audit.js?v=340"></script>

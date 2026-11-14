@@ -6,7 +6,10 @@
   const $ = (id) => document.getElementById(id);
   const esc = ui.esc;
   const DOT = "………………………………";
-  const state = { q: "", cat: "all", rows: {}, ctx: { track: "", group: "", trainer: "", date: "" } };
+  const LS = "tamkeen:my-forms";
+  const loadMine = () => { try { const a = JSON.parse(localStorage.getItem(LS) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  const saveMine = (a) => { try { localStorage.setItem(LS, JSON.stringify(a)); } catch (e) { ui.toast("تعذّر حفظ القائمة في المتصفح"); } };
+  const state = { mine: loadMine(), q: "", cat: "all", rows: {}, ctx: { track: "", group: "", trainer: "", date: "" } };
 
   const v = (x, w) => (x && String(x).trim() ? String(x).trim() : w || DOT);
   const blank = (n, cols) => Array.from({ length: n }, (_, i) => [String(i + 1), ...Array(cols - 1).fill("")]);
@@ -160,7 +163,7 @@
         SP(), B("التفاصيل:"), P(DOT + DOT), P(DOT + DOT), P(DOT + DOT), SP(), B("رد الإدارة:"), P(DOT + DOT), P(DOT + DOT), ...sign("مقدّم الطلب", "اعتماد الإدارة")],
     },
   ];
-  const CATS = [["all", "الكل"], ["trainees", "المتدربون"], ["eval", "التقييم والمتابعة"], ["admin", "الإدارة والمراسلات"]];
+  const CATS = [["all", "الكل"], ["trainees", "المتدربون"], ["eval", "التقييم والمتابعة"], ["admin", "الإدارة والمراسلات"], ["mine", "نماذجي"]];
   const byId = (id) => FORMS.find((f) => f.id === id);
   const rowsOf = (f) => Math.max(3, Math.min(80, Number(state.rows[f.id] || f.rows) || f.rows));
   const blocksOf = (f) => f.build({ ...state.ctx }, f.rows ? rowsOf(f) : 0);
@@ -169,9 +172,19 @@
     const host = $("frm-body");
     if (!host) return;
     const q = state.q.trim();
-    const list = FORMS.filter((f) => (state.cat === "all" || f.cat === state.cat) && (!q || (f.title + f.desc).includes(q)));
+    const list = state.cat === "mine" ? [] : FORMS.filter((f) => (state.cat === "all" || f.cat === state.cat) && (!q || (f.title + f.desc).includes(q)));
+    const mine = state.cat === "all" || state.cat === "mine" ? state.mine.filter((m) => !q || m.name.includes(q)) : [];
+    const mineHtml = mine.map((m) => `<article class="frm-card frm-mine" data-id="${esc(m.id)}">
+        <div class="frm-ico"><span class="material-symbols-outlined" aria-hidden="true">${/pdf$/i.test(m.file) ? "picture_as_pdf" : /xls/i.test(m.file) ? "table_chart" : /png|jpe?g|webp/i.test(m.file) ? "image" : "description"}</span></div>
+        <div class="frm-main"><h3>${esc(m.name)}</h3><p>${esc(m.file)} · نموذج من إضافتك</p></div>
+        <div class="frm-act no-print">
+          <button type="button" class="btn navy" data-frm="m-get" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">download</span>تنزيل</button>
+          <button type="button" class="btn secondary" data-frm="m-print" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">print</span>فتح للطباعة</button>
+          <button type="button" class="btn secondary" data-frm="m-ren" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">edit</span>تسمية</button>
+          <button type="button" class="btn secondary" data-frm="m-del" data-id="${esc(m.id)}"><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>
+        </div></article>`).join("");
     $("frm-cats").innerHTML = CATS.map(([k, t]) => `<button type="button" class="frm-cat${state.cat === k ? " on" : ""}" data-frm-cat="${k}">${t}</button>`).join("");
-    host.innerHTML = list.length ? list.map((f) => `<article class="frm-card" data-id="${f.id}">
+    host.innerHTML = mineHtml + (list.length ? list.map((f) => `<article class="frm-card" data-id="${f.id}">
         <div class="frm-ico"><span class="material-symbols-outlined" aria-hidden="true">${f.ico}</span></div>
         <div class="frm-main"><h3>${esc(f.title)}</h3><p>${esc(f.desc)}</p>
           ${f.rows ? `<label class="frm-rows">عدد الصفوف <input type="number" min="3" max="80" value="${rowsOf(f)}" data-frm-rows="${f.id}"></label>` : ""}
@@ -179,7 +192,46 @@
         <div class="frm-act no-print">
           <button type="button" class="btn navy" data-frm="word" data-id="${f.id}"><span class="material-symbols-outlined btn-ico">download</span>Word</button>
           <button type="button" class="btn secondary" data-frm="print" data-id="${f.id}"><span class="material-symbols-outlined btn-ico">print</span>طباعة / PDF</button>
-        </div></article>`).join("") : `<p class="frm-empty">لا نموذج يطابق البحث.</p>`;
+        </div></article>`).join("") : (mineHtml ? "" : `<p class="frm-empty">${state.cat === "mine" ? "لم تُضف نماذج بعد. اضغط «إضافة نموذج» أعلاه." : "لا نموذج يطابق البحث."}</p>`));
+  }
+
+  async function addMine() {
+    const nm = $("frm-add-name"), fl = $("frm-add-file");
+    const file = fl && fl.files && fl.files[0];
+    if (!file) return ui.toast("اختر ملف النموذج أولاً");
+    const name = (nm.value || "").trim() || file.name.replace(/\.[^.]+$/, "");
+    try {
+      const fid = await App.filesStore.put(file, file.name);
+      state.mine.unshift({ id: App.store.uid(), name, file: file.name, fid, at: new Date().toISOString() });
+      saveMine(state.mine);
+      nm.value = ""; fl.value = "";
+      state.cat = "mine"; render();
+      ui.toast("أُضيف النموذج «" + name + "»");
+    } catch (e) { ui.toast("تعذّر حفظ الملف على هذا الجهاز"); }
+  }
+  async function mineAct(kind, id) {
+    const m = state.mine.find((x) => x.id === id);
+    if (!m) return;
+    if (kind === "m-get") return App.filesStore.open(m.fid);
+    if (kind === "m-print") {
+      const f = await App.filesStore.get(m.fid);
+      if (!f) return ui.toast("الملف غير موجود على هذا الجهاز");
+      const url = URL.createObjectURL(f.blob);
+      const w = window.open(url, "_blank");
+      if (!w) ui.toast("اسمح بالنوافذ المنبثقة، أو نزّل الملف واطبعه");
+      else if (!/pdf|png|jpe?g|webp/i.test(m.file)) ui.toast("ملفات Word وExcel تُفتح بعد تنزيلها، اطبعها من برنامجها");
+      return;
+    }
+    if (kind === "m-ren") {
+      const n = prompt("اسم النموذج", m.name);
+      if (n && n.trim()) { m.name = n.trim(); saveMine(state.mine); render(); }
+      return;
+    }
+    if (kind === "m-del") {
+      if (!confirm("حذف النموذج «" + m.name + "» من هذا الجهاز؟")) return;
+      try { await App.filesStore.remove(m.fid); } catch (e) { /* */ }
+      state.mine = state.mine.filter((x) => x.id !== id); saveMine(state.mine); render();
+    }
   }
 
   async function act(kind, id) {
@@ -207,7 +259,8 @@
       const c = e.target.closest("[data-frm-cat]");
       if (c) { state.cat = c.dataset.frmCat; return render(); }
       const b = e.target.closest("[data-frm]");
-      if (b) act(b.dataset.frm, b.dataset.id);
+      if (b) { if (b.dataset.frm.startsWith("m-")) mineAct(b.dataset.frm, b.dataset.id); else act(b.dataset.frm, b.dataset.id); }
+      if (e.target.closest("#frm-add")) addMine();
       if (e.target.closest("#frm-zip")) allZip();
     });
     root.addEventListener("input", (e) => {
