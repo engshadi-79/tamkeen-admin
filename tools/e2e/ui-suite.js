@@ -367,6 +367,14 @@ async function suite() {
   c.state.att.thr = 5; c.render();
   ok("رفع الحد إلى 5: لا تنبيه", !/⚠ تجاوز/.test(b.textContent) && /لا طالب تجاوز 5/.test(b.textContent), "thr");
   c.state.att.thr = 3; c.state.att.out = null; c.state.mode = "report"; c.state.wideLimit = 0;
+  // أقراص النطاق تُفتح وتُغلق بالنقر (النقر على النص الداخلي أيضاً)
+  c.state.mode = "report"; c.state.gopen = ""; c.render();
+  b.querySelector('.cc-pill[data-gk="stages"] b').click(); await wait(100);
+  ok("النقر على قرص «المراحل» يفتح قائمته", c.state.gopen === "stages" && b.querySelectorAll('[data-sc="stages"]').length === 3, c.state.gopen);
+  b.querySelector('.cc-pill[data-gk="tracks"]').click(); await wait(100);
+  ok("النقر على قرص «المسارات» ينقل الفتح إليه", c.state.gopen === "tracks" && b.querySelectorAll('[data-sc="tracks"]').length > 3, c.state.gopen);
+  b.querySelector('.cc-pill[data-gk="tracks"]').click(); await wait(100);
+  ok("النقر مرة ثانية يغلقها", c.state.gopen === "", c.state.gopen);
   // النطاق الموحّد: اختيار مسار ومرحلة من الشريط يسري على كل التبويبات
   c.state.groups = []; [c.state.sel, c.state.mis, c.state.cmp, c.state.sib, c.state.dq, c.state.grp, c.state.imp].forEach((x) => { x.tracks = []; if ("stages" in x) x.stages = []; });
   c.state.mode = "report"; c.state.gopen = "tracks"; c.render();
