@@ -175,7 +175,7 @@ function sbDropUpload_(req) {
   if (n >= SB_DROP_DAILY) throw new Error("بلغ الرفع حدّه اليومي، حاول غداً");
   const blob = Utilities.newBlob(Utilities.base64Decode(String(req.data)), req.mime || "application/octet-stream", name);
   const file = sbDropFolder_().createFile(blob);
-  file.setDescription(JSON.stringify({ by: String(req.by || "").slice(0, 60) }));
+  file.setDescription(JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").trim().slice(0, 120) }));
   props.setProperty("DROP_COUNT", JSON.stringify({ day: day, n: n + 1 }));
   return { ok: true, name: name };
 }
@@ -187,7 +187,7 @@ function sbDropList_() {
     const f = it.next();
     let d = {};
     try { d = JSON.parse(f.getDescription() || "{}"); } catch (err) { /* وصف حر */ }
-    out.push({ id: f.getId(), name: f.getName(), by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
+    out.push({ id: f.getId(), name: f.getName(), title: d.title || "", by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
   }
   out.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
   return { files: out, folder: folder.getUrl() };
@@ -201,7 +201,7 @@ function sbDropFile_(id) {
 }
 
 function doGet() {
-  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 1 });
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 2 });
 }
 
 function sbOut_(obj) {

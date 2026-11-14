@@ -177,9 +177,9 @@
     const person = state.cat.indexOf("by:") === 0 ? state.cat.slice(3) : null;
     const people = [...new Set((drop.files || []).map((f) => f.by || "بلا اسم"))].sort((a, b) => a.localeCompare(b, "ar"));
     const icoOf = (n) => (/pdf$/i.test(n) ? "picture_as_pdf" : /xlsx?$/i.test(n) ? "table_chart" : /(png|jpe?g|webp)$/i.test(n) ? "image" : /(zip|rar|7z)$/i.test(n) ? "folder_zip" : "description");
-    const dropHtml = person === null ? "" : (drop.files || []).filter((f) => (f.by || "بلا اسم") === person && (!q || f.name.includes(q))).map((f) => `<article class="frm-card frm-mine">
+    const dropHtml = person === null ? "" : (drop.files || []).filter((f) => (f.by || "بلا اسم") === person && (!q || (f.name + (f.title || "")).includes(q))).map((f) => `<article class="frm-card frm-mine">
         <div class="frm-ico"><span class="material-symbols-outlined" aria-hidden="true">${icoOf(f.name)}</span></div>
-        <div class="frm-main"><h3>${esc(f.name.replace(/\.[^.]+$/, ""))}</h3><p>${esc(f.name)} · ${fmtSize(f.size)}</p><p class="frm-date"><span class="material-symbols-outlined" aria-hidden="true">event</span>${esc(new Date(f.at).toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" }))} · ${esc(new Date(f.at).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }))}</p></div>
+        <div class="frm-main"><h3>${esc(f.title || f.name.replace(/\.[^.]+$/, ""))}</h3><p>${esc(f.name)} · ${fmtSize(f.size)}</p><p class="frm-date"><span class="material-symbols-outlined" aria-hidden="true">event</span>${esc(new Date(f.at).toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" }))} · ${esc(new Date(f.at).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }))}</p></div>
         <div class="frm-act no-print">
           <button type="button" class="btn navy" data-drop="get" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">download</span>تنزيل</button>
           <button type="button" class="btn secondary" data-drop="print" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">print</span>طباعة / PDF</button>
@@ -408,7 +408,7 @@
       <p class="frm-note">أرسل «رابط الرفع» لزميلك: يفتحه ويرفع ملفاته بلا دخول، فتُحفظ في Drive عندك داخل «أرشيف مساعد تمكين ← ملفات الزملاء». <span dir="ltr">${esc(link)}</span></p>
       <label class="frm-key">رمز القراءة (يظهر في السجل بعد تشغيل setupDropKey) <input type="password" id="frm-drop-key" value="${esc(dropKey())}" autocomplete="off"></label>
       ${drop.err ? `<p class="frm-err">${esc(drop.err)}</p>` : ""}
-      ${drop.files ? (list.length ? `<table class="cc-table"><thead><tr><th>الملف</th><th>رفعه</th><th>تاريخ الإضافة</th><th>الحجم</th><th></th></tr></thead><tbody>${list.map((f) => `<tr><td>${esc(f.name)}</td><td>${esc(f.by || "—")}</td><td>${esc(new Date(f.at).toLocaleString("ar"))}</td><td>${fmtSize(f.size)}</td><td><button type="button" class="cc-link" data-drop="get" data-id="${esc(f.id)}">تنزيل</button></td></tr>`).join("")}</tbody></table>${drop.folder ? `<p class="frm-note"><a href="${esc(drop.folder)}" target="_blank" rel="noopener">فتح المجلد في Google Drive</a></p>` : ""}` : `<p class="frm-empty">لا ملفات مرفوعة بعد.</p>`) : ""}`;
+      ${drop.files ? (list.length ? `<table class="cc-table"><thead><tr><th>الملف</th><th>رفعه</th><th>تاريخ الإضافة</th><th>الحجم</th><th></th></tr></thead><tbody>${list.map((f) => `<tr><td>${f.title ? `<b>${esc(f.title)}</b><br>` : ""}${esc(f.name)}</td><td>${esc(f.by || "—")}</td><td>${esc(new Date(f.at).toLocaleString("ar"))}</td><td>${fmtSize(f.size)}</td><td><button type="button" class="cc-link" data-drop="get" data-id="${esc(f.id)}">تنزيل</button></td></tr>`).join("")}</tbody></table>${drop.folder ? `<p class="frm-note"><a href="${esc(drop.folder)}" target="_blank" rel="noopener">فتح المجلد في Google Drive</a></p>` : ""}` : `<p class="frm-empty">لا ملفات مرفوعة بعد.</p>`) : ""}`;
   }
   async function dropAct(kind, id) {
     if (kind === "copy") { ui.copyText(location.origin + location.pathname.replace(/[^/]*$/, "") + "drop.html"); return ui.toast("نُسخ رابط الرفع"); }

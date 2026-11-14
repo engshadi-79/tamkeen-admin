@@ -15,7 +15,8 @@
   .drop.over{background:#dff4f1}
   button{margin-top:16px;width:100%;padding:12px;border:0;border-radius:10px;background:#0f766e;color:#fff;font:inherit;font-size:16px;cursor:pointer}
   button:disabled{opacity:.5;cursor:default}
-  ul{list-style:none;padding:0;margin:14px 0 0} li{padding:8px 10px;border:1px solid #e3e8ef;border-radius:9px;margin-bottom:6px;font-size:13.5px;display:flex;justify-content:space-between;gap:8px}
+  ul{list-style:none;padding:0;margin:14px 0 0} li{padding:8px 10px;border:1px solid #e3e8ef;border-radius:9px;margin-bottom:6px;font-size:13.5px}
+  li .row{display:flex;justify-content:space-between;gap:8px} li .ttl{margin-top:6px;padding:7px 9px;font-size:13px}
   .ok{color:#0f766e;font-weight:700}.bad{color:#b42318;font-weight:700}.wait{color:#8a6d1a}
   small{color:#5b687a}
 </style>
@@ -41,8 +42,9 @@
   var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   try { $("by").value = localStorage.getItem("tamkeen-drop-by") || ""; } catch (e) {}
   function paint() {
-    $("list").innerHTML = files.map(function (f) {
-      return "<li><span>" + esc(f.file.name) + " <small>(" + (f.file.size / 1048576).toFixed(1) + " م.ب)</small></span><span class='" + (f.cls || "") + "'>" + esc(f.msg || "بانتظار الرفع") + "</span></li>";
+    $("list").innerHTML = files.map(function (f, i) {
+      return "<li><div class='row'><span>" + esc(f.file.name) + " <small>(" + (f.file.size / 1048576).toFixed(1) + " م.ب)</small></span><span class='" + (f.cls || "") + "'>" + esc(f.msg || "بانتظار الرفع") + "</span></div>" +
+        (f.done ? (f.title ? "<small>العنوان: " + esc(f.title) + "</small>" : "") : "<input type='text' class='ttl' data-i='" + i + "' maxlength='120' placeholder='عنوان للملف (اختياري)' value=\"" + esc(f.title || "") + "\"" + (f.busy ? " disabled" : "") + ">") + "</li>";
     }).join("");
     $("go").disabled = !files.some(function (f) { return !f.done && !f.busy; });
   }
@@ -53,6 +55,7 @@
     });
     paint();
   }
+  $("list").oninput = function (e) { var i = e.target.getAttribute("data-i"); if (i !== null && files[i]) files[i].title = e.target.value; };
   $("drop").onclick = function () { $("pick").click(); };
   $("pick").onchange = function () { add(this.files); this.value = ""; };
   $("drop").ondragover = function (e) { e.preventDefault(); this.classList.add("over"); };
@@ -75,7 +78,7 @@
       f.busy = true; f.cls = "wait"; f.msg = "جارٍ الرفع…"; paint();
       try {
         var res = await fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "dropUpload", name: f.file.name, mime: f.file.type, by: by, data: await b64(f.file) }) });
+          body: JSON.stringify({ action: "dropUpload", name: f.file.name, mime: f.file.type, by: by, title: (f.title || "").trim(), data: await b64(f.file) }) });
         var d = await res.json();
         if (d.error) throw new Error((d.error === "UNAUTHORIZED" || d.error === "رمز غير صحيح") ? "الأرشفة لم تُفعَّل بعد، أبلغ صاحب الرابط" : d.error);
         f.done = true; f.cls = "ok"; f.msg = "✓ تم الحفظ";
