@@ -183,10 +183,15 @@
         <div class="frm-act no-print">
           <button type="button" class="btn navy" data-drop="get" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">download</span>تنزيل</button>
           <button type="button" class="btn secondary" data-drop="print" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">print</span>طباعة / PDF</button>
+          <button type="button" class="btn secondary" data-drop="edit" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">edit</span>تعديل</button>
+          <button type="button" class="btn secondary" data-drop="del" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>
         </div></article>`).join("");
     if (person !== null) {
       $("frm-cats").innerHTML = catsHtml(people);
-      host.innerHTML = dropHtml || `<p class="frm-empty">لا ملفات لهذا الشخص${q ? " تطابق البحث" : ""}.</p>`;
+      host.innerHTML = `<div class="frm-personbar no-print"><b><span class="material-symbols-outlined" aria-hidden="true">person</span>${esc(person)}</b>
+          <button type="button" class="btn secondary" data-drop="p-ren" data-id="${esc(person)}"><span class="material-symbols-outlined btn-ico">edit</span>تعديل الاسم</button>
+          <button type="button" class="btn secondary frm-danger" data-drop="p-del" data-id="${esc(person)}"><span class="material-symbols-outlined btn-ico">delete</span>حذف الشخص وكل ملفاته</button></div>` +
+        (dropHtml || `<p class="frm-empty">لا ملفات لهذا الشخص${q ? " تطابق البحث" : ""}.</p>`);
       return renderDrop();
     }
     const list = state.cat === "mine" ? [] : FORMS.filter((f) => (state.cat === "all" || f.cat === state.cat) && (!q || (f.title + f.desc).includes(q)));
@@ -418,6 +423,39 @@
       drop.busy = true; drop.err = ""; renderDrop();
       try { const d = await dropCall("dropList"); drop.files = d.files || []; drop.folder = d.folder || ""; } catch (e) { drop.err = (e && e.message) || "تعذّر الاتصال بخادم Drive"; }
       drop.busy = false; return render();
+    }
+    const NEED = "هذه الميزة تحتاج تحديث سكربت Google إلى الإصدار الجديد";
+    const run = async (action, extra, okMsg) => {
+      try {
+        await dropCall(action, extra);
+        const d = await dropCall("dropList"); drop.files = d.files || [];
+        if (state.cat.indexOf("by:") === 0 && !drop.files.some((f) => (f.by || "بلا اسم") === state.cat.slice(3))) state.cat = extra && extra.to ? "by:" + extra.to : "all";
+        render(); ui.toast(okMsg);
+      } catch (e) { ui.toast(/غير معروف/.test((e && e.message) || "") ? NEED : (e && e.message) || "تعذّر التنفيذ"); }
+    };
+    const fileOf = () => (drop.files || []).find((f) => f.id === id);
+    if (kind === "edit") {
+      const f = fileOf(); if (!f) return;
+      const title = prompt("عنوان الملف (اتركه فارغاً ليظهر اسم الملف)", f.title || "");
+      if (title === null) return;
+      const by = prompt("اسم صاحب الملف (غيّره لنقل الملف إلى شخص آخر)", f.by || "");
+      if (by === null) return;
+      return run("dropEdit", { id, title: title.trim(), by: by.trim() || f.by, to: by.trim() || f.by }, "حُفظ التعديل");
+    }
+    if (kind === "del") {
+      const f = fileOf(); if (!f) return;
+      if (!confirm("حذف الملف «" + (f.title || f.name) + "»؟\nيُنقل إلى سلة مهملات Google Drive ويمكن استعادته منها خلال 30 يوماً.")) return;
+      return run("dropDelete", { id }, "نُقل الملف إلى سلة مهملات Drive");
+    }
+    if (kind === "p-ren") {
+      const to = prompt("الاسم الجديد", id);
+      if (!to || !to.trim() || to.trim() === id) return;
+      return run("dropRenameBy", { from: id === "بلا اسم" ? "" : id, to: to.trim() }, "عُدّل الاسم على كل ملفاته");
+    }
+    if (kind === "p-del") {
+      const n = (drop.files || []).filter((f) => (f.by || "بلا اسم") === id).length;
+      if (!confirm("حذف «" + id + "» وكل ملفاته (" + n + ")؟\nتُنقل الملفات إلى سلة مهملات Google Drive ويمكن استعادتها منها خلال 30 يوماً.")) return;
+      return run("dropDeleteBy", { by: id === "بلا اسم" ? "" : id }, "حُذف الشخص ونُقلت ملفاته إلى سلة المهملات");
     }
     if (kind === "get" || kind === "print") {
       ui.toast(kind === "print" ? "جارٍ تجهيز الملف للطباعة…" : "جارٍ التنزيل…");
