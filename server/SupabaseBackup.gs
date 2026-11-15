@@ -67,9 +67,14 @@ function doPost(e) {
     }
     // أرشفة ملفات الزملاء: الرفع مفتوح لمن يعرف صفحة الرفع، والعرض والتنزيل برمز القراءة DROP_KEY
     if (req.action === "dropUpload") return sbOut_(sbDropUpload_(req));
-    if (req.action === "dropList" || req.action === "dropFile") {
+    if (/^drop(List|File|Edit|Delete|RenameBy|DeleteBy)$/.test(String(req.action))) {
       if (String(req.key || "") !== sbDropKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز القراءة غير صحيح" }); }
-      return sbOut_(req.action === "dropList" ? sbDropList_() : sbDropFile_(req.id));
+      if (req.action === "dropList") return sbOut_(sbDropList_());
+      if (req.action === "dropFile") return sbOut_(sbDropFile_(req.id));
+      if (req.action === "dropEdit") return sbOut_(sbDropEdit_(req));
+      if (req.action === "dropDelete") return sbOut_(sbDropDelete_(req.id));
+      if (req.action === "dropRenameBy") return sbOut_(sbDropRenameBy_(req.from, req.to));
+      return sbOut_(sbDropDeleteBy_(req.by));
     }
     if (String(req.key || "") !== sbKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز غير صحيح" }); }
     if (req.action === "ocr") return sbOut_(sbOcr_(req));
@@ -185,6 +190,7 @@ function sbDropList_() {
   const it = folder.getFiles();
   while (it.hasNext()) {
     const f = it.next();
+    if (f.isTrashed()) continue;
     let d = {};
     try { d = JSON.parse(f.getDescription() || "{}"); } catch (err) { /* وصف حر */ }
     out.push({ id: f.getId(), name: f.getName(), title: d.title || "", by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
@@ -200,8 +206,51 @@ function sbDropFile_(id) {
   return { name: file.getName(), mime: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) };
 }
 
+/* ===== إدارة ملفات الزملاء (برمز القراءة): تعديل العنوان/الاسم، والحذف نقلٌ إلى سلة مهملات Drive (تُستعاد منها 30 يوماً) ===== */
+function sbDropOwn_(id) {
+  const file = DriveApp.getFileById(String(id || ""));
+  const ps = file.getParents();
+  if (!ps.hasNext() || ps.next().getId() !== sbDropFolder_().getId()) throw new Error("الملف خارج مجلد ملفات الزملاء");
+  return file;
+}
+function sbDropMeta_(file) {
+  try { return JSON.parse(file.getDescription() || "{}") || {}; } catch (err) { return {}; }
+}
+function sbDropEdit_(req) {
+  const file = sbDropOwn_(req.id);
+  const d = sbDropMeta_(file);
+  if (req.title !== undefined) d.title = String(req.title || "").trim().slice(0, 120);
+  if (req.by !== undefined && String(req.by).trim()) d.by = String(req.by).trim().slice(0, 60);
+  file.setDescription(JSON.stringify(d));
+  return { ok: true };
+}
+function sbDropDelete_(id) {
+  sbDropOwn_(id).setTrashed(true);
+  return { ok: true };
+}
+function sbDropEach_(by, fn) {
+  const who = String(by || "");
+  let n = 0;
+  const it = sbDropFolder_().getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    if (f.isTrashed()) continue;
+    const d = sbDropMeta_(f);
+    if (String(d.by || "") === who) { fn(f, d); n++; }
+  }
+  return n;
+}
+function sbDropRenameBy_(from, to) {
+  const name = String(to || "").trim().slice(0, 60);
+  if (!name) throw new Error("اكتب الاسم الجديد");
+  return { ok: true, count: sbDropEach_(from, function (f, d) { d.by = name; f.setDescription(JSON.stringify(d)); }) };
+}
+function sbDropDeleteBy_(by) {
+  return { ok: true, count: sbDropEach_(by, function (f) { f.setTrashed(true); }) };
+}
+
 function doGet() {
-  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 2 });
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 3 });
 }
 
 function sbOut_(obj) {
