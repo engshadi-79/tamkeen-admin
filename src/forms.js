@@ -177,15 +177,24 @@
     const person = state.cat.indexOf("by:") === 0 ? state.cat.slice(3) : null;
     const people = [...new Set((drop.files || []).map((f) => f.by || "بلا اسم"))].sort((a, b) => a.localeCompare(b, "ar"));
     const icoOf = (n) => (/pdf$/i.test(n) ? "picture_as_pdf" : /xlsx?$/i.test(n) ? "table_chart" : /(png|jpe?g|webp)$/i.test(n) ? "image" : /(zip|rar|7z)$/i.test(n) ? "folder_zip" : "description");
-    const dropHtml = person === null ? "" : (drop.files || []).filter((f) => (f.by || "بلا اسم") === person && (!q || (f.name + (f.title || "")).includes(q))).map((f) => `<article class="frm-card frm-mine">
+    const cardOf = (f) => `<article class="frm-card frm-mine">
         <div class="frm-ico"><span class="material-symbols-outlined" aria-hidden="true">${icoOf(f.name)}</span></div>
-        <div class="frm-main"><h3>${esc(f.title || f.name.replace(/\.[^.]+$/, ""))}</h3><p>${esc(f.name)} · ${fmtSize(f.size)}</p><p class="frm-date"><span class="material-symbols-outlined" aria-hidden="true">event</span>${esc(new Date(f.at).toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" }))} · ${esc(new Date(f.at).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }))}</p></div>
+        <div class="frm-main"><h3>${esc(f.title || f.name.replace(/\.[^.]+$/, ""))}</h3><p>${esc(f.name)} · ${fmtSize(f.size)}</p><p><select class="frm-catsel no-print" data-drop-cat="${esc(f.id)}" aria-label="التصنيف">${catOpts(f.cat)}</select></p><p class="frm-date"><span class="material-symbols-outlined" aria-hidden="true">event</span>${esc(new Date(f.at).toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" }))} · ${esc(new Date(f.at).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }))}</p></div>
         <div class="frm-act no-print">
           <button type="button" class="btn navy" data-drop="get" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">download</span>تنزيل</button>
           <button type="button" class="btn secondary" data-drop="print" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">print</span>طباعة / PDF</button>
           <button type="button" class="btn secondary" data-drop="edit" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">edit</span>تعديل</button>
           <button type="button" class="btn secondary" data-drop="del" data-id="${esc(f.id)}"><span class="material-symbols-outlined btn-ico">delete</span>حذف</button>
-        </div></article>`).join("");
+        </div></article>`;
+    const mineFiles = person === null ? [] : (drop.files || []).filter((f) => (f.by || "بلا اسم") === person && (!q || (f.name + (f.title || "")).includes(q)));
+    const catOf = (f) => (drop.cats.indexOf(f.cat) >= 0 ? f.cat : "غير مصنّف");
+    const catNames = drop.cats.concat(mineFiles.some((f) => catOf(f) === "غير مصنّف") ? ["غير مصنّف"] : []);
+    const countIn = (c) => mineFiles.filter((f) => catOf(f) === c).length;
+    const shown = catNames.filter((c) => (!drop.dcat || drop.dcat === c) && countIn(c));
+    const dropHtml = !mineFiles.length ? "" :
+      `<div class="frm-catchips no-print"><button type="button" class="frm-cat${!drop.dcat ? " on" : ""}" data-drop="dcat" data-id="">الكل <b>${mineFiles.length}</b></button>` +
+      catNames.filter(countIn).map((c) => `<button type="button" class="frm-cat${drop.dcat === c ? " on" : ""}" data-drop="dcat" data-id="${esc(c)}">${esc(c)} <b>${countIn(c)}</b></button>`).join("") + `</div>` +
+      shown.map((c) => `<h3 class="frm-grouphead"><span class="material-symbols-outlined" aria-hidden="true">folder</span>${esc(c)} <small>${countIn(c)}</small></h3>` + `<div class="frm-groupgrid">` + mineFiles.filter((f) => catOf(f) === c).map(cardOf).join("") + `</div>`).join("");
     if (person !== null) {
       $("frm-cats").innerHTML = catsHtml(people);
       host.innerHTML = `<div class="frm-personbar no-print"><b><span class="material-symbols-outlined" aria-hidden="true">person</span>${esc(person)}</b>
@@ -380,10 +389,15 @@
       if (d) dropAct(d.dataset.drop, d.dataset.id);
       if (e.target.closest("#frm-zip")) allZip();
     });
+    root.addEventListener("change", (e) => {
+      const t = e.target;
+      if (t.dataset && t.dataset.dropCat) dropAct("setcat", t.dataset.dropCat, t.value);
+    });
     root.addEventListener("input", (e) => {
       const t = e.target;
       if (t.id === "frm-q") { state.q = t.value; render(); const q = $("frm-q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
       else if (t.id === "frm-drop-key") { try { localStorage.setItem(DROP_LS, t.value.trim()); } catch (er) { /* */ } }
+      else if (t.dataset.catI !== undefined && drop.draft) { drop.draft[Number(t.dataset.catI)].name = t.value; }
       else if (t.dataset.frmCtx) state.ctx[t.dataset.frmCtx] = t.value;
       else if (t.dataset.frmRows) state.rows[t.dataset.frmRows] = t.value;
     });
@@ -391,7 +405,7 @@
 
   /* ===== ملفات الزملاء: يرفعها الزميل من صفحة drop.html إلى Drive (خادم Apps Script)، وتُعرض هنا برمز القراءة ===== */
   const DROP_LS = "tamkeen:drop-key";
-  const drop = { files: null, busy: false, err: "", folder: "" };
+  const drop = { files: null, busy: false, err: "", folder: "", cats: ["تقارير", "كتب ومراجع", "نماذج", "خطابات", "صور", "أخرى"], dcat: "", draft: null };
   const dropUrl = () => (App.cloud && App.cloud.oldUrl) || "";
   const dropKey = () => { try { return localStorage.getItem(DROP_LS) || ""; } catch (e) { return ""; } };
   async function dropCall(action, extra) {
@@ -401,6 +415,16 @@
     return d;
   }
   const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " م.ب" : Math.max(1, Math.round(n / 1024)) + " ك.ب");
+  const catOpts = (cur) => `<option value=""${drop.cats.indexOf(cur) < 0 ? " selected" : ""}>غير مصنّف</option>` + drop.cats.map((c) => `<option${c === cur ? " selected" : ""}>${esc(c)}</option>`).join("");
+  function catManager() {
+    if (!drop.draft) return "";
+    return `<div class="frm-catman no-print"><b>إدارة التصنيفات</b>
+      <p class="frm-note">غيّر الاسم فتنتقل ملفاته معه، أو أضف تصنيفاً. حذف تصنيف لا يحذف ملفاته، بل تظهر تحت «غير مصنّف» حتى تصنّفها.</p>
+      ${drop.draft.map((c, i) => `<div class="frm-catrow"><input type="text" maxlength="30" value="${esc(c.name)}" data-cat-i="${i}" aria-label="اسم التصنيف"><button type="button" class="btn secondary" data-drop="cat-del" data-id="${i}" aria-label="حذف التصنيف"><span class="material-symbols-outlined btn-ico">delete</span></button></div>`).join("")}
+      <div class="btn-row"><button type="button" class="btn secondary" data-drop="cat-add"><span class="material-symbols-outlined btn-ico">add</span>تصنيف جديد</button>
+      <button type="button" class="btn navy" data-drop="cat-save"><span class="material-symbols-outlined btn-ico">check</span>حفظ التصنيفات</button>
+      <button type="button" class="btn secondary" data-drop="cat-cancel">إلغاء</button></div></div>`;
+  }
   function renderDrop() {
     const host = $("frm-drop");
     if (!host) return;
@@ -408,20 +432,20 @@
     const q = state.q.trim();
     const list = (drop.files || []).filter((f) => !q || (f.name + f.by).includes(q));
     host.innerHTML = `<div class="frm-drophead"><h3>ملفات الزملاء</h3>
-        <div class="btn-row"><button type="button" class="btn secondary" data-drop="copy"><span class="material-symbols-outlined btn-ico">link</span>نسخ رابط الرفع</button>
+        <div class="btn-row"><button type="button" class="btn secondary" data-drop="cats"><span class="material-symbols-outlined btn-ico">sell</span>إدارة التصنيفات</button><button type="button" class="btn secondary" data-drop="copy"><span class="material-symbols-outlined btn-ico">link</span>نسخ رابط الرفع</button>
         <button type="button" class="btn navy" data-drop="load"><span class="material-symbols-outlined btn-ico">refresh</span>${drop.busy ? "جارٍ التحميل…" : drop.files ? "تحديث القائمة" : "عرض الملفات"}</button></div></div>
       <p class="frm-note">أرسل «رابط الرفع» لزميلك: يفتحه ويرفع ملفاته بلا دخول، فتُحفظ في Drive عندك داخل «أرشيف مساعد تمكين ← ملفات الزملاء». <span dir="ltr">${esc(link)}</span></p>
       <label class="frm-key">رمز القراءة (يظهر في السجل بعد تشغيل setupDropKey) <input type="password" id="frm-drop-key" value="${esc(dropKey())}" autocomplete="off"></label>
-      ${drop.err ? `<p class="frm-err">${esc(drop.err)}</p>` : ""}
-      ${drop.files ? (list.length ? `<table class="cc-table"><thead><tr><th>الملف</th><th>رفعه</th><th>تاريخ الإضافة</th><th>الحجم</th><th></th></tr></thead><tbody>${list.map((f) => `<tr><td>${f.title ? `<b>${esc(f.title)}</b><br>` : ""}${esc(f.name)}</td><td>${esc(f.by || "—")}</td><td>${esc(new Date(f.at).toLocaleString("ar"))}</td><td>${fmtSize(f.size)}</td><td><button type="button" class="cc-link" data-drop="get" data-id="${esc(f.id)}">تنزيل</button></td></tr>`).join("")}</tbody></table>${drop.folder ? `<p class="frm-note"><a href="${esc(drop.folder)}" target="_blank" rel="noopener">فتح المجلد في Google Drive</a></p>` : ""}` : `<p class="frm-empty">لا ملفات مرفوعة بعد.</p>`) : ""}`;
+      ${drop.err ? `<p class="frm-err">${esc(drop.err)}</p>` : ""}${catManager()}
+      ${drop.files ? (list.length ? `<table class="cc-table"><thead><tr><th>الملف</th><th>التصنيف</th><th>رفعه</th><th>تاريخ الإضافة</th><th>الحجم</th><th></th></tr></thead><tbody>${list.map((f) => `<tr><td>${f.title ? `<b>${esc(f.title)}</b><br>` : ""}${esc(f.name)}</td><td>${esc(drop.cats.indexOf(f.cat) >= 0 ? f.cat : "غير مصنّف")}</td><td>${esc(f.by || "—")}</td><td>${esc(new Date(f.at).toLocaleString("ar"))}</td><td>${fmtSize(f.size)}</td><td><button type="button" class="cc-link" data-drop="get" data-id="${esc(f.id)}">تنزيل</button></td></tr>`).join("")}</tbody></table>${drop.folder ? `<p class="frm-note"><a href="${esc(drop.folder)}" target="_blank" rel="noopener">فتح المجلد في Google Drive</a></p>` : ""}` : `<p class="frm-empty">لا ملفات مرفوعة بعد.</p>`) : ""}`;
   }
-  async function dropAct(kind, id) {
+  async function dropAct(kind, id, extra) {
     if (kind === "copy") { ui.copyText(location.origin + location.pathname.replace(/[^/]*$/, "") + "drop.html"); return ui.toast("نُسخ رابط الرفع"); }
     if (kind === "load") {
       if (drop.busy) return;
       if (!dropKey()) return ui.toast("اكتب رمز القراءة أولاً");
       drop.busy = true; drop.err = ""; renderDrop();
-      try { const d = await dropCall("dropList"); drop.files = d.files || []; drop.folder = d.folder || ""; } catch (e) { drop.err = (e && e.message) || "تعذّر الاتصال بخادم Drive"; }
+      try { const d = await dropCall("dropList"); drop.files = d.files || []; drop.folder = d.folder || ""; if (d.cats && d.cats.length) drop.cats = d.cats; } catch (e) { drop.err = (e && e.message) || "تعذّر الاتصال بخادم Drive"; }
       drop.busy = false; return render();
     }
     const NEED = "هذه الميزة تحتاج تحديث سكربت Google إلى الإصدار الجديد";
@@ -433,6 +457,28 @@
         render(); ui.toast(okMsg);
       } catch (e) { ui.toast(/غير معروف/.test((e && e.message) || "") ? NEED : (e && e.message) || "تعذّر التنفيذ"); }
     };
+    if (kind === "dcat") { drop.dcat = id || ""; return render(); }
+    if (kind === "cats") { drop.draft = drop.draft ? null : drop.cats.map((c) => ({ orig: c, name: c })); return renderDrop(); }
+    if (kind === "cat-add") { drop.draft.push({ orig: "", name: "" }); renderDrop(); const ins = document.querySelectorAll("#frm-drop [data-cat-i]"); if (ins.length) ins[ins.length - 1].focus(); return; }
+    if (kind === "cat-del") { drop.draft.splice(Number(id), 1); return renderDrop(); }
+    if (kind === "cat-cancel") { drop.draft = null; return renderDrop(); }
+    if (kind === "cat-save") {
+      const names = drop.draft.map((c) => c.name.trim()).filter(Boolean);
+      if (!names.length) return ui.toast("أبقِ تصنيفاً واحداً على الأقل");
+      if (new Set(names).size !== names.length) return ui.toast("في القائمة اسمان متشابهان");
+      const renames = {};
+      drop.draft.forEach((c) => { if (c.orig && c.name.trim() && c.name.trim() !== c.orig) renames[c.orig] = c.name.trim(); });
+      try {
+        await dropCall("dropCatsSave", { cats: names, renames });
+        drop.draft = null;
+        const d = await dropCall("dropList"); drop.files = d.files || []; if (d.cats) drop.cats = d.cats;
+        render(); ui.toast("حُفظت التصنيفات");
+      } catch (e) { ui.toast(/غير معروف/.test((e && e.message) || "") ? NEED : (e && e.message) || "تعذّر الحفظ"); }
+      return;
+    }
+    if (kind === "setcat") {
+      return run("dropEdit", { id, cat: extra || "" }, "نُقل الملف إلى التصنيف");
+    }
     const fileOf = () => (drop.files || []).find((f) => f.id === id);
     if (kind === "edit") {
       const f = fileOf(); if (!f) return;

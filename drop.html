@@ -17,6 +17,8 @@
   button:disabled{opacity:.5;cursor:default}
   ul{list-style:none;padding:0;margin:14px 0 0} li{padding:8px 10px;border:1px solid #e3e8ef;border-radius:9px;margin-bottom:6px;font-size:13.5px}
   li .row{display:flex;justify-content:space-between;gap:8px} li .ttl{margin-top:6px;padding:7px 9px;font-size:13px}
+  li .two{display:flex;gap:6px;flex-wrap:wrap} li .two>*{flex:1;min-width:150px}
+  li select.cat{margin-top:6px;padding:7px 9px;font:inherit;font-size:13px;border:1px solid #d5dce6;border-radius:9px;background:#fff} li select.need{border-color:#b42318;background:#fff4f2}
   .ok{color:#0f766e;font-weight:700}.bad{color:#b42318;font-weight:700}.wait{color:#8a6d1a}
   small{color:#5b687a}
 </style>
@@ -38,13 +40,18 @@
   var URL_ = "https://script.google.com/macros/s/AKfycbyvEVh6eb827Ue-sgDtQNz1bHt-9wakgLZiVD1YNN0lIRofr5Q5CbxPBs_6jqVQsLwFbg/exec";
   var MAX = 15 * 1024 * 1024;
   var files = [];
+  var cats = ["تقارير", "كتب ومراجع", "نماذج", "خطابات", "صور", "أخرى"];
+  fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "dropCats" }) })
+    .then(function (r) { return r.json(); }).then(function (d) { if (d && d.cats && d.cats.length) { cats = d.cats; paint(); } }).catch(function () {});
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   try { $("by").value = localStorage.getItem("tamkeen-drop-by") || ""; } catch (e) {}
   function paint() {
     $("list").innerHTML = files.map(function (f, i) {
       return "<li><div class='row'><span>" + esc(f.file.name) + " <small>(" + (f.file.size / 1048576).toFixed(1) + " م.ب)</small></span><span class='" + (f.cls || "") + "'>" + esc(f.msg || "بانتظار الرفع") + "</span></div>" +
-        (f.done ? (f.title ? "<small>العنوان: " + esc(f.title) + "</small>" : "") : "<input type='text' class='ttl' data-i='" + i + "' maxlength='120' placeholder='عنوان للملف (اختياري)' value=\"" + esc(f.title || "") + "\"" + (f.busy ? " disabled" : "") + ">") + "</li>";
+        (f.done ? (f.title ? "<small>العنوان: " + esc(f.title) + "</small>" : "") : "<div class='two'><input type='text' class='ttl' data-i='" + i + "' maxlength='120' placeholder='عنوان للملف (اختياري)' value=\"" + esc(f.title || "") + "\"" + (f.busy ? " disabled" : "") + ">" +
+          "<select class='cat" + (f.needCat ? " need" : "") + "' data-i='" + i + "'" + (f.busy ? " disabled" : "") + "><option value=''>التصنيف (إجباري) …</option>" +
+          cats.map(function (c) { return "<option" + (c === f.cat ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select></div>") + (f.done ? "" : "") + "</li>";
     }).join("");
     $("go").disabled = !files.some(function (f) { return !f.done && !f.busy; });
   }
@@ -55,7 +62,8 @@
     });
     paint();
   }
-  $("list").oninput = function (e) { var i = e.target.getAttribute("data-i"); if (i !== null && files[i]) files[i].title = e.target.value; };
+  $("list").oninput = function (e) { var i = e.target.getAttribute("data-i"); if (i !== null && files[i] && e.target.classList.contains("ttl")) files[i].title = e.target.value; };
+  $("list").onchange = function (e) { var i = e.target.getAttribute("data-i"); if (i !== null && files[i] && e.target.classList.contains("cat")) { files[i].cat = e.target.value; files[i].needCat = false; e.target.classList.remove("need"); } };
   $("drop").onclick = function () { $("pick").click(); };
   $("pick").onchange = function () { add(this.files); this.value = ""; };
   $("drop").ondragover = function (e) { e.preventDefault(); this.classList.add("over"); };
@@ -71,6 +79,9 @@
   $("go").onclick = async function () {
     var by = $("by").value.trim();
     if (!by) { $("by").focus(); alert("اكتب اسمك أولاً"); return; }
+    var missing = false;
+    files.forEach(function (f) { if (!f.done && !f.cat) { f.needCat = true; missing = true; } });
+    if (missing) { paint(); alert("اختر تصنيفاً لكل ملف قبل الرفع"); return; }
     try { localStorage.setItem("tamkeen-drop-by", by); } catch (e) {}
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
@@ -78,10 +89,10 @@
       f.busy = true; f.cls = "wait"; f.msg = "جارٍ الرفع…"; paint();
       try {
         var res = await fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "dropUpload", name: f.file.name, mime: f.file.type, by: by, title: (f.title || "").trim(), data: await b64(f.file) }) });
+          body: JSON.stringify({ action: "dropUpload", name: f.file.name, mime: f.file.type, by: by, cat: f.cat, title: (f.title || "").trim(), data: await b64(f.file) }) });
         var d = await res.json();
         if (d.error) throw new Error((d.error === "UNAUTHORIZED" || d.error === "رمز غير صحيح") ? "الأرشفة لم تُفعَّل بعد، أبلغ صاحب الرابط" : d.error);
-        f.done = true; f.cls = "ok"; f.msg = "✓ تم الحفظ";
+        f.done = true; f.cls = "ok"; f.msg = "✓ تم الحفظ — " + f.cat;
       } catch (e) { f.cls = "bad"; f.msg = (e && e.message) || "تعذّر الرفع"; }
       f.busy = false; paint();
     }

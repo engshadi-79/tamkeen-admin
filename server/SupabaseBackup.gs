@@ -67,10 +67,12 @@ function doPost(e) {
     }
     // أرشفة ملفات الزملاء: الرفع مفتوح لمن يعرف صفحة الرفع، والعرض والتنزيل برمز القراءة DROP_KEY
     if (req.action === "dropUpload") return sbOut_(sbDropUpload_(req));
-    if (/^drop(List|File|Edit|Delete|RenameBy|DeleteBy)$/.test(String(req.action))) {
+    if (req.action === "dropCats") return sbOut_({ cats: sbDropCats_() });
+    if (/^drop(List|File|Edit|Delete|RenameBy|DeleteBy|CatsSave)$/.test(String(req.action))) {
       if (String(req.key || "") !== sbDropKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز القراءة غير صحيح" }); }
       if (req.action === "dropList") return sbOut_(sbDropList_());
       if (req.action === "dropFile") return sbOut_(sbDropFile_(req.id));
+      if (req.action === "dropCatsSave") return sbOut_(sbDropCatsSave_(req));
       if (req.action === "dropEdit") return sbOut_(sbDropEdit_(req));
       if (req.action === "dropDelete") return sbOut_(sbDropDelete_(req.id));
       if (req.action === "dropRenameBy") return sbOut_(sbDropRenameBy_(req.from, req.to));
@@ -150,6 +152,35 @@ const SB_DROP_FOLDER = "ملفات الزملاء";
 const SB_DROP_MAX_MB = 15;   // أقصى حجم للملف الواحد
 const SB_DROP_DAILY = 150;   // أقصى عدد ملفات في اليوم (حماية من الإساءة)
 
+/* تصنيفات الملفات: قائمة يضبطها صاحب المشروع من تاب النماذج، ويختار الزميل منها عند الرفع (إجباري) */
+const SB_DROP_CATS = ["تقارير", "كتب ومراجع", "نماذج", "خطابات", "صور", "أخرى"];
+function sbDropCats_() {
+  try {
+    const a = JSON.parse(PropertiesService.getScriptProperties().getProperty("DROP_CATS") || "null");
+    if (Array.isArray(a) && a.length) return a.map(String);
+  } catch (err) { /* القائمة الافتراضية */ }
+  return SB_DROP_CATS.slice();
+}
+function sbDropCatsSave_(req) {
+  const seen = {};
+  const cats = (Array.isArray(req.cats) ? req.cats : []).map(function (c) { return String(c || "").trim().slice(0, 30); })
+    .filter(function (c) { if (!c || seen[c]) return false; seen[c] = 1; return true; }).slice(0, 20);
+  if (!cats.length) throw new Error("أبقِ تصنيفاً واحداً على الأقل");
+  const ren = req.renames || {};
+  let moved = 0;
+  const keys = Object.keys(ren).filter(function (k) { return ren[k] && ren[k] !== k; });
+  if (keys.length) {
+    const it = sbDropFolder_().getFiles();
+    while (it.hasNext()) {
+      const f = it.next();
+      if (f.isTrashed()) continue;
+      const d = sbDropMeta_(f);
+      if (d.cat && Object.prototype.hasOwnProperty.call(ren, d.cat) && ren[d.cat] !== d.cat) { d.cat = String(ren[d.cat]).trim().slice(0, 30); f.setDescription(JSON.stringify(d)); moved++; }
+    }
+  }
+  PropertiesService.getScriptProperties().setProperty("DROP_CATS", JSON.stringify(cats));
+  return { ok: true, cats: cats, moved: moved };
+}
 function sbDropFolder_() { return sbSub_(sbRoot_(), SB_DROP_FOLDER); }
 function sbDropKey_() {
   const key = PropertiesService.getScriptProperties().getProperty("DROP_KEY");
@@ -172,6 +203,9 @@ function sbDropUpload_(req) {
   const name = String(req.name || "").replace(/[\/:*?"<>|]+/g, " ").trim().slice(0, 120);
   if (!name || !req.data) throw new Error("اختر ملفاً أولاً");
   if (String(req.data).length > SB_DROP_MAX_MB * 1024 * 1024 * 1.37) throw new Error("الملف أكبر من " + SB_DROP_MAX_MB + " ميغابايت");
+  const cat = String(req.cat || "").trim();
+  if (!cat) throw new Error("اختر التصنيف أولاً");
+  if (sbDropCats_().indexOf(cat) < 0) throw new Error("هذا التصنيف غير موجود، حدّث الصفحة واختر من القائمة");
   const props = PropertiesService.getScriptProperties();
   const day = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
   let cnt = {};
@@ -180,7 +214,7 @@ function sbDropUpload_(req) {
   if (n >= SB_DROP_DAILY) throw new Error("بلغ الرفع حدّه اليومي، حاول غداً");
   const blob = Utilities.newBlob(Utilities.base64Decode(String(req.data)), req.mime || "application/octet-stream", name);
   const file = sbDropFolder_().createFile(blob);
-  file.setDescription(JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").trim().slice(0, 120) }));
+  file.setDescription(JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").trim().slice(0, 120), cat: cat }));
   props.setProperty("DROP_COUNT", JSON.stringify({ day: day, n: n + 1 }));
   return { ok: true, name: name };
 }
@@ -193,10 +227,10 @@ function sbDropList_() {
     if (f.isTrashed()) continue;
     let d = {};
     try { d = JSON.parse(f.getDescription() || "{}"); } catch (err) { /* وصف حر */ }
-    out.push({ id: f.getId(), name: f.getName(), title: d.title || "", by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
+    out.push({ id: f.getId(), name: f.getName(), title: d.title || "", cat: d.cat || "", by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
   }
   out.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
-  return { files: out, folder: folder.getUrl() };
+  return { files: out, folder: folder.getUrl(), cats: sbDropCats_() };
 }
 function sbDropFile_(id) {
   const file = DriveApp.getFileById(String(id || ""));
@@ -221,6 +255,11 @@ function sbDropEdit_(req) {
   const d = sbDropMeta_(file);
   if (req.title !== undefined) d.title = String(req.title || "").trim().slice(0, 120);
   if (req.by !== undefined && String(req.by).trim()) d.by = String(req.by).trim().slice(0, 60);
+  if (req.cat !== undefined) {
+    const c = String(req.cat || "").trim();
+    if (c && sbDropCats_().indexOf(c) < 0) throw new Error("هذا التصنيف غير موجود");
+    d.cat = c;
+  }
   file.setDescription(JSON.stringify(d));
   return { ok: true };
 }
@@ -250,7 +289,7 @@ function sbDropDeleteBy_(by) {
 }
 
 function doGet() {
-  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 3 });
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 4 });
 }
 
 function sbOut_(obj) {
