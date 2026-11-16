@@ -180,16 +180,108 @@
     if (reload) reload.click(); else decorate();
   }
 
+  /* ===== نسخة «نماذجي» على Drive: رفع واستعادة، لتظهر نماذجك على كل أجهزتك ===== */
+  const MINE_LS = "tamkeen:my-forms";
+  const readMine = () => { try { const a = JSON.parse(localStorage.getItem(MINE_LS) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  async function putSession(sessionUrl, blob) {
+    const total = blob.size, CH = 8 * 1048576;
+    for (let start = 0; start < total; start += CH) {
+      const end = Math.min(start + CH, total);
+      let ok = false, last = null;
+      for (let t = 0; t < 4 && !ok; t++) {
+        try {
+          const r = await fetch(sessionUrl, { method: "PUT", headers: { "Content-Range": "bytes " + start + "-" + (end - 1) + "/" + total }, body: blob.slice(start, end) });
+          if (r.status === 200 || r.status === 201 || r.status === 308) ok = true; else last = new Error("رفض الخادم الدفعة (" + r.status + ")");
+        } catch (e) { last = e; }
+        if (!ok) await new Promise((r) => setTimeout(r, 1200 * (t + 1)));
+      }
+      if (!ok) throw last || new Error("انقطع الرفع");
+    }
+  }
+  async function pushOne(blob, name, meta) {
+    const init = await call("mineInit", Object.assign({ name, size: blob.size, mime: blob.type || "application/octet-stream", origin: location.origin }, meta));
+    await putSession(init.url, blob);
+  }
+  function cloudMsg(t) { const el = document.querySelector(".fx-cloud small"); if (el) el.textContent = t; }
+
+  async function mineBackup() {
+    const items = readMine();
+    if (!items.length) return ui.toast("لا نماذج في «نماذجي» لتُنسخ");
+    if (!key()) return ui.toast("اكتب رمز القراءة في قسم «ملفات الزملاء» أولاً");
+    try {
+      cloudMsg("جارٍ قراءة ما على Drive…");
+      const remote = (await call("mineList")).files || [];
+      let up = 0, skip = 0;
+      for (let i = 0; i < items.length; i++) {
+        const m = items[i];
+        for (const part of [["main", m.fid], ["pdf", m.pid]]) {
+          if (!part[1]) continue;
+          const rec = await App.filesStore.get(part[1]);
+          if (!rec || !rec.blob) continue;
+          const old = remote.filter((r) => r.mid === m.id && r.kind === part[0]);
+          if (old.some((r) => r.size === rec.blob.size && (part[0] === "pdf" || r.title === (m.name || "")))) { skip++; continue; }
+          cloudMsg("رفع " + (i + 1) + " من " + items.length + "…");
+          await pushOne(rec.blob, rec.name || m.file, { mid: m.id, kind: part[0], title: m.name || "", of: part[0] === "pdf" ? m.id : "" });
+          for (const r of old) { try { await call("mineDelete", { id: r.id }); } catch (e) { /* يبقى القديم */ } }
+          up++;
+        }
+      }
+      cloudMsg(up ? "رُفع " + up + " ملفاً إلى Drive" + (skip ? " (وتخطّي " + skip + " محفوظاً)" : "") : "كل نماذجك محفوظة على Drive أصلاً");
+      ui.toast(up ? "نُسخت نماذجك إلى Drive" : "لا جديد للنسخ");
+    } catch (e) { cloudMsg(""); ui.toast(/غير معروف/.test((e && e.message) || "") ? "هذه الميزة تحتاج تحديث سكربت Google ونشره" : (e && e.message) || "تعذّر النسخ"); }
+  }
+  async function mineRestore() {
+    if (!key()) return ui.toast("اكتب رمز القراءة في قسم «ملفات الزملاء» أولاً");
+    try {
+      cloudMsg("جارٍ قراءة ما على Drive…");
+      const remote = (await call("mineList")).files || [];
+      const have = new Set(readMine().map((m) => m.id));
+      const mains = remote.filter((r) => r.kind === "main" && r.mid && !have.has(r.mid));
+      if (!mains.length) { cloudMsg("لا جديد على Drive: كل ما هناك موجود عندك"); return ui.toast("لا جديد للاستعادة"); }
+      const list = readMine();
+      const get = async (id) => {
+        const d = await call("mineFile", { id });
+        const bin = atob(d.data), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Blob([bytes], { type: d.mime || "application/octet-stream" });
+      };
+      for (let i = 0; i < mains.length; i++) {
+        const r = mains[i];
+        cloudMsg("استعادة " + (i + 1) + " من " + mains.length + "…");
+        const fid = await App.filesStore.put(await get(r.id), r.name);
+        const pdf = remote.find((x) => x.kind === "pdf" && x.of === r.mid);
+        const pid = pdf ? await App.filesStore.put(await get(pdf.id), pdf.name) : "";
+        list.unshift({ id: r.mid, name: r.title || r.name.replace(/\.[^.]+$/, ""), file: r.name, fid, pid, at: r.at });
+      }
+      localStorage.setItem(MINE_LS, JSON.stringify(list));
+      ui.toast("استُعيد " + mains.length + " نموذجاً، وتُعاد الصفحة لتظهر");
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) { cloudMsg(""); ui.toast(/غير معروف/.test((e && e.message) || "") ? "هذه الميزة تحتاج تحديث سكربت Google ونشره" : (e && e.message) || "تعذّرت الاستعادة"); }
+  }
+  function mountCloud() {
+    const bar = document.querySelector("#view-forms .frm-addbar");
+    if (!bar || bar.parentNode.querySelector(".fx-cloud")) return;
+    const d = document.createElement("div");
+    d.className = "fx-cloud no-print";
+    d.innerHTML = `<b>نماذجي على Drive</b><span>احفظ نماذجك في Drive لتظهر على كل أجهزتك، أو استعدها على هذا الجهاز.</span>
+      <button type="button" class="btn secondary" data-fx="mine-up"><span class="material-symbols-outlined btn-ico">cloud_upload</span>نسخ نماذجي إلى Drive</button>
+      <button type="button" class="btn secondary" data-fx="mine-down"><span class="material-symbols-outlined btn-ico">cloud_download</span>استعادة من Drive</button><small></small>`;
+    bar.insertAdjacentElement("afterend", d);
+  }
+
   /* ===== الأحداث ===== */
   function init() {
     const root = $("view-forms");
     if (!root || root.dataset.fxReady) return;
     root.dataset.fxReady = "1";
+    mountCloud();
     root.addEventListener("click", (e) => {
       const b = e.target.closest("[data-fx]");
       if (!b) return;
       if (b.dataset.fx === "preview") preview(b.dataset.id);
       else if (b.dataset.fx === "bulkdel") bulkDelete();
+      else if (b.dataset.fx === "mine-up") mineBackup();
+      else if (b.dataset.fx === "mine-down") mineRestore();
     });
     root.addEventListener("change", (e) => {
       const t = e.target;
