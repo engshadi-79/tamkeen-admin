@@ -269,12 +269,90 @@
     bar.insertAdjacentElement("afterend", d);
   }
 
+/* ===== نسخة احتياطية ثانية إلى مجلد على جهازك (مثلاً مجلد Mega المتزامن) =====
+   يكتب ملفات الزملاء ونماذجك في مجلد تختاره: «ملفات الزملاء / الشخص / التصنيف / الملف» و«نماذجي».
+   الملف الموجود بالحجم نفسه يُتخطّى، فالتكرار يكمّل ما نقص فقط. Chrome وEdge فقط (واجهة الوصول إلى المجلدات). */
+  const BIG = 40 * 1048576;                       // ما فوقه لا يمرّ عبر سكربت Google؛ يُسجَّل في الفهرس ليُنزَّل من Drive
+  const safe = (t, d) => String(t || d || "").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "").slice(0, 120) || d || "بلا اسم";
+  async function sub(dir, name) { return dir.getDirectoryHandle(name, { create: true }); }
+  async function existingSize(dir, name) { try { return (await (await dir.getFileHandle(name)).getFile()).size; } catch (e) { return -1; } }
+  async function writeFile(dir, name, blob) { const fh = await dir.getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(blob); await w.close(); }
+  async function uniqueName(dir, name, size, id) {
+    const have = await existingSize(dir, name);
+    if (have < 0 || have === size) return { name, same: have === size };
+    const dot = name.lastIndexOf(".");
+    const alt = dot > 0 ? name.slice(0, dot) + " (" + String(id).slice(-4) + ")" + name.slice(dot) : name + " (" + String(id).slice(-4) + ")";
+    return { name: alt, same: (await existingSize(dir, alt)) === size };
+  }
+  async function toBlob(d) {
+    const bin = atob(d.data), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: d.mime || "application/octet-stream" });
+  }
+  async function folderBackup(pick) {
+    if (!key()) return ui.toast("اكتب رمز القراءة في قسم «ملفات الزملاء» أولاً");
+    if (!(pick || window.showDirectoryPicker)) return ui.toast("هذا المتصفح لا يدعم الكتابة في مجلد. استعمل Chrome أو Edge");
+    let root;
+    try { root = await (pick || window.showDirectoryPicker)({ id: "tamkeen-backup", mode: "readwrite" }); } catch (e) { return; }   // أُلغي الاختيار
+    const rep = { done: 0, skipped: 0, big: [], failed: [] };
+    try {
+      cloudMsg2("جارٍ قراءة قائمة الملفات…");
+      const files = await fresh(true);
+      const colleagues = await sub(root, "ملفات الزملاء");
+      const index = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        cloudMsg2("ملفات الزملاء " + (i + 1) + " من " + files.length + "…");
+        const dir = await sub(await sub(colleagues, safe(who(f), "بلا اسم")), safe(f.cat, "غير مصنّف"));
+        const label = f.title ? safe(f.title) + " — " + safe(f.name) : safe(f.name, "ملف");
+        const u = await uniqueName(dir, label, Number(f.size), f.id);
+        index.push({ person: who(f), cat: f.cat || "", file: u.name, size: f.size, title: f.title || "", at: f.at });
+        if (u.same) { rep.skipped++; continue; }
+        if (Number(f.size) > BIG) { rep.big.push(f.name + " (" + who(f) + ")"); continue; }
+        try { await writeFile(dir, u.name, await toBlob(await call("dropFile", { id: f.id }))); rep.done++; } catch (e) { rep.failed.push(f.name); }
+      }
+      const mine = readMine();
+      if (mine.length) {
+        const md = await sub(root, "نماذجي");
+        for (let i = 0; i < mine.length; i++) {
+          const m = mine[i];
+          cloudMsg2("نماذجي " + (i + 1) + " من " + mine.length + "…");
+          for (const idKey of ["fid", "pid"]) {
+            if (!m[idKey]) continue;
+            const rec = await App.filesStore.get(m[idKey]);
+            if (!rec || !rec.blob) continue;
+            const nm = safe(idKey === "pid" ? (m.name || "") + " (PDF).pdf" : (m.name || "") + (rec.name && rec.name.lastIndexOf(".") > 0 ? rec.name.slice(rec.name.lastIndexOf(".")) : ""), rec.name);
+            const u = await uniqueName(md, nm, rec.blob.size, m.id);
+            if (u.same) { rep.skipped++; continue; }
+            try { await writeFile(md, u.name, rec.blob); rep.done++; } catch (e) { rep.failed.push(nm); }
+          }
+        }
+      }
+      await writeFile(root, "فهرس-النسخة-الاحتياطية.json", new Blob([JSON.stringify({ at: new Date().toISOString(), colleagues: index, bigNotCopied: rep.big, failed: rep.failed }, null, 1)], { type: "application/json" }));
+      const parts = ["نُسخ " + rep.done + " ملفاً", rep.skipped ? "تخطّي " + rep.skipped + " موجوداً" : "", rep.big.length ? rep.big.length + " كبير لم يُنسخ" : "", rep.failed.length ? "تعذّر " + rep.failed.length : ""].filter(Boolean);
+      cloudMsg2(parts.join(" · "));
+      ui.toast(rep.failed.length || rep.big.length ? "انتهى النسخ مع ملاحظات، راجع الفهرس في المجلد" : "اكتملت النسخة الاحتياطية");
+      return rep;
+    } catch (e) { cloudMsg2(""); ui.toast((e && e.message) || "تعذّرت النسخة الاحتياطية"); }
+  }
+  function cloudMsg2(t) { const el = document.querySelector(".fx-cloud2 small"); if (el) el.textContent = t; }
+  function mountFolderBackup() {
+    const c = document.querySelector("#view-forms .fx-cloud");
+    if (!c || document.querySelector(".fx-cloud2")) return;
+    const d = document.createElement("div");
+    d.className = "fx-cloud fx-cloud2 no-print";
+    d.innerHTML = `<b>نسخة احتياطية ثانية</b><span>انسخ ملفات الزملاء ونماذجك إلى مجلد على جهازك (اختر مجلد Mega المتزامن مثلاً). التكرار يكمّل الناقص فقط.</span>
+      <button type="button" class="btn secondary" data-fx="folder-backup"><span class="material-symbols-outlined btn-ico">folder_zip</span>نسخ احتياطي إلى مجلد</button><small></small>`;
+    c.insertAdjacentElement("afterend", d);
+  }
+
   /* ===== الأحداث ===== */
   function init() {
     const root = $("view-forms");
     if (!root || root.dataset.fxReady) return;
     root.dataset.fxReady = "1";
     mountCloud();
+    mountFolderBackup();
     root.addEventListener("click", (e) => {
       const b = e.target.closest("[data-fx]");
       if (!b) return;
@@ -282,6 +360,7 @@
       else if (b.dataset.fx === "bulkdel") bulkDelete();
       else if (b.dataset.fx === "mine-up") mineBackup();
       else if (b.dataset.fx === "mine-down") mineRestore();
+      else if (b.dataset.fx === "folder-backup") folderBackup();
     });
     root.addEventListener("change", (e) => {
       const t = e.target;
@@ -306,6 +385,6 @@
     }, POLL_MS);
   }
 
-  App.formsExtra = { init, refresh: () => fresh(true).then(decorate) };
+  App.formsExtra = { init, refresh: () => fresh(true).then(decorate), folderBackup };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })(window.App = window.App || {});
