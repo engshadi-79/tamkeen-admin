@@ -1506,3 +1506,5 @@ hr { border: 0; border-top: 1px solid var(--border); }
 /* قسم الصفحات المؤرشفة في القائمة: أخفت وزناً من الأقسام الفاعلة */
 .nav-group[data-group="archive"] .nav-head { opacity: .72; }
 .nav-group[data-group="archive"] .nav-head:hover, .nav-group[data-group="archive"].open .nav-head { opacity: 1; }
+
+.hos-locked .hos-name{opacity:.85}.hos-locked input:disabled{background:#eef0f3;color:#6b7686;cursor:not-allowed}.hos-lock{font-weight:400;font-size:11px;margin-inline-start:4px}
