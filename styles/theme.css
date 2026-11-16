@@ -1508,3 +1508,4 @@ hr { border: 0; border-top: 1px solid var(--border); }
 .nav-group[data-group="archive"] .nav-head:hover, .nav-group[data-group="archive"].open .nav-head { opacity: 1; }
 
 .hos-locked .hos-name{opacity:.85}.hos-locked input:disabled{background:#eef0f3;color:#6b7686;cursor:not-allowed}.hos-lock{font-weight:400;font-size:11px;margin-inline-start:4px}
+.hos-lockbtn{margin-inline-start:6px;border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.18);color:inherit;border-radius:999px;padding:1px 9px;font:inherit;font-size:11px;cursor:pointer}.hos-lockbtn:hover{background:rgba(255,255,255,.35)}

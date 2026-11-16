@@ -57,6 +57,19 @@
     store.save();
   }
 
+  const canLock = () => { try { return !App.profile || App.profile.isAdmin(); } catch (e) { return true; } };
+  /* قفل مسار أو فتحه: يُحفظ في الصفوف المشتركة (فيسري على كل المستخدمين). أول تعديل يحفظ نسخة من الافتراضي */
+  function setLock(key, on) {
+    const def = rowsDef();
+    if (store.get().hospitalityRows !== def) { store.get().hospitalityRows = JSON.parse(JSON.stringify(def)); store.get().hospitalityRows.mktFix = true; }
+    const row = store.get().hospitalityRows.tracks.find((t) => t.key === key);
+    if (!row) return;
+    if (on) row.locked = true; else delete row.locked;
+    store.save();
+    render();
+    ui.toast(on ? "أُغلق المسار «" + row.name + "»، وأرقامه محفوظة" : "فُتح المسار «" + row.name + "» للتسجيل");
+  }
+
   let migrated = false;
   const rowsDef = () => {
     if (!migrated) { migrated = true; try { migrateSecurity(); migrateMarketing(); } catch (e) { /* مخزن غير جاهز */ } }
@@ -237,7 +250,7 @@
     $("hos-title").textContent = `كشف توزيع الضيافة اليومية - ${MONTHS[current.month]} ${current.year} - ${CENTER}`;
 
     const head = `<tr><th class="hos-name">المسار / الموظف</th>${days.map((d) => `<th>${esc(d.day)}<br><small>${esc(d.date)}</small></th>`).join("")}<th class="hos-total">الإجمالي الشهري</th></tr>`;
-    const trackRow = (r) => `<tr class="hos-track${r.locked ? " hos-locked" : ""}"><th class="hos-name">${esc(r.name)}${r.locked ? ' <small class="hos-lock">🔒 مغلق</small>' : ""}</th>${days.map((d) => {
+    const trackRow = (r) => `<tr class="hos-track${r.locked ? " hos-locked" : ""}"><th class="hos-name">${esc(r.name)}${r.locked ? ' <small class="hos-lock">🔒 مغلق</small>' : ""}${canLock() ? `<button type="button" class="hos-lockbtn no-print" data-lock="${esc(r.key)}" title="${r.locked ? "فتح المسار للتسجيل" : "إغلاق المسار (تبقى أرقامه)"}" aria-label="${r.locked ? "فتح" : "إغلاق"} ${esc(r.name)}">${r.locked ? "🔓 فتح" : "🔒 إغلاق"}</button>` : ""}</th>${days.map((d) => {
         const v = cellValue(month, r.key, d.key);
         return `<td><input type="number" min="0" inputmode="numeric" data-row="${esc(r.key)}" data-day="${d.key}" value="${v || ""}" aria-label="${esc(r.name)} ${d.date}"${r.locked ? ' disabled title="هذا المسار مغلق، أرقامه محفوظة ولا يُسجَّل عليه جديد"' : ""}></td>`;
       }).join("")}<td class="hos-total" data-rowtotal="${esc(r.key)}">${t.rowTotal(r.key) || ""}</td></tr>`;
@@ -641,6 +654,12 @@
         const days = workdays(current.year, current.month);
         const i = days.findIndex((d) => d.key === pickedDay) + Number(step.dataset.dayStep);
         if (i >= 0 && i < days.length) { pickedDay = days[i].key; renderDay(); }
+        return;
+      }
+      const lk = e.target.closest("[data-lock]");
+      if (lk) {
+        const row = rowsDef().tracks.find((t) => t.key === lk.dataset.lock);
+        if (row && canLock()) setLock(row.key, !row.locked);
         return;
       }
       const b = e.target.closest("[data-toggle]");
