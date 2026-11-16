@@ -17,8 +17,8 @@
   // مفاتيح الصفوف الافتراضية ثابتة (لا عشوائية) حتى تتطابق خانات الأجهزة كلها قبل أي تعديل
   const SECURITY = 3;   // عدد رجال الأمن: استلامهم يُحسب بهذا العدد
   const DEFAULT_ROWS = {
-    tracks: ["الحلاقة الرجالية", "التجميل النسائي", "التطريز والخياطة", "صناعة الإكسسوارات", "المساعد الافتراضي"]
-      .map((name, i) => ({ key: `t${i + 1}`, name })),
+    tracks: ["الحلاقة الرجالية", "التجميل النسائي", "التطريز والخياطة", "صناعة الإكسسوارات", "المساعد الافتراضي", "التسويق الإلكتروني"]
+      .map((name, i) => ({ key: `t${i + 1}`, name, locked: name === "المساعد الافتراضي" || undefined })),
     staff: ["م.شادي القططي", "د.يوسف جربوع", "أميرة ابو ريدة", "رشا بركة", "طلعت بركة", "عائد الوزير", "وردة ابو عيادة", "ايه زعرب", "علاء ابو صلاح", "ابو العبد فروانة", "رجال الامن", "ضيوف + أطفال"]
       .map((name, i) => (name === "ضيوف + أطفال" ? { key: `s${i + 1}`, name, variable: true } : { key: `s${i + 1}`, name, value: name === "رجال الامن" ? SECURITY : 1 })),
   };
@@ -41,9 +41,25 @@
     if (changed) console.info("كشف الضيافة: رُفع عدد رجال الأمن إلى", SECURITY);
   }
 
+  /* مسار جديد بديلاً عن «المساعد الافتراضي»: يُضاف «التسويق الإلكتروني»، ويُقفل المساعد فتبقى أرقامه ولا يُسجَّل عليه جديد.
+     مرة واحدة فقط (mktFix)، فمن عدّل الصفوف بعدها يبقى اختياره. */
+  const normName = (s) => String(s || "").trim().replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/\s+/g, " ");
+  function migrateMarketing() {
+    const r = store.get().hospitalityRows;
+    if (!r || !Array.isArray(r.tracks) || r.mktFix) return;
+    const old = r.tracks.find((t) => normName(t.name) === normName("المساعد الافتراضي"));
+    if (old) old.locked = true;
+    if (!r.tracks.some((t) => normName(t.name) === normName("التسويق الإلكتروني"))) {
+      const at = old ? r.tracks.indexOf(old) + 1 : r.tracks.length;
+      r.tracks.splice(at, 0, { key: store.uid(), name: "التسويق الإلكتروني" });
+    }
+    r.mktFix = true;
+    store.save();
+  }
+
   let migrated = false;
   const rowsDef = () => {
-    if (!migrated) { migrated = true; try { migrateSecurity(); } catch (e) { /* مخزن غير جاهز */ } }
+    if (!migrated) { migrated = true; try { migrateSecurity(); migrateMarketing(); } catch (e) { /* مخزن غير جاهز */ } }
     const r = store.get().hospitalityRows;
     return r && Array.isArray(r.tracks) && Array.isArray(r.staff) ? r : DEFAULT_ROWS;
   };
@@ -221,9 +237,9 @@
     $("hos-title").textContent = `كشف توزيع الضيافة اليومية - ${MONTHS[current.month]} ${current.year} - ${CENTER}`;
 
     const head = `<tr><th class="hos-name">المسار / الموظف</th>${days.map((d) => `<th>${esc(d.day)}<br><small>${esc(d.date)}</small></th>`).join("")}<th class="hos-total">الإجمالي الشهري</th></tr>`;
-    const trackRow = (r) => `<tr class="hos-track"><th class="hos-name">${esc(r.name)}</th>${days.map((d) => {
+    const trackRow = (r) => `<tr class="hos-track${r.locked ? " hos-locked" : ""}"><th class="hos-name">${esc(r.name)}${r.locked ? ' <small class="hos-lock">🔒 مغلق</small>' : ""}</th>${days.map((d) => {
         const v = cellValue(month, r.key, d.key);
-        return `<td><input type="number" min="0" inputmode="numeric" data-row="${esc(r.key)}" data-day="${d.key}" value="${v || ""}" aria-label="${esc(r.name)} ${d.date}"></td>`;
+        return `<td><input type="number" min="0" inputmode="numeric" data-row="${esc(r.key)}" data-day="${d.key}" value="${v || ""}" aria-label="${esc(r.name)} ${d.date}"${r.locked ? ' disabled title="هذا المسار مغلق، أرقامه محفوظة ولا يُسجَّل عليه جديد"' : ""}></td>`;
       }).join("")}<td class="hos-total" data-rowtotal="${esc(r.key)}">${t.rowTotal(r.key) || ""}</td></tr>`;
     const staffRow = (r) => `<tr class="hos-staff"><th class="hos-name">${esc(r.name)}</th>${days.map((d) => {
         const v = cellValue(month, r.key, d.key);
@@ -281,8 +297,8 @@
     const def = rowsDef();
     const trackCard = (r) => {
       const v = cellValue(month, r.key, d.key);
-      return `<label class="hd-row hd-track"><span>${esc(r.name)}</span>
-        <input type="number" min="0" inputmode="numeric" data-row="${esc(r.key)}" data-day="${d.key}" value="${v || ""}" placeholder="0"></label>`;
+      return `<label class="hd-row hd-track${r.locked ? " hos-locked" : ""}"><span>${esc(r.name)}${r.locked ? " 🔒 مغلق" : ""}</span>
+        <input type="number" min="0" inputmode="numeric" data-row="${esc(r.key)}" data-day="${d.key}" value="${v || ""}" placeholder="0"${r.locked ? " disabled" : ""}></label>`;
     };
     const staffCard = (r) => {
       const v = cellValue(month, r.key, d.key);
@@ -341,7 +357,7 @@
   /* ===== تعديل الصفوف ===== */
   function openRows() {
     const def = rowsDef();
-    $("hos-rows-tracks").value = def.tracks.map((r) => r.name).join("\n");
+    $("hos-rows-tracks").value = def.tracks.map((r) => (r.locked ? `${r.name} = مغلق` : r.name)).join("\n");
     $("hos-rows-staff").value = def.staff.map((r) => (isVariable(r) ? `${r.name} = ؟` : staffValue(r) > 1 ? `${r.name} = ${staffValue(r)}` : r.name)).join("\n");
     $("hos-rows-modal").classList.add("open");
   }
@@ -352,6 +368,8 @@
     // الاسم الباقي يحتفظ بمفتاحه (فتبقى أرقامه)، والجديد يأخذ مفتاحاً جديداً
     // «الاسم = 2» تجعل استلام هذا الصف بقيمة 2 بدل 1، و«الاسم = ؟» تجعل العدد يُكتب يدوياً كل يوم
     const build = (text, old, withValue) => text.split("\n").map((l) => l.trim()).filter(Boolean).map((line) => {
+      const lk = !withValue && line.match(/^(.*?)\s*=\s*(مغلق|مقفل|مقفول)\s*$/);
+      if (lk) { const nm = lk[1].trim(); const pv = old.find((r) => norm(r.name) === norm(nm)); return { key: pv ? pv.key : store.uid(), name: nm, locked: true }; }
       const m = withValue && line.match(/^(.*?)\s*=\s*([0-9\u0660-\u0669]+|[?؟]|متغير)\s*$/);
       const name = m ? m[1].trim() : line;
       const variable = !!m && /^([?؟]|متغير)$/.test(m[2]);
