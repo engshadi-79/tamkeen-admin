@@ -69,10 +69,11 @@ function doPost(e) {
     if (req.action === "dropUpload") return sbOut_(sbDropUpload_(req));
     if (req.action === "dropCats") return sbOut_({ cats: sbDropCats_() });
     if (req.action === "dropInit") return sbOut_(sbDropInit_(req));
-    if (/^drop(List|File|Edit|Delete|RenameBy|DeleteBy|CatsSave)$/.test(String(req.action))) {
+    if (/^(drop(List|File|Edit|Delete|RenameBy|DeleteBy|CatsSave)|mine(List|Init|File|Delete))$/.test(String(req.action))) {
       if (String(req.key || "") !== sbDropKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز القراءة غير صحيح" }); }
       if (req.action === "dropList") return sbOut_(sbDropList_());
       if (req.action === "dropFile") return sbOut_(sbDropFile_(req.id));
+      if (/^mine/.test(String(req.action))) return sbOut_(sbMine_(req));
       if (req.action === "dropCatsSave") return sbOut_(sbDropCatsSave_(req));
       if (req.action === "dropEdit") return sbOut_(sbDropEdit_(req));
       if (req.action === "dropDelete") return sbOut_(sbDropDelete_(req.id));
@@ -183,6 +184,58 @@ function sbDropCatsSave_(req) {
   PropertiesService.getScriptProperties().setProperty("DROP_CATS", JSON.stringify(cats));
   return { ok: true, cats: cats, moved: moved };
 }
+/* نسخة «نماذجي» على Drive: تُحفظ نماذج المستخدم الخاصة في مجلد «نماذجي» داخل الأرشيف، فتظهر على كل أجهزته.
+   كلها برمز القراءة؛ الرفع جلسة مباشرة إلى Drive كما في ملفات الزملاء. */
+const SB_MINE_FOLDER = "نماذجي";
+const SB_MINE_MAX_MB = 200;
+function sbMineFolder_() { return sbSub_(sbRoot_(), SB_MINE_FOLDER); }
+function sbMineOwn_(id) {
+  const f = DriveApp.getFileById(String(id || ""));
+  const ps = f.getParents();
+  if (!ps.hasNext() || ps.next().getId() !== sbMineFolder_().getId()) throw new Error("الملف خارج مجلد نماذجي");
+  return f;
+}
+function sbMine_(req) {
+  const a = String(req.action);
+  if (a === "mineList") {
+    const out = [];
+    const it = sbMineFolder_().getFiles();
+    while (it.hasNext()) {
+      const f = it.next();
+      if (f.isTrashed()) continue;
+      const d = sbDropMeta_(f);
+      out.push({ id: f.getId(), name: f.getName(), mid: d.mid || "", kind: d.kind || "main", title: d.title || "", of: d.of || "", size: f.getSize(), at: f.getDateCreated().toISOString() });
+    }
+    return { files: out, folder: sbMineFolder_().getUrl() };
+  }
+  if (a === "mineFile") {
+    const f = sbMineOwn_(req.id);
+    const blob = f.getBlob();
+    return { name: f.getName(), mime: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) };
+  }
+  if (a === "mineDelete") { sbMineOwn_(req.id).setTrashed(true); return { ok: true }; }
+  // mineInit: جلسة رفع قابلة للاستئناف إلى مجلد نماذجي
+  const name = String(req.name || "").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 120);
+  const size = Number(req.size);
+  if (!name) throw new Error("اسم الملف ناقص");
+  if (!(size > 0)) throw new Error("الملف فارغ");
+  if (size > SB_MINE_MAX_MB * 1024 * 1024) throw new Error("الملف أكبر من " + SB_MINE_MAX_MB + " ميغابايت");
+  const mime = String(req.mime || "application/octet-stream");
+  const origin = /^https?:\/\/(tamkeen-admin\.vercel\.app|localhost(:\d+)?)$/.test(String(req.origin || "")) ? String(req.origin) : "https://tamkeen-admin.vercel.app";
+  const meta = {
+    name: name, mimeType: mime, parents: [sbMineFolder_().getId()],
+    description: JSON.stringify({ mid: String(req.mid || "").slice(0, 40), kind: req.kind === "pdf" ? "pdf" : "main", title: String(req.title || "").slice(0, 120), of: String(req.of || "").slice(0, 40) })
+  };
+  const res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
+    method: "post", contentType: "application/json; charset=UTF-8", payload: JSON.stringify(meta), muteHttpExceptions: true,
+    headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken(), "X-Upload-Content-Type": mime, "X-Upload-Content-Length": String(size), Origin: origin }
+  });
+  const h = res.getAllHeaders();
+  const loc = h.Location || h.location;
+  if (res.getResponseCode() !== 200 || !loc) throw new Error("تعذّر فتح جلسة الرفع (" + res.getResponseCode() + ")");
+  return { ok: true, url: String(loc) };
+}
+
 function sbDropFolder_() { return sbSub_(sbRoot_(), SB_DROP_FOLDER); }
 function sbDropKey_() {
   const key = PropertiesService.getScriptProperties().getProperty("DROP_KEY");
@@ -324,7 +377,7 @@ function sbDropDeleteBy_(by) {
 }
 
 function doGet() {
-  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 5 });
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 6 });
 }
 
 function sbOut_(obj) {

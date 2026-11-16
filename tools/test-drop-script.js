@@ -89,6 +89,22 @@ ok("حدّ 1 غيغابايت", /1024/.test(init({ size: 1025 * 1024 * 1024 }).e
 ok("ملف فارغ مرفوض", !!init({ size: 0 }).error);
 ok("الرفع المباشر بلا تصنيف مرفوض", !!init({ cat: "" }).error);
 
+// نسخة «نماذجي» على Drive
+const mi = (o) => call(Object.assign({ action: "mineInit", key: KEY, name: "نموذج.docx", size: 2048, mime: "application/x-test", mid: "m1", kind: "main", title: "نموذجي", origin: "https://tamkeen-admin.vercel.app" }, o));
+ok("mineInit بلا رمز مرفوض", !!call({ action: "mineInit", key: "x", name: "a", size: 5 }).error);
+const m1 = mi({});
+ok("mineInit يفتح جلسة", m1.ok && !!m1.url, m1);
+const mmeta = JSON.parse(fetchCalls[fetchCalls.length - 1].o.payload);
+ok("الجلسة في مجلد نماذجي بوصف mid/kind", JSON.parse(mmeta.description).mid === "m1" && JSON.parse(mmeta.description).kind === "main");
+ok("mineInit يرفض فوق 200 ميغابايت", !!mi({ size: 201 * 1048576 }).error);
+ok("mineInit يرفض فارغاً", !!mi({ size: 0 }).error);
+const mf = mkFile({ name: "نموذج.docx", mime: "application/x-test", bytes: Buffer.from("abc") });
+mf.setDescription(JSON.stringify({ mid: "m1", kind: "main", title: "نموذجي" }));
+const ml = call({ action: "mineList", key: KEY });
+ok("mineList يُعيد mid والعنوان", ml.files.some((f) => f.mid === "m1" && f.title === "نموذجي" && f.kind === "main"), ml);
+ok("mineFile يُعيد المحتوى", Buffer.from(call({ action: "mineFile", key: KEY, id: mf.id }).data, "base64").toString() === "abc");
+ok("mineDelete إلى سلة المهملات", call({ action: "mineDelete", key: KEY, id: mf.id }).ok && mf.trashed);
+
 // الحد اليومي
 props.DROP_COUNT = JSON.stringify({ day: "2026-11-16", n: 1000 });
 ok("الحد اليومي 1000 يُوقف الرفع", /الحدّ اليومي|حدّه اليومي/.test(init({}).error || ""));
