@@ -57,7 +57,8 @@
     store.save();
   }
 
-  const canLock = () => { try { return !App.profile || App.profile.isAdmin(); } catch (e) { return true; } };
+  /* المدير يُقفل ويفتح. وبلا حساب مسجَّل دخوله (وضع الجهاز وحده أو انقطاع الخادم) لا توجد صلاحيات تُحجب، فيظهر الزر كبقية الصفحات */
+  const canLock = () => { try { const u = App.profile && App.profile.get ? App.profile.get() : null; return !App.cloud || !App.cloud.ready() || !!(u && u.admin) || (App.profile && App.profile.isAdmin()); } catch (e) { return true; } };
   /* قفل مسار أو فتحه: يُحفظ في الصفوف المشتركة (فيسري على كل المستخدمين). أول تعديل يحفظ نسخة من الافتراضي */
   function setLock(key, on) {
     const def = rowsDef();
