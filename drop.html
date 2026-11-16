@@ -26,7 +26,7 @@
 <body>
 <div class="card">
   <h1>أرشفة الملفات</h1>
-  <p>ارفع ملفاتك هنا لتُحفظ في أرشيف المركز. لا حاجة لتسجيل الدخول. الحد الأقصى 15 ميغابايت للملف.</p>
+  <p>ارفع ملفاتك هنا لتُحفظ في أرشيف المركز. لا حاجة لتسجيل الدخول. الحد الأقصى 1 غيغابايت للملف.</p>
   <label for="by">اسمك</label>
   <input type="text" id="by" maxlength="60" placeholder="مثال: أحمد">
   <label>الملفات</label>
@@ -38,7 +38,7 @@
 <script>
 (function () {
   var URL_ = "https://script.google.com/macros/s/AKfycbyvEVh6eb827Ue-sgDtQNz1bHt-9wakgLZiVD1YNN0lIRofr5Q5CbxPBs_6jqVQsLwFbg/exec";
-  var MAX = 15 * 1024 * 1024;
+  var MAX = 1024 * 1024 * 1024;
   var files = [];
   var cats = ["تقارير", "كتب ومراجع", "نماذج", "خطابات", "صور", "أخرى"];
   fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "dropCats" }) })
@@ -48,16 +48,37 @@
   try { $("by").value = localStorage.getItem("tamkeen-drop-by") || ""; } catch (e) {}
   function paint() {
     $("list").innerHTML = files.map(function (f, i) {
-      return "<li><div class='row'><span>" + esc(f.file.name) + " <small>(" + (f.file.size / 1048576).toFixed(1) + " م.ب)</small></span><span class='" + (f.cls || "") + "'>" + esc(f.msg || "بانتظار الرفع") + "</span></div>" +
+      return "<li><div class='row'><span>" + esc(f.file.name) + " <small>(" + sizeText(f.file.size) + ")</small></span><span class='" + (f.cls || "") + "'>" + esc(f.msg || "بانتظار الرفع") + "</span></div>" +
         (f.done ? (f.title ? "<small>العنوان: " + esc(f.title) + "</small>" : "") : "<div class='two'><input type='text' class='ttl' data-i='" + i + "' maxlength='120' placeholder='عنوان للملف (اختياري)' value=\"" + esc(f.title || "") + "\"" + (f.busy ? " disabled" : "") + ">" +
           "<select class='cat" + (f.needCat ? " need" : "") + "' data-i='" + i + "'" + (f.busy ? " disabled" : "") + "><option value=''>التصنيف (إجباري) …</option>" +
           cats.map(function (c) { return "<option" + (c === f.cat ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select></div>") + (f.done ? "" : "") + "</li>";
     }).join("");
     $("go").disabled = !files.some(function (f) { return !f.done && !f.busy; });
   }
+  function sizeText(n) { return n >= 1073741824 ? (n / 1073741824).toFixed(2) + " غ.ب" : (n / 1048576).toFixed(1) + " م.ب"; }
+  function call(body) {
+    return fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  /* الملفات الكبيرة: دفعات مباشرة إلى جلسة الرفع في Drive (مضاعفات 256 ك.ب)، وتُعاد الدفعة الفاشلة حتى 4 مرات */
+  async function putChunks(url, file, chunk, onprog) {
+    var size = file.size, start = 0;
+    while (start < size) {
+      var end = Math.min(start + chunk, size), ok = false, last = null;
+      for (var t = 0; t < 4 && !ok; t++) {
+        try {
+          var r = await fetch(url, { method: "PUT", headers: { "Content-Range": "bytes " + start + "-" + (end - 1) + "/" + size }, body: file.slice(start, end) });
+          if (r.status === 200 || r.status === 201 || r.status === 308) ok = true; else last = new Error("رفض الخادم الدفعة (" + r.status + ")");
+        } catch (e) { last = e; }
+        if (!ok) await sleep(1500 * (t + 1));
+      }
+      if (!ok) throw (last || new Error("انقطع الرفع"));
+      start = end; onprog(Math.round(start / size * 100));
+    }
+  }
   function add(list) {
     Array.prototype.forEach.call(list, function (file) {
-      if (file.size > MAX) files.push({ file: file, done: true, cls: "bad", msg: "أكبر من 15 م.ب" });
+      if (file.size > MAX) files.push({ file: file, done: true, cls: "bad", msg: "أكبر من 1 غيغابايت" });
       else files.push({ file: file });
     });
     paint();
@@ -88,10 +109,15 @@
       if (f.done) continue;
       f.busy = true; f.cls = "wait"; f.msg = "جارٍ الرفع…"; paint();
       try {
-        var res = await fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "dropUpload", name: f.file.name, mime: f.file.type, by: by, cat: f.cat, title: (f.title || "").trim(), data: await b64(f.file) }) });
-        var d = await res.json();
-        if (d.error) throw new Error((d.error === "UNAUTHORIZED" || d.error === "رمز غير صحيح") ? "الأرشفة لم تُفعَّل بعد، أبلغ صاحب الرابط" : d.error);
+        var meta = { name: f.file.name, mime: f.file.type, by: by, cat: f.cat, title: (f.title || "").trim() };
+        var init = await call(Object.assign({ action: "dropInit", size: f.file.size, origin: location.origin }, meta));
+        if (init.error && /غير معروف/.test(init.error) && f.file.size <= 15 * 1024 * 1024) {
+          var d = await call(Object.assign({ action: "dropUpload", data: await b64(f.file) }, meta));
+          if (d.error) throw new Error(d.error);
+        } else {
+          if (init.error) throw new Error((init.error === "UNAUTHORIZED" || init.error === "رمز غير صحيح") ? "الأرشفة لم تُفعَّل بعد، أبلغ صاحب الرابط" : /غير معروف/.test(init.error) ? "الملفات الكبيرة تحتاج تحديث الخادم، أبلغ صاحب الرابط" : init.error);
+          await putChunks(init.url, f.file, init.chunk || 8388608, function (p) { f.msg = "جارٍ الرفع… " + p + "%"; paint(); });
+        }
         f.done = true; f.cls = "ok"; f.msg = "✓ تم الحفظ — " + f.cat;
       } catch (e) { f.cls = "bad"; f.msg = (e && e.message) || "تعذّر الرفع"; }
       f.busy = false; paint();

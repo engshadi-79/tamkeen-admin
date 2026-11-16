@@ -68,6 +68,7 @@ function doPost(e) {
     // أرشفة ملفات الزملاء: الرفع مفتوح لمن يعرف صفحة الرفع، والعرض والتنزيل برمز القراءة DROP_KEY
     if (req.action === "dropUpload") return sbOut_(sbDropUpload_(req));
     if (req.action === "dropCats") return sbOut_({ cats: sbDropCats_() });
+    if (req.action === "dropInit") return sbOut_(sbDropInit_(req));
     if (/^drop(List|File|Edit|Delete|RenameBy|DeleteBy|CatsSave)$/.test(String(req.action))) {
       if (String(req.key || "") !== sbDropKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز القراءة غير صحيح" }); }
       if (req.action === "dropList") return sbOut_(sbDropList_());
@@ -150,6 +151,7 @@ function setupWatchKey() {
    العرض والتنزيل من تاب «النماذج الجاهزة» برمز القراءة: شغّل setupDropKey مرة وانسخ الرمز من السجل. */
 const SB_DROP_FOLDER = "ملفات الزملاء";
 const SB_DROP_MAX_MB = 15;   // أقصى حجم للملف الواحد
+const SB_DROP_BIG_MB = 1024;   // أقصى حجم عبر الرفع المباشر إلى Drive (1 غيغابايت)
 const SB_DROP_DAILY = 150;   // أقصى عدد ملفات في اليوم (حماية من الإساءة)
 
 /* تصنيفات الملفات: قائمة يضبطها صاحب المشروع من تاب النماذج، ويختار الزميل منها عند الرفع (إجباري) */
@@ -198,6 +200,39 @@ function setupDropKey() {
   Logger.log("رمز القراءة: " + key);
   Logger.log("مجلد ملفات الزملاء: " + sbDropFolder_().getUrl());
   return { key: key };
+}
+/* رفع الملفات الكبيرة: يفتح السكربت جلسة رفع قابلة للاستئناف في Drive باسم صاحب المشروع ويعيد رابطها،
+   والمتصفح يرسل الملف إلى Google مباشرة على دفعات، فلا يمرّ الملف عبر السكربت ولا يصطدم بحدوده. */
+function sbDropInit_(req) {
+  const name = String(req.name || "").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 120);
+  const size = Number(req.size);
+  if (!name) throw new Error("اختر ملفاً أولاً");
+  if (!(size > 0)) throw new Error("الملف فارغ");
+  if (size > SB_DROP_BIG_MB * 1024 * 1024) throw new Error("الملف أكبر من " + SB_DROP_BIG_MB + " ميغابايت");
+  const cat = String(req.cat || "").trim();
+  if (!cat) throw new Error("اختر التصنيف أولاً");
+  if (sbDropCats_().indexOf(cat) < 0) throw new Error("هذا التصنيف غير موجود، حدّث الصفحة واختر من القائمة");
+  const props = PropertiesService.getScriptProperties();
+  const day = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  let cnt = {};
+  try { cnt = JSON.parse(props.getProperty("DROP_COUNT") || "{}"); } catch (err) { /* يُعاد العدّ */ }
+  const n = cnt.day === day ? cnt.n : 0;
+  if (n >= SB_DROP_DAILY) throw new Error("بلغ الرفع حدّه اليومي، حاول غداً");
+  const mime = String(req.mime || "application/octet-stream");
+  const origin = /^https?:\/\/(tamkeen-admin\.vercel\.app|localhost(:\d+)?)$/.test(String(req.origin || "")) ? String(req.origin) : "https://tamkeen-admin.vercel.app";
+  const meta = {
+    name: name, mimeType: mime, parents: [sbDropFolder_().getId()],
+    description: JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").trim().slice(0, 120), cat: cat })
+  };
+  const res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
+    method: "post", contentType: "application/json; charset=UTF-8", payload: JSON.stringify(meta), muteHttpExceptions: true,
+    headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken(), "X-Upload-Content-Type": mime, "X-Upload-Content-Length": String(size), Origin: origin }
+  });
+  const h = res.getAllHeaders();
+  const loc = h.Location || h.location;
+  if (res.getResponseCode() !== 200 || !loc) throw new Error("تعذّر فتح جلسة الرفع (" + res.getResponseCode() + ")");
+  props.setProperty("DROP_COUNT", JSON.stringify({ day: day, n: n + 1 }));
+  return { ok: true, url: String(loc), chunk: 8 * 1024 * 1024 };
 }
 function sbDropUpload_(req) {
   const name = String(req.name || "").replace(/[\/:*?"<>|]+/g, " ").trim().slice(0, 120);
@@ -289,7 +324,7 @@ function sbDropDeleteBy_(by) {
 }
 
 function doGet() {
-  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 4 });
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 5 });
 }
 
 function sbOut_(obj) {
