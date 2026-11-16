@@ -234,6 +234,8 @@
       btn.addEventListener("click", () => show(btn.dataset.view))
     );
     if (App.navOrder) App.navOrder.init();
+    // إضافات تاب النماذج (حذف جماعي، معاينة، «جديد»، بحث موحّد): ملف مستقل يُحمَّل بعد الواجهة
+    { const fx = document.createElement("script"); fx.src = "src/forms-extra.js?v=1"; fx.async = true; document.body.appendChild(fx); }
     initGroups();
     const menu = document.getElementById("mobile-menu-toggle");
     const nav = document.getElementById("primary-nav");
