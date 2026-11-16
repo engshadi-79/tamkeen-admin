@@ -233,6 +233,7 @@
     document.querySelectorAll("[data-view]").forEach((btn) =>
       btn.addEventListener("click", () => show(btn.dataset.view))
     );
+    if (App.navOrder) App.navOrder.init();
     initGroups();
     const menu = document.getElementById("mobile-menu-toggle");
     const nav = document.getElementById("primary-nav");
