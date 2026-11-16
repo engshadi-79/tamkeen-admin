@@ -27,6 +27,7 @@
     rows: [], headers: [],
     map: { name: "", nid: "", track: "", group: "" },
     oneFile: false,      // كل المسارات في ملف واحد
+    alpha: true,         // ترتيب الطلبة أبجدياً داخل كل مجموعة (الافتراضي)
     withAtt: true,       // كشوف الحضور مع الجداول
     withGrd: true,       // كشوف الدرجات مع الجداول
     stage: "",           // المرحلة، تُكتب في عمود «المرحلة» بكشف الحضور
@@ -953,6 +954,12 @@
     });
   }
 
+  /* ترتيب أبجدي عربي لأسماء الطلبة: يتجاهل «ال» التعريف والهمزات والتشكيل */
+  function alphaSort(students) {
+    const k = (v) => String(v || "").trim().replace(/^ال/, "").replace(/[أإآٱ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ً-ْ]/g, "");
+    return students.slice().sort((a, b) => k(a.name).localeCompare(k(b.name), "ar"));
+  }
+
   /* ===== التجميع: مسار ← مجموعات ← طلبة ===== */
   function grouped() {
     const m = state.map;
@@ -967,7 +974,7 @@
     });
     return [...byTrack].map(([track, gs]) => ({
       track,
-      groups: [...gs].map(([name, students]) => ({ name, students })),
+      groups: [...gs].map(([name, students]) => ({ name, students: state.alpha ? alphaSort(students) : students })),
     }));
   }
 
@@ -1092,6 +1099,8 @@
             ${state.pickForms.includes(f.id) ? "checked" : ""}> ${esc(f.name)} <span class="conv-hint">(${f.format === "docx" ? "Word" : "Excel"})</span></label>`).join("<br>")}
         </div>`);
       }
+      bits.push(`<label class="conv-check"><input type="checkbox" id="ex-alpha" ${state.alpha ? "checked" : ""}>
+          ترتيب أسماء الطلبة أبجدياً داخل كل مجموعة (الافتراضي) — ألغِه ليبقى ترتيب ملف الطلبة</label>`);
       const many = grouped().length > 1;
       if (many) {
         bits.push(`<label class="conv-check"><input type="checkbox" id="ex-one" ${state.oneFile ? "checked" : ""}>
@@ -1252,6 +1261,7 @@
       const key = e.target.dataset.exMap;
       if (key) { state.map[key] = e.target.value; return render(); }
       if (e.target.id === "ex-one") { state.oneFile = e.target.checked; return; }
+      if (e.target.id === "ex-alpha") { state.alpha = e.target.checked; return render(); }
       if (e.target.id === "ex-withatt") { state.withAtt = e.target.checked; return render(); }
       if (e.target.id === "ex-withgrd") { state.withGrd = e.target.checked; return render(); }
       if (e.target.id === "ex-witheval") { state.withEval = e.target.checked; return render(); }

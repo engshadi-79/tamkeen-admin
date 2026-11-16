@@ -406,6 +406,14 @@
   const getSticky = () => { try { return JSON.parse(localStorage.getItem(STICKY_KEY)) || {}; } catch (e) { return {}; } };
   const setSticky = (k, v) => { try { const o = getSticky(); o[k] = v; localStorage.setItem(STICKY_KEY, JSON.stringify(o)); } catch (e) { /* وضع التصفح الخاص */ } };
 
+  /* عمود اسم الطالب في بيانات الكشف: «اسم الطالب/المتدرب/المستفيد»، ثم «الاسم» وحده، ثم أي عمود فيه «اسم» عدا المدرب والمسار */
+  function studentNameColumn(headers) {
+    const norm = (h) => String(h || "").replace(/\s+/g, " ").trim();
+    const skip = /مدرب|مسار|مجموعة|أب|اب |أم|ام |مدرس|معلم|موظف|مشرف|جهة|جوال|هوية/;
+    const pick = (re) => headers.find((h) => re.test(norm(h)) && !skip.test(norm(h).replace(/^اسم الطالب|^اسم المتدرب|^اسم المستفيد/, "")));
+    return pick(/^اسم (ال)?(طالب|متدرب|مستفيد|متدربة|طالبة)/) || headers.find((h) => norm(h) === "الاسم") || pick(/^اسم/) || "";
+  }
+
   const tracksList = () => ((App.store.get() || {}).tracks || []).filter((t) => t && t.name);
 
   /* المدربون من صفحة المسارات: يظهر إن كان في القالب عمود أو حقل ترويسة فيه «مدرب» */
@@ -1430,6 +1438,8 @@
       const sticky = getSticky();
       if (!state.autoNumberHeader && sticky.auto && templateHeaders.includes(sticky.auto)) state.autoNumberHeader = sticky.auto;
       if (!state.sortRowsBy && sticky.sort) state.sortRowsBy = data.headers.includes(sticky.sort) ? sticky.sort : (core().resolveDefaultColumn(sticky.sort, data.headers) || "");
+      /* الافتراضي: أبجدي حسب عمود اسم الطالب، ما لم يختر المستخدم صراحةً «بدون ترتيب» (يُحفظ فارغاً) أو يحدد القالب ترتيباً آخر */
+      if (!state.sortRowsBy && sticky.sort === undefined) state.sortRowsBy = studentNameColumn(data.headers);
       core().preferTrackData(state.mapping, templateHeaders.filter((h) => !state.userMappings?.[h] && !String(state.constants[h] || "").trim()), data.headers, data.rows, true);
       state.trackDataAutoMapped = Object.fromEntries(templateHeaders.filter((h) => core().trackDataFieldFor(h) && state.mapping[h] === core().trackDataFieldFor(h)).map((h) => [h, state.mapping[h]]));
       refreshTrackPlaceholders();
