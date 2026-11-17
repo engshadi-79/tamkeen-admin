@@ -215,6 +215,12 @@ const mimeOf = (name) => ({
 }[(name.split(".").pop() || "").toLowerCase()] || "application/octet-stream");
 
 /* ===== قراءة المجلدات ===== */
+/* config.ignore: أسماء أو مسارات (نسبةً إلى المجلد المراقَب) تُتجاهل مع ما تحتها، مثل ["ملفات الزملاء","نماذجي"] */
+const isIgnored = (rel) => (config.ignore || []).some((x) => {
+  const g = String(x || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  return g && (rel === g || rel.startsWith(g + "/"));
+});
+
 async function listFiles(root) {
   const out = [];
   async function walk(dir, depth) {
@@ -224,6 +230,7 @@ async function listFiles(root) {
     for (const e of entries) {
       if (SKIP.test(e.name)) continue;
       const full = path.join(dir, e.name);
+      if (isIgnored(path.relative(root, full).replace(/\\/g, "/"))) continue;
       if (e.isDirectory()) { if (config.subfolders) await walk(full, depth + 1); continue; }
       if (!e.isFile()) continue;
       const st = await fsp.stat(full).catch(() => null);
@@ -320,15 +327,27 @@ async function collUpload(f) {
 
 /* أول تشغيل: ما في المجلدات الآن يُختم ولا يُرفع، فيُرفع كل ما يضاف بعده فقط */
 async function collSeedOnce() {
-  if (!collOn() || state.collSeeded) return;
+  if (!collOn()) return;
   state.coll = state.coll || {};
+  // مجلد ختمه الإصدار القديم (collSeeded) له مفاتيح في state.coll تبدأ بمساره
+  const sealed = new Set(state.collRoots || []);
+  const hadAny = (root) => Object.keys(state.coll).some((k) => k.startsWith(root + path.sep) || k.startsWith(root + "/"));
+  const cutoff = Date.parse((config.colleagues || {}).sealBefore || "");
+  let added = 0, fresh = [];
   for (const root of (config.folders || []).filter(Boolean)) {
+    if (sealed.has(root) || (state.collSeeded && !state.collRoots && hadAny(root))) { sealed.add(root); continue; }
     if (!fs.existsSync(root)) continue;
-    for (const f of await listFiles(root)) state.coll[keyOf(f)] = Date.now();
+    for (const f of await listFiles(root)) {
+      if (Number.isFinite(cutoff) && f.mtime >= cutoff) continue;      // أحدث من sealBefore: يُعدّ جديداً ويُرفع
+      state.coll[keyOf(f)] = Date.now(); added++;
+    }
+    sealed.add(root); fresh.push(root);
   }
+  if (!fresh.length && state.collSeeded) { state.collRoots = [...sealed]; return; }
+  state.collRoots = [...sealed];
   state.collSeeded = true;
   saveState();
-  log(`فعّلتُ الرفع إلى ملفات الزملاء (${collBy()}): ختمتُ ${Object.keys(state.coll).length} ملفاً موجوداً؛ يُرفع ما يُضاف بعد الآن.`);
+  if (fresh.length) log(`فعّلتُ الرفع إلى ملفات الزملاء (${collBy()}) للمجلد: ${fresh.join(" | ")} — ختمتُ ${added} ملفاً موجوداً؛ يُرفع ما يُضاف بعد الآن.`);
 }
 
 /* ===== رفع ملف واحد وتسجيله ===== */
