@@ -277,6 +277,9 @@ function sbDropInit_(req) {
     name: name, mimeType: mime, parents: [sbDropFolder_().getId()],
     description: JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").trim().slice(0, 120), cat: cat })
   };
+  // تاريخ إنشاء الملف الأصلي (من جهاز الرافع): يصير تاريخ إنشائه في Drive، فيُعرض ويُرتَّب به
+  const made = Date.parse(String(req.createdTime || ""));
+  if (made && made > Date.parse("2000-01-01") && made <= Date.now() + 60000) { meta.createdTime = new Date(made).toISOString(); meta.modifiedTime = meta.createdTime; }
   const res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
     method: "post", contentType: "application/json; charset=UTF-8", payload: JSON.stringify(meta), muteHttpExceptions: true,
     headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken(), "X-Upload-Content-Type": mime, "X-Upload-Content-Length": String(size), Origin: origin }
@@ -377,7 +380,7 @@ function sbDropDeleteBy_(by) {
 }
 
 function doGet() {
-  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 6 });
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 7 });
 }
 
 function sbOut_(obj) {
