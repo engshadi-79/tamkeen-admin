@@ -65,6 +65,7 @@ const DEFAULTS = {
   subfolders: true,
   target: "registry",         // registry = سجل الوارد والصادر، drive = Google Drive، both = كلاهما
   drive: { url: "", key: "" },// رابط مساعد Google ورمز المراقب (setupWatchKey)
+  colleagues: { enabled: false, by: "", only: false }, // رفع كل ما يضاف إلى «ملفات الزملاء» في تمكين باسم by (only = بلا سجل ولا نسخة المراقب)
 };
 
 const SKIP = /^(\.|~\$)|^(thumbs\.db|desktop\.ini)$|\.(tmp|crdownload|part|partial|lnk)$/i;
@@ -227,7 +228,7 @@ async function listFiles(root) {
       if (!e.isFile()) continue;
       const st = await fsp.stat(full).catch(() => null);
       if (!st || !st.size) continue;
-      out.push({ full, name: e.name, size: st.size, mtime: Math.round(st.mtimeMs), rel: path.relative(root, full).replace(/\\/g, "/"), rootName: path.basename(root) });
+      out.push({ full, name: e.name, size: st.size, mtime: Math.round(st.mtimeMs), birth: Math.round(st.birthtimeMs || 0), rel: path.relative(root, full).replace(/\\/g, "/"), rootName: path.basename(root) });
     }
   }
   await walk(root, 0);
@@ -236,8 +237,114 @@ async function listFiles(root) {
 
 const keyOf = (f) => `${f.full}|${f.size}|${f.mtime}`;
 
+/* ===== الرفع إلى «ملفات الزملاء» في تمكين =====
+   كل ملف يُضاف إلى المجلد المراقَب يظهر في تاب الشخص المحدد (colleagues.by) داخل التصنيف المناسب.
+   الرفع مباشر إلى Drive على دفعات 8 ميغابايت (حتى 1 غيغابايت)، وتاريخ إنشاء الملف الأصلي يُحفظ تاريخاً لإضافته.
+   لا يلزم رمز: صفحة الرفع العامة نفسها. ويُختم أول مرة كل ما في المجلد الآن (لا يُرفع ما كان موجوداً). */
+const collOn = () => !!(config.colleagues && config.colleagues.enabled && config.drive && /^https?:\/\//.test(String(config.drive.url || "")));
+const collBy = () => String((config.colleagues || {}).by || state.user || "المراقب").trim().slice(0, 60);
+const COLL_MAX = 1024 * 1024 * 1024;
+const COLL_CHUNK = 8 * 1024 * 1024;
+let collCats = null;
+
+async function dropPublic(action, payload) {
+  const res = await fetch(config.drive.url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(Object.assign({ action }, payload || {})),
+    redirect: "follow",
+  });
+  let data;
+  try { data = await res.json(); } catch (e) { throw new Error(`رد غير متوقع من مساعد Google (${res.status})`); }
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+async function collCategories() {
+  if (collCats) return collCats;
+  try { collCats = (await dropPublic("dropCats")).cats || []; } catch (e) { collCats = []; }
+  if (!collCats.length) collCats = ["تقارير", "كتب ومراجع", "نماذج", "خطابات", "صور", "أخرى"];
+  return collCats;
+}
+
+const normCat = (t) => String(t || "").replace(/[ً-ْ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
+
+/* التصنيف: اسم مجلد فرعي يطابق تصنيفاً أولاً، ثم نوع الملف واسمه، وإلا «أخرى» */
+function collCategory(f, cats) {
+  const pick = (name) => cats.find((c) => normCat(c) === normCat(name));
+  const segs = path.dirname(f.rel) === "." ? [] : path.dirname(f.rel).split("/").filter(Boolean).reverse();
+  for (const s of segs) { const c = pick(s); if (c) return c; }
+  const n = f.name.toLowerCase();
+  const rules = [
+    [/\.(jpe?g|png|gif|webp|heic|bmp|tiff?)$/, "صور"],
+    [/تقرير|تقارير|report/, "تقارير"],
+    [/خطاب|مراسل|رسالة|تعميم|letter/, "خطابات"],
+    [/نموذج|استمار|template|form/, "نماذج"],
+    [/كتاب|كتب|دليل|مرجع|book|manual|guide/, "كتب ومراجع"],
+  ];
+  for (const [re, name] of rules) if (re.test(n)) { const c = pick(name); if (c) return c; }
+  return pick("أخرى") || pick("غير مصنف") || cats[cats.length - 1];
+}
+
+async function collUpload(f) {
+  if (f.size > COLL_MAX) { log(`تُخطّي «${f.name}» للزملاء: أكبر من 1 غيغابايت`); return true; }
+  const cats = await collCategories();
+  const cat = collCategory(f, cats);
+  const created = new Date(f.birth || f.mtime);
+  const init = await dropPublic("dropInit", {
+    name: f.name, mime: mimeOf(f.name), size: f.size, by: collBy(), cat, title: "",
+    origin: "https://tamkeen-admin.vercel.app",
+    createdTime: Number.isFinite(created.getTime()) ? created.toISOString() : undefined,
+  });
+  const fh = await fsp.open(f.full, "r");
+  try {
+    for (let start = 0; start < f.size; start += COLL_CHUNK) {
+      const len = Math.min(COLL_CHUNK, f.size - start);
+      const buf = Buffer.alloc(len);
+      const { bytesRead } = await fh.read(buf, 0, len, start);
+      if (bytesRead !== len) throw new Error("تغيّر الملف أثناء الرفع، سيُعاد لاحقاً");
+      let ok = false, last = null;
+      for (let t = 0; t < 4 && !ok; t++) {
+        try {
+          const r = await fetch(init.url, { method: "PUT", redirect: "manual", headers: { "Content-Range": `bytes ${start}-${start + len - 1}/${f.size}` }, body: buf });
+          if ([200, 201, 308].includes(r.status)) ok = true; else last = new Error(`رفض Google الدفعة (${r.status})`);
+        } catch (e) { last = e; }
+        if (!ok) await new Promise((res) => setTimeout(res, 1500 * (t + 1)));
+      }
+      if (!ok) throw last || new Error("انقطع الرفع");
+    }
+  } finally { await fh.close(); }
+  log(`👥 الزملاء — ${collBy()} / ${cat} — ${f.rel}`);
+  return true;
+}
+
+/* أول تشغيل: ما في المجلدات الآن يُختم ولا يُرفع، فيُرفع كل ما يضاف بعده فقط */
+async function collSeedOnce() {
+  if (!collOn() || state.collSeeded) return;
+  state.coll = state.coll || {};
+  for (const root of (config.folders || []).filter(Boolean)) {
+    if (!fs.existsSync(root)) continue;
+    for (const f of await listFiles(root)) state.coll[keyOf(f)] = Date.now();
+  }
+  state.collSeeded = true;
+  saveState();
+  log(`فعّلتُ الرفع إلى ملفات الزملاء (${collBy()}): ختمتُ ${Object.keys(state.coll).length} ملفاً موجوداً؛ يُرفع ما يُضاف بعد الآن.`);
+}
+
 /* ===== رفع ملف واحد وتسجيله ===== */
 async function handleFile(f) {
+  const key = keyOf(f);
+  if (collOn() && !(state.coll && state.coll[key])) {
+    await collUpload(f);
+    state.coll = state.coll || {};
+    state.coll[key] = Date.now();
+    saveState();
+    if (config.colleagues.only) return true;
+  }
+  return handleFileMain(f);
+}
+
+async function handleFileMain(f) {
   const maxBytes = config.maxMB * 1024 * 1024;
   if (f.size > maxBytes) { log(`تُخطّي «${f.name}»: أكبر من ${config.maxMB} ميغابايت`); return false; }
 
@@ -294,6 +401,7 @@ async function handleFile(f) {
 
 /* ===== جولة فحص ===== */
 async function round(seedOnly) {
+  try { await collSeedOnce(); } catch (e) { log("تعذّر ختم الملفات الحالية للزملاء: " + e.message); }
   const folders = (config.folders || []).filter(Boolean);
   if (!folders.length) { log("لا توجد مجلدات في config.json — أضف مسار المجلد في folders"); return; }
 
@@ -321,6 +429,7 @@ async function round(seedOnly) {
   // تنظيف سجل الملفات المعروفة من القديم جداً (سنة)
   const year = Date.now() - 365 * 24 * 3600 * 1000;
   for (const k of Object.keys(state.seen)) if (state.seen[k] < year) delete state.seen[k];
+  for (const k of Object.keys(state.coll || {})) if (state.coll[k] < year) delete state.coll[k];
   saveState();
 }
 
@@ -341,6 +450,7 @@ async function main() {
     console.log(`النوع: ${config.type === "out" ? "صادر" : "وارد"} · كل ${config.intervalSeconds} ثانية`);
     console.log(`الوجهة: ${config.target === "drive" ? "Google Drive" : config.target === "both" ? "سجل المركز و Google Drive" : "سجل المركز"}`);
     console.log(`ملفات معروفة: ${Object.keys(state.seen).length}`);
+    if (collOn()) console.log(`ملفات الزملاء: مفعّلة باسم «${collBy()}»${config.colleagues.only ? " (وحدها)" : ""} · ملفات مختومة ${Object.keys(state.coll || {}).length}`);
     return;
   }
 
@@ -389,6 +499,7 @@ async function main() {
 }
 
 main().catch((e) => { log("توقّف البرنامج: " + e.message); process.exitCode = 1; });
+
 
 
 
@@ -792,6 +903,7 @@ $summary = @(
 if ((Show-Msg $summary "Information" "YesNo") -eq [System.Windows.Forms.DialogResult]::Yes) {
   if ($toDrive -and $driveFolder) { Start-Process $driveFolder } else { Start-Process explorer.exe $here }
 }
+
 
 :::UI:::
 #requires -version 5
