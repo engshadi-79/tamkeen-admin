@@ -275,7 +275,7 @@ function sbDropInit_(req) {
   const origin = /^https?:\/\/(tamkeen-admin\.vercel\.app|localhost(:\d+)?)$/.test(String(req.origin || "")) ? String(req.origin) : "https://tamkeen-admin.vercel.app";
   const meta = {
     name: name, mimeType: mime, parents: [sbDropFolder_().getId()],
-    description: JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").trim().slice(0, 120), cat: cat })
+    description: JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").trim().slice(0, 120), cat: cat, up: new Date().toISOString() })
   };
   // تاريخ إنشاء الملف الأصلي (من جهاز الرافع): يصير تاريخ إنشائه في Drive، فيُعرض ويُرتَّب به
   const made = Date.parse(String(req.createdTime || ""));
@@ -305,7 +305,7 @@ function sbDropUpload_(req) {
   if (n >= SB_DROP_DAILY) throw new Error("بلغ الرفع حدّه اليومي، حاول غداً");
   const blob = Utilities.newBlob(Utilities.base64Decode(String(req.data)), req.mime || "application/octet-stream", name);
   const file = sbDropFolder_().createFile(blob);
-  file.setDescription(JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").trim().slice(0, 120), cat: cat }));
+  file.setDescription(JSON.stringify({ by: String(req.by || "").slice(0, 60), title: String(req.title || "").trim().slice(0, 120), cat: cat, up: new Date().toISOString() }));
   props.setProperty("DROP_COUNT", JSON.stringify({ day: day, n: n + 1 }));
   return { ok: true, name: name };
 }
@@ -318,7 +318,7 @@ function sbDropList_() {
     if (f.isTrashed()) continue;
     let d = {};
     try { d = JSON.parse(f.getDescription() || "{}"); } catch (err) { /* وصف حر */ }
-    out.push({ id: f.getId(), name: f.getName(), title: d.title || "", cat: d.cat || "", by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
+    out.push({ id: f.getId(), name: f.getName(), title: d.title || "", cat: d.cat || "", up: d.up || "", by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
   }
   out.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
   return { files: out, folder: folder.getUrl(), cats: sbDropCats_() };
@@ -380,7 +380,7 @@ function sbDropDeleteBy_(by) {
 }
 
 function doGet() {
-  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 7 });
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 8 });
 }
 
 function sbOut_(obj) {
