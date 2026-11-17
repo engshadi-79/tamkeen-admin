@@ -334,11 +334,14 @@ async function collSeedOnce() {
 /* ===== رفع ملف واحد وتسجيله ===== */
 async function handleFile(f) {
   const key = keyOf(f);
-  if (collOn() && !(state.coll && state.coll[key])) {
-    await collUpload(f);
-    state.coll = state.coll || {};
-    state.coll[key] = Date.now();
-    saveState();
+  if (collOn()) {
+    if (!(state.coll && state.coll[key])) {
+      await collUpload(f);
+      state.coll = state.coll || {};
+      state.coll[key] = Date.now();
+      saveState();
+    }
+    // «only»: وجهة الزملاء وحدها، فلا سجل ولا نسخة في مجلد المراقبة (حتى للملفات المختومة)
     if (config.colleagues.only) return true;
   }
   return handleFileMain(f);
