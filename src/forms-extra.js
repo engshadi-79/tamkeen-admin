@@ -294,6 +294,12 @@
     if (!(pick || window.showDirectoryPicker)) return ui.toast("هذا المتصفح لا يدعم الكتابة في مجلد. استعمل Chrome أو Edge");
     let root;
     try { root = await (pick || window.showDirectoryPicker)({ id: "tamkeen-backup", mode: "readwrite" }); } catch (e) { return; }   // أُلغي الاختيار
+    return runBackup(root, false);
+  }
+  let backing = false;
+  async function runBackup(root, silent) {
+    if (backing) return null;
+    backing = true;
     const rep = { done: 0, skipped: 0, big: [], failed: [] };
     try {
       cloudMsg2("جارٍ قراءة قائمة الملفات…");
@@ -303,8 +309,9 @@
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         cloudMsg2("ملفات الزملاء " + (i + 1) + " من " + files.length + "…");
-        const dir = await sub(await sub(colleagues, safe(who(f), "بلا اسم")), safe(f.cat, "غير مصنّف"));
-        const label = f.title ? safe(f.title) + " — " + safe(f.name) : safe(f.name, "ملف");
+        const dir = await sub(colleagues, safe(f.cat, "غير مصنّف"));
+        const day = String(f.at || "").slice(0, 10) || "بلا تاريخ";
+        const label = day + " — " + safe(who(f), "بلا اسم") + " — " + (f.title ? safe(f.title) + " — " + safe(f.name) : safe(f.name, "ملف"));
         const u = await uniqueName(dir, label, Number(f.size), f.id);
         index.push({ person: who(f), cat: f.cat || "", file: u.name, size: f.size, title: f.title || "", at: f.at });
         if (u.same) { rep.skipped++; continue; }
@@ -330,10 +337,76 @@
       }
       await writeFile(root, "فهرس-النسخة-الاحتياطية.json", new Blob([JSON.stringify({ at: new Date().toISOString(), colleagues: index, bigNotCopied: rep.big, failed: rep.failed }, null, 1)], { type: "application/json" }));
       const parts = ["نُسخ " + rep.done + " ملفاً", rep.skipped ? "تخطّي " + rep.skipped + " موجوداً" : "", rep.big.length ? rep.big.length + " كبير لم يُنسخ" : "", rep.failed.length ? "تعذّر " + rep.failed.length : ""].filter(Boolean);
-      cloudMsg2(parts.join(" · "));
-      ui.toast(rep.failed.length || rep.big.length ? "انتهى النسخ مع ملاحظات، راجع الفهرس في المجلد" : "اكتملت النسخة الاحتياطية");
+      cloudMsg2(parts.join(" · ") + (silent ? " — " + new Date().toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }) : ""));
+      if (!silent) ui.toast(rep.failed.length || rep.big.length ? "انتهى النسخ مع ملاحظات، راجع الفهرس في المجلد" : "اكتملت النسخة الاحتياطية");
+      else if (rep.done) ui.toast("نُسخ " + rep.done + " ملفاً جديداً إلى المجلد");
       return rep;
-    } catch (e) { cloudMsg2(""); ui.toast((e && e.message) || "تعذّرت النسخة الاحتياطية"); }
+    } catch (e) { cloudMsg2(""); if (!silent) ui.toast((e && e.message) || "تعذّرت النسخة الاحتياطية"); }
+    finally { backing = false; }
+  }
+
+  /* ===== المزامنة التلقائية: مجلد يُحفظ مرة واحدة وتُنسخ إليه الملفات الجديدة كل دقيقتين ما دام التاب مفتوحاً ===== */
+  const KV = { db: null };
+  function kv() {
+    if (KV.db) return KV.db;
+    KV.db = new Promise((res, rej) => {
+      const r = indexedDB.open("tamkeen-fx", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+    return KV.db;
+  }
+  const kvGet = async (k) => { const d = await kv(); return new Promise((res) => { const q = d.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); };
+  const kvSet = async (k, v) => {
+    try {
+      const d = await kv();
+      return await new Promise((res) => {
+        const t = d.transaction("kv", "readwrite");
+        if (v == null) t.objectStore("kv").delete(k); else t.objectStore("kv").put(v, k);
+        t.oncomplete = () => res(); t.onerror = () => res(); t.onabort = () => res();
+      });
+    } catch (e) { /* يبقى في الذاكرة لهذه الجلسة */ }
+  };
+  const auto = { handle: null, granted: false };
+
+  async function autoPerm(ask) {
+    if (!auto.handle) return false;
+    try {
+      let p = await auto.handle.queryPermission({ mode: "readwrite" });
+      if (p !== "granted" && ask) p = await auto.handle.requestPermission({ mode: "readwrite" });
+      auto.granted = p === "granted";
+    } catch (e) { auto.granted = false; }
+    return auto.granted;
+  }
+  function autoPaint() {
+    const el = document.querySelector(".fx-auto");
+    if (!el) return;
+    const on = !!auto.handle;
+    el.innerHTML = (on
+      ? `<span>المزامنة التلقائية إلى المجلد <b>${esc(auto.handle.name)}</b>: ${auto.granted ? "تعمل (ما دام هذا التاب مفتوحاً)" : "بانتظار إذنك لهذه الجلسة"}</span>` +
+        (auto.granted ? "" : `<button type="button" class="btn navy" data-fx="auto-allow">تفعيل لهذه الجلسة</button>`) +
+        `<button type="button" class="btn secondary" data-fx="auto-now">مزامنة الآن</button><button type="button" class="btn secondary" data-fx="auto-off">إيقاف التلقائية</button>`
+      : `<span>اختر مجلداً مرة واحدة، فتُنسخ إليه الملفات الجديدة تلقائياً ضمن تصنيفها وبتاريخ إضافتها.</span><button type="button" class="btn navy" data-fx="auto-pick"><span class="material-symbols-outlined btn-ico">sync</span>اختيار مجلد المزامنة التلقائية</button>`);
+  }
+  async function autoInit() {
+    if (!window.showDirectoryPicker) return;
+    auto.handle = await kvGet("autoDir");
+    await autoPerm(false);
+    autoPaint();
+  }
+  async function autoPick() {
+    if (!window.showDirectoryPicker) return ui.toast("هذا المتصفح لا يدعم الكتابة في مجلد. استعمل Chrome أو Edge");
+    if (!key()) return ui.toast("اكتب رمز القراءة في قسم «ملفات الزملاء» أولاً");
+    let h;
+    try { h = await window.showDirectoryPicker({ id: "tamkeen-auto", mode: "readwrite" }); } catch (e) { return; }
+    auto.handle = h; await kvSet("autoDir", h); auto.granted = true; autoPaint();
+    ui.toast("ستُنسخ إليه الملفات الجديدة تلقائياً");
+    runBackup(h, true);
+  }
+  async function autoTick() {
+    if (!auto.handle || !key()) return;
+    if (!(await autoPerm(false))) { autoPaint(); return; }      // الإذن يُفحص في كل دورة: قد يسحبه المتصفح بين الجلسات
+    await runBackup(auto.handle, true);
   }
   function cloudMsg2(t) { const el = document.querySelector(".fx-cloud2 small"); if (el) el.textContent = t; }
   function mountFolderBackup() {
@@ -342,8 +415,10 @@
     const d = document.createElement("div");
     d.className = "fx-cloud fx-cloud2 no-print";
     d.innerHTML = `<b>نسخة احتياطية ثانية</b><span>انسخ ملفات الزملاء ونماذجك إلى مجلد على جهازك (اختر مجلد Mega المتزامن مثلاً). التكرار يكمّل الناقص فقط.</span>
-      <button type="button" class="btn secondary" data-fx="folder-backup"><span class="material-symbols-outlined btn-ico">folder_zip</span>نسخ احتياطي إلى مجلد</button><small></small>`;
+      <button type="button" class="btn secondary" data-fx="folder-backup"><span class="material-symbols-outlined btn-ico">folder_zip</span>نسخ احتياطي إلى مجلد</button><small></small>
+      <div class="fx-auto" style="flex-basis:100%;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px dashed #cfd6e0;padding-top:8px;margin-top:4px"></div>`;
     c.insertAdjacentElement("afterend", d);
+    autoInit();
   }
 
   /* ===== الأحداث ===== */
@@ -361,6 +436,10 @@
       else if (b.dataset.fx === "mine-up") mineBackup();
       else if (b.dataset.fx === "mine-down") mineRestore();
       else if (b.dataset.fx === "folder-backup") folderBackup();
+      else if (b.dataset.fx === "auto-pick") autoPick();
+      else if (b.dataset.fx === "auto-allow") { autoPerm(true).then((ok) => { autoPaint(); if (ok) runBackup(auto.handle, true); }); }
+      else if (b.dataset.fx === "auto-now") { autoPerm(true).then((ok) => { autoPaint(); if (ok) runBackup(auto.handle, false); }); }
+      else if (b.dataset.fx === "auto-off") { auto.handle = null; auto.granted = false; kvSet("autoDir", null).then(autoPaint); ui.toast("أُوقفت المزامنة التلقائية، وما نُسخ يبقى في المجلد"); }
     });
     root.addEventListener("change", (e) => {
       const t = e.target;
@@ -377,14 +456,16 @@
     let t = null;
     new MutationObserver(() => { clearTimeout(t); t = setTimeout(() => { if (!busyDeco) decorate(); }, 60); })
       .observe(root, { childList: true, subtree: true });
-    fresh(true).then(decorate);
+    fresh(true).then(() => { decorate(); autoTick(); });
     // تحديث هادئ كل دقيقتين ما دام التاب مفتوحاً ومرئياً
     st.timer = setInterval(async () => {
       if (document.visibilityState !== "visible" || !root.classList.contains("active")) return;
       await fresh(true); decorate();
     }, POLL_MS);
+    // المزامنة التلقائية تعمل في أي صفحة من التطبيق ما دام مفتوحاً، لا في هذا التاب وحده
+    setInterval(autoTick, POLL_MS);
   }
 
-  App.formsExtra = { init, refresh: () => fresh(true).then(decorate), folderBackup };
+  App.formsExtra = { init, refresh: () => fresh(true).then(decorate), folderBackup, runBackup, autoTick };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })(window.App = window.App || {});
