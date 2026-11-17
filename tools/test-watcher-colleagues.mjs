@@ -88,6 +88,25 @@ ok("تاريخ الإنشاء الأصلي يُرسل", by("تقرير الشه�
 const big = inits.findIndex((i) => i.name === "ضخم.zip") + 1;
 ok("الملف الكبير على 3 دفعات", puts["s" + big] && puts["s" + big].length === 3 && puts["s" + big].reduce((a, b) => a + b.bytes, 0) === 20 * 1024 * 1024, puts["s" + big]);
 
+// مجلد ثانٍ يُضاف لاحقاً: ما فيه يُختم، وما يُضاف بعده يُرفع، ومجلدات المخرجات تُتجاهل
+const watch2 = path.join(tmp, "watch2");
+fs.mkdirSync(path.join(watch2, "ملفات الزملاء", "تقارير"), { recursive: true });
+fs.writeFileSync(path.join(watch2, "قديم2.pdf"), "old2");
+fs.writeFileSync(path.join(watch2, "ملفات الزملاء", "تقارير", "منزّل من الموقع.pdf"), "downloaded");
+fs.writeFileSync(path.join(watch2, "فهرس-النسخة-الاحتياطية.json"), "{}");
+const cfg = JSON.parse(fs.readFileSync(path.join(tmp, "config.json"), "utf8"));
+cfg.folders.push(watch2); cfg.ignore = ["ملفات الزملاء", "فهرس-النسخة-الاحتياطية.json"];
+fs.writeFileSync(path.join(tmp, "config.json"), JSON.stringify(cfg));
+const before2 = inits.length;
+await run();
+ok("المجلد الثاني: ما فيه يُختم ولا يُرفع", inits.length === before2, inits.slice(before2).map((i) => i.name));
+fs.writeFileSync(path.join(watch2, "جديد2.pdf"), "new2");
+fs.writeFileSync(path.join(watch2, "ملفات الزملاء", "تقارير", "منزّل آخر.pdf"), "downloaded2");
+await run();
+const got2 = inits.slice(before2).map((i) => i.name);
+ok("المجلد الثاني: الجديد يُرفع", got2.includes("جديد2.pdf"), got2);
+ok("مجلد المخرجات وفهرس النسخة يُتجاهلان", !got2.some((n) => /منزّل|فهرس/.test(n)), got2);
+
 // الجولة التالية لا تكرر شيئاً
 const n = inits.length;
 await run();
