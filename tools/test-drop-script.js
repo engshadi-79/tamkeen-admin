@@ -94,6 +94,13 @@ ok("حدّ 1 غيغابايت", /1024/.test(init({ size: 1025 * 1024 * 1024 }).e
 ok("ملف فارغ مرفوض", !!init({ size: 0 }).error);
 ok("الرفع المباشر بلا تصنيف مرفوض", !!init({ cat: "" }).error);
 
+// تاريخ الرفع الفعلي محفوظ مستقلاً عن تاريخ إنشاء الملف
+init({ name: "u.pdf", createdTime: "2025-03-05T10:00:00.000Z" });
+const upMeta = JSON.parse(JSON.parse(fetchCalls[fetchCalls.length - 1].o.payload).description);
+ok("الوصف يحمل تاريخ الرفع up", /^20\d\d-/.test(upMeta.up || ""), upMeta);
+const f0 = mkFile({ name: "z.pdf", mime: "a/b", bytes: Buffer.from("x") }); f0.setDescription(JSON.stringify({ by: "ب", cat: "أخرى", up: "2026-11-17T05:00:00.000Z" }));
+ok("القائمة تُعيد up", call({ action: "dropList", key: KEY }).files.some((f) => f.name === "z.pdf" && f.up === "2026-11-17T05:00:00.000Z"));
+
 // نسخة «نماذجي» على Drive
 const mi = (o) => call(Object.assign({ action: "mineInit", key: KEY, name: "نموذج.docx", size: 2048, mime: "application/x-test", mid: "m1", kind: "main", title: "نموذجي", origin: "https://tamkeen-admin.vercel.app" }, o));
 ok("mineInit بلا رمز مرفوض", !!call({ action: "mineInit", key: "x", name: "a", size: 5 }).error);

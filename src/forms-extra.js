@@ -103,12 +103,13 @@
         if (f && who(f) && st.seen && f.at > (st.seen[who(f)] || "") && !c.querySelector(".fx-badge")) { /* العلامة على التاب تكفي */ }
       });
 
+      if (bar && personName) latestStrip(bar, personName);
       if (bar && cards.length) {
         let tb = document.querySelector("#frm-body .fx-bulk");
         if (!tb) {
           tb = document.createElement("div");
           tb.className = "fx-bulk no-print";
-          bar.insertAdjacentElement("afterend", tb);
+          (document.querySelector("#frm-body .fx-latest") || bar).insertAdjacentElement("afterend", tb);
         }
         const ids = cards.map((c) => c.querySelector('[data-drop="get"]').dataset.id);
         const picked = ids.filter((i) => st.sel.has(i)).length;
@@ -119,6 +120,30 @@
 
       unifiedSearch();
     } finally { busyDeco = false; }
+  }
+
+  /* ===== «آخر ما أُضيف»: أحدث ما رُفع لهذا الشخص في أعلى صفحته مهما كان تصنيفه ===== */
+  const whenLabel = (iso) => {
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    const t = d.toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" });
+    return d.toDateString() === new Date().toDateString() ? "اليوم " + t : d.toLocaleDateString("ar", { day: "numeric", month: "long", year: "numeric" }) + " " + t;
+  };
+  function latestStrip(bar, name) {
+    const mine = st.files.filter((f) => who(f) === name).sort((a, b) => ((b.up || b.at) > (a.up || a.at) ? 1 : (b.up || b.at) < (a.up || a.at) ? -1 : 0)).slice(0, 6);
+    let box = document.querySelector("#frm-body .fx-latest");
+    if (!mine.length) { if (box) box.remove(); return; }
+    const sig = name + "|" + mine.map((f) => f.id + (f.up || f.at)).join(",");
+    if (box && box.dataset.sig === sig) return;
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "fx-latest no-print";
+      bar.insertAdjacentElement("afterend", box);
+    }
+    box.dataset.sig = sig;
+    box.innerHTML = `<h3 class="frm-grouphead"><span class="material-symbols-outlined" aria-hidden="true">schedule</span>آخر ما أُضيف <small>${mine.length}</small></h3>` +
+      mine.map((f) => `<div class="fx-hit"><b>${esc(f.title || f.name)}</b><small>${esc(f.cat || "غير مصنّف")} · ${size(f.size)} · أُضيف ${esc(whenLabel(f.up || f.at))}</small>
+        <span>${previewable(f.name) ? `<button type="button" class="cc-link" data-fx="preview" data-id="${esc(f.id)}">معاينة</button>` : ""}<button type="button" class="cc-link" data-drop="get" data-id="${esc(f.id)}">تنزيل</button></span></div>`).join("");
   }
 
   /* ===== البحث الموحّد ===== */
