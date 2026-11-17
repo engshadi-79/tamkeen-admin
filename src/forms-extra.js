@@ -103,6 +103,7 @@
         if (f && who(f) && st.seen && f.at > (st.seen[who(f)] || "") && !c.querySelector(".fx-badge")) { /* العلامة على التاب تكفي */ }
       });
 
+      if (personName) sortByUpload();
       if (bar && personName) latestStrip(bar, personName);
       if (bar && cards.length) {
         let tb = document.querySelector("#frm-body .fx-bulk");
@@ -120,6 +121,23 @@
 
       unifiedSearch();
     } finally { busyDeco = false; }
+  }
+
+  /* ===== ترتيب كل تصنيف بتاريخ الرفع: ما رُفع الآن في أول قائمته (لا بتاريخ إنشاء الملف الأصلي) ===== */
+  function sortByUpload() {
+    const key = (f) => f.up || f.at || "";
+    document.querySelectorAll("#frm-body .frm-groupgrid").forEach((grid) => {
+      const rows = [...grid.children].map((el, i) => {
+        const b = el.querySelector('[data-drop="get"]');
+        const f = b ? st.files.find((x) => x.id === b.dataset.id) : null;
+        return { el, i, k: f ? key(f) : "" };
+      });
+      const want = rows.slice().sort((a, b) => (a.k < b.k ? 1 : a.k > b.k ? -1 : a.i - b.i));
+      if (want.some((r, i) => r.el !== rows[i].el)) want.forEach((r) => grid.appendChild(r.el));
+    });
+    const note = [...document.querySelectorAll("#frm-body .frm-note")].find((n) => n.textContent.includes("مرتبة داخل كل تصنيف"));
+    const txt = "مرتبة داخل كل تصنيف من الأحدث رفعاً إلى الأقدم (تاريخ الرفع إلى الموقع).";
+    if (note && note.textContent !== txt) note.textContent = txt;
   }
 
   /* ===== «آخر ما أُضيف»: أحدث ما رُفع لهذا الشخص في أعلى صفحته مهما كان تصنيفه ===== */

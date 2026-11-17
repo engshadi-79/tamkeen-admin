@@ -107,6 +107,14 @@ const got2 = inits.slice(before2).map((i) => i.name);
 ok("المجلد الثاني: الجديد يُرفع", got2.includes("جديد2.pdf"), got2);
 ok("مجلد المخرجات وفهرس النسخة يُتجاهلان", !got2.some((n) => /منزّل|فهرس/.test(n)), got2);
 
+// تصنيف افتراضي من الإعدادات للملفات غير المعروفة
+const cfg2 = JSON.parse(fs.readFileSync(path.join(tmp, "config.json"), "utf8"));
+cfg2.colleagues.defaultCat = "تقارير";
+fs.writeFileSync(path.join(tmp, "config.json"), JSON.stringify(cfg2));
+fs.writeFileSync(path.join(watch, "ملف مجهول.bin"), "x");
+await run();
+ok("colleagues.defaultCat يحدد تصنيف غير المعروف", by("ملف مجهول.bin") && by("ملف مجهول.bin").cat === "تقارير", by("ملف مجهول.bin"));
+
 // الجولة التالية لا تكرر شيئاً
 const n = inits.length;
 await run();

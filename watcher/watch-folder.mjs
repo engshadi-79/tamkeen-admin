@@ -37,7 +37,7 @@ const DEFAULTS = {
   subfolders: true,
   target: "registry",         // registry = سجل الوارد والصادر، drive = Google Drive، both = كلاهما
   drive: { url: "", key: "" },// رابط مساعد Google ورمز المراقب (setupWatchKey)
-  colleagues: { enabled: false, by: "", only: false }, // رفع كل ما يضاف إلى «ملفات الزملاء» في تمكين باسم by (only = بلا سجل ولا نسخة المراقب)
+  colleagues: { enabled: false, by: "", only: false, defaultCat: "" }, // رفع كل ما يضاف إلى «ملفات الزملاء» في تمكين باسم by (only = بلا سجل ولا نسخة المراقب)
 };
 
 const SKIP = /^(\.|~\$)|^(thumbs\.db|desktop\.ini)$|\.(tmp|crdownload|part|partial|lnk)$/i;
@@ -262,7 +262,7 @@ function collCategory(f, cats) {
     [/كتاب|كتب|دليل|مرجع|book|manual|guide/, "كتب ومراجع"],
   ];
   for (const [re, name] of rules) if (re.test(n)) { const c = pick(name); if (c) return c; }
-  return pick("أخرى") || pick("غير مصنف") || cats[cats.length - 1];
+  return pick((config.colleagues || {}).defaultCat) || pick("أخرى") || pick("غير مصنف") || cats[cats.length - 1];
 }
 
 async function collUpload(f) {
