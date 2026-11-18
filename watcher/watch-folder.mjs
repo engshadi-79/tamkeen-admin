@@ -16,6 +16,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
@@ -230,13 +231,32 @@ async function dropPublic(action, payload) {
   const res = await fetch(config.drive.url, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(Object.assign({ action }, payload || {})),
+    body: JSON.stringify(Object.assign({ action, token: (config.colleagues || {}).token || undefined }, payload || {})),
     redirect: "follow",
   });
   let data;
   try { data = await res.json(); } catch (e) { throw new Error(`رد غير متوقع من مساعد Google (${res.status})`); }
   if (data.error) throw new Error(data.error);
   return data;
+}
+
+/* قواعد التصنيف التي يضبطها صاحب الأرشيف من الموقع: تُقرأ كل 10 دقائق وتسبق القواعد المدمجة */
+let collRulesAt = 0;
+let collRules = [];
+async function collRulesFresh() {
+  if (Date.now() - collRulesAt < 10 * 60 * 1000) return collRules;
+  collRulesAt = Date.now();
+  try { collRules = ((await dropPublic("dropRules")).rules || []).map((r) => ({ re: new RegExp(r.match, "i"), cat: r.cat })); } catch (e) { /* تبقى القديمة */ }
+  return collRules;
+}
+
+/* نبضة: تُعلم الموقع أن المراقب حيّ وآخر ما رفعه */
+const beat = { uploaded: 0, lastName: "", lastAt: "" };
+async function collBeat() {
+  if (!collOn()) return;
+  try {
+    await dropPublic("dropBeat", { by: collBy(), host: os.hostname(), folders: (config.folders || []).length, uploaded: beat.uploaded, lastName: beat.lastName, lastAt: beat.lastAt });
+  } catch (e) { /* لا يوقف المراقبة */ }
 }
 
 async function collCategories() {
@@ -251,6 +271,7 @@ const normCat = (t) => String(t || "").replace(/[ً-ْ]/g, "").replace(/[أإآ]
 /* التصنيف: اسم مجلد فرعي يطابق تصنيفاً أولاً، ثم نوع الملف واسمه، وإلا «أخرى» */
 function collCategory(f, cats) {
   const pick = (name) => cats.find((c) => normCat(c) === normCat(name));
+  for (const r of collRules) { if (r.re.test(f.name)) { const c = pick(r.cat); if (c) return c; } }
   const segs = path.dirname(f.rel) === "." ? [] : path.dirname(f.rel).split("/").filter(Boolean).reverse();
   for (const s of segs) { const c = pick(s); if (c) return c; }
   const n = f.name.toLowerCase();
@@ -268,6 +289,7 @@ function collCategory(f, cats) {
 async function collUpload(f) {
   if (f.size > COLL_MAX) { log(`تُخطّي «${f.name}» للزملاء: أكبر من 1 غيغابايت`); return true; }
   const cats = await collCategories();
+  await collRulesFresh();
   const cat = collCategory(f, cats);
   const created = new Date(f.birth || f.mtime);
   const init = await dropPublic("dropInit", {
@@ -276,6 +298,7 @@ async function collUpload(f) {
     createdTime: Number.isFinite(created.getTime()) ? created.toISOString() : undefined,
   });
   const fh = await fsp.open(f.full, "r");
+  let finalBody = null;
   try {
     for (let start = 0; start < f.size; start += COLL_CHUNK) {
       const len = Math.min(COLL_CHUNK, f.size - start);
@@ -286,14 +309,19 @@ async function collUpload(f) {
       for (let t = 0; t < 4 && !ok; t++) {
         try {
           const r = await fetch(init.url, { method: "PUT", redirect: "manual", headers: { "Content-Range": `bytes ${start}-${start + len - 1}/${f.size}` }, body: buf });
-          if ([200, 201, 308].includes(r.status)) ok = true; else last = new Error(`رفض Google الدفعة (${r.status})`);
+          if ([200, 201].includes(r.status)) { ok = true; try { finalBody = await r.json(); } catch (e) { finalBody = null; } }
+          else if (r.status === 308) ok = true;
+          else last = new Error(`رفض Google الدفعة (${r.status})`);
         } catch (e) { last = e; }
         if (!ok) await new Promise((res) => setTimeout(res, 1500 * (t + 1)));
       }
       if (!ok) throw last || new Error("انقطع الرفع");
     }
   } finally { await fh.close(); }
-  log(`👥 الزملاء — ${collBy()} / ${cat} — ${f.rel}`);
+  // تحقق: الحجم الذي سجّله Drive يطابق حجم الملف؛ وإلا يُعاد الرفع في الجولة القادمة
+  if (finalBody && finalBody.size != null && Number(finalBody.size) !== f.size) throw new Error(`حجم الملف في Drive (${finalBody.size}) يخالف حجمه الأصلي (${f.size})`);
+  beat.uploaded++; beat.lastName = f.name; beat.lastAt = new Date().toISOString();
+  log(`👥 الزملاء — ${collBy()} / ${cat} — ${f.rel}${finalBody && finalBody.size != null ? " ✓" + Math.round(Number(finalBody.size) / 1024) + " ك.ب" : ""}`);
   return true;
 }
 
@@ -420,6 +448,7 @@ async function round(seedOnly) {
       }
     }
   }
+  await collBeat();
   // تنظيف سجل الملفات المعروفة من القديم جداً (سنة)
   const year = Date.now() - 365 * 24 * 3600 * 1000;
   for (const k of Object.keys(state.seen)) if (state.seen[k] < year) delete state.seen[k];

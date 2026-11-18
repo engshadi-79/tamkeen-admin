@@ -421,5 +421,70 @@ async function suite() {
   c.state.results = null;
   ok("جدول الاختبارات يقبل بيانات المركز", typeof (App.examSheet || {}).useData === "function");
 
+  // ===== إضافات تاب النماذج (forms-extra): ملفات الزملاء والأدوات =====
+  if (App.formsExtra) {
+    const day = 86400000, t0 = Date.now();
+    let ffiles = [
+      { id: "f1", name: "أقدم رفعاً.pdf", cat: "تقارير", by: "د.يوسف", at: new Date(t0 - 30 * day).toISOString(), up: new Date(t0 - 30 * day).toISOString(), size: 2048 },
+      { id: "f2", name: "أنشأته قبل أشهر ورفعته اليوم.docx", cat: "تقارير", by: "د.يوسف", at: new Date(t0 - 200 * day).toISOString(), up: new Date(t0).toISOString(), size: 2048 },
+      { id: "f3", name: "اختبار-قديم.txt", cat: "أخرى", by: "د.يوسف", at: new Date(t0 - 2 * day).toISOString(), up: "", size: 10 },
+      { id: "f4", name: "لشخص آخر.pdf", cat: "تقارير", by: "رشا", at: new Date(t0).toISOString(), up: new Date(t0).toISOString(), size: 5 },
+    ];
+    let fbeat = { at: new Date(t0 - 60000).toISOString(), by: "د.يوسف", host: "PC", lastName: "x.pdf", lastAt: new Date(t0).toISOString(), uploaded: 1 };
+    let frules = [{ match: "فاتورة", cat: "تقارير" }], ftrash = [{ id: "t1", name: "محذوف.pdf", by: "رشا", cat: "تقارير", size: 100, at: new Date().toISOString() }], flocked = false;
+    const fsent = [];
+    const ofetch = window.fetch;
+    window.fetch = async (u, o) => {
+      if (!String(u).includes("script.google.com")) return ofetch(u, o);
+      const q = JSON.parse(o.body); fsent.push(q.action + (q.id ? ":" + q.id : ""));
+      let d = { ok: true };
+      if (q.action === "dropList") d = { files: JSON.parse(JSON.stringify(ffiles)), cats: ["تقارير", "أخرى"], folder: "x", beat: fbeat, locked: flocked };
+      else if (q.action === "dropCats") d = { cats: ["تقارير", "أخرى"], locked: flocked };
+      else if (q.action === "dropRules") d = { rules: frules };
+      else if (q.action === "dropRulesSave") { frules = q.rules; d = { ok: true, rules: frules }; }
+      else if (q.action === "dropTrash") d = { files: ftrash };
+      else if (q.action === "dropRestore") { ftrash = ftrash.filter((x) => x.id !== q.id); }
+      else if (q.action === "dropDelete") { ffiles = ffiles.filter((x) => x.id !== q.id); }
+      else if (q.action === "dropFile") d = { name: "x.png", mime: "image/png", data: btoa("x") };
+      else if (q.action === "dropTokenSet") { flocked = !q.clear; d = { ok: true, token: q.clear ? "" : "TOKEN1234567890A" }; }
+      return { json: async () => d };
+    };
+    localStorage.setItem("tamkeen:drop-key", "k"); localStorage.removeItem("tamkeen:drop-seen");
+    location.hash = "#forms"; await wait(400);
+    for (let i = 0; i < 40 && document.querySelector("#frm-drop [data-drop=\"load\"]") === null; i++) await wait(150);
+    await App.formsExtra.refresh(); await wait(500);
+    const loadBtn = document.querySelector('#frm-drop [data-drop="load"]'); if (loadBtn) { loadBtn.click(); await wait(900); }
+    ok("شارة المراقب: يعمل بنبضة حديثة", /المراقب يعمل/.test((document.querySelector(".fx-watch") || {}).textContent || "") && !!document.querySelector(".fx-watch .fx-dot.green"), (document.querySelector(".fx-watch") || {}).textContent);
+    const personBtn = document.querySelector('[data-frm-cat="by:د.يوسف"]'); personBtn && personBtn.click(); await wait(900);
+    ok("آخر ما أُضيف: ملف أُنشئ قديماً ورُفع اليوم أولاً", (document.querySelector(".fx-latest .fx-hit b") || {}).textContent === "أنشأته قبل أشهر ورفعته اليوم.docx", (document.querySelector(".fx-latest .fx-hit b") || {}).textContent);
+    const gridNames = [...document.querySelectorAll("#frm-body .frm-groupgrid .frm-card h3")].map((h) => h.textContent);
+    ok("ترتيب التصنيف بتاريخ الرفع: الأحدث رفعاً أولاً", gridNames.indexOf("أنشأته قبل أشهر ورفعته اليوم") >= 0 && gridNames.indexOf("أنشأته قبل أشهر ورفعته اليوم") < gridNames.indexOf("أقدم رفعاً"), JSON.stringify(gridNames));
+    document.querySelector('[data-fx="pick-test"]').click(); await wait(300);
+    ok("تحديد ملفات الاختبار", /\(1\)/.test(document.querySelector('[data-fx="bulkdel"]').textContent), document.querySelector('[data-fx="bulkdel"]').textContent);
+    window.confirm = () => true; document.querySelector('[data-fx="bulkdel"]').click(); await wait(1500);
+    ok("الحذف الجماعي أرسل dropDelete لملف الاختبار", fsent.includes("dropDelete:f3") && !ffiles.some((x) => x.id === "f3"), JSON.stringify(fsent.filter((x) => /Delete/.test(x))));
+    // المعاينة
+    const pv = document.querySelector('[data-fx="preview"]'); if (pv) { pv.click(); await wait(800); }
+    ok("المعاينة تفتح نافذة بالصورة", !!document.querySelector(".fx-modal"), "modal"); const cl = document.querySelector('.fx-modal [data-fx="close"]'); if (cl) cl.click();
+    // قواعد التصنيف
+    document.querySelector('[data-fx-op="rules"]').click(); await wait(900);
+    document.querySelector('[data-fx="rule-add"]').click(); await wait(200);
+    const rin = [...document.querySelectorAll("[data-fx-rm]")].pop(); rin.value = "كتاب|book"; rin.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector('[data-fx="rule-save"]').click(); await wait(700);
+    ok("حفظ قاعدة تصنيف جديدة", frules.length === 2 && frules[1].match === "كتاب|book", JSON.stringify(frules));
+    // السلة
+    document.querySelector('[data-fx-op="trash"]').click(); await wait(900);
+    document.querySelector('[data-fx="restore"]').click(); await wait(1200);
+    ok("استعادة ملف من سلة المحذوفات", fsent.includes("dropRestore:t1") && ftrash.length === 0, JSON.stringify(fsent.filter((x) => /Restore/.test(x))));
+    // حماية الرابط
+    document.querySelector('[data-fx-op="token"]').click(); await wait(400);
+    document.querySelector('[data-fx="tk-new"]').click(); await wait(700);
+    ok("حماية الرابط: رمز جديد يظهر في الرابط", flocked && /drop\.html\?k=TOKEN1234567890A/.test(document.querySelector(".fx-ops-panel").textContent), document.querySelector(".fx-ops-panel").textContent.slice(0, 80));
+    document.querySelector('[data-fx="tk-clear"]').click(); await wait(600);
+    ok("إلغاء الحماية", !flocked, "clear");
+    window.fetch = ofetch; localStorage.removeItem("tamkeen:drop-key"); localStorage.removeItem("tamkeen:drop-seen");
+    location.hash = "#dashboard";
+  }
+
   return R;
 }

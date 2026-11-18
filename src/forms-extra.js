@@ -13,7 +13,7 @@
   const MANIFEST = "tamkeen-original-dates.v1.json";
   const POLL_MS = 120000;
 
-  const st = { files: [], at: 0, busy: false, sel: new Set(), seen: null, timer: null };
+  const st = { beat: null, locked: false, files: [], at: 0, busy: false, sel: new Set(), seen: null, timer: null };
   const key = () => { try { return localStorage.getItem(KEY_LS) || ""; } catch (e) { return ""; } };
   const url = () => (App.cloud && App.cloud.oldUrl) || "";
   const who = (f) => f.by || "بلا اسم";
@@ -32,7 +32,7 @@
     if (!key() || !url() || st.busy) return st.files;
     if (!force && Date.now() - st.at < POLL_MS - 5000) return st.files;
     st.busy = true;
-    try { st.files = ((await call("dropList")).files || []).filter((f) => f.name !== MANIFEST); st.at = Date.now(); } catch (e) { /* يبقى ما في الذاكرة */ }
+    try { const d = await call("dropList"); st.files = (d.files || []).filter((f) => f.name !== MANIFEST); st.beat = d.beat || null; st.locked = !!d.locked; st.at = Date.now(); } catch (e) { /* يبقى ما في الذاكرة */ }
     st.busy = false;
     return st.files;
   }
@@ -115,11 +115,13 @@
         const ids = cards.map((c) => c.querySelector('[data-drop="get"]').dataset.id);
         const picked = ids.filter((i) => st.sel.has(i)).length;
         const html = `<label><input type="checkbox" data-fx="all" ${picked === ids.length ? "checked" : ""}> تحديد الكل (${ids.length})</label>` +
+          `<button type="button" class="btn secondary" data-fx="pick-test" title="يحدد ما يبدأ اسمه بـ «اختبار» أو test">تحديد ملفات الاختبار</button>` +
           `<button type="button" class="btn secondary frm-danger" data-fx="bulkdel" ${picked ? "" : "disabled"}><span class="material-symbols-outlined btn-ico">delete</span>حذف المحدد (${picked})</button>`;
         if (tb.dataset.sig !== html) { tb.dataset.sig = html; tb.innerHTML = html; }
       }
 
       unifiedSearch();
+      opsPaint();
     } finally { busyDeco = false; }
   }
 
@@ -464,6 +466,97 @@
     autoInit();
   }
 
+  /* ===== أدوات الأرشيف: حالة المراقب، قواعد التصنيف، سلة المحذوفات، حماية رابط الرفع ===== */
+  const ops = { panel: "", rules: null, cats: [], trash: null, token: null, busy: false };
+  const ago = (iso) => {
+    const t = Date.parse(iso);
+    if (!t) return "";
+    const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (m < 1) return "الآن";
+    if (m < 60) return "قبل " + m + " دقيقة";
+    const h = Math.round(m / 60);
+    return h < 48 ? "قبل " + h + " ساعة" : "قبل " + Math.round(h / 24) + " يوماً";
+  };
+  function watchHtml() {
+    const b = st.beat;
+    if (!b || !b.at) return `<span class="fx-dot gray"></span><b>المراقب:</b> لم يُعلِم الموقع بحاله بعد (شغّل نسخة المراقب المحدَّثة).`;
+    const min = (Date.now() - Date.parse(b.at)) / 60000;
+    const cls = min < 5 ? "green" : min < 30 ? "amber" : "red";
+    const msg = min < 5 ? "يعمل" : min < 30 ? "قد يكون متوقفاً" : "متوقف";
+    return `<span class="fx-dot ${cls}"></span><b>المراقب ${msg}</b> — آخر نبضة ${esc(ago(b.at))}${b.by ? " · الشخص: " + esc(b.by) : ""}${b.host ? " · الجهاز: " + esc(b.host) : ""}${b.lastName ? " · آخر رفع: " + esc(b.lastName) + " (" + esc(ago(b.lastAt)) + ")" : ""}`;
+  }
+  function opsPanelHtml() {
+    if (ops.panel === "rules") {
+      const rules = ops.rules || [];
+      return `<p class="frm-note">قواعد تصنيف الملفات التي يرفعها المراقب: إن احتوى اسم الملف على الكلمات (افصل بين البدائل بـ <code>|</code> مثل <code>تقرير|report</code>) صُنّف في التصنيف المحدد. تسبق القواعد المدمجة، والترتيب من الأعلى.</p>
+        ${rules.map((r, i) => `<div class="frm-catrow"><input type="text" maxlength="120" value="${esc(r.match)}" data-fx-rm="${i}" placeholder="كلمات الاسم"><select data-fx-rc="${i}">${ops.cats.map((c) => `<option${c === r.cat ? " selected" : ""}>${esc(c)}</option>`).join("")}</select><button type="button" class="btn secondary" data-fx="rule-del" data-i="${i}" aria-label="حذف القاعدة"><span class="material-symbols-outlined btn-ico">delete</span></button></div>`).join("") || '<p class="frm-empty">لا قواعد بعد.</p>'}
+        <div class="btn-row"><button type="button" class="btn secondary" data-fx="rule-add"><span class="material-symbols-outlined btn-ico">add</span>قاعدة جديدة</button><button type="button" class="btn navy" data-fx="rule-save">حفظ القواعد</button></div>`;
+    }
+    if (ops.panel === "trash") {
+      const t = ops.trash;
+      if (!t) return '<p class="frm-note">جارٍ التحميل…</p>';
+      return t.length ? `<p class="frm-note">الملفات المحذوفة من الموقع تبقى في سلة Drive 30 يوماً. استعدها هنا بنقرة.</p>` + t.map((f) => `<div class="fx-hit"><b>${esc(f.title || f.name)}</b><small>${esc(f.by || "—")} · ${esc(f.cat || "غير مصنّف")} · ${size(f.size)}</small><span><button type="button" class="cc-link" data-fx="restore" data-id="${esc(f.id)}">استعادة</button></span></div>`).join("") : '<p class="frm-empty">السلة فارغة.</p>';
+    }
+    if (ops.panel === "token") {
+      const link = location.origin + location.pathname.replace(/[^/]*$/, "") + "drop.html";
+      const tk = ops.token;
+      return `<p class="frm-note">رابط الرفع اليوم ${st.locked ? "<b>محمي برمز</b>" : "<b>مفتوح</b> لكل من يعرفه"}. عند إنشاء رمز يلزم أن يحمله الرابط وبرنامج المراقب، وتتوقف الروابط القديمة عن العمل.</p>
+        ${tk ? `<p class="frm-note">الرابط الجديد للزميل:<br><span dir="ltr"><b>${esc(link)}?k=${esc(tk)}</b></span></p><p class="frm-note">وللمراقب: ضع في <code>config.json</code> داخل <code>colleagues</code> السطر <span dir="ltr"><b>"token": "${esc(tk)}"</b></span> ثم أعد تشغيله.</p><div class="btn-row"><button type="button" class="btn secondary" data-fx="tk-copy-link">نسخ الرابط</button><button type="button" class="btn secondary" data-fx="tk-copy-line">نسخ سطر المراقب</button></div>` : ""}
+        <div class="btn-row"><button type="button" class="btn navy" data-fx="tk-new">${st.locked ? "إنشاء رمز جديد (يبطل القديم)" : "تفعيل الحماية وإنشاء رمز"}</button>${st.locked ? '<button type="button" class="btn secondary frm-danger" data-fx="tk-clear">إلغاء الحماية</button>' : ""}</div>`;
+    }
+    return "";
+  }
+  function opsPaint() {
+    const w = document.querySelector(".fx-watch");
+    if (w) { const h = watchHtml(); if (w.dataset.sig !== h) { w.dataset.sig = h; w.innerHTML = h; } }
+    const pn = document.querySelector(".fx-ops-panel");
+    if (pn) { const h = opsPanelHtml(); if (pn.dataset.sig !== h) { pn.dataset.sig = h; pn.innerHTML = h; } pn.hidden = !ops.panel; }
+    document.querySelectorAll(".fx-ops [data-fx-op]").forEach((b) => b.classList.toggle("on", b.dataset.fxOp === ops.panel));
+  }
+  function mountOps() {
+    const anchor = document.querySelector("#view-forms .fx-cloud2") || document.querySelector("#view-forms .fx-cloud");
+    if (!anchor || document.querySelector(".fx-ops")) return;
+    const d = document.createElement("div");
+    d.className = "fx-cloud fx-ops no-print";
+    d.innerHTML = `<div class="fx-watch" style="flex-basis:100%"></div>
+      <b>أدوات الأرشيف</b>
+      <button type="button" class="btn secondary" data-fx="op" data-fx-op="rules"><span class="material-symbols-outlined btn-ico">rule</span>قواعد التصنيف</button>
+      <button type="button" class="btn secondary" data-fx="op" data-fx-op="trash"><span class="material-symbols-outlined btn-ico">delete_sweep</span>المحذوف مؤخراً</button>
+      <button type="button" class="btn secondary" data-fx="op" data-fx-op="token"><span class="material-symbols-outlined btn-ico">lock</span>حماية رابط الرفع</button>
+      <div class="fx-ops-panel" style="flex-basis:100%" hidden></div>`;
+    anchor.insertAdjacentElement("afterend", d);
+    opsPaint();
+  }
+  async function opsOpen(which) {
+    ops.panel = ops.panel === which ? "" : which;
+    opsPaint();
+    if (!ops.panel) return;
+    try {
+      if (which === "rules") { ops.rules = ((await call("dropRules")).rules || []).slice(); ops.cats = (await call("dropCats")).cats || []; }
+      if (which === "trash") { ops.trash = null; opsPaint(); ops.trash = (await call("dropTrash")).files || []; }
+      if (which === "token") ops.token = null;
+    } catch (e) { ui.toast(/غير معروف/.test((e && e.message) || "") ? "هذه الميزة تحتاج تحديث سكربت Google ونشره" : (e && e.message) || "تعذّر التحميل"); ops.panel = ""; }
+    opsPaint();
+  }
+  async function opsAct(act, b) {
+    try {
+      if (act === "rule-add") { ops.rules.push({ match: "", cat: ops.cats[0] || "" }); return opsPaint(); }
+      if (act === "rule-del") { ops.rules.splice(Number(b.dataset.i), 1); return opsPaint(); }
+      if (act === "rule-save") {
+        const r = await call("dropRulesSave", { rules: ops.rules.filter((x) => x.match.trim()) });
+        ops.rules = r.rules; ui.toast("حُفظت القواعد؛ يقرؤها المراقب خلال 10 دقائق"); return opsPaint();
+      }
+      if (act === "restore") { await call("dropRestore", { id: b.dataset.id }); ops.trash = (await call("dropTrash")).files || []; await fresh(true); ui.toast("استُعيد الملف"); opsPaint(); const reload = document.querySelector('#frm-drop [data-drop="load"]'); if (reload) reload.click(); return; }
+      if (act === "tk-new") {
+        if (st.locked && !confirm("إنشاء رمز جديد يُبطل الرابط القديم عند الزملاء وبرنامج المراقب. متابعة؟")) return;
+        ops.token = (await call("dropTokenSet")).token; st.locked = true; return opsPaint();
+      }
+      if (act === "tk-clear") { if (!confirm("إلغاء الحماية يجعل رابط الرفع مفتوحاً لكل من يعرفه. متابعة؟")) return; await call("dropTokenSet", { clear: true }); ops.token = null; st.locked = false; ui.toast("أُلغيت الحماية"); return opsPaint(); }
+      if (act === "tk-copy-link") { await ui.copyText(location.origin + location.pathname.replace(/[^/]*$/, "") + "drop.html?k=" + ops.token); return ui.toast("نُسخ الرابط المحمي"); }
+      if (act === "tk-copy-line") { await ui.copyText('"token": "' + ops.token + '"'); return ui.toast("نُسخ السطر"); }
+    } catch (e) { ui.toast(/غير معروف/.test((e && e.message) || "") ? "هذه الميزة تحتاج تحديث سكربت Google ونشره" : (e && e.message) || "تعذّر التنفيذ"); }
+  }
+
   /* ===== الأحداث ===== */
   function init() {
     const root = $("view-forms");
@@ -471,6 +564,7 @@
     root.dataset.fxReady = "1";
     mountCloud();
     mountFolderBackup();
+    mountOps();
     root.addEventListener("click", (e) => {
       const b = e.target.closest("[data-fx]");
       if (!b) return;
@@ -479,6 +573,13 @@
       else if (b.dataset.fx === "mine-up") mineBackup();
       else if (b.dataset.fx === "mine-down") mineRestore();
       else if (b.dataset.fx === "folder-backup") folderBackup();
+      else if (b.dataset.fx === "op") opsOpen(b.dataset.fxOp);
+      else if (["rule-add", "rule-del", "rule-save", "restore", "tk-new", "tk-clear", "tk-copy-link", "tk-copy-line"].includes(b.dataset.fx)) opsAct(b.dataset.fx, b);
+      else if (b.dataset.fx === "pick-test") {
+        document.querySelectorAll("#frm-body .frm-card").forEach((c) => { const g = c.querySelector('[data-drop="get"]'); const f = g && st.files.find((x) => x.id === g.dataset.id); if (f && /^(اختبار|test)/i.test((f.title || f.name || "").trim())) st.sel.add(f.id); });
+        decorate();
+        ui.toast(st.sel.size ? "حُدِّد " + st.sel.size + " من ملفات الاختبار؛ راجعها ثم اضغط «حذف المحدد»" : "لا ملفات اختبار ظاهرة هنا");
+      }
       else if (b.dataset.fx === "auto-pick") autoPick();
       else if (b.dataset.fx === "auto-allow") { autoPerm(true).then((ok) => { autoPaint(); if (ok) runBackup(auto.handle, true); }); }
       else if (b.dataset.fx === "auto-now") { autoPerm(true).then((ok) => { autoPaint(); if (ok) runBackup(auto.handle, false); }); }
@@ -494,7 +595,11 @@
         decorate();
       }
     });
-    root.addEventListener("input", (e) => { if (e.target.id === "frm-q") setTimeout(unifiedSearch, 0); });
+    root.addEventListener("input", (e) => {
+      if (e.target.id === "frm-q") setTimeout(unifiedSearch, 0);
+      else if (e.target.dataset && e.target.dataset.fxRm !== undefined && ops.rules) ops.rules[Number(e.target.dataset.fxRm)].match = e.target.value;
+    });
+    root.addEventListener("change", (e) => { if (e.target.dataset && e.target.dataset.fxRc !== undefined && ops.rules) ops.rules[Number(e.target.dataset.fxRc)].cat = e.target.value; });
     // إعادة التزيين بعد كل رسم تقوم به الصفحة
     let t = null;
     new MutationObserver(() => { clearTimeout(t); t = setTimeout(() => { if (!busyDeco) decorate(); }, 60); })

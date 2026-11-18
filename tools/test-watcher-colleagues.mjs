@@ -15,6 +15,10 @@ fs.mkdirSync(path.join(watch, "خطابات"), { recursive: true });
 fs.copyFileSync(SRC, path.join(tmp, "watch-folder.mjs"));
 
 const inits = [];
+const beats = [];
+const tokens = new Set();
+let rules = [];
+let badSize = "";
 const puts = {};
 let port = 0;
 const server = http.createServer((req, res) => {
@@ -25,11 +29,16 @@ const server = http.createServer((req, res) => {
       const id = req.url.slice(1);
       (puts[id] = puts[id] || []).push({ range: req.headers["content-range"], bytes: Buffer.concat(chunks).length });
       const m = /bytes (\d+)-(\d+)\/(\d+)/.exec(req.headers["content-range"] || "");
-      res.statusCode = m && Number(m[2]) + 1 === Number(m[3]) ? 200 : 308;
-      return res.end("{}");
+      const done = m && Number(m[2]) + 1 === Number(m[3]);
+      res.statusCode = done ? 200 : 308;
+      const nm = (inits[Number(id.slice(1)) - 1] || {}).name;
+      return res.end(done ? JSON.stringify({ id: "f" + id, name: nm, size: String(Number(m[3]) + (nm === badSize ? 1 : 0)) }) : "{}");
     }
     const b = JSON.parse(Buffer.concat(chunks).toString() || "{}");
     res.setHeader("Content-Type", "application/json");
+    if (b.token) tokens.add(b.token);
+    if (b.action === "dropBeat") { beats.push(b); return res.end(JSON.stringify({ ok: true })); }
+    if (b.action === "dropRules") return res.end(JSON.stringify({ rules }));
     if (b.action === "dropCats") return res.end(JSON.stringify({ cats: ["تقارير", "كتب ومراجع", "نماذج", "خطابات", "صور", "أخرى"] }));
     if (b.action === "dropInit") {
       inits.push(b);
@@ -114,6 +123,34 @@ fs.writeFileSync(path.join(tmp, "config.json"), JSON.stringify(cfg2));
 fs.writeFileSync(path.join(watch, "ملف مجهول.bin"), "x");
 await run();
 ok("colleagues.defaultCat يحدد تصنيف غير المعروف", by("ملف مجهول.bin") && by("ملف مجهول.bin").cat === "تقارير", by("ملف مجهول.bin"));
+
+// نبضة المراقب
+ok("النبضة تصل مع الاسم وعدد المجلدات وآخر ملف", beats.length >= 1 && beats.at(-1).by === "د.يوسف" && beats.at(-1).folders === 2 && !!beats.at(-1).lastName && beats.at(-1).uploaded >= 1, beats.at(-1));
+
+// قواعد التصنيف من الموقع تسبق المدمجة
+rules = [{ match: "فاتورة|invoice", cat: "كتب ومراجع" }];
+fs.writeFileSync(path.join(watch, "فاتورة الكهرباء.pdf"), "inv");
+await run();
+ok("قاعدة من الموقع: فاتورة ← كتب ومراجع", by("فاتورة الكهرباء.pdf") && by("فاتورة الكهرباء.pdf").cat === "كتب ومراجع", by("فاتورة الكهرباء.pdf"));
+
+// التحقق من الحجم: حجم مخالف في Drive يُعاد رفعه ولا يُعدّ منتهياً
+badSize = "حجم خاطئ.txt";
+fs.writeFileSync(path.join(watch, "حجم خاطئ.txt"), "12345");
+await run(); await run();
+ok("حجم مخالف في Drive: يُعاد الرفع", inits.filter((i) => i.name === "حجم خاطئ.txt").length >= 2, inits.filter((i) => i.name === "حجم خاطئ.txt").length);
+badSize = "";
+await run();
+const cnt = inits.filter((i) => i.name === "حجم خاطئ.txt").length;
+await run();
+ok("بعد تصحيح الحجم: يكتمل ولا يتكرر", inits.filter((i) => i.name === "حجم خاطئ.txt").length === cnt, cnt);
+
+// الرمز السري يُرسل مع كل طلب
+const cfg3 = JSON.parse(fs.readFileSync(path.join(tmp, "config.json"), "utf8"));
+cfg3.colleagues.token = "TOK123";
+fs.writeFileSync(path.join(tmp, "config.json"), JSON.stringify(cfg3));
+fs.writeFileSync(path.join(watch, "برمز.pdf"), "t");
+await run();
+ok("colleagues.token يُرسل مع الطلبات", tokens.has("TOK123"), [...tokens]);
 
 // الجولة التالية لا تكرر شيئاً
 const n = inits.length;

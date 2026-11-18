@@ -66,14 +66,20 @@ function doPost(e) {
       return sbOut_(req.action === "watchPing" ? sbWatchPing_() : sbWatchUpload_(req));
     }
     // أرشفة ملفات الزملاء: الرفع مفتوح لمن يعرف صفحة الرفع، والعرض والتنزيل برمز القراءة DROP_KEY
-    if (req.action === "dropUpload") return sbOut_(sbDropUpload_(req));
-    if (req.action === "dropCats") return sbOut_({ cats: sbDropCats_() });
-    if (req.action === "dropInit") return sbOut_(sbDropInit_(req));
-    if (/^(drop(List|File|Edit|Delete|RenameBy|DeleteBy|CatsSave)|mine(List|Init|File|Delete))$/.test(String(req.action))) {
+    if (req.action === "dropUpload") { sbDropGate_(req); return sbOut_(sbDropUpload_(req)); }
+    if (req.action === "dropCats") return sbOut_({ cats: sbDropCats_(), locked: !!sbDropToken_() });
+    if (req.action === "dropInit") { sbDropGate_(req); return sbOut_(sbDropInit_(req)); }
+    if (req.action === "dropBeat") return sbOut_(sbDropBeat_(req));
+    if (req.action === "dropRules") return sbOut_({ rules: sbDropRules_() });
+    if (/^(drop(List|File|Edit|Delete|RenameBy|DeleteBy|CatsSave|RulesSave|Trash|Restore|TokenSet)|mine(List|Init|File|Delete))$/.test(String(req.action))) {
       if (String(req.key || "") !== sbDropKey_()) { Utilities.sleep(1500); return sbOut_({ error: "رمز القراءة غير صحيح" }); }
       if (req.action === "dropList") return sbOut_(sbDropList_());
       if (req.action === "dropFile") return sbOut_(sbDropFile_(req.id));
       if (/^mine/.test(String(req.action))) return sbOut_(sbMine_(req));
+      if (req.action === "dropRulesSave") return sbOut_(sbDropRulesSave_(req));
+      if (req.action === "dropTrash") return sbOut_(sbDropTrash_());
+      if (req.action === "dropRestore") return sbOut_(sbDropRestore_(req.id));
+      if (req.action === "dropTokenSet") return sbOut_(sbDropTokenSet_(req));
       if (req.action === "dropCatsSave") return sbOut_(sbDropCatsSave_(req));
       if (req.action === "dropEdit") return sbOut_(sbDropEdit_(req));
       if (req.action === "dropDelete") return sbOut_(sbDropDelete_(req.id));
@@ -236,6 +242,69 @@ function sbMine_(req) {
   return { ok: true, url: String(loc) };
 }
 
+/* رمز سري اختياري لرابط الرفع: ما دام مضبوطاً يلزم أن يحمله كل طلب رفع (صفحة الرفع والمراقب). افتراضياً معطّل. */
+function sbDropToken_() { return PropertiesService.getScriptProperties().getProperty("DROP_TOKEN") || ""; }
+function sbDropGate_(req) {
+  const t = sbDropToken_();
+  if (t && String(req.token || "") !== t) { Utilities.sleep(1200); throw new Error("رابط الرفع غير صالح، اطلب رابطاً جديداً من صاحب الأرشيف"); }
+}
+function sbDropTokenSet_(req) {
+  const props = PropertiesService.getScriptProperties();
+  if (req.clear) { props.deleteProperty("DROP_TOKEN"); return { ok: true, token: "" }; }
+  const token = Utilities.getUuid().replace(/-/g, "").slice(0, 16);
+  props.setProperty("DROP_TOKEN", token);
+  return { ok: true, token: token };
+}
+
+/* نبضة المراقب: يرسلها برنامج المراقبة كل جولة، فيعرف الموقع أنه حيّ ومتى رفع آخر ملف */
+function sbDropBeat_(req) {
+  sbDropGate_(req);
+  const props = PropertiesService.getScriptProperties();
+  let old = {};
+  try { old = JSON.parse(props.getProperty("WATCH_BEAT") || "{}"); } catch (err) { old = {}; }
+  const now = Date.now();
+  if (old.atMs && now - old.atMs < 25000 && String(req.lastName || "") === String(old.lastName || "")) return { ok: true, skipped: true };
+  const beat = { atMs: now, at: new Date(now).toISOString(), by: String(req.by || "").slice(0, 60), host: String(req.host || "").slice(0, 40), folders: Math.max(0, Math.min(99, Number(req.folders) || 0)), lastName: String(req.lastName || old.lastName || "").slice(0, 120), lastAt: String(req.lastAt || old.lastAt || "").slice(0, 40), uploaded: Math.max(0, Number(req.uploaded) || 0) };
+  props.setProperty("WATCH_BEAT", JSON.stringify(beat));
+  return { ok: true };
+}
+function sbDropBeatRead_() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty("WATCH_BEAT") || "null"); } catch (err) { return null; }
+}
+
+/* قواعد التصنيف التلقائي (يعدّلها صاحب الأرشيف من الموقع ويقرؤها المراقب): [{ match: "تقرير|report", cat: "تقارير" }] */
+function sbDropRules_() {
+  try { const a = JSON.parse(PropertiesService.getScriptProperties().getProperty("DROP_RULES") || "[]"); return Array.isArray(a) ? a : []; } catch (err) { return []; }
+}
+function sbDropRulesSave_(req) {
+  const cats = sbDropCats_();
+  const rules = (Array.isArray(req.rules) ? req.rules : []).map(function (r) { return { match: String((r && r.match) || "").trim().slice(0, 120), cat: String((r && r.cat) || "").trim() }; })
+    .filter(function (r) { return r.match && cats.indexOf(r.cat) >= 0; }).slice(0, 60);
+  rules.forEach(function (r) { try { new RegExp(r.match, "i"); } catch (err) { throw new Error("تعبير غير صالح: " + r.match); } });
+  PropertiesService.getScriptProperties().setProperty("DROP_RULES", JSON.stringify(rules));
+  return { ok: true, rules: rules };
+}
+
+/* سلة المحذوفات: ما حُذف من الموقع يبقى في سلة Drive، ويمكن عرضه واستعادته من هنا */
+function sbDropTrash_() {
+  const out = [];
+  const it = sbDropFolder_().searchFiles("trashed = true");
+  while (it.hasNext() && out.length < 300) {
+    const f = it.next();
+    const d = sbDropMeta_(f);
+    out.push({ id: f.getId(), name: f.getName(), title: d.title || "", cat: d.cat || "", by: d.by || "", size: f.getSize(), at: f.getDateCreated().toISOString() });
+  }
+  out.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+  return { files: out };
+}
+function sbDropRestore_(id) {
+  const f = DriveApp.getFileById(String(id || ""));
+  const ps = f.getParents();
+  if (!ps.hasNext() || ps.next().getId() !== sbDropFolder_().getId()) throw new Error("الملف خارج مجلد ملفات الزملاء");
+  f.setTrashed(false);
+  return { ok: true };
+}
+
 function sbDropFolder_() { return sbSub_(sbRoot_(), SB_DROP_FOLDER); }
 function sbDropKey_() {
   const key = PropertiesService.getScriptProperties().getProperty("DROP_KEY");
@@ -280,7 +349,7 @@ function sbDropInit_(req) {
   // تاريخ إنشاء الملف الأصلي (من جهاز الرافع): يصير تاريخ إنشائه في Drive، فيُعرض ويُرتَّب به
   const made = Date.parse(String(req.createdTime || ""));
   if (made && made > Date.parse("2000-01-01") && made <= Date.now() + 60000) { meta.createdTime = new Date(made).toISOString(); meta.modifiedTime = meta.createdTime; }
-  const res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
+  const res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,createdTime", {
     method: "post", contentType: "application/json; charset=UTF-8", payload: JSON.stringify(meta), muteHttpExceptions: true,
     headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken(), "X-Upload-Content-Type": mime, "X-Upload-Content-Length": String(size), Origin: origin }
   });
@@ -321,7 +390,7 @@ function sbDropList_() {
     out.push({ id: f.getId(), name: f.getName(), title: d.title || "", cat: d.cat || "", up: d.up || "", by: d.by || "", at: f.getDateCreated().toISOString(), size: f.getSize() });
   }
   out.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
-  return { files: out, folder: folder.getUrl(), cats: sbDropCats_() };
+  return { files: out, folder: folder.getUrl(), cats: sbDropCats_(), beat: sbDropBeatRead_(), locked: !!sbDropToken_() };
 }
 function sbDropFile_(id) {
   const file = DriveApp.getFileById(String(id || ""));
@@ -380,7 +449,7 @@ function sbDropDeleteBy_(by) {
 }
 
 function doGet() {
-  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 8 });
+  return sbOut_({ ok: true, name: "مساعد Google لمساعد تمكين", drop: 9 });
 }
 
 function sbOut_(obj) {
