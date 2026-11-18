@@ -341,6 +341,10 @@ async function suite() {
   c.state.imp.page = "impact"; c.state.imp.pages = ["impact"]; c.state.imp.view = "impact"; c.state.imp.tracks = []; c.state.imp.stages = []; c.state.imp.cmpWith = "";
   c.state.imp.outs = { impact: { type: "page", at: new Date(), filters: [], stats: [], tables: [sumTab(54, "2.71")] } }; c.state.imp.out = c.state.imp.outs.impact; c.state.mode = "impact"; c.render();
   b.querySelector('[data-cc="imp-snap-save"]').click(); await wait(150);
+  ok("تنبيه نسبة الاستجابة: 49.54% دون 50%", /نسبة استجابته دون 50%/.test(b.textContent) && !!b.querySelector("td.cc-low"), b.textContent.slice(0, 80));
+  c.state.imp.respThr = 40; c.render();
+  ok("عتبة 40%: لا تنبيه ولا تلوين", !/نسبة استجابته دون/.test(b.textContent) && !b.querySelector("td.cc-low"), "thr40");
+  c.state.imp.respThr = 50; c.render();
   ok("حفظ لقطة قياس الأثر", JSON.parse(localStorage.getItem("tamkeen-admin:cc-imp-snaps") || "[]").length === 1, localStorage.getItem("tamkeen-admin:cc-imp-snaps") && "saved");
   c.state.imp.outs = { impact: { type: "page", at: new Date(), filters: [], stats: [], tables: [sumTab(60, "2.91")] } }; c.state.imp.out = c.state.imp.outs.impact; c.render();
   const snSel = b.querySelector('[data-imp="cmpWith"]'); snSel.value = snSel.options[1].value; snSel.dispatchEvent(new Event("change", { bubbles: true })); await wait(150);
@@ -364,8 +368,22 @@ async function suite() {
   const attRows = [...b.querySelectorAll('[data-tblbox="att-0"] tbody tr')].map((r) => r.textContent.replace(/\s+/g, " "));
   ok("الطالب الذي غاب 4 مرات يظهر أولاً بعلامة التنبيه", attRows.length === 2 && /طالب كثير الغياب/.test(attRows[0]) && /⚠ تجاوز 3/.test(attRows[0]) && !/⚠/.test(attRows[1]), JSON.stringify(attRows));
   ok("شريط التنبيه: طالب واحد تجاوز 3 غيابات", /طالباً تجاوزوا 3 غيابات/.test(b.textContent) && !!b.querySelector('[data-cc="att-copy"]'), "banner");
+  // غائبو آخر يوم بحسب المجموعة + نص واتساب
+  let waAtt = ""; const ocA = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { waAtt = x; } }, configurable: true });
+  const grpBox = b.querySelector(".cc-att-groups");
+  ok("غائبو آخر يوم بحسب المجموعة", !!grpBox && grpBox.querySelectorAll(".cc-att-g").length >= 1 && !!b.querySelector('[data-cc="att-wa"]') && !!b.querySelector('[data-cc="att-wa-all"]'), grpBox && grpBox.textContent.slice(0, 120));
+  b.querySelector('[data-cc="att-wa"]').click(); await wait(150);
+  ok("نص واتساب لمجموعة: عنوان وأسماء وعدد", /^\*غياب 20\d\d-\d\d-\d\d — /.test(waAtt) && /١\. /.test(waAtt) && /الغائبون \d+/.test(waAtt), waAtt.slice(0, 160));
+  b.querySelector('[data-cc="att-wa-all"]').click(); await wait(150);
+  ok("نسخ نصوص كل المجموعات", /━━━━|^\*غياب/.test(waAtt), waAtt.slice(0, 80));
+  try { Object.defineProperty(navigator, "clipboard", { value: ocA, configurable: true }); } catch (e) { /* */ }
   c.state.att.thr = 5; c.render();
   ok("رفع الحد إلى 5: لا تنبيه", !/⚠ تجاوز/.test(b.textContent) && /لا طالب تجاوز 5/.test(b.textContent), "thr");
+  // زر «تقرير اليوم» يضبط الفترة على اليوم ويقرأ
+  c.state.att.from = "2026-01-01"; c.state.att.to = "2026-01-05"; c.state.att.out = null; c.render();
+  calls.length = 0; b.querySelector('[data-cc="att-today"]').click();
+  for (let i = 0; i < 60 && !c.state.att.out && !c.state.resultError; i++) await wait(200); await wait(200);
+  ok("تقرير اليوم: الفترة اليوم وأمر قراءة", c.state.att.from === App.ui.todayISO() && c.state.att.to === App.ui.todayISO() && calls.length >= 1, JSON.stringify({ f: c.state.att.from, calls: calls.length }));
   c.state.att.thr = 3; c.state.att.out = null; c.state.mode = "report"; c.state.wideLimit = 0;
   // أقراص النطاق تُفتح وتُغلق بالنقر (النقر على النص الداخلي أيضاً)
   c.state.mode = "report"; c.state.gopen = ""; c.render();
