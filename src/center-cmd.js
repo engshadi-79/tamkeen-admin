@@ -34,7 +34,7 @@
     dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
-    imp: { from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
+    imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     att: { from: "", to: "", thr: 3, excused: false, max: 80, tracks: [], stages: [], out: null },   // الحضور والغياب
     bundle: { open: false, pick: [], msg: "" },
@@ -581,6 +581,9 @@
     if (st.sort >= 0) rows = rows.slice().sort((a, b) => st.dir * cellStr(a[st.sort]).localeCompare(cellStr(b[st.sort]), "ar", { numeric: true }));
     return rows;
   }
+  /* قيمة نسبة (٪) في عمود «نسبة الاستجابة» دون عتبة التنبيه: تُلوَّن الخلية وتُعدّ في التنبيه أعلى النتيجة */
+  const pctOf = (v) => { const m = String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/٫/g, ".").match(/-?\d+(?:\.\d+)?/); return m ? Number(m[0]) : NaN; };
+  const lowCell = (head, v) => /نسبة الاستجابة/.test(String(head || "")) && String(v || "").trim() !== "" && pctOf(v) < Number(state.imp.respThr || 0);
   function tblBody(k) {
     const d = tblData[k], st = tblSt(k);
     const rows = tblRows(k);
@@ -588,7 +591,7 @@
     st.page = Math.max(0, Math.min(st.page, pages - 1));
     const part = rows.slice(st.page * TBL_SIZE, (st.page + 1) * TBL_SIZE);
     const pager = pages > 1 ? `<div class="cc-pager"><button type="button" class="cc-link" data-tbl-page="${esc(k)}" data-d="-1" ${st.page === 0 ? "disabled" : ""}>السابق</button><span>صفحة ${ui.fmt(st.page + 1)} من ${ui.fmt(pages)}</span><button type="button" class="cc-link" data-tbl-page="${esc(k)}" data-d="1" ${st.page >= pages - 1 ? "disabled" : ""}>التالي</button></div>` : "";
-    return `<div class="cc-scroll"><table class="cc-table"><thead><tr>${d.heads.map((h, i) => `<th data-tbl-sort="${i}" data-tbl="${esc(k)}" class="cc-sortable ${st.sort === i ? (st.dir > 0 ? "asc" : "desc") : ""}" title="اضغط للفرز">${esc(h)}</th>`).join("")}</tr></thead><tbody>${part.map((r) => `<tr>${r.map((c) => `<td>${esc(showCell(c))}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${d.heads.length}" class="cc-empty">لا نتائج مطابقة للبحث</td></tr>`}</tbody></table></div>${pager}`;
+    return `<div class="cc-scroll"><table class="cc-table"><thead><tr>${d.heads.map((h, i) => `<th data-tbl-sort="${i}" data-tbl="${esc(k)}" class="cc-sortable ${st.sort === i ? (st.dir > 0 ? "asc" : "desc") : ""}" title="اضغط للفرز">${esc(h)}</th>`).join("")}</tr></thead><tbody>${part.map((r) => `<tr>${r.map((c, ci) => `<td${lowCell(d.heads[ci], c) ? ' class="cc-low" title="دون العتبة"' : ""}>${esc(showCell(c))}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${d.heads.length}" class="cc-empty">لا نتائج مطابقة للبحث</td></tr>`}</tbody></table></div>${pager}`;
   }
   function dataTable(k, heads, rows) {
     tblData[k] = { heads, rows };
@@ -1324,7 +1327,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-att", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1335,7 +1338,7 @@
         return plan.length;
       }
       if (act === "load-groups") return 1;
-      if (act === "run-att") { const c = state.att, d = Math.max(1, Math.round((Date.parse(c.to || ui.todayISO()) - Date.parse(c.from || ui.todayISO())) / 86400000) + 1); return 1 + Math.min(Number(c.max) || 80, d * Math.max(1, (state.groups || []).length || (c.tracks.length || 5))); }
+      if (act === "run-att" || act === "att-today") { const c = state.att, d = Math.max(1, Math.round((Date.parse(c.to || ui.todayISO()) - Date.parse(c.from || ui.todayISO())) / 86400000) + 1); return 1 + Math.min(Number(c.max) || 80, d * Math.max(1, (state.groups || []).length || (c.tracks.length || 5))); }
       if (act === "run-imp" || act === "imp-apply") { const c = state.imp, cv = impCourseVariants(c.known), tv = impTrackVariants(c.known); let n = 0; (c.pages.length ? c.pages : ["impact"]).forEach((pg) => { n += cv ? Math.max(1, cv.list.length) : pg === "questions" && tv ? Math.max(1, tv.list.length) : 1; }); return n + ((c.stages || []).length && !cv || c.pages.includes("questions") && !tv ? 1 : 0); }
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
@@ -1854,6 +1857,30 @@
   const attHeads = () => ["الطالب", "الرقم", "المسار", "المجموعة", "غائب", "بعذر", "متأخر", "حاضر", "الجلسات", "آخر غياب", "التنبيه"];
   const attTable = () => ((state.att.out && state.att.out.students) || []).slice().sort((a, b) => attCount(b) - attCount(a) || a.name.localeCompare(b.name, "ar"))
     .map((e) => [e.name, e.stu, e.track, e.group, e.absent, e.excused, e.late, e.present, e.sessions, e.lastAbsent || "—", attCount(e) > Number(state.att.thr || 3) ? "⚠ تجاوز " + state.att.thr : ""]);
+  /* غائبو آخر يوم مقروء مجمّعين بالمسار والمجموعة، لكل مجموعة نص واتساب جاهز */
+  function attGroups() {
+    const o = state.att.out; if (!o || !o.lastDay) return [];
+    const by = new Map();
+    (o.raw || []).filter((se) => se.date === o.lastDay).forEach((se) => {
+      const key = attTrackName(se.track) + "|" + se.group;
+      const e = by.get(key) || by.set(key, { track: attTrackName(se.track), group: se.group, absent: [], excused: [], all: new Set() }).get(key);
+      (se.rows || []).forEach((r) => {
+        e.all.add(r.sid || r.name);
+        if (r.status === "absent" && !e.absent.includes(r.name)) e.absent.push(r.name);
+        else if (r.status === "excused" && !e.excused.includes(r.name)) e.excused.push(r.name);
+      });
+    });
+    return [...by.values()].map((e) => Object.assign(e, { total: e.all.size }))
+      .filter((e) => e.absent.length || (state.att.excused && e.excused.length))
+      .sort((a, b) => b.absent.length - a.absent.length || a.track.localeCompare(b.track, "ar"));
+  }
+  function attGroupText(e, day) {
+    const num = (i) => String(i + 1).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[d]);
+    const names = e.absent.slice().sort((a, b) => a.localeCompare(b, "ar"));
+    let t = `*غياب ${day} — ${e.track}${e.group ? " (" + e.group + ")" : ""}*\n` + names.map((n, i) => `${num(i)}. ${n}`).join("\n");
+    if (e.excused.length) t += `\n\n*بعذر (${e.excused.length}):* ` + e.excused.join("، ");
+    return t + `\n\nالغائبون ${e.absent.length}${e.total ? " من " + e.total : ""}.`;
+  }
   const attDayHeads = () => ["الطالب", "المسار", "المجموعة", "الجلسة", "الحالة", "التاريخ"];
   const attDayTable = () => {
     const o = state.att.out; if (!o || !o.lastDay) return [];
@@ -1894,7 +1921,7 @@
         <label class="cc-chk"><input type="checkbox" data-att="excused" ${c.excused ? "checked" : ""}> <span>احسب «غياب بعذر» ضمن الغياب</span></label>
       </div><p class="cc-note">تُقرأ جلسات المجموعات المطابقة للنطاق (الكل إن لم تحدّد)، وقراءة لكل جلسة، فاجعل الفترة قصيرة. للتقرير اليومي اجعل التاريخين اليوم.</p></div>
       <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-att"))} أمر قراءة (تقدير أقصى)</b><span>${esc(c.from || today)} ← ${esc(c.to || today)}</span></div>
-        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-att" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الحضور"}</button></div></footer></section>`;
+        <div class="cc-act"><button type="button" class="btn secondary" data-cc="att-today" ${state.busy ? "disabled" : ""} title="يضبط الفترة على اليوم ويقرأ جلساته">تقرير اليوم</button><button type="button" class="btn navy" data-cc="run-att" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الحضور"}</button></div></footer></section>`;
   }
   function attResult() {
     const o = state.att.out;
@@ -1903,6 +1930,14 @@
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> الحضور والغياب</h3>
       ${o.note ? `<p class="cc-alert warn">${esc(o.note)} ${(state.groups || []).length && (state.att.tracks || []).length ? "جرّب إزالة اختيار المسارات، فقد لا توجد المجموعات المختارة في تلك المسارات." : ""} (G1 وG2 للمرحلة الثانية، وS3G1 وS3G2 للثالثة.)</p>` : ""}
       ${fl.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(fl.length)}</b> طالباً تجاوزوا ${esc(state.att.thr)} غيابات${state.att.excused ? " (بالعذر)" : ""}. يظهرون أولاً في الجدول بعلامة «⚠ تجاوز».</span><button type="button" class="btn secondary small" data-cc="att-copy">نسخ قائمة المتجاوزين</button></div>` : `<p class="cc-note">لا طالب تجاوز ${esc(state.att.thr)} غيابات في هذه الفترة.</p>`}
+      ${(() => {
+        const gs = attGroups();
+        if (!gs.length) return "";
+        const sum = gs.reduce((a, e) => a + e.absent.length, 0);
+        return `<article class="cc-res cc-att-groups"><header class="cc-res-h"><div class="cc-res-t"><h4>غائبو ${esc(o.lastDay)} بحسب المجموعة</h4><span class="cc-badge">${ui.fmt(sum)} غائباً في ${ui.fmt(gs.length)} مجموعة</span></div><button type="button" class="btn secondary small" data-cc="att-wa-all">نسخ نصوص كل المجموعات</button></header>
+          <div class="cc-att-gl">${gs.map((e, i) => `<div class="cc-att-g"><div><b>${esc(e.track)}</b>${e.group ? ` <small>${esc(e.group)}</small>` : ""}<span class="cc-badge ${e.absent.length > 3 ? "bad" : ""}">${ui.fmt(e.absent.length)}${e.total ? " / " + ui.fmt(e.total) : ""}</span></div>
+            <p>${esc(e.absent.slice(0, 6).join("، "))}${e.absent.length > 6 ? " … و" + ui.fmt(e.absent.length - 6) + " آخرون" : ""}</p><button type="button" class="cc-link" data-cc="att-wa" data-i="${i}">نسخ نص واتساب</button></div>`).join("")}</div></article>`;
+      })()}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.sessions)}</b> جلسة قُرئت${o.truncated ? ` من ${ui.fmt(o.listed)} (اقتُصر على الحد الأقصى؛ ارفعه أو قصّر الفترة)` : ""}</span><span class="cc-stat"><b>${ui.fmt(o.students.length)}</b> طالباً</span><span class="cc-stat"><b>${ui.fmt(o.students.reduce((a, e) => a + e.absent, 0))}</b> غياباً</span>${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-att">تنزيل Excel</button>' : ""}</div>
       ${rows.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الغياب لكل طالب (${esc(o.from)} ← ${esc(o.to)})</h4><span class="cc-badge">${ui.fmt(rows.length)} طالباً</span></div></header>${dataTable("att-0", attHeads(), rows)}</article>` : '<p class="cc-note">لا جلسات بسجلات حضور في هذه الفترة والنطاق.</p>'}
       ${day.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>غائبو آخر يوم (${esc(o.lastDay)})</h4><span class="cc-badge">${ui.fmt(day.length)}</span></div></header>${dataTable("att-1", attDayHeads(), day)}</article>` : ""}
@@ -1946,6 +1981,14 @@
         ${(o.stats || []).slice(0, 12).map((x) => `<span class="cc-stat"><b>${esc(x.value)}</b> ${esc(x.label)}</span>`).join("")}
         ${tabs.some((t) => t.rows.length) ? '<button type="button" class="btn secondary small" data-cc="export-imp">تنزيل Excel</button>' : ""}</div>
       ${hasFilter ? `<div class="cc-grid">${opt.courses.length ? sel("course", opt.courses, "المساق") : ""}</div>` : '<p class="cc-note">التصفية بالمسارات والمراحل المختارة أعلاه تُطبَّق على كل جدول فيه عمود أو نص يدل عليها.</p>'}
+      ${(() => {
+        const low = [];
+        tabs.forEach((t) => { const ci = t.heads.findIndex((h) => /نسبة الاستجابة/.test(h)); if (ci < 0) return; const ni = t.heads.findIndex((h) => /النموذج|المسار/.test(h)); t.rows.forEach((r) => { if (lowCell(t.heads[ci], r[ci])) low.push({ name: ni >= 0 ? r[ni] : "", pct: pctOf(r[ci]) }); }); });
+        if (!low.length) return "";
+        low.sort((a, b) => a.pct - b.pct);
+        return `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(low.length)}</b> صفاً نسبة استجابته دون ${ui.fmt(state.imp.respThr)}%. أدنى النسب: ${low.slice(0, 4).map((x) => esc((x.name || "—") + " (" + x.pct + "%)")).join("، ")}.</span></div>`;
+      })()}
+      <label class="cc-field cc-thr"><span>يُنبَّه إن قلّت نسبة الاستجابة عن (%)</span><input type="number" min="0" max="100" data-imp="respThr" value="${esc(state.imp.respThr)}"></label>
       ${!tabs.length ? `<p class="cc-alert warn">لم أجد جداول في الصفحة${o.text ? ". هذا مقتطف مما قرأتُه: " + esc(o.text.slice(0, 300)) : ""}. أرسل لي بنية الصفحة (سكربت tools/ksach-pages.js) لأضبط قراءتها.</p>` : ""}
       ${tabs.map((t) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)} صفاً</span></div></header>
         ${t.noTrack || t.noStage ? `<p class="cc-alert warn">لا أجد في هذا الجدول ما يدل على ${t.noTrack && t.noStage ? "المسار والمرحلة" : t.noTrack ? "المسار" : "المرحلة"} (لا عمود ولا نص في الصفوف ولا في عنوانه «${esc(t.title)}»)، فلا يمكن تصفيته وهو يظهر كاملاً.</p>` : ""}
@@ -2839,6 +2882,7 @@
       /* قراءة واسعة: نتوقف ونُظهر التنبيه مرة، وبـ«تابع على أي حال» نعيد النقر على الزر نفسه مرة واحدة */
       if (act === "wide-edit") { state.wide = null; render(); const card = box.querySelector(".cc-card"); if (card && card.scrollIntoView) card.scrollIntoView({ block: "start" }); return; }
       if (act === "wide-go") { const go = state.wide && state.wide.act; state.wide = null; state.wideOk = true; render(); const rb = go && box.querySelector('[data-cc="' + go + '"]'); if (rb && !rb.disabled) rb.click(); else state.wideOk = false; return; }
+      if (act === "att-today") state.att.from = state.att.to = ui.todayISO();   // قبل تقدير القراءة
       if (RUN_ACTS.includes(act)) {
         if (state.wideOk) state.wideOk = false;
         else { const n = estimateReads(act); if (n >= (state.wideLimit || WIDE_LIMIT)) { state.wide = { act, n }; render(); const bn = box.querySelector(".cc-wide-warn"); if (bn && bn.scrollIntoView) bn.scrollIntoView({ block: "center" }); return; } }
@@ -2925,6 +2969,9 @@
         } else if (act === "gclear") { scopeClear(); render(); return;
         } else if (act === "run-att") { return runAttend();
         } else if (act === "export-att") { const sh = attSheets("الحضور والغياب"); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => fmtSheet(wb.addWorksheet(x.name.slice(0, 31)), x.heads, x.rows)); return ui.download("الحضور والغياب " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        } else if (act === "att-today") { return runAttend();
+        } else if (act === "att-wa") { const e = attGroups()[Number(b.dataset.i)]; if (!e) return; return ui.copyText(attGroupText(e, state.att.out.lastDay)).then(() => ui.toast("نُسخ نص مجموعة " + e.track + (e.group ? " " + e.group : "")));
+        } else if (act === "att-wa-all") { const day = state.att.out && state.att.out.lastDay; const t = attGroups().map((e) => attGroupText(e, day)).join("\n\n━━━━━━━━\n\n"); if (!t) return; return ui.copyText(t).then(() => ui.toast("نُسخت نصوص كل المجموعات"));
         } else if (act === "att-copy") { const t = "*طلاب تجاوزوا " + state.att.thr + " غيابات*\n" + attFlagged().sort((a, b) => attCount(b) - attCount(a)).map((e) => "• " + e.name + " — " + e.track + " (" + e.group + "): " + attCount(e) + " غيابات").join("\n"); try { await navigator.clipboard.writeText(t); ui.toast("نُسخت القائمة"); } catch (err) { ui.toast("تعذّر النسخ"); } return;
         } else if (act === "imp-snap-save") { impSnapSave(); render(); return;
         } else if (act === "imp-snap-del") { lsSet(IMP_SNAP_KEY, impSnaps().filter((x) => x.id !== state.imp.cmpWith)); state.imp.cmpWith = ""; render(); return;
@@ -3117,6 +3164,7 @@
       if (t.dataset.att) { const k = t.dataset.att; state.att[k] = t.type === "checkbox" ? !!t.checked : (k === "thr" || k === "max" ? Number(t.value) || 0 : t.value); if (t.type === "checkbox" || k === "thr") render(); return; }
       if (t.dataset.sc) { scopeSet(t.dataset.sc, t.value, t.checked); render(); return; }
       if (t.hasAttribute("data-gf")) { const v = String(t.value), at = state.groups.indexOf(v); if (t.checked && at < 0) state.groups.push(v); else if (!t.checked && at >= 0) state.groups.splice(at, 1); render(); return; }
+      if (t.dataset.imp === "respThr") { state.imp.respThr = Math.max(0, Math.min(100, Number(t.value) || 0)); render(); return; }
       if (t.dataset.imp === "hideZero") { state.imp.hideZero = !!t.checked; render(); return; }
       if (t.dataset.imp === "tracks" || t.dataset.imp === "stages") { const c = state.imp, k = t.dataset.imp, v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); render(); return; }
       if (t.dataset.imp) { state.imp[t.dataset.imp] = t.value; render(); return; }
