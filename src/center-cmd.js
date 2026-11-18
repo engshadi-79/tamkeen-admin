@@ -36,7 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
-    att: { from: "", to: "", thr: 3, excused: false, max: 80, tracks: [], stages: [], out: null },   // الحضور والغياب
+    att: { alwaysToday: false, from: "", to: "", thr: 3, excused: false, max: 80, tracks: [], stages: [], out: null },   // الحضور والغياب
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
     groups: [], gopen: "", wide: null, wideOk: false, wideLimit: 0, saved: [], runLog: [], notify: false, stopping: false, _wasBusy: false, _runStart: 0, _runMode: "",
@@ -1250,6 +1250,7 @@
   function applyCfg(mode, cfg) {
     const k = CFG[mode];
     state[k] = Object.assign({}, state[k], cfg, { out: null });
+    if (k === "att" && state.att.alwaysToday) state.att.from = state.att.to = ui.todayISO();   // تقرير يومي محفوظ: يقرأ اليوم لا تاريخ الحفظ
     if (k === "dq") { state.dq.rows = null; state.dq.diff = null; }
   }
   function savedBar(mode) {
@@ -1919,6 +1920,7 @@
         <label class="cc-field"><span>يُنبَّه إن زاد الغياب عن</span><input type="number" min="1" max="30" data-att="thr" value="${esc(c.thr)}"></label>
         <label class="cc-field"><span>أقصى عدد جلسات تُقرأ</span><input type="number" min="1" max="200" data-att="max" value="${esc(c.max)}"></label>
         <label class="cc-chk"><input type="checkbox" data-att="excused" ${c.excused ? "checked" : ""}> <span>احسب «غياب بعذر» ضمن الغياب</span></label>
+        <label class="cc-chk"><input type="checkbox" data-att="alwaysToday" ${c.alwaysToday ? "checked" : ""}> <span>عند تشغيله من «تقاريري المحفوظة» اقرأ <b>تاريخ اليوم</b> دائماً (للتقرير اليومي)</span></label>
       </div><p class="cc-note">تُقرأ جلسات المجموعات المطابقة للنطاق (الكل إن لم تحدّد)، وقراءة لكل جلسة، فاجعل الفترة قصيرة. للتقرير اليومي اجعل التاريخين اليوم.</p></div>
       <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-att"))} أمر قراءة (تقدير أقصى)</b><span>${esc(c.from || today)} ← ${esc(c.to || today)}</span></div>
         <div class="cc-act"><button type="button" class="btn secondary" data-cc="att-today" ${state.busy ? "disabled" : ""} title="يضبط الفترة على اليوم ويقرأ جلساته">تقرير اليوم</button><button type="button" class="btn navy" data-cc="run-att" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الحضور"}</button></div></footer></section>`;

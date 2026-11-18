@@ -379,6 +379,13 @@ async function suite() {
   try { Object.defineProperty(navigator, "clipboard", { value: ocA, configurable: true }); } catch (e) { /* */ }
   c.state.att.thr = 5; c.render();
   ok("رفع الحد إلى 5: لا تنبيه", !/⚠ تجاوز/.test(b.textContent) && /لا طالب تجاوز 5/.test(b.textContent), "thr");
+  // تقرير حضور محفوظ بخيار «اليوم دائماً»: يقرأ تاريخ اليوم لا تاريخ الحفظ
+  c.state.att.from = "2026-01-01"; c.state.att.to = "2026-01-05"; c.state.att.alwaysToday = true; c.state.att.out = null; c.render();
+  c.state.saved = [{ id: "sv-att", name: "حضور اليوم", mode: "attend", cfg: JSON.parse(JSON.stringify(Object.assign({}, c.state.att, { from: "2026-01-01", to: "2026-01-05", out: null }))) }];
+  c.render(); calls.length = 0; b.querySelector('[data-cc="sv-run"][data-id="sv-att"]').click();
+  for (let i = 0; i < 60 && !c.state.att.out && !c.state.resultError; i++) await wait(200); await wait(200);
+  ok("تقرير الحضور المحفوظ (اليوم دائماً): التاريخ اليوم وقراءة", c.state.att.from === App.ui.todayISO() && c.state.att.to === App.ui.todayISO() && calls.length >= 1, JSON.stringify({ f: c.state.att.from, calls: calls.length }));
+  c.state.att.alwaysToday = false; c.state.saved = [];
   // زر «تقرير اليوم» يضبط الفترة على اليوم ويقرأ
   c.state.att.from = "2026-01-01"; c.state.att.to = "2026-01-05"; c.state.att.out = null; c.render();
   calls.length = 0; b.querySelector('[data-cc="att-today"]').click();
