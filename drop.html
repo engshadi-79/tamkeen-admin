@@ -40,6 +40,7 @@
   var URL_ = "https://script.google.com/macros/s/AKfycbyvEVh6eb827Ue-sgDtQNz1bHt-9wakgLZiVD1YNN0lIRofr5Q5CbxPBs_6jqVQsLwFbg/exec";
   var MAX = 1024 * 1024 * 1024;
   var files = [];
+  var TOKEN = ""; try { TOKEN = new URLSearchParams(location.search).get("k") || ""; } catch (e) {}
   var cats = ["تقارير", "كتب ومراجع", "نماذج", "خطابات", "صور", "أخرى"];
   fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "dropCats" }) })
     .then(function (r) { return r.json(); }).then(function (d) { if (d && d.cats && d.cats.length) { cats = d.cats; paint(); } }).catch(function () {});
@@ -57,7 +58,7 @@
   }
   function sizeText(n) { return n >= 1073741824 ? (n / 1073741824).toFixed(2) + " غ.ب" : (n / 1048576).toFixed(1) + " م.ب"; }
   function call(body) {
-    return fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+    return fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ token: TOKEN }, body)) }).then(function (r) { return r.json(); });
   }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   /* الملفات الكبيرة: دفعات مباشرة إلى جلسة الرفع في Drive (مضاعفات 256 ك.ب)، وتُعاد الدفعة الفاشلة حتى 4 مرات */

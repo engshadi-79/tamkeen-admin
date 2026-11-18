@@ -72,3 +72,5 @@ body.nav-editing #btn-nav-order{background:#0f766e!important;color:#fff!importan
 .cc-att-g{border:1px solid var(--line,#d5dce6);border-radius:10px;padding:8px 10px;background:#fff}
 .cc-att-g>div{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.cc-att-g small{color:#5b687a}
 .cc-att-g p{margin:6px 0;font-size:12.5px;color:#444}.cc-att-g .cc-badge.bad{background:#fdecea;color:#b42318}
+.fx-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-inline-end:6px;vertical-align:middle;background:#9aa4b2}.fx-dot.green{background:#16a34a}.fx-dot.amber{background:#d97706}.fx-dot.red{background:#dc2626}.fx-dot.gray{background:#9aa4b2}
+.fx-ops .btn.on{background:#e6f4f2;border-color:#0f766e}.fx-ops-panel{border-top:1px dashed #cfd6e0;padding-top:8px}.fx-ops-panel code{background:#eef2f6;padding:0 4px;border-radius:4px}.fx-ops-panel select{padding:6px 8px;border:1px solid var(--line,#d5dce6);border-radius:8px;font:inherit}

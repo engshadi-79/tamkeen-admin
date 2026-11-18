@@ -26,14 +26,15 @@ const mkFile = (blob) => {
 const folder = {
   getId: () => "D", getUrl: () => "folderurl", createFile: mkFile, isTrashed: () => false,
   getFiles() { let i = 0; return { hasNext: () => i < files.length, next: () => files[i++] }; },
+  searchFiles() { const t = files.filter((f) => f.trashed); let i = 0; return { hasNext: () => i < t.length, next: () => t[i++] }; },
   getFoldersByName() { return { hasNext: () => true, next: () => folder }; },
 };
 const fetchCalls = [];
 const g = {
-  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; } }) },
+  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
   DriveApp: { getFolderById: () => folder, getRootFolder: () => folder, getFileById: (id) => files.find((f) => f.id === id) },
   Utilities: {
-    formatDate: () => "2026-11-16", sleep() {}, getUuid: () => "u",
+    formatDate: () => "2026-11-16", sleep() {}, getUuid: () => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
     newBlob: (bytes, mime, name) => ({ bytes, mime, name }),
     base64Decode: (s) => Buffer.from(s, "base64"), base64Encode: (b) => Buffer.from(b).toString("base64"),
   },
@@ -116,6 +117,28 @@ const ml = call({ action: "mineList", key: KEY });
 ok("mineList يُعيد mid والعنوان", ml.files.some((f) => f.mid === "m1" && f.title === "نموذجي" && f.kind === "main"), ml);
 ok("mineFile يُعيد المحتوى", Buffer.from(call({ action: "mineFile", key: KEY, id: mf.id }).data, "base64").toString() === "abc");
 ok("mineDelete إلى سلة المهملات", call({ action: "mineDelete", key: KEY, id: mf.id }).ok && mf.trashed);
+
+// نبضة المراقب، قواعد التصنيف، الرمز السري، سلة المحذوفات
+ok("النبضة تُحفظ وتظهر في القائمة", call({ action: "dropBeat", by: "د.يوسف", host: "PC", folders: 2, lastName: "x.pdf", lastAt: "2026-11-18T08:00:00Z", uploaded: 3 }).ok && list().beat && list().beat.by === "د.يوسف" && list().beat.uploaded === 3, list().beat);
+ok("نبضة متقاربة تُتجاهل", call({ action: "dropBeat", by: "آخر", lastName: "x.pdf" }).skipped === true);
+ok("القواعد: حفظ بالرمز فقط", !!call({ action: "dropRulesSave", key: "x", rules: [] }).error);
+const rs = call({ action: "dropRulesSave", key: KEY, rules: [{ match: "تقرير|report", cat: "التقارير" }, { match: "(", cat: "التقارير" }, { match: "ok", cat: "تصنيف-وهمي" }] });
+ok("القواعد: تعبير غير صالح يُرفض", /غير صالح/.test(rs.error || ""), rs);
+const rs2 = call({ action: "dropRulesSave", key: KEY, rules: [{ match: "تقرير|report", cat: "التقارير" }, { match: "ok", cat: "تصنيف-وهمي" }] });
+ok("القواعد: تُحفظ الصالحة فقط وتُقرأ بلا رمز", rs2.ok && rs2.rules.length === 1 && call({ action: "dropRules" }).rules.length === 1, rs2);
+const tk = call({ action: "dropTokenSet", key: KEY });
+ok("الرمز السري يُولَّد", tk.ok && tk.token.length === 16, tk);
+ok("مع الرمز: الرفع بلا رمز مرفوض", /غير صالح/.test(up("t.pdf", "ب", "عقود").error || ""));
+ok("مع الرمز: dropInit بلا رمز مرفوض", /غير صالح/.test(call({ action: "dropInit", name: "t", size: 5, cat: "أخرى" }).error || ""));
+ok("مع الرمز: الرفع بالرمز مقبول", call({ action: "dropUpload", name: "t.pdf", by: "ب", cat: "عقود", token: tk.token, data: b64("x") }).ok === true);
+ok("dropCats تعلن القفل", call({ action: "dropCats" }).locked === true);
+ok("إلغاء الرمز", call({ action: "dropTokenSet", key: KEY, clear: true }).ok && up("t2.pdf", "ب", "عقود").ok === true);
+const tf = mkFile({ name: "محذوف.pdf", mime: "a/b", bytes: Buffer.from("x") }); tf.setDescription(JSON.stringify({ by: "ب", cat: "أخرى" })); tf.trashed = true;
+const tr = call({ action: "dropTrash", key: KEY });
+ok("السلة تعرض المحذوف", tr.files.some((f) => f.name === "محذوف.pdf"), tr);
+ok("الاستعادة تُخرجه من السلة", call({ action: "dropRestore", key: KEY, id: tf.id }).ok && !tf.trashed);
+ok("السلة والاستعادة بالرمز فقط", !!call({ action: "dropTrash", key: "x" }).error && !!call({ action: "dropRestore", key: "x", id: tf.id }).error);
+ok("الحقول المطلوبة من Drive للتحقق من الحجم", /fields=id,name,size/.test(fetchCalls[fetchCalls.length - 1] ? fetchCalls.map((c) => c.url).join(" ") : ""));
 
 // الحد اليومي
 props.DROP_COUNT = JSON.stringify({ day: "2026-11-16", n: 1000 });
