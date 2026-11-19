@@ -163,16 +163,32 @@
         SP(), B("التفاصيل:"), P(DOT + DOT), P(DOT + DOT), P(DOT + DOT), SP(), B("رد الإدارة:"), P(DOT + DOT), P(DOT + DOT), ...sign("مقدّم الطلب", "اعتماد الإدارة")],
     },
   ];
-  const CATS = [["all", "الكل"], ["trainees", "المتدربون"], ["eval", "التقييم والمتابعة"], ["admin", "الإدارة والمراسلات"], ["mine", "نماذجي"]];
+  const CATS = [["all", "الكل"], ["trainees", "المتدربون"], ["eval", "التقييم والمتابعة"], ["admin", "الإدارة والمراسلات"]];
   const byId = (id) => FORMS.find((f) => f.id === id);
   const rowsOf = (f) => Math.max(3, Math.min(80, Number(state.rows[f.id] || f.rows) || f.rows));
   const blocksOf = (f) => f.build({ ...state.ctx }, f.rows ? rowsOf(f) : 0);
 
-  const catsHtml = (people) => CATS.map(([k, t]) => `<button type="button" class="frm-cat${state.cat === k ? " on" : ""}" data-frm-cat="${k}">${t}</button>`).join("") +
-    people.map((n) => `<button type="button" class="frm-cat frm-person${state.cat === "by:" + n ? " on" : ""}" data-frm-cat="${esc("by:" + n)}"><span class="material-symbols-outlined" aria-hidden="true">person</span>${esc(n)} <b>${visibleDropFiles().filter((f) => (f.by || "بلا اسم") === n).length}</b></button>`).join("");
+  /* ثلاثة أقسام: النماذج الجاهزة · نماذجي · ملفات الزملاء. state.cat يحدد القسم (all/trainees/eval/admin = الجاهزة، mine، people أو by:الاسم = الزملاء) */
+  const secOf = () => (state.cat === "mine" ? "mine" : state.cat === "people" || state.cat.indexOf("by:") === 0 ? "people" : "forms");
+  const SECS = [["forms", "description", "النماذج الجاهزة"], ["mine", "star", "نماذجي"], ["people", "groups", "ملفات الزملاء"]];
+  const secCount = (k) => (k === "forms" ? FORMS.length : k === "mine" ? state.mine.length : drop.files ? visibleDropFiles().length : "");
+  const secsHtml = () => SECS.map(([k, ico, t]) => `<button type="button" class="frm-sec${secOf() === k ? " on" : ""}" data-frm-sec="${k}" aria-pressed="${secOf() === k}"><span class="material-symbols-outlined" aria-hidden="true">${ico}</span>${t}${secCount(k) !== "" ? ` <b>${secCount(k)}</b>` : ""}</button>`).join("");
+  const countCat = (k) => FORMS.filter((f) => k === "all" || f.cat === k).length;
+  const catsHtml = (people) => {
+    const sec = secOf();
+    if (sec === "forms") return CATS.map(([k, t]) => `<button type="button" class="frm-cat${state.cat === k ? " on" : ""}" data-frm-cat="${k}">${t} <b>${countCat(k)}</b></button>`).join("");
+    if (sec === "people") {
+      const all = `<button type="button" class="frm-cat${state.cat === "people" ? " on" : ""}" data-frm-cat="people"><span class="material-symbols-outlined" aria-hidden="true">groups</span>كل الأشخاص${people.length ? " <b>" + people.length + "</b>" : ""}</button>`;
+      return all + people.map((n) => `<button type="button" class="frm-cat frm-person${state.cat === "by:" + n ? " on" : ""}" data-frm-cat="${esc("by:" + n)}"><span class="material-symbols-outlined" aria-hidden="true">person</span>${esc(n)} <b>${visibleDropFiles().filter((f) => (f.by || "بلا اسم") === n).length}</b></button>`).join("");
+    }
+    return "";
+  };
+  const dayLabel = (iso) => { const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleDateString("ar", { day: "numeric", month: "long", year: "numeric" }); };
   function render() {
     const host = $("frm-body");
     if (!host) return;
+    const view = $("view-forms"); if (view) view.dataset.sec = secOf();
+    if ($("frm-secs")) $("frm-secs").innerHTML = secsHtml();
     const q = state.q.trim();
     const person = state.cat.indexOf("by:") === 0 ? state.cat.slice(3) : null;
     const people = [...new Set(visibleDropFiles().map((f) => f.by || "بلا اسم"))].sort((a, b) => a.localeCompare(b, "ar"));
@@ -195,6 +211,16 @@
       `<div class="frm-catchips no-print"><button type="button" class="frm-cat${!drop.dcat ? " on" : ""}" data-drop="dcat" data-id="">الكل <b>${mineFiles.length}</b></button>` +
       catNames.filter(countIn).map((c) => `<button type="button" class="frm-cat${drop.dcat === c ? " on" : ""}" data-drop="dcat" data-id="${esc(c)}">${esc(c)} <b>${countIn(c)}</b></button>`).join("") + `</div>` +
       shown.map((c) => `<h3 class="frm-grouphead"><span class="material-symbols-outlined" aria-hidden="true">folder</span>${esc(c)} <small>${countIn(c)}</small></h3>` + `<div class="frm-groupgrid">` + mineFiles.filter((f) => catOf(f) === c).map(cardOf).join("") + `</div>`).join("");
+    if (state.cat === "people") {
+      $("frm-cats").innerHTML = catsHtml(people);
+      const tiles = people.filter((n) => !q || n.includes(q)).map((n) => {
+        const fs = visibleDropFiles().filter((f) => (f.by || "بلا اسم") === n);
+        const last = fs.reduce((m, f) => { const t = f.up || f.at || ""; return t > m ? t : m; }, "");
+        return `<button type="button" class="frm-pcard" data-frm-cat="${esc("by:" + n)}"><span class="frm-av" aria-hidden="true">${esc(n.trim().charAt(0) || "؟")}</span><span class="frm-pinfo"><b>${esc(n)}</b><small>${ui.fmt(fs.length)} ملفاً · آخر إضافة ${esc(dayLabel(last))}</small></span></button>`;
+      }).join("");
+      host.innerHTML = tiles ? `<div class="frm-pgrid">${tiles}</div>` : `<p class="frm-empty">${drop.files ? "لا أشخاص يطابقون البحث." : "لم تُحمَّل ملفات الزملاء بعد. اكتب رمز القراءة أدناه ثم اضغط «عرض الملفات»."}</p>`;
+      return renderDrop();
+    }
     if (person !== null) {
       $("frm-cats").innerHTML = catsHtml(people);
       host.innerHTML = `<div class="frm-personbar no-print"><b><span class="material-symbols-outlined" aria-hidden="true">person</span>${esc(person)}</b>
@@ -204,8 +230,9 @@
         (dropHtml || `<p class="frm-empty">لا ملفات لهذا الشخص${q ? " تطابق البحث" : ""}.</p>`);
       return renderDrop();
     }
-    const list = state.cat === "mine" ? [] : FORMS.filter((f) => (state.cat === "all" || f.cat === state.cat) && (!q || (f.title + f.desc).includes(q)));
-    const mine = state.cat === "all" || state.cat === "mine" ? state.mine.filter((m) => !q || m.name.includes(q)) : [];
+    const inMine = state.cat === "mine";
+    const list = inMine ? [] : FORMS.filter((f) => (state.cat === "all" || f.cat === state.cat) && (!q || (f.title + f.desc).includes(q)));
+    const mine = inMine ? state.mine.filter((m) => !q || m.name.includes(q)) : [];
     const mineHtml = mine.map((m) => `<article class="frm-card frm-mine" data-id="${esc(m.id)}">
         <div class="frm-ico"><span class="material-symbols-outlined" aria-hidden="true">${/pdf$/i.test(m.file) ? "picture_as_pdf" : /xls/i.test(m.file) ? "table_chart" : /png|jpe?g|webp/i.test(m.file) ? "image" : "description"}</span></div>
         <div class="frm-main"><h3>${esc(m.name)}</h3><p>${esc(m.file)} · ${m.pid ? "الطباعة من نسخة PDF مرفقة" : "نموذج من إضافتك"}</p></div>
@@ -227,7 +254,7 @@
         <div class="frm-act no-print">
           <button type="button" class="btn navy" data-frm="word" data-id="${f.id}"><span class="material-symbols-outlined btn-ico">download</span>Word</button>
           <button type="button" class="btn secondary" data-frm="print" data-id="${f.id}"><span class="material-symbols-outlined btn-ico">print</span>طباعة / PDF</button>
-        </div></article>`).join("") : (mineHtml ? "" : `<p class="frm-empty">${state.cat === "mine" ? "لم تُضف نماذج بعد. اضغط «إضافة نموذج» أعلاه." : "لا نموذج يطابق البحث."}</p>`));
+        </div></article>`).join("") : (mineHtml ? "" : `<p class="frm-empty">${state.cat === "mine" ? "لم تُضف نماذج بعد. افتح «إضافة نموذج خاص بي» أعلاه." : "لا نموذج يطابق البحث."}</p>`));
   }
 
   async function addMine() {
@@ -381,6 +408,8 @@
     if (!root || root.dataset.ready) return;
     root.dataset.ready = "1";
     root.addEventListener("click", (e) => {
+      const sc = e.target.closest("[data-frm-sec]");
+      if (sc) { state.cat = { forms: "all", mine: "mine", people: "people" }[sc.dataset.frmSec] || "all"; state.q = ""; const qi = $("frm-q"); if (qi) qi.value = ""; return render(); }
       const c = e.target.closest("[data-frm-cat]");
       if (c) { state.cat = c.dataset.frmCat; return render(); }
       const b = e.target.closest("[data-frm]");
@@ -399,7 +428,7 @@
       if (t.id === "frm-q") { state.q = t.value; render(); const q = $("frm-q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
       else if (t.id === "frm-drop-key") { try { localStorage.setItem(DROP_LS, t.value.trim()); } catch (er) { /* */ } }
       else if (t.dataset.catI !== undefined && drop.draft) { drop.draft[Number(t.dataset.catI)].name = t.value; }
-      else if (t.dataset.frmCtx) state.ctx[t.dataset.frmCtx] = t.value;
+      else if (t.dataset.frmCtx) { state.ctx[t.dataset.frmCtx] = t.value; const sm = $("frm-ctxsum"); if (sm) { const bits = [["track", "المسار"], ["group", "المجموعة"], ["trainer", "المدرب"], ["date", "التاريخ"]].filter(([k]) => state.ctx[k]).map(([k, l]) => l + ": " + state.ctx[k]); sm.textContent = bits.length ? bits.join(" · ") : "اختياري"; } }
       else if (t.dataset.frmRows) state.rows[t.dataset.frmRows] = t.value;
     });
   }
@@ -471,7 +500,7 @@
       <p class="frm-note">أرسل «رابط الرفع» لزميلك: يفتحه ويرفع ملفاته بلا دخول، فتُحفظ في Drive عندك داخل «أرشيف مساعد تمكين ← ملفات الزملاء». <span dir="ltr">${esc(link)}</span></p>
       <label class="frm-key">رمز القراءة (يظهر في السجل بعد تشغيل setupDropKey) <input type="password" id="frm-drop-key" value="${esc(dropKey())}" autocomplete="off"></label>
       ${drop.err || drop.dateErr ? `<p class="frm-err">${esc(drop.err || drop.dateErr)}</p>` : ""}${catManager()}
-      ${drop.files ? (list.length ? `<table class="cc-table"><thead><tr><th>الملف</th><th>التصنيف</th><th>رفعه</th><th>تاريخ الملف</th><th>تاريخ الرفع</th><th>الحجم</th><th></th></tr></thead><tbody>${list.map((f) => `<tr><td>${f.title ? `<b>${esc(f.title)}</b><br>` : ""}${esc(f.name)}</td><td>${esc(drop.cats.indexOf(f.cat) >= 0 ? f.cat : "غير مصنّف")}</td><td>${esc(f.by || "—")}</td><td>${esc(new Date(fileDate(f)).toLocaleString("ar"))}<br><small>${esc(fileDateLabel(f))}</small></td><td>${esc(new Date(f.at).toLocaleString("ar"))}</td><td>${fmtSize(f.size)}</td><td><button type="button" class="cc-link" data-drop="get" data-id="${esc(f.id)}">تنزيل</button></td></tr>`).join("")}</tbody></table>${drop.folder ? `<p class="frm-note"><a href="${esc(drop.folder)}" target="_blank" rel="noopener">فتح المجلد في Google Drive</a></p>` : ""}` : `<p class="frm-empty">لا ملفات مرفوعة بعد.</p>`) : ""}`;
+      ${drop.files ? (list.length ? `<details class="frm-alltbl"><summary>جدول بكل الملفات (${ui.fmt(list.length)})</summary><table class="cc-table"><thead><tr><th>الملف</th><th>التصنيف</th><th>رفعه</th><th>تاريخ الملف</th><th>تاريخ الرفع</th><th>الحجم</th><th></th></tr></thead><tbody>${list.map((f) => `<tr><td>${f.title ? `<b>${esc(f.title)}</b><br>` : ""}${esc(f.name)}</td><td>${esc(drop.cats.indexOf(f.cat) >= 0 ? f.cat : "غير مصنّف")}</td><td>${esc(f.by || "—")}</td><td>${esc(new Date(fileDate(f)).toLocaleString("ar"))}<br><small>${esc(fileDateLabel(f))}</small></td><td>${esc(new Date(f.at).toLocaleString("ar"))}</td><td>${fmtSize(f.size)}</td><td><button type="button" class="cc-link" data-drop="get" data-id="${esc(f.id)}">تنزيل</button></td></tr>`).join("")}</tbody></table>${drop.folder ? `<p class="frm-note"><a href="${esc(drop.folder)}" target="_blank" rel="noopener">فتح المجلد في Google Drive</a></p>` : ""}</details>` : `<p class="frm-empty">لا ملفات مرفوعة بعد.</p>`) : ""}`;
   }
   async function dropAct(kind, id, extra) {
     if (kind === "copy") { ui.copyText(location.origin + location.pathname.replace(/[^/]*$/, "") + "drop.html"); return ui.toast("نُسخ رابط الرفع"); }

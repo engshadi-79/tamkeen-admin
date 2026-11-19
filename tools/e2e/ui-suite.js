@@ -455,6 +455,10 @@ async function suite() {
     await App.formsExtra.refresh(); await wait(500);
     const loadBtn = document.querySelector('#frm-drop [data-drop="load"]'); if (loadBtn) { loadBtn.click(); await wait(900); }
     ok("شارة المراقب: يعمل بنبضة حديثة", /المراقب يعمل/.test((document.querySelector(".fx-watch") || {}).textContent || "") && !!document.querySelector(".fx-watch .fx-dot.green"), (document.querySelector(".fx-watch") || {}).textContent);
+    ok("الصفحة ثلاثة أقسام: الجاهزة ونماذجي وملفات الزملاء", [...document.querySelectorAll(".frm-sec")].length === 3 && document.getElementById("view-forms").dataset.sec === "forms" && document.querySelectorAll("#frm-body .frm-card").length === App.forms.FORMS.length, document.getElementById("view-forms").dataset.sec);
+    ok("قسم الجاهزة يعرض شرائح التصنيف بأعدادها", [...document.querySelectorAll("#frm-cats .frm-cat")].length === 4 && /\d/.test((document.querySelector("#frm-cats .frm-cat b") || {}).textContent || ""), [...document.querySelectorAll("#frm-cats .frm-cat")].map((x) => x.textContent).join("|"));
+    document.querySelector('[data-frm-sec="people"]').click(); await wait(700);
+    ok("قسم ملفات الزملاء: بطاقة لكل شخص", document.getElementById("view-forms").dataset.sec === "people" && document.querySelectorAll(".frm-pcard").length === 2, document.querySelectorAll(".frm-pcard").length);
     const personBtn = document.querySelector('[data-frm-cat="by:د.يوسف"]'); personBtn && personBtn.click(); await wait(900);
     ok("آخر ما أُضيف: ملف أُنشئ قديماً ورُفع اليوم أولاً", (document.querySelector(".fx-latest .fx-hit b") || {}).textContent === "أنشأته قبل أشهر ورفعته اليوم.docx", (document.querySelector(".fx-latest .fx-hit b") || {}).textContent);
     const gridNames = [...document.querySelectorAll("#frm-body .frm-groupgrid .frm-card h3")].map((h) => h.textContent);

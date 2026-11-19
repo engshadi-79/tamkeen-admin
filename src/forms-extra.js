@@ -304,10 +304,10 @@
     } catch (e) { cloudMsg(""); ui.toast(/غير معروف/.test((e && e.message) || "") ? "هذه الميزة تحتاج تحديث سكربت Google ونشره" : (e && e.message) || "تعذّرت الاستعادة"); }
   }
   function mountCloud() {
-    const bar = document.querySelector("#view-forms .frm-addbar");
-    if (!bar || bar.parentNode.querySelector(".fx-cloud")) return;
+    const bar = document.getElementById("frm-adddet") || document.querySelector("#view-forms .frm-addbar");
+    if (!bar || bar.parentNode.querySelector(".fx-minecloud")) return;
     const d = document.createElement("div");
-    d.className = "fx-cloud no-print";
+    d.className = "fx-cloud fx-minecloud no-print";
     d.innerHTML = `<b>نماذجي على Drive</b><span>احفظ نماذجك في Drive لتظهر على كل أجهزتك، أو استعدها على هذا الجهاز.</span>
       <button type="button" class="btn secondary" data-fx="mine-up"><span class="material-symbols-outlined btn-ico">cloud_upload</span>نسخ نماذجي إلى Drive</button>
       <button type="button" class="btn secondary" data-fx="mine-down"><span class="material-symbols-outlined btn-ico">cloud_download</span>استعادة من Drive</button><small></small>`;
@@ -455,7 +455,7 @@
   }
   function cloudMsg2(t) { const el = document.querySelector(".fx-cloud2 small"); if (el) el.textContent = t; }
   function mountFolderBackup() {
-    const c = document.querySelector("#view-forms .fx-cloud");
+    const c = document.querySelector("#view-forms .fx-minecloud");
     if (!c || document.querySelector(".fx-cloud2")) return;
     const d = document.createElement("div");
     d.className = "fx-cloud fx-cloud2 no-print";
@@ -514,7 +514,7 @@
     document.querySelectorAll(".fx-ops [data-fx-op]").forEach((b) => b.classList.toggle("on", b.dataset.fxOp === ops.panel));
   }
   function mountOps() {
-    const anchor = document.querySelector("#view-forms .fx-cloud2") || document.querySelector("#view-forms .fx-cloud");
+    const anchor = document.querySelector("#view-forms .fx-cloud2") || document.querySelector("#view-forms .fx-minecloud");
     if (!anchor || document.querySelector(".fx-ops")) return;
     const d = document.createElement("div");
     d.className = "fx-cloud fx-ops no-print";
@@ -557,6 +557,19 @@
     } catch (e) { ui.toast(/غير معروف/.test((e && e.message) || "") ? "هذه الميزة تحتاج تحديث سكربت Google ونشره" : (e && e.message) || "تعذّر التنفيذ"); }
   }
 
+  /* ترتيب أدوات ملفات الزملاء: حالة المراقب ظاهرة دائماً، وبقية الأدوات في تفصيل مطويّ */
+  function organizeTools() {
+    const c2 = document.querySelector("#view-forms .fx-cloud2"), ops = document.querySelector("#view-forms .fx-ops");
+    if (!c2 || !ops || document.querySelector("#view-forms .fx-tools")) return;
+    const w = ops.querySelector(".fx-watch");
+    const det = document.createElement("details");
+    det.className = "fx-tools no-print";
+    det.innerHTML = '<summary><span class="material-symbols-outlined" aria-hidden="true">build</span>أدوات الأرشيف: نسخ احتياطي ومزامنة · قواعد التصنيف · المحذوف مؤخراً · حماية الرابط</summary>';
+    c2.insertAdjacentElement("beforebegin", det);
+    det.appendChild(c2); det.appendChild(ops);
+    if (w) { const bar = document.createElement("div"); bar.className = "fx-watchbar no-print"; bar.appendChild(w); det.insertAdjacentElement("beforebegin", bar); }
+  }
+
   /* ===== الأحداث ===== */
   function init() {
     const root = $("view-forms");
@@ -565,6 +578,7 @@
     mountCloud();
     mountFolderBackup();
     mountOps();
+    organizeTools();
     root.addEventListener("click", (e) => {
       const b = e.target.closest("[data-fx]");
       if (!b) return;
