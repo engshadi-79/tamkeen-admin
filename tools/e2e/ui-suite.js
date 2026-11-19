@@ -420,6 +420,10 @@ async function suite() {
   ok("تنزيل الكل: zip فيه ملف Excel لكل مسار", !!capA && /\.zip$/.test(capA.n) && namesA.length === 2 && namesA.includes("الحلاقة الرجالية.xlsx") && namesA.includes("التسويق الرقمي.xlsx"), JSON.stringify(namesA));
   c.state.results = null;
   ok("جدول الاختبارات يقبل بيانات المركز", typeof (App.examSheet || {}).useData === "function");
+  // أعمدة الوقت اليدوية (ساعة الحضور/الخروج) لا تُملأ بعدد ساعات المسار
+  const tdf = App.converterCore.trackDataFieldFor;
+  ok("«ساعة الخروج» و«ساعة الحضور» و«الانصراف» لا تُربط بساعات المسار", !tdf("ساعة الخروج") && !tdf("ساعة الحضور") && !tdf("ساعة الانصراف") && !tdf("وقت الخروج"), [tdf("ساعة الخروج"), tdf("ساعة الحضور")].join("|"));
+  ok("«عدد الساعات» و«الساعات المكتملة» ما زالتا تُربطان بساعات المسار", !!tdf("عدد الساعات التدريبية") && tdf("الساعات المكتملة") === App.converterCore.TRACK_DATA_COLS.hoursCompleted, tdf("عدد الساعات التدريبية"));
 
   // ===== إضافات تاب النماذج (forms-extra): ملفات الزملاء والأدوات =====
   if (App.formsExtra) {
