@@ -302,7 +302,8 @@
     if ((/اسم/.test(n) && /مسار/.test(n)) || /^المسار(?:ات)?(?:\s|$)|^مسار(?:\s|$)/.test(n)) return TRACK_DATA_COLS.name;
     if (!/(اسم|هويه|رقم|جوال|هاتف)/.test(n) && /(عدد|اجمالي|مجموع|مستفيدون|مستفيدين|مستفيدات|متدربين|متدربون|منتفعين)/.test(n) && /(مستفيد|متدرب|منتفع)/.test(n)) return TRACK_DATA_COLS.beneficiaries;
     if (/حضور/.test(n) && /(نسب|percent|%)/.test(n)) return TRACK_DATA_COLS.attendancePct;
-    if (/ساع/.test(n) && !/حضور|انصراف|وقت/.test(n)) return /(مكتمل|منجز|completed)/.test(n) ? TRACK_DATA_COLS.hoursCompleted : TRACK_DATA_COLS.totalHours;
+    // «ساعة الحضور/الخروج/الانصراف» أعمدة وقت تُكتب يدوياً، لا عدد ساعات المسار؛ فلا تُملأ تلقائياً
+    if (/ساع/.test(n) && !/حضور|انصراف|وقت|خروج|مغادر|دخول|توقيع|ملاحظ/.test(n)) return /(مكتمل|منجز|completed)/.test(n) ? TRACK_DATA_COLS.hoursCompleted : TRACK_DATA_COLS.totalHours;
     return "";
   }
 
