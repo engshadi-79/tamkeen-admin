@@ -890,25 +890,35 @@
       </section>
 
       <!-- ===== النماذج الجاهزة ===== -->
-      <section class="view" id="view-forms">
+      <section class="view" id="view-forms" data-sec="forms">
         <div class="page-head">
-          <div><h2>النماذج الجاهزة</h2><p>نماذج فارغة على الترويسة الرسمية، حمّلها بصيغة Word أو اطبعها مباشرة عند الحاجة. ما تكتبه في الحقول أدناه يُدرج في النموذج، وإن تركته فارغاً بقيت نقاطاً للكتابة بالقلم.</p></div>
-          <div class="btn-row no-print"><button class="btn" id="frm-zip" type="button"><span class="material-symbols-outlined btn-ico">folder_zip</span>تنزيل كل النماذج (ملف مضغوط)</button></div>
+          <div><h2>النماذج الجاهزة</h2><p>نماذج على الترويسة الرسمية تنزّلها Word أو تطبعها، ونماذجك الخاصة، وملفات الزملاء المؤرشفة. اختر القسم من الأعلى.</p></div>
+          <div class="btn-row no-print"><button class="btn" id="frm-zip" type="button"><span class="material-symbols-outlined btn-ico">folder_zip</span>تنزيل النماذج الجاهزة (ملف مضغوط)</button></div>
         </div>
-        <div class="card">
-          <div class="frm-bar no-print">
-            <label>المسار <input data-frm-ctx="track" placeholder="اختياري"></label>
-            <label>المجموعة <input data-frm-ctx="group" placeholder="اختياري"></label>
-            <label>المدرب <input data-frm-ctx="trainer" placeholder="اختياري"></label>
-            <label>التاريخ <input data-frm-ctx="date" placeholder="اختياري، مثل 2026-11-15"></label>
-            <label class="frm-search">بحث <input id="frm-q" type="search" placeholder="اسم النموذج"></label>
+        <nav class="frm-secs no-print" id="frm-secs" aria-label="أقسام الصفحة"></nav>
+        <div class="card frm-main-card">
+          <div class="frm-toolbar no-print">
+            <label class="frm-search"><span class="material-symbols-outlined" aria-hidden="true">search</span><input id="frm-q" type="search" placeholder="ابحث في هذا القسم…" aria-label="بحث"></label>
+            <details class="frm-ctxbox" id="frm-ctxbox">
+              <summary><span class="material-symbols-outlined" aria-hidden="true">tune</span>بيانات تُدرج في النموذج <small id="frm-ctxsum">اختياري</small></summary>
+              <div class="frm-bar">
+                <label>المسار <input data-frm-ctx="track" placeholder="اختياري"></label>
+                <label>المجموعة <input data-frm-ctx="group" placeholder="اختياري"></label>
+                <label>المدرب <input data-frm-ctx="trainer" placeholder="اختياري"></label>
+                <label>التاريخ <input data-frm-ctx="date" placeholder="مثل 2026-11-15"></label>
+              </div>
+              <p class="frm-note">تُكتب هذه البيانات أعلى النموذج عند التنزيل أو الطباعة، وإن تركتها فارغة بقيت نقاطاً للكتابة بالقلم.</p>
+            </details>
           </div>
-          <div class="frm-bar frm-addbar no-print">
-            <label>اسم النموذج <input id="frm-add-name" placeholder="مثال: نموذج زيارة أولياء الأمور"></label>
-            <label>الملف (Word أو PDF أو Excel أو صورة) <input id="frm-add-file" type="file" accept=".doc,.docx,.pdf,.xls,.xlsx,.png,.jpg,.jpeg,.webp"></label>
-            <label>نسخة PDF للطباعة (اختياري، تطابق الأصل تماماً) <input id="frm-add-pdf" type="file" accept=".pdf"></label>
-            <button class="btn" id="frm-add" type="button"><span class="material-symbols-outlined btn-ico">add</span>إضافة نموذج</button>
-          </div>
+          <details class="frm-adddet no-print" id="frm-adddet">
+            <summary><span class="material-symbols-outlined" aria-hidden="true">add_circle</span>إضافة نموذج خاص بي</summary>
+            <div class="frm-bar frm-addbar">
+              <label>اسم النموذج <input id="frm-add-name" placeholder="مثال: نموذج زيارة أولياء الأمور"></label>
+              <label>الملف (Word أو PDF أو Excel أو صورة) <input id="frm-add-file" type="file" accept=".doc,.docx,.pdf,.xls,.xlsx,.png,.jpg,.jpeg,.webp"></label>
+              <label>نسخة PDF للطباعة (اختياري، تطابق الأصل تماماً) <input id="frm-add-pdf" type="file" accept=".pdf"></label>
+              <button class="btn" id="frm-add" type="button"><span class="material-symbols-outlined btn-ico">add</span>إضافة نموذج</button>
+            </div>
+          </details>
           <div class="frm-cats no-print" id="frm-cats"></div>
           <div class="frm-grid" id="frm-body"></div>
         </div>
@@ -1627,7 +1637,7 @@
   <script src="src/center-cmd.js?v=441"></script>
   <script src="vendor/supabase.min.js"></script>
   <script src="src/hospitality.js?v=456"></script>
-  <script src="src/forms.js?v=457"></script>
+  <script src="src/forms.js?v=458"></script>
   <script src="src/sheets.js?v=340"></script>
   <script src="src/history.js?v=340"></script>
   <script src="src/roster-audit.js?v=340"></script>
@@ -1636,6 +1646,6 @@
   <script src="src/whatsapp.js?v=403"></script>
   <script src="src/realtime.js?v=340"></script>
   <script src="src/nav-order.js?v=450"></script>
-  <script src="src/app.js?v=451"></script>
+  <script src="src/app.js?v=452"></script>
 </body>
 </html>

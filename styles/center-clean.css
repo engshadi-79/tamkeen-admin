@@ -74,3 +74,31 @@ body.nav-editing #btn-nav-order{background:#0f766e!important;color:#fff!importan
 .cc-att-g p{margin:6px 0;font-size:12.5px;color:#444}.cc-att-g .cc-badge.bad{background:#fdecea;color:#b42318}
 .fx-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-inline-end:6px;vertical-align:middle;background:#9aa4b2}.fx-dot.green{background:#16a34a}.fx-dot.amber{background:#d97706}.fx-dot.red{background:#dc2626}.fx-dot.gray{background:#9aa4b2}
 .fx-ops .btn.on{background:#e6f4f2;border-color:#0f766e}.fx-ops-panel{border-top:1px dashed #cfd6e0;padding-top:8px}.fx-ops-panel code{background:#eef2f6;padding:0 4px;border-radius:4px}.fx-ops-panel select{padding:6px 8px;border:1px solid var(--line,#d5dce6);border-radius:8px;font:inherit}
+
+/* ===== تنظيم صفحة النماذج الجاهزة: أقسام ثلاثة وأدوات مطويّة ===== */
+.frm-secs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.frm-sec{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border:1px solid var(--line,#d5dce6);border-radius:12px;background:#fff;font:inherit;font-size:15px;cursor:pointer;color:inherit}
+.frm-sec .material-symbols-outlined{font-size:20px;color:#0f766e}
+.frm-sec b{background:#e6f4f2;color:#0f766e;border-radius:999px;padding:0 8px;font-size:12px;font-weight:600}
+.frm-sec.on{background:#0f766e;color:#fff;border-color:#0f766e}.frm-sec.on .material-symbols-outlined{color:#fff}.frm-sec.on b{background:rgba(255,255,255,.22);color:#fff}
+.frm-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.frm-search{flex:1;min-width:220px;display:flex;align-items:center;gap:8px;border:1px solid var(--line,#d5dce6);border-radius:10px;padding:0 10px;background:#fff}
+.frm-search input{flex:1;border:0;outline:0;padding:9px 0;font:inherit;background:transparent}.frm-search .material-symbols-outlined{color:#6b7686}
+.frm-ctxbox summary,.frm-adddet summary,.fx-tools summary,.frm-alltbl summary{cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--line,#d5dce6);border-radius:10px;background:#fafbfc;font-size:13.5px;list-style:none}
+.frm-ctxbox summary::-webkit-details-marker,.frm-adddet summary::-webkit-details-marker,.fx-tools summary::-webkit-details-marker,.frm-alltbl summary::-webkit-details-marker{display:none}
+.frm-ctxbox summary small{color:#5b687a}.frm-ctxbox[open],.frm-adddet[open],.fx-tools[open]{flex-basis:100%}
+.frm-ctxbox .frm-bar{margin-top:10px}.frm-adddet{margin-bottom:12px}.frm-adddet .frm-addbar{margin-top:10px}
+.frm-cats{padding-bottom:10px;margin-bottom:14px;border-bottom:1px solid var(--line,#e3e8ef)}
+.frm-cat b{background:#e6f4f2;color:#0f766e;border-radius:999px;padding:0 7px;font-size:11.5px;margin-inline-start:2px}.frm-cat.on b{background:#fff}
+.frm-pgrid{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.frm-pcard{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line,#d5dce6);border-radius:14px;background:#fff;cursor:pointer;font:inherit;text-align:start;color:inherit}
+.frm-pcard:hover{border-color:#0f766e;background:#f4fbfa}
+.frm-av{width:46px;height:46px;border-radius:50%;background:#e6f4f2;color:#0f766e;display:grid;place-items:center;font-size:20px;font-weight:600;flex:none}
+.frm-pinfo{display:flex;flex-direction:column;gap:2px}.frm-pinfo b{font-size:15px}.frm-pinfo small{color:#5b687a}
+.fx-watchbar{display:flex;align-items:center;gap:6px;margin:0 0 10px;padding:8px 12px;border:1px solid var(--line,#d5dce6);border-radius:10px;background:#fff;font-size:13px}
+.fx-tools{margin:0 0 12px}.fx-tools>.fx-cloud{margin-top:10px}
+.frm-alltbl{margin-top:12px}
+/* إظهار كل قسم بما يخصّه فقط */
+#view-forms[data-sec="forms"] .frm-adddet,#view-forms[data-sec="forms"] .fx-minecloud,#view-forms[data-sec="forms"] .fx-watchbar,#view-forms[data-sec="forms"] .fx-tools,#view-forms[data-sec="forms"] #frm-drop{display:none}
+#view-forms[data-sec="mine"] .frm-ctxbox,#view-forms[data-sec="mine"] .fx-watchbar,#view-forms[data-sec="mine"] .fx-tools,#view-forms[data-sec="mine"] #frm-drop,#view-forms[data-sec="mine"] #frm-zip{display:none}
+#view-forms[data-sec="people"] .frm-ctxbox,#view-forms[data-sec="people"] .frm-adddet,#view-forms[data-sec="people"] .fx-minecloud,#view-forms[data-sec="people"] #frm-zip{display:none}
