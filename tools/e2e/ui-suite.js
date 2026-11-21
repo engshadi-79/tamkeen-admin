@@ -538,5 +538,30 @@ async function suite() {
     App.ai.vision = oldVision; App.ai.hasKey = oldHas; agent.run = oldRun; c.state.mode = "report"; c.state.sig.rows = null; c.state.sig.reg = null; c.render();
   }
 
+  // مقارنة ملف Excel خارجي بالمسجلين
+  {
+    const oldRun = agent.run;
+    agent.run = async (cmds) => ({ results: cmds.map((cm) => ({ type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية", "الجوال"], rows: [
+      { cells: ["أحمد علي محمد", "201", "G1", "1012345678", "0501112222"] }, { cells: ["ليلى حسن", "202", "G1", "1099999999", "0500000000"] }, { cells: ["فهد منصور", "203", "G1", "1088888888", "0505555555"] },
+    ] })) });
+    const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet("كشف");
+    ws.addRow(["كشف متدربين"]); ws.addRow(["م", "اسم المتدرب", "رقم الهوية", "الجوال"]);
+    ws.addRow([1, "أحمد علي محمد", "1012345678", "0501112222"]); ws.addRow([2, "ليلى حسن", "1099999999", "0503334444"]); ws.addRow([3, "نورة خالد", "1066666666", "0507776666"]);
+    const file = new File([await wb.xlsx.writeBuffer()], "كشف.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    c.state.mode = "xl"; c.state.groups = []; c.state.xl = Object.assign(c.state.xl, { tracks: ["1"], stages: [], status: "8", sheets: [], out: null, reg: null }); c.render();
+    ok("تبويب مقارنة Excel: حقل الملف", !!b.querySelector("#cc-xl-file") && !!b.querySelector('[data-cc="run-xl"]'), "view");
+    const inp = b.querySelector("#cc-xl-file"), dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; inp.dispatchEvent(new Event("change", { bubbles: true }));
+    for (let i = 0; i < 40 && !c.state.xl.sheets.length; i++) await wait(100); await wait(200);
+    const xm = c.state.xl.map;
+    ok("قراءة الملف وتخمين الأعمدة", c.state.xl.sheets.length === 1 && c.state.xl.sheets[0].rows.length === 3 && xm.name === 1 && xm.id === 2 && xm.phone === 3, JSON.stringify({ n: c.state.xl.sheets.length, m: xm, err: c.state.resultError }));
+    c.state.wideLimit = 1000; c.state.wide = null;
+    b.querySelector('[data-cc="run-xl"]').click();
+    for (let i = 0; i < 40 && !c.state.xl.out && !c.state.resultError; i++) await wait(100); await wait(200);
+    const xo = c.state.xl.out;
+    ok("نتيجة المقارنة: ناقص في النظام (نورة) وليس في الكشف (فهد) وفرق جوال (ليلى)", !!xo && xo.missingInSystem.length === 1 && xo.missingInSystem[0].name === "نورة خالد" && xo.notInFile.length === 1 && xo.notInFile[0].name === "فهد منصور" && xo.diffs.length === 1 && xo.diffs[0].why.includes("الجوال"), JSON.stringify({ o: xo && [xo.missingInSystem.length, xo.notInFile.length, xo.diffs.length], err: c.state.resultError }));
+    ok("عرض الجداول وزر التنزيل", !!b.querySelector('[data-tblbox="xl-missing"]') && !!b.querySelector('[data-cc="export-xl"]') && /نورة خالد/.test(b.querySelector('[data-tblbox="xl-missing"]').textContent), "tables");
+    agent.run = oldRun; c.state.mode = "report"; c.state.xl.out = null; c.state.xl.reg = null; c.state.xl.sheets = []; c.render();
+  }
+
   return R;
 }

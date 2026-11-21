@@ -36,6 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
+    xl: { tracks: [], stages: [], status: "", name: "", sheets: [], sheet: 0, map: {}, reg: null, out: null },
     sig: { tracks: [], stages: [], status: "", files: [], fast: (() => { try { return localStorage.getItem("tamkeen:sig-fast") === "1"; } catch (e) { return false; } })(), rows: null, reg: null, manual: {}, reading: false, prog: "", failed: [], titles: [] },
     att: { alwaysToday: false, from: "", to: "", thr: 3, excused: false, max: 80, tracks: [], stages: [], out: null },   // الحضور والغياب
     bundle: { open: false, pick: [], msg: "" },
@@ -1245,7 +1246,7 @@
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
   const CFG = { attend: "att", impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
   const MODE_NAME = { attend: "الحضور والغياب", impact: "قياس الأثر", report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
-  const RUN_BTN = { sign: "run-sig", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
+  const RUN_BTN = { sign: "run-sig", xl: "run-xl", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
   /* نسخة من إعدادات التبويب بلا نتائجه ولا بياناته */
   const cfgOf = (mode) => JSON.parse(JSON.stringify(state[CFG[mode]], (key, v) => (key === "out" || key === "rows" || key === "msg" || key === "diff" ? undefined : v)));
   function applyCfg(mode, cfg) {
@@ -1329,7 +1330,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-xl", "run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1341,6 +1342,7 @@
       }
       if (act === "load-groups") return 1;
       if (act === "run-sig") return Math.max(1, sigCommands(true).length);
+      if (act === "run-xl") return Math.max(1, sigCommands(true, state.xl).length);
       if (act === "run-att" || act === "att-today") { const c = state.att, d = Math.max(1, Math.round((Date.parse(c.to || ui.todayISO()) - Date.parse(c.from || ui.todayISO())) / 86400000) + 1); return 1 + Math.min(Number(c.max) || 80, d * Math.max(1, (state.groups || []).length || (c.tracks.length || 5))); }
       if (act === "run-imp" || act === "imp-apply") { const c = state.imp, cv = impCourseVariants(c.known), tv = impTrackVariants(c.known); let n = 0; (c.pages.length ? c.pages : ["impact"]).forEach((pg) => { n += cv ? Math.max(1, cv.list.length) : pg === "questions" && tv ? Math.max(1, tv.list.length) : 1; }); return n + ((c.stages || []).length && !cv || c.pages.includes("questions") && !tv ? 1 : 0); }
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
@@ -1913,8 +1915,8 @@
     finally { state.busy = false; render(); refreshStatus(); }
   }
   /* ===== مطابقة التوقيعات: صور الأوراق ← قراءة بالذكاء الاصطناعي ← مقارنة بالمسجلين ===== */
-  function sigCommands(soft) {
-    const c = state.sig, groups = (state.groups || []).length;
+  function sigCommands(soft, cfg) {
+    const c = cfg || state.sig, groups = (state.groups || []).length;
     if (!c.stages.length && !c.tracks.length && !groups) { if (soft) return []; throw new Error("اختر المرحلة (والمسار والمجموعة إن شئت) من شريط «النطاق» أولاً، فالمقارنة تكون مع المسجلين في المرحلة نفسها."); }
     const common = c.status ? { status: c.status } : {};
     const mk = (params, label) => ({ type: "list", label, params: Object.assign({}, params, common) });
@@ -2056,6 +2058,69 @@
         <div class="cc-sig-rev">${o.orphans.map((f) => `<div class="cc-sig-r"><span><b>${esc(f.name)}</b> <small>${f.signed === true ? "موقّع" : "غير محسوم"} · ${esc(f.file)}</small></span><select data-sig-assign="${esc(f.id)}"><option value="">— ليس من المسجلين —</option>${miss.map((x) => `<option value="${esc(x.reg.key)}">${esc(x.reg.name)}</option>`).join("")}</select></div>`).join("")}</div></article>` : ""}
       <details class="cc-help"><summary>الذين وقّعوا (${ui.fmt(cnt("signed"))})</summary>${cnt("signed") ? tbl("sig-ok", o.items.filter((x) => x.st === "signed")) : '<p class="cc-note">لا أحد.</p>'}</details>
       <p class="cc-note">القراءة بالذكاء الاصطناعي قد تخطئ في الأسماء المكتوبة بخط اليد أو الصور غير الواضحة، فراجع «تحتاج مراجعتك» قبل أن تعتمد القائمة. لا يُكتب شيء في نظام المركز.</p></section>`;
+  }
+
+  /* ===== مقارنة ملف Excel خارجي بالمسجلين (هوية ← جوال ← اسم) ===== */
+  const XL_COLS = [["name", "الاسم"], ["id", "رقم الهوية"], ["phone", "الجوال"], ["group", "المجموعة"]];
+  const xlSheet = () => state.xl.sheets[state.xl.sheet] || null;
+  function xlView() {
+    const c = state.xl, sh = xlSheet(), statusOpts = (filterField("status").options || []);
+    const colSel = (k, t) => `<label class="cc-field"><span>عمود ${t}</span><select data-xl="map-${k}"><option value="-1">— لا يوجد —</option>${sh.heads.map((h, i) => `<option value="${i}" ${Number(c.map[k]) === i ? "selected" : ""}>${esc(h)}</option>`).join("")}</select></label>`;
+    return `<section class="cc-card" id="cc-xl">
+      <header class="cc-card-h"><h3>مقارنة ملف Excel</h3><p>ارفع كشفاً من جهة أخرى (متدربون أو دفعات أو شهادات)، فيُقارَن بالمسجلين في المرحلة: من ينقص النظام، ومن ليس في الكشف، ومن اختلفت بياناته.</p></header>
+      <div class="cc-card-b">
+        <label class="cc-field cc-wide"><span>١. ملف الكشف (.xlsx)</span><input type="file" id="cc-xl-file" accept=".xlsx"></label>
+        ${sh ? `<p class="cc-note">الملف: <b>${esc(c.name)}</b> · ${ui.fmt(sh.rows.length)} صفاً</p>
+        <div class="cc-grid">${c.sheets.length > 1 ? `<label class="cc-field"><span>الورقة</span><select data-xl="sheet">${c.sheets.map((x, i) => `<option value="${i}" ${i === c.sheet ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>` : ""}${XL_COLS.map(([k, t]) => colSel(k, t)).join("")}
+        <label class="cc-field"><span>حالة الطالب في المقارنة</span><select data-xl="status"><option value="">كل الحالات</option>${statusOpts.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String(c.status) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></div>
+        <p class="cc-note">راجع تخمين الأعمدة أعلاه (الهوية والجوال يجزمان المطابقة، والاسم وحده أضعف). ٢. اختر <b>المرحلة</b> من شريط «النطاق»، ثم اضغط «اجلب المسجلين وقارن».</p>` : ""}
+      </div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-xl"))} أمر قراءة</b><span>${esc(scopeSummaryText())}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-xl" ${state.busy || !sh ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب المسجلين وقارن"}</button></div></footer>
+    </section>`;
+  }
+  async function runXl() {
+    const c = state.xl, sh = xlSheet();
+    if (!sh) { state.resultError = "ارفع ملف Excel أولاً."; return render(); }
+    if (Number(c.map.name) < 0 && Number(c.map.id) < 0 && Number(c.map.phone) < 0) { state.resultError = "اختر عمود الاسم أو الهوية أو الجوال على الأقل."; return render(); }
+    state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
+    try {
+      requireAgent15();
+      const results = await runCommands(sigCommands(false, c));
+      c.reg = sigRegistered(results);
+      if (!c.reg.length) throw new Error("لم أجد مسجلين في المرحلة المختارة. تحقق من المرحلة والمسار وحالة الطالب.");
+      const map = {}; XL_COLS.forEach(([k]) => { map[k] = Number(c.map[k]); if (isNaN(map[k])) map[k] = -1; });
+      c.out = App.centerXl.compare(c.reg, sh, map);
+      ui.toast("قورن " + ui.fmt(c.out.total.file) + " في الكشف بـ " + ui.fmt(c.out.total.system) + " مسجّلاً");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  function xlTables(o) {
+    return {
+      missing: { heads: ["الاسم", "الهوية", "الجوال", "المجموعة", "الصف في الكشف"], rows: o.missingInSystem.map((f) => [f.name, f.id, f.phone, f.group, String(f.n + 2)]) },
+      notInFile: { heads: ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المجموعة", "الدورة"], rows: o.notInFile.map((r) => [r.name, r.stu, r.id, r.phone, r.group, r.course]) },
+      diffs: { heads: ["الاسم في النظام", "الاسم في الكشف", "الهوية (نظام)", "الهوية (كشف)", "الجوال (نظام)", "الجوال (كشف)", "الفرق"], rows: o.diffs.map((d) => [d.reg.name, d.ext.name, d.reg.id, d.ext.id, d.reg.phone, d.ext.phone, d.why.join(" + ")]) },
+    };
+  }
+  function xlResult() {
+    const o = state.xl.out; if (!o) return "";
+    const t = xlTables(o);
+    const blk = (key, title, bad, hint) => t[key].rows.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${title}</h4><span class="cc-badge ${bad ? "bad" : ""}">${ui.fmt(t[key].rows.length)}</span></div></header><p class="cc-note">${hint}</p>${dataTable("xl-" + key, t[key].heads, t[key].rows)}</article>` : "";
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> نتيجة المقارنة</h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.total.file)}</b> في الكشف</span><span class="cc-stat"><b>${ui.fmt(o.total.system)}</b> في النظام</span><span class="cc-stat"><b>${ui.fmt(o.matched.length)}</b> متطابقون</span><span class="cc-stat"><b>${ui.fmt(o.missingInSystem.length)}</b> ناقصون في النظام</span><span class="cc-stat"><b>${ui.fmt(o.notInFile.length)}</b> ليسوا في الكشف</span><span class="cc-stat"><b>${ui.fmt(o.diffs.length)}</b> بيانات مختلفة</span>
+        <button type="button" class="btn secondary small" data-cc="export-xl">تنزيل Excel</button></div>
+      ${blk("missing", "في الكشف ولا يظهرون في النظام", true, "لم يُطابَق أحد منهم بهوية ولا جوال ولا اسم قريب في هذه المرحلة. قد يكونون في مرحلة أخرى أو لم يُسجَّلوا بعد.")}
+      ${blk("diffs", "مطابقون لكن بياناتهم مختلفة", false, "الفرق مبيَّن في العمود الأخير؛ ما اختلف بين الكشف والنظام يحتاج مراجعتك.")}
+      ${blk("notInFile", "في النظام وليسوا في الكشف", false, "مسجّلون في هذه المرحلة ولم يردوا في الملف.")}
+      ${!o.missingInSystem.length && !o.notInFile.length && !o.diffs.length ? '<p class="cc-alert ok">الكشف والنظام متطابقان تماماً ✓</p>' : ""}
+    </section>`;
+  }
+  function xlExport() {
+    const o = state.xl.out; if (!o) return;
+    const t = xlTables(o), wb = new ExcelJS.Workbook();
+    [["ناقص في النظام", t.missing], ["بيانات مختلفة", t.diffs], ["ليسوا في الكشف", t.notInFile]].forEach(([n, x]) => { if (x.rows.length) fmtSheet(wb.addWorksheet(n), x.heads, x.rows); });
+    if (!wb.worksheets.length) return ui.toast("لا فروق لتنزيلها");
+    return wb.xlsx.writeBuffer().then((b) => ui.download("مقارنة الكشف " + ui.todayISO() + ".xlsx", new Blob([b], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })));
   }
 
   function attView() {
@@ -2723,10 +2788,10 @@
       ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
       ${settingsCard()}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
@@ -2801,15 +2866,15 @@
   }
   /* شريط التبويبات الأفقي: عناوين قصيرة في صف واحد مجمّعة، والشرح في التلميح */
   const MODE_GROUPS = [
-    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
+    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
     [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
     [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
   ];
-  const MODE_ICO = { sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const MODE_ICO = { xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
   const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" title="${esc(h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
-  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig }[mode] || state.sel);
+  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl }[mode] || state.sel);
   function scopeNow() {
     const c = scopeCfg(state.adding || state.proposal ? "ask" : state.mode);
     const byK = c === state.sel || c === state.mis;
@@ -2818,14 +2883,14 @@
   }
   function scopeSet(kind, value, on) {
     const upd = (c, key, v) => { const arr = (c[key] = c[key] || []); const at = arr.indexOf(v); if (on && at < 0) arr.push(v); else if (!on && at >= 0) arr.splice(at, 1); };
-    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig].forEach((c) => upd(c, "tracks", String(value)));
+    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => upd(c, "tracks", String(value)));
     else {
       [state.sel, state.mis].forEach((c) => upd(c, "stages", stageK(value)));
-      [state.sib, state.dq, state.grp, state.imp, state.att, state.sig].forEach((c) => upd(c, "stages", value));
+      [state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => upd(c, "stages", value));
     }
   }
   function scopeClear() {
-    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
     state.groups = [];
   }
   /* القوائم المكررة داخل التبويبات (المسارات/المراحل) تُخفى لأن الشريط يتولاها */
@@ -3121,6 +3186,8 @@
         } else if (act === "export-att") { const sh = attSheets("الحضور والغياب"); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => fmtSheet(wb.addWorksheet(x.name.slice(0, 31)), x.heads, x.rows)); return ui.download("الحضور والغياب " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         } else if (act === "sig-read") { try { return await sigReadImages(); } catch (e) { state.resultError = e.message === "NO_KEY" ? "أضف مفتاح الذكاء الاصطناعي أولاً (صفحة «المراسلات والتقارير» ← إعدادات الذكاء الاصطناعي)." : (e.message || String(e)); state.sig.reading = false; return render(); }
         } else if (act === "run-sig") { return runSign();
+        } else if (act === "run-xl") { return runXl();
+        } else if (act === "export-xl") { return xlExport();
         } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
         } else if (act === "sig-del") { const r = state.sig.rows[Number(b.dataset.i)]; if (r) r.keep = false; return render();
         } else if (act === "sig-add") { state.sig.rows = state.sig.rows || []; state.sig.rows.push({ id: "m:" + Date.now(), file: "(أضفتَه)", name: "", nid: "", phone: "", signed: false, conf: 1, keep: true }); return render();
@@ -3320,6 +3387,22 @@
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
       if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }
+      if (t.id === "cc-xl-file") {
+        const f = (t.files || [])[0]; if (!f) return;
+        try {
+          const wb = await App.centerXl.readWorkbook(f), c = state.xl;
+          if (!wb.sheets.length) throw new Error("الملف فارغ.");
+          c.sheets = wb.sheets; c.sheet = 0; c.name = f.name; c.map = App.centerXl.detect(wb.sheets[0].heads, wb.sheets[0].rows); c.out = null; state.resultError = "";
+        } catch (e) { state.resultError = "تعذّرت قراءة الملف: " + (e.message || e); }
+        t.value = ""; return render();
+      }
+      if (t.dataset.xl) {
+        const c = state.xl, k = t.dataset.xl;
+        if (k === "sheet") { c.sheet = Number(t.value) || 0; const sh = xlSheet(); c.map = App.centerXl.detect(sh.heads, sh.rows); c.out = null; }
+        else if (k === "status") c.status = t.value;
+        else if (k.startsWith("map-")) c.map[k.slice(4)] = Number(t.value);
+        return render();
+      }
       if (t.id === "cc-sig-files") {
         const files = [...(t.files || [])].filter((f) => /^image\//.test(f.type));
         if (!files.length) return;
