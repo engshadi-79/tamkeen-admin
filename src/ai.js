@@ -239,17 +239,22 @@
   }
 
   /* ===== قراءة صور (رؤية): يرسل صوراً مع تعليمات ويعيد نصاً (JSON غالباً) ===== */
+  const visionNoThink = new Set();
   async function visionGemini({ key, prompt, images, system, signal }) {
     const candidates = await geminiModels(key, signal);
     const parts = [{ text: prompt }].concat(images.map((im) => ({ inline_data: { mime_type: im.mime, data: im.data } })));
     let lastStatus = 0, lastBody = null;
     for (let i = 0; i < candidates.length && i < 4; i++) {
       if (i > 0) await wait(700, signal);
-      const res = await post(`${GEMINI_BASE}/models/${encodeURIComponent(candidates[i])}:generateContent`, { "content-type": "application/json", "x-goog-api-key": key }, {
+      const url = `${GEMINI_BASE}/models/${encodeURIComponent(candidates[i])}:generateContent`, hdr = { "content-type": "application/json", "x-goog-api-key": key };
+      const mk = (think) => ({
         systemInstruction: { parts: [{ text: system || "" }] },
         contents: [{ role: "user", parts }],
-        generationConfig: { maxOutputTokens: 16384, temperature: 0, responseMimeType: "application/json" },
-      }, signal);
+        generationConfig: Object.assign({ maxOutputTokens: 16384, temperature: 0, responseMimeType: "application/json" }, think ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      });
+      // إيقاف «التفكير» يسرّع القراءة كثيراً (استخراج نص لا يحتاج استدلالاً)؛ إن رفضه النموذج نعيد الطلب بدونه
+      let res = visionNoThink.has(candidates[i]) ? await post(url, hdr, mk(false), signal) : await post(url, hdr, mk(true), signal);
+      if (!res.ok && res.status === 400 && !visionNoThink.has(candidates[i])) { visionNoThink.add(candidates[i]); res = await post(url, hdr, mk(false), signal); }
       if (res.ok) {
         geminiWorking = candidates[i];
         const j = await res.json();

@@ -2,7 +2,7 @@
    هذا الملف: تجهيز الصور (تصغير)، وطلب القراءة، وفهم الرد. لا يقرأ من نظام المركز ولا يعرف الواجهة.
    الصور تُرسَل إلى مزوّد الذكاء الاصطناعي المضبوط (Gemini أو Claude) بمفتاح المستخدم، ولا تُحفظ في أي مكان. */
 (function (App) {
-  const MAX_SIDE = 2000;     // أقصى بُعد بعد التصغير (بكسل)
+  const MAX_SIDE = 1800;     // أقصى بُعد بعد التصغير (بكسل)
   const QUALITY = 0.85;
 
   const SYSTEM = `أنت تقرأ صور أوراق حضور وتوقيع متدربين في مركز تدريب، وتعيد البيانات بصيغة JSON فقط.
@@ -76,7 +76,7 @@
     return { title: String(j.title || "").slice(0, 120), rows };
   }
 
-  /* عدة صور: اثنتان معاً كحد أقصى، والتقدّم يُبلَّغ. إخفاق صورة لا يوقف البقية */
+  /* عدة صور: أربع معاً كحد أقصى، والتقدّم يُبلَّغ. إخفاق صورة لا يوقف البقية */
   async function readSheets(images, opts) {
     const out = { rows: [], titles: [], failed: [] };
     let next = 0, done = 0;
@@ -96,7 +96,7 @@
         if (opts && opts.onProgress) opts.onProgress(done, images.length);
       }
     };
-    await Promise.all([worker(), worker()]);
+    await Promise.all([worker(), worker(), worker(), worker()]);
     return out;
   }
 
