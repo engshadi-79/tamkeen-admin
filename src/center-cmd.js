@@ -36,6 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
+    sig: { tracks: [], stages: [], status: "", files: [], rows: null, reg: null, manual: {}, reading: false, prog: "", failed: [], titles: [] },
     att: { alwaysToday: false, from: "", to: "", thr: 3, excused: false, max: 80, tracks: [], stages: [], out: null },   // الحضور والغياب
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1244,7 +1245,7 @@
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
   const CFG = { attend: "att", impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
   const MODE_NAME = { attend: "الحضور والغياب", impact: "قياس الأثر", report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
-  const RUN_BTN = { attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
+  const RUN_BTN = { sign: "run-sig", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
   /* نسخة من إعدادات التبويب بلا نتائجه ولا بياناته */
   const cfgOf = (mode) => JSON.parse(JSON.stringify(state[CFG[mode]], (key, v) => (key === "out" || key === "rows" || key === "msg" || key === "diff" ? undefined : v)));
   function applyCfg(mode, cfg) {
@@ -1328,7 +1329,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1339,6 +1340,7 @@
         return plan.length;
       }
       if (act === "load-groups") return 1;
+      if (act === "run-sig") return Math.max(1, sigCommands(true).length);
       if (act === "run-att" || act === "att-today") { const c = state.att, d = Math.max(1, Math.round((Date.parse(c.to || ui.todayISO()) - Date.parse(c.from || ui.todayISO())) / 86400000) + 1); return 1 + Math.min(Number(c.max) || 80, d * Math.max(1, (state.groups || []).length || (c.tracks.length || 5))); }
       if (act === "run-imp" || act === "imp-apply") { const c = state.imp, cv = impCourseVariants(c.known), tv = impTrackVariants(c.known); let n = 0; (c.pages.length ? c.pages : ["impact"]).forEach((pg) => { n += cv ? Math.max(1, cv.list.length) : pg === "questions" && tv ? Math.max(1, tv.list.length) : 1; }); return n + ((c.stages || []).length && !cv || c.pages.includes("questions") && !tv ? 1 : 0); }
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
@@ -1910,6 +1912,149 @@
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
   }
+  /* ===== مطابقة التوقيعات: صور الأوراق ← قراءة بالذكاء الاصطناعي ← مقارنة بالمسجلين ===== */
+  function sigCommands(soft) {
+    const c = state.sig, groups = (state.groups || []).length;
+    if (!c.stages.length && !c.tracks.length && !groups) { if (soft) return []; throw new Error("اختر المرحلة (والمسار والمجموعة إن شئت) من شريط «النطاق» أولاً، فالمقارنة تكون مع المسجلين في المرحلة نفسها."); }
+    const common = c.status ? { status: c.status } : {};
+    const mk = (params, label) => ({ type: "list", label, params: Object.assign({}, params, common) });
+    if (c.stages.length) {
+      const courses = courseOpts().filter((x) => c.stages.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track)));
+      if (!courses.length) { if (soft) return []; throw new Error("لا توجد دورة تجمع المسار والمرحلة المختارين."); }
+      return courses.map((x) => mk({ training_course_id: x.v }, x.t));
+    }
+    if (c.tracks.length) return c.tracks.map((id) => mk({ track_id: String(id) }, optLabel("track_id", id)));
+    return [mk({}, "الطلاب")];
+  }
+  const sigHead = (heads, rx) => heads.findIndex((h) => rx.test(clean(h)));
+  function sigRegistered(results) {
+    const out = [], seen = new Set();
+    (results || []).filter((r) => r && r.type === "list").forEach((r) => {
+      const iN = sigHead(r.heads, /^(الاسم|اسم الطالب)$/), iS = sigHead(r.heads, /^رقم الطالب$/), iI = sigHead(r.heads, /^رقم الهوية$/), iP = sigHead(r.heads, /^الجوال$/), iG = sigHead(r.heads, /^المجموعة/);
+      if (iN < 0) return;
+      r.rows.forEach((x) => {
+        const name = clean(x.cells[iN]); if (!name) return;
+        const key = (iS >= 0 && clean(x.cells[iS])) || (iI >= 0 && clean(x.cells[iI])) || name;
+        if (seen.has(key)) return; seen.add(key);
+        out.push({ key, name, stu: iS >= 0 ? clean(x.cells[iS]) : "", id: iI >= 0 ? clean(x.cells[iI]) : "", phone: iP >= 0 ? clean(x.cells[iP]) : "", group: iG >= 0 ? clean(x.cells[iG]) : "", course: r.label || "" });
+      });
+    });
+    return out;
+  }
+  /* يقابل المسجلين بالأسماء المقروءة، ويطبّق قرارات المراجعة اليدوية */
+  function sigCompute() {
+    const c = state.sig; if (!c.reg || !c.rows) return null;
+    const found = c.rows.filter((r) => r.keep !== false);
+    const m = App.ccUtil.matchNames(c.reg, found.map((f) => ({ name: f.name, id: f.nid, phone: f.phone })));
+    const byReg = new Map(m.pairs.map((p) => [p.reg, p]));
+    const usedFound = new Set();
+    const items = c.reg.map((r, i) => {
+      const man = c.manual[r.key];
+      let f = null, how = "", score = 0, state1, rev = false;
+      if (man && man !== "none") { f = found.find((x) => x.id === man) || null; how = f ? "مراجعتك" : ""; score = 1; }
+      else if (man === "none") { how = "رفضتَ المطابقة"; }
+      else { const p = byReg.get(i); if (p) { f = found[p.found]; score = p.score; rev = !p.sure; how = p.by === "id" ? "طابقت الهوية" : p.by === "phone" ? "طابق الجوال" : p.mismatch ? "الاسم يتفق لكن رقم الهوية/الجوال يختلف" : p.sure ? "" : "تحتاج مراجعة"; } }
+      if (f) usedFound.add(f.id);
+      if (!f) state1 = "absent";
+      else if (rev) state1 = "review";
+      else if (f.signed === true) state1 = "signed";
+      else if (f.signed === false) state1 = "blank";
+      else state1 = "review";
+      return { reg: r, found: f, score, how, st: state1 };
+    });
+    const orphans = found.filter((f) => !usedFound.has(f.id) && f.signed !== false);
+    return { items, orphans, found };
+  }
+  const SIG_ST = { signed: "وقّع", blank: "اسمه في الورقة بلا توقيع", absent: "لا يظهر اسمه في الأوراق", review: "يحتاج مراجعة" };
+  function sigUnsignedRows() { const o = sigCompute(); return o ? o.items.filter((x) => x.st === "absent" || x.st === "blank") : []; }
+  const sigHeads = () => ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "الحالة"];
+  const sigRowCells = (x) => [x.reg.name, x.reg.stu, x.reg.id, x.reg.phone, x.reg.group, x.reg.course, SIG_ST[x.st]];
+  function sigSheets() {
+    const o = sigCompute(); if (!o) return [];
+    const by = (st) => o.items.filter((x) => st.includes(x.st));
+    return [
+      { name: "لم يوقّعوا", heads: sigHeads(), rows: by(["absent", "blank"]).map(sigRowCells) },
+      { name: "تحتاج مراجعة", heads: ["الاسم المسجّل", "الاسم المقروء", "الهوية المقروءة", "الجوال المقروء", "درجة التشابه", "ملاحظة", "الدورة"], rows: by(["review"]).map((x) => [x.reg.name, x.found ? x.found.name : "", x.found ? x.found.nid || "" : "", x.found ? x.found.phone || "" : "", x.found ? Math.round(x.score * 100) + "%" : "", x.how, x.reg.course]) },
+      { name: "أسماء في الأوراق", heads: ["الاسم المقروء", "الهوية", "الجوال", "الورقة", "الحكم", "الثقة"], rows: o.orphans.map((f) => [f.name, f.nid || "", f.phone || "", f.file, f.signed === true ? "موقّع" : "غير محسوم", Math.round(f.conf * 100) + "%"]) },
+      { name: "وقّعوا", heads: sigHeads(), rows: by(["signed"]).map(sigRowCells) },
+    ].filter((x) => x.rows.length);
+  }
+  async function sigReadImages() {
+    const c = state.sig;
+    if (!c.files.length) throw new Error("أضف صور الأوراق أولاً.");
+    if (!App.ai || !App.ai.hasKey()) throw new Error("NO_KEY");
+    c.reading = true; c.prog = "جارٍ قراءة الصور…"; c.failed = []; render();
+    try {
+      const r = await App.centerSign.readSheets(c.files, { onProgress: (d, n) => { c.prog = "قُرئت " + d + " من " + n + " صورة…"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; } });
+      c.rows = r.rows.map((x) => Object.assign({ keep: true }, x)); c.failed = r.failed; c.titles = r.titles; c.manual = {};
+      if (!c.rows.length && !r.failed.length) state.resultError = "لم أجد أسماء في الصور. تأكد أن الصورة واضحة وتظهر فيها قائمة الأسماء.";
+      else state.resultError = "";
+    } finally { c.reading = false; c.prog = ""; render(); }
+  }
+  async function runSign() {
+    const c = state.sig;
+    if (!c.rows || !c.rows.length) { state.resultError = "اقرأ الصور أولاً، ثم اجلب المسجلين."; return render(); }
+    state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
+    try {
+      requireAgent15();
+      const cmds = sigCommands();
+      const results = await runCommands(cmds);
+      c.reg = sigRegistered(results);
+      if (!c.reg.length) throw new Error("لم أجد مسجلين في المرحلة المختارة. تحقق من المرحلة والمسار وحالة الطالب.");
+      c.manual = {};
+      const n = sigUnsignedRows().length;
+      ui.toast(n ? "⚠ " + ui.fmt(n) + " مسجّلاً لم يوقّعوا" : "كل المسجلين وقّعوا ✓");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  function sigView() {
+    const c = state.sig, ai = App.ai && App.ai.settings ? App.ai.settings() : {};
+    const hasKey = App.ai && App.ai.hasKey && App.ai.hasKey();
+    const provider = ai.provider === "claude" ? "Claude" : "Gemini";
+    const statusOpts = (filterField("status").options || []);
+    return `<section class="cc-card" id="cc-sig">
+      <header class="cc-card-h"><h3>مطابقة التوقيعات</h3><p>ارفع صور أوراق التوقيع، فيقرأ الذكاء الاصطناعي الأسماء ويحكم أيوجد توقيع، ثم تُقارَن بالمسجلين في المرحلة التي تختارها من «النطاق» لتعرف من لم يوقّع. للقراءة فقط، والمقارنة بطلب منك وحدك.</p></header>
+      <div class="cc-card-b">
+        <label class="cc-field cc-wide"><span>١. صور الأوراق (JPG أو PNG، أكثر من صورة)</span><input type="file" id="cc-sig-files" accept="image/*" multiple></label>
+        ${c.files.length ? `<div class="cc-sig-thumbs">${c.files.map((f, i) => `<figure><img src="${f.thumb}" alt="${esc(f.name)}"><figcaption>${esc(f.name)}</figcaption><button type="button" class="cc-link" data-cc="sig-rm" data-i="${i}">إزالة</button></figure>`).join("")}</div>` : ""}
+        <p class="cc-note">🔒 تُرسَل الصور إلى <b>${provider}</b> بمفتاحك لقراءتها فقط، ولا تُحفظ في تمكين ولا تُرفع إلى أي مكان آخر. وفيها أسماء متدربين.${hasKey ? "" : ' <b class="cc-bad">لا يوجد مفتاح ذكاء اصطناعي: أضفه من صفحة «المراسلات والتقارير» ← إعدادات الذكاء الاصطناعي.</b>'}</p>
+        <div class="cc-row"><button type="button" class="btn navy" data-cc="sig-read" ${c.files.length && !c.reading ? "" : "disabled"}>${c.reading ? "جارٍ القراءة…" : "٢. اقرأ الصور"}</button><span class="cc-note" id="cc-sig-prog">${esc(c.prog)}</span></div>
+        ${c.failed.length ? `<p class="cc-alert warn">تعذّرت قراءة ${ui.fmt(c.failed.length)} صورة: ${c.failed.map((x) => esc(x.name + " (" + x.error + ")")).join("، ")}</p>` : ""}
+        ${c.rows ? sigRowsEditor() : ""}
+        <div class="cc-grid"><label class="cc-field"><span>حالة الطالب في المقارنة</span><select data-sig="status"><option value="">كل الحالات</option>${statusOpts.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String(c.status) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></div>
+        <p class="cc-note">٣. اختر <b>المرحلة</b> (والمسار والمجموعة إن شئت) من شريط «النطاق» أعلاه، ثم اضغط «اجلب المسجلين وقارن».</p>
+      </div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-sig"))} أمر قراءة</b><span>${esc(scopeSummaryText())}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-sig" ${state.busy || !(c.rows && c.rows.length) ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب المسجلين وقارن"}</button></div></footer></section>`;
+  }
+  const scopeSummaryText = () => { const sc = scopeNow(); return [sc.stages.length ? "المراحل: " + sc.stages.join("، ") : "", sc.tracks.length ? "مسارات: " + trackNamesOf(sc.tracks).join("، ") : "", (state.groups || []).length ? "مجموعات: " + state.groups.join("، ") : ""].filter(Boolean).join(" · ") || "اختر النطاق"; };
+  function sigRowsEditor() {
+    const c = state.sig, rows = c.rows;
+    const signed = rows.filter((r) => r.keep !== false && r.signed === true).length, unsure = rows.filter((r) => r.keep !== false && (r.signed === null || r.conf < 0.6)).length;
+    return `<div class="cc-sig-rows"><h4>الأسماء المقروءة <small>${ui.fmt(rows.filter((r) => r.keep !== false).length)} اسماً · ${ui.fmt(signed)} موقّعاً${unsure ? " · " + ui.fmt(unsure) + " تحتاج نظرتك" : ""}</small></h4>
+      <p class="cc-note">راجع القراءة قبل المقارنة: صحّح الاسم، وفعّل «وقّع» إن رأيتَ توقيعاً لم يُلتقط، واحذف ما ليس متدرباً. السطور الصفراء قراءتها غير مؤكدة.</p>
+      <div class="cc-scroll"><table class="cc-table"><thead><tr><th>الاسم كما قُرئ</th><th>رقم الهوية</th><th>الجوال</th><th>وقّع</th><th>الثقة</th><th>الورقة</th><th></th></tr></thead><tbody>${rows.map((r, i) => r.keep === false ? "" : `<tr class="${r.signed === null || r.conf < 0.6 ? "cc-sig-unsure" : ""}"><td><input type="text" value="${esc(r.name)}" data-sig-name="${i}" aria-label="الاسم"></td><td><input type="text" inputmode="numeric" value="${esc(r.nid || "")}" data-sig-nid="${i}" aria-label="رقم الهوية" size="11"></td><td><input type="text" inputmode="numeric" value="${esc(r.phone || "")}" data-sig-phone="${i}" aria-label="الجوال" size="10"></td><td><input type="checkbox" data-sig-signed="${i}" ${r.signed === true ? "checked" : ""} aria-label="وقّع">${r.signed === null ? ' <small>؟</small>' : ""}</td><td>${Math.round(r.conf * 100)}%</td><td><small>${esc(r.file)}</small></td><td><button type="button" class="cc-link" data-cc="sig-del" data-i="${i}">حذف</button></td></tr>`).join("")}</tbody></table></div>
+      <div class="cc-row"><button type="button" class="btn secondary small" data-cc="sig-add">+ اسم ناقص</button></div></div>`;
+  }
+  function sigResult() {
+    const c = state.sig, o = sigCompute();
+    if (!o) return "";
+    const cnt = (st) => o.items.filter((x) => x.st === st).length;
+    const miss = o.items.filter((x) => x.st === "absent" || x.st === "blank"), review = o.items.filter((x) => x.st === "review");
+    const tbl = (k, items) => dataTable(k, sigHeads(), items.map(sigRowCells));
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> نتيجة المطابقة</h3>
+      ${miss.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(miss.length)}</b> من ${ui.fmt(o.items.length)} مسجّلاً لم يوقّعوا.</span><button type="button" class="btn secondary small" data-cc="sig-copy">نسخ قائمة غير الموقّعين</button></div>` : '<p class="cc-alert ok">✓ كل المسجلين وقّعوا.</p>'}
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.items.length)}</b> مسجّلاً</span><span class="cc-stat"><b>${ui.fmt(cnt("signed"))}</b> وقّعوا</span><span class="cc-stat"><b>${ui.fmt(cnt("absent"))}</b> لا يظهرون في الأوراق</span><span class="cc-stat"><b>${ui.fmt(cnt("blank"))}</b> بلا توقيع</span><span class="cc-stat"><b>${ui.fmt(review.length)}</b> تحتاج مراجعة</span><span class="cc-stat"><b>${ui.fmt(o.orphans.length)}</b> أسماء لا تطابق أحداً</span>
+        <button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div>
+      ${review.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>تحتاج مراجعتك</h4><span class="cc-badge">${ui.fmt(review.length)}</span></div></header><p class="cc-note">تشابه جزئي بين اسم مسجّل واسم مقروء. أكّد أو ارفض.</p>
+        <div class="cc-sig-rev">${review.map((x) => `<div class="cc-sig-r"><span><b>${esc(x.reg.name)}</b> ↔ ${x.found ? esc(x.found.name) : "—"} <small>${x.found ? Math.round(x.score * 100) + "%" + (x.found.signed === true ? " · موقّع" : x.found.signed === false ? " · بلا توقيع" : " · توقيع غير محسوم") + (x.how ? " · " + esc(x.how) : "") + (x.found.nid ? " · هوية " + esc(x.found.nid) : "") + (x.found.phone ? " · جوال " + esc(x.found.phone) : "") : ""}</small></span><span><button type="button" class="btn secondary small" data-cc="sig-ok" data-k="${esc(x.reg.key)}" data-f="${x.found ? esc(x.found.id) : ""}">نعم هو</button> <button type="button" class="btn secondary small" data-cc="sig-no" data-k="${esc(x.reg.key)}">ليس هو</button></span></div>`).join("")}</div></article>` : ""}
+      ${miss.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>لم يوقّعوا</h4><span class="cc-badge bad">${ui.fmt(miss.length)}</span></div></header>${tbl("sig-miss", miss)}</article>` : ""}
+      ${o.orphans.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>أسماء في الأوراق لا تطابق مسجّلاً في هذه المرحلة</h4><span class="cc-badge">${ui.fmt(o.orphans.length)}</span></div></header><p class="cc-note">قد تكون قراءة خاطئة أو متدرباً من مرحلة أخرى. إن كان أحدها لمسجّل فاختره:</p>
+        <div class="cc-sig-rev">${o.orphans.map((f) => `<div class="cc-sig-r"><span><b>${esc(f.name)}</b> <small>${f.signed === true ? "موقّع" : "غير محسوم"} · ${esc(f.file)}</small></span><select data-sig-assign="${esc(f.id)}"><option value="">— ليس من المسجلين —</option>${miss.map((x) => `<option value="${esc(x.reg.key)}">${esc(x.reg.name)}</option>`).join("")}</select></div>`).join("")}</div></article>` : ""}
+      <details class="cc-help"><summary>الذين وقّعوا (${ui.fmt(cnt("signed"))})</summary>${cnt("signed") ? tbl("sig-ok", o.items.filter((x) => x.st === "signed")) : '<p class="cc-note">لا أحد.</p>'}</details>
+      <p class="cc-note">القراءة بالذكاء الاصطناعي قد تخطئ في الأسماء المكتوبة بخط اليد أو الصور غير الواضحة، فراجع «تحتاج مراجعتك» قبل أن تعتمد القائمة. لا يُكتب شيء في نظام المركز.</p></section>`;
+  }
+
   function attView() {
     const c = state.att, today = ui.todayISO();
     return `<section class="cc-card" id="cc-att">
@@ -2575,10 +2720,10 @@
       ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
       ${settingsCard()}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
@@ -2653,15 +2798,15 @@
   }
   /* شريط التبويبات الأفقي: عناوين قصيرة في صف واحد مجمّعة، والشرح في التلميح */
   const MODE_GROUPS = [
-    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
+    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
     [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
     [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
   ];
-  const MODE_ICO = { attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const MODE_ICO = { sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
   const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" title="${esc(h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
-  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att }[mode] || state.sel);
+  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig }[mode] || state.sel);
   function scopeNow() {
     const c = scopeCfg(state.adding || state.proposal ? "ask" : state.mode);
     const byK = c === state.sel || c === state.mis;
@@ -2670,14 +2815,14 @@
   }
   function scopeSet(kind, value, on) {
     const upd = (c, key, v) => { const arr = (c[key] = c[key] || []); const at = arr.indexOf(v); if (on && at < 0) arr.push(v); else if (!on && at >= 0) arr.splice(at, 1); };
-    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att].forEach((c) => upd(c, "tracks", String(value)));
+    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig].forEach((c) => upd(c, "tracks", String(value)));
     else {
       [state.sel, state.mis].forEach((c) => upd(c, "stages", stageK(value)));
-      [state.sib, state.dq, state.grp, state.imp, state.att].forEach((c) => upd(c, "stages", value));
+      [state.sib, state.dq, state.grp, state.imp, state.att, state.sig].forEach((c) => upd(c, "stages", value));
     }
   }
   function scopeClear() {
-    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
     state.groups = [];
   }
   /* القوائم المكررة داخل التبويبات (المسارات/المراحل) تُخفى لأن الشريط يتولاها */
@@ -2971,6 +3116,15 @@
         } else if (act === "gclear") { scopeClear(); render(); return;
         } else if (act === "run-att") { return runAttend();
         } else if (act === "export-att") { const sh = attSheets("الحضور والغياب"); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => fmtSheet(wb.addWorksheet(x.name.slice(0, 31)), x.heads, x.rows)); return ui.download("الحضور والغياب " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        } else if (act === "sig-read") { try { return await sigReadImages(); } catch (e) { state.resultError = e.message === "NO_KEY" ? "أضف مفتاح الذكاء الاصطناعي أولاً (صفحة «المراسلات والتقارير» ← إعدادات الذكاء الاصطناعي)." : (e.message || String(e)); state.sig.reading = false; return render(); }
+        } else if (act === "run-sig") { return runSign();
+        } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
+        } else if (act === "sig-del") { const r = state.sig.rows[Number(b.dataset.i)]; if (r) r.keep = false; return render();
+        } else if (act === "sig-add") { state.sig.rows = state.sig.rows || []; state.sig.rows.push({ id: "m:" + Date.now(), file: "(أضفتَه)", name: "", nid: "", phone: "", signed: false, conf: 1, keep: true }); return render();
+        } else if (act === "sig-ok") { state.sig.manual[b.dataset.k] = b.dataset.f || "none"; return render();
+        } else if (act === "sig-no") { state.sig.manual[b.dataset.k] = "none"; return render();
+        } else if (act === "sig-copy") { const t = "*لم يوقّعوا (" + sigUnsignedRows().length + ")*\n" + sigUnsignedRows().map((x, i) => (i + 1) + ". " + x.reg.name + (x.reg.group ? " — " + x.reg.group : "")).join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
+        } else if (act === "export-sig") { const sh = sigSheets(); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => fmtSheet(wb.addWorksheet(x.name.slice(0, 31)), x.heads, x.rows)); return ui.download("مطابقة التوقيعات " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         } else if (act === "att-today") { return runAttend();
         } else if (act === "att-wa") { const e = attGroups()[Number(b.dataset.i)]; if (!e) return; return ui.copyText(attGroupText(e, state.att.out.lastDay)).then(() => ui.toast("نُسخ نص مجموعة " + e.track + (e.group ? " " + e.group : "")));
         } else if (act === "att-wa-all") { const day = state.att.out && state.att.out.lastDay; const t = attGroups().map((e) => attGroupText(e, day)).join("\n\n━━━━━━━━\n\n"); if (!t) return; return ui.copyText(t).then(() => ui.toast("نُسخت نصوص كل المجموعات"));
@@ -3163,6 +3317,20 @@
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
       if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }
+      if (t.id === "cc-sig-files") {
+        const files = [...(t.files || [])].filter((f) => /^image\//.test(f.type));
+        if (!files.length) return;
+        state.progress = "";
+        const add = [];
+        for (const f of files) { try { add.push(await App.centerSign.prepare(f)); } catch (e) { state.resultError = e.message; } }
+        state.sig.files.push(...add); t.value = ""; return render();
+      }
+      if (t.dataset.sig === "status") { state.sig.status = t.value; return render(); }
+      if (t.dataset.sigName !== undefined) { const r = state.sig.rows[Number(t.dataset.sigName)]; if (r) r.name = t.value; return; }
+      if (t.dataset.sigNid !== undefined) { const r = state.sig.rows[Number(t.dataset.sigNid)]; if (r) r.nid = t.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""); return; }
+      if (t.dataset.sigPhone !== undefined) { const r = state.sig.rows[Number(t.dataset.sigPhone)]; if (r) r.phone = t.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""); return; }
+      if (t.dataset.sigSigned !== undefined) { const r = state.sig.rows[Number(t.dataset.sigSigned)]; if (r) { r.signed = !!t.checked; } return render(); }
+      if (t.dataset.sigAssign !== undefined) { const k = t.value, fid = t.dataset.sigAssign; if (k) state.sig.manual[k] = fid; return render(); }
       if (t.dataset.att) { const k = t.dataset.att; state.att[k] = t.type === "checkbox" ? !!t.checked : (k === "thr" || k === "max" ? Number(t.value) || 0 : t.value); if (t.type === "checkbox" || k === "thr") render(); return; }
       if (t.dataset.sc) { scopeSet(t.dataset.sc, t.value, t.checked); render(); return; }
       if (t.hasAttribute("data-gf")) { const v = String(t.value), at = state.groups.indexOf(v); if (t.checked && at < 0) state.groups.push(v); else if (!t.checked && at >= 0) state.groups.splice(at, 1); render(); return; }

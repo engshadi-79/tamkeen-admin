@@ -1115,3 +1115,13 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 .cc-news-v { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .cc-sub { margin: 14px 0 6px; font-size: 13px; }
 @media (max-width: 720px) { .cc-news-row { grid-template-columns: minmax(0, 1fr); } }
+
+/* مطابقة أوراق التوقيع */
+.cc-sig-thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.cc-sig-thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.cc-sig-rows { display: grid; gap: 4px; margin: 8px 0; max-height: 360px; overflow: auto; }
+.cc-sig-rows > div { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+.cc-sig-unsure { background: rgba(240,180,41,.18); border-radius: 8px; }
+.cc-sig-rev { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cc-sig-r { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.cc-sig-prog { font-size: .85rem; color: var(--muted, #667); }

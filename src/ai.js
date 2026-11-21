@@ -238,6 +238,49 @@
     return run({ key, userContent, onText, signal, model: s.claudeModel, systemPrompt });
   }
 
+  /* ===== قراءة صور (رؤية): يرسل صوراً مع تعليمات ويعيد نصاً (JSON غالباً) ===== */
+  async function visionGemini({ key, prompt, images, system, signal }) {
+    const candidates = await geminiModels(key, signal);
+    const parts = [{ text: prompt }].concat(images.map((im) => ({ inline_data: { mime_type: im.mime, data: im.data } })));
+    let lastStatus = 0, lastBody = null;
+    for (let i = 0; i < candidates.length && i < 4; i++) {
+      if (i > 0) await wait(700, signal);
+      const res = await post(`${GEMINI_BASE}/models/${encodeURIComponent(candidates[i])}:generateContent`, { "content-type": "application/json", "x-goog-api-key": key }, {
+        systemInstruction: { parts: [{ text: system || "" }] },
+        contents: [{ role: "user", parts }],
+        generationConfig: { maxOutputTokens: 16384, temperature: 0, responseMimeType: "application/json" },
+      }, signal);
+      if (res.ok) {
+        geminiWorking = candidates[i];
+        const j = await res.json();
+        const cand = (j.candidates || [])[0] || {};
+        if (j.promptFeedback && j.promptFeedback.blockReason) throw new Error("رفض Gemini قراءة هذه الصورة.");
+        return ((cand.content && cand.content.parts) || []).map((x) => x.text || "").join("");
+      }
+      lastStatus = res.status; lastBody = await readError(res);
+      if (!RETRY_WITH_OTHER_MODEL(res.status)) break;
+    }
+    throw new Error(geminiError(lastStatus, lastBody));
+  }
+  async function visionClaude({ key, prompt, images, system, signal, model }) {
+    const content = images.map((im) => ({ type: "image", source: { type: "base64", media_type: im.mime, data: im.data } })).concat([{ type: "text", text: prompt }]);
+    const res = await post("https://api.anthropic.com/v1/messages", {
+      "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true",
+    }, { model: model || CLAUDE_MODEL, max_tokens: 16000, system: system || "", messages: [{ role: "user", content }] }, signal);
+    if (!res.ok) throw new Error(claudeError(res.status, await readError(res)));
+    const j = await res.json();
+    return (j.content || []).filter((x) => x.type === "text").map((x) => x.text).join("");
+  }
+  /* images: [{ mime, data(base64) }]؛ يستعمل المزوّد والمفتاح المضبوطين في الإعدادات */
+  async function vision({ images, prompt, system, signal, provider }) {
+    const s = loadSettings();
+    const use = provider || s.provider;
+    const key = use === "claude" ? s.claudeKey : s.geminiKey;
+    if (!key) throw new Error("NO_KEY");
+    const run = use === "claude" ? visionClaude : visionGemini;
+    return run({ key, prompt, images, system, signal, model: s.claudeModel });
+  }
+
   /* ترحيل المفتاح القديم المحفوظ على هذا الجهاز إلى إعدادات المركز، ليعمل عند الجميع */
   function migrateToShared() {
     if (!App.store) return;
@@ -253,5 +296,5 @@
     if (App.ui) App.ui.toast("صار مفتاح الذكاء الاصطناعي موحّداً لكل مستخدمي المركز");
   }
 
-  App.ai = { settings, saveSettings, hasKey, generate, migrateToShared, CLAUDE_MODELS };
+  App.ai = { settings, saveSettings, hasKey, generate, vision, migrateToShared, CLAUDE_MODELS };
 })(window.App = window.App || {});

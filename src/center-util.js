@@ -192,5 +192,68 @@
     });
     return { heads: outHeads, rows, matched: rows.filter((_, k) => oldBy.has(keyOf(cur.rows[k]))).length };
   }
-  App.ccUtil = { numOf, diffTables, clean, digits, cellStr, phoneNorm, lsGet, lsSet, maskCell, verNum, verLess, waIntl, waParts, fmtSheet, splitStudentCell, splitGroupCell, expandResult, pickBase, diffRows, compareLatest, rankCompliance, weeklyDue };
+  /* ===== مطابقة الأسماء العربية (قراءة الصور تخطئ حرفاً أو تُسقط جزءاً) ===== */
+  const arKey = (v) => String(v == null ? "" : v)
+    .replace(/[ً-ْـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىئ]/g, "ي").replace(/ؤ/g, "و")
+    .replace(/[٠-٩0-9.,،؛:()\[\]/\\_*#\-]+/g, " ").replace(/\s+/g, " ").trim();
+  const nameTokens = (v) => arKey(v).split(" ").map((t) => t.replace(/^ال(?=.{3,})/, "")).filter((t) => t && !/^(بن|ابن|بنت|ابو|ام)$/.test(t));
+  function lev(a, b) {
+    if (a === b) return 0;
+    const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[n];
+  }
+  function tokSim(a, b) {
+    if (a === b) return 1;
+    const short = a.length < b.length ? a : b, long = a.length < b.length ? b : a;
+    if (short.length >= 3 && long.startsWith(short)) return 0.88;
+    const r = 1 - lev(a, b) / Math.max(a.length, b.length);
+    return r >= 0.75 ? r : 0;
+  }
+  /* تشابه اسمين 0..1: أفضل تقابل رمز برمز (بلا تكرار)، ويُشترط أن يتطابق رمزان على الأقل متى كان في الاسم ثلاثة فأكثر */
+  function nameScore(x, y) {
+    const A = nameTokens(x), B = nameTokens(y);
+    if (!A.length || !B.length) return 0;
+    const used = new Set(); let sum = 0, strong = 0;
+    for (const t of A) {
+      let best = 0, at = -1;
+      B.forEach((u, i) => { if (used.has(i)) return; const sc = tokSim(t, u); if (sc > best) { best = sc; at = i; } });
+      if (at >= 0) { used.add(at); sum += best; if (best >= 0.85) strong++; }
+    }
+    const score = (2 * sum) / (A.length + B.length);
+    if (Math.min(A.length, B.length) >= 3 && strong < 2) return Math.min(score, 0.55);
+    if (Math.min(A.length, B.length) === 2 && strong < 1) return Math.min(score, 0.55);
+    return score;
+  }
+  /* يقابل المسجلين بما قُرئ من الأوراق: كل مسجّل بأفضل اسم مقروء (واحد لواحد). strict ≥ 0.8 مطابق، وبين 0.62 و0.8 «يحتاج مراجعة» */
+  /* يقابل المسجلين بالمقروء: الهوية أولاً ثم الجوال (تطابق تام = جزم)، ثم الاسم للباقين.
+     اتفاق الاسم مع اختلاف الهوية/الجوال المقروءين يُعلَّم «mismatch» ويحتاج مراجعة. */
+  function matchNames(registered, found, opts) {
+    const hi = (opts && opts.hi) || 0.8, lo = (opts && opts.lo) || 0.62;
+    const idOf = (x) => { const d = digits(x && x.id); return d.length >= 8 ? d : ""; };
+    const phOf = (x) => { const d = phoneNorm(x && x.phone); return d.length >= 9 ? d.slice(-9) : ""; };
+    const ri = new Set(), fj = new Set(), out = [];
+    const take = (i, j, score, sure, by, mismatch) => { ri.add(i); fj.add(j); out.push({ reg: i, found: j, score, sure, by, mismatch: !!mismatch }); };
+    ["id", "phone"].forEach((by) => {
+      const key = by === "id" ? idOf : phOf, idx = new Map();
+      found.forEach((f, j) => { const k = key(f); if (k && !fj.has(j) && !idx.has(k)) idx.set(k, j); });
+      registered.forEach((r, i) => { if (ri.has(i)) return; const k = key(r), j = k ? idx.get(k) : undefined; if (j !== undefined && !fj.has(j)) take(i, j, 1, true, by, false); });
+    });
+    const pairs = [];
+    registered.forEach((r, i) => { if (ri.has(i)) return; found.forEach((f, j) => { if (fj.has(j)) return; const sc = nameScore(r.name, f.name); if (sc >= lo) pairs.push({ i, j, sc }); }); });
+    pairs.sort((a, b) => b.sc - a.sc);
+    for (const p of pairs) {
+      if (ri.has(p.i) || fj.has(p.j)) continue;
+      const r = registered[p.i], f = found[p.j];
+      const mis = (idOf(r) && idOf(f) && idOf(r) !== idOf(f)) || (phOf(r) && phOf(f) && phOf(r) !== phOf(f));
+      take(p.i, p.j, p.sc, p.sc >= hi && !mis, "name", mis);
+    }
+    return { pairs: out, unmatchedReg: registered.map((_, i) => i).filter((i) => !ri.has(i)), unmatchedFound: found.map((_, j) => j).filter((j) => !fj.has(j)) };
+  }
+  App.ccUtil = { arKey, nameTokens, nameScore, matchNames, numOf, diffTables, clean, digits, cellStr, phoneNorm, lsGet, lsSet, maskCell, verNum, verLess, waIntl, waParts, fmtSheet, splitStudentCell, splitGroupCell, expandResult, pickBase, diffRows, compareLatest, rankCompliance, weeklyDue };
 })(window.App = window.App || {});
