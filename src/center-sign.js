@@ -70,7 +70,7 @@
   async function readSheet(image, opts) {
     const ai = (opts && opts.ai) || App.ai;
     if (!ai || !ai.vision) throw new Error("خدمة قراءة الصور غير متاحة");
-    const text = await ai.vision({ images: [{ mime: image.mime, data: image.data }], prompt: PROMPT, system: SYSTEM, signal: opts && opts.signal });
+    const text = await ai.vision({ images: [{ mime: image.mime, data: image.data }], prompt: PROMPT, system: SYSTEM, signal: opts && opts.signal, fast: !!(opts && opts.fast) });
     const j = parseJson(text);
     const rows = (Array.isArray(j.rows) ? j.rows : []).map((r, i) => normRow(r, image.name, i)).filter(Boolean);
     return { title: String(j.title || "").slice(0, 120), rows };

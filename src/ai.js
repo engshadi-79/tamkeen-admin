@@ -239,9 +239,10 @@
   }
 
   /* ===== قراءة صور (رؤية): يرسل صوراً مع تعليمات ويعيد نصاً (JSON غالباً) ===== */
-  const visionNoThink = new Set();
-  async function visionGemini({ key, prompt, images, system, signal }) {
-    const candidates = await geminiModels(key, signal);
+  const visionNoThink = new Set(), visionLast = { model: "", ms: 0 };
+  async function visionGemini({ key, prompt, images, system, signal, fast }) {
+    let candidates = await geminiModels(key, signal);
+    if (fast) candidates = [...candidates.filter((m) => /-lite$/.test(m)), ...candidates.filter((m) => !/-lite$/.test(m))];   // «سريع»: نماذج lite أولاً
     const parts = [{ text: prompt }].concat(images.map((im) => ({ inline_data: { mime_type: im.mime, data: im.data } })));
     let lastStatus = 0, lastBody = null;
     for (let i = 0; i < candidates.length && i < 4; i++) {
@@ -256,7 +257,8 @@
       let res = visionNoThink.has(candidates[i]) ? await post(url, hdr, mk(false), signal) : await post(url, hdr, mk(true), signal);
       if (!res.ok && res.status === 400 && !visionNoThink.has(candidates[i])) { visionNoThink.add(candidates[i]); res = await post(url, hdr, mk(false), signal); }
       if (res.ok) {
-        geminiWorking = candidates[i];
+        if (!fast) geminiWorking = candidates[i];
+        visionLast.model = candidates[i];
         const j = await res.json();
         const cand = (j.candidates || [])[0] || {};
         if (j.promptFeedback && j.promptFeedback.blockReason) throw new Error("رفض Gemini قراءة هذه الصورة.");
@@ -277,13 +279,14 @@
     return (j.content || []).filter((x) => x.type === "text").map((x) => x.text).join("");
   }
   /* images: [{ mime, data(base64) }]؛ يستعمل المزوّد والمفتاح المضبوطين في الإعدادات */
-  async function vision({ images, prompt, system, signal, provider }) {
+  async function vision({ images, prompt, system, signal, provider, fast }) {
     const s = loadSettings();
     const use = provider || s.provider;
     const key = use === "claude" ? s.claudeKey : s.geminiKey;
     if (!key) throw new Error("NO_KEY");
     const run = use === "claude" ? visionClaude : visionGemini;
-    return run({ key, prompt, images, system, signal, model: s.claudeModel });
+    const t0 = Date.now(); visionLast.model = use === "claude" ? (s.claudeModel || CLAUDE_MODEL) : "";
+    try { return await run({ key, prompt, images, system, signal, model: s.claudeModel, fast }); } finally { visionLast.ms = Date.now() - t0; }
   }
 
   /* ترحيل المفتاح القديم المحفوظ على هذا الجهاز إلى إعدادات المركز، ليعمل عند الجميع */
@@ -301,5 +304,5 @@
     if (App.ui) App.ui.toast("صار مفتاح الذكاء الاصطناعي موحّداً لكل مستخدمي المركز");
   }
 
-  App.ai = { settings, saveSettings, hasKey, generate, vision, migrateToShared, CLAUDE_MODELS };
+  App.ai = { settings, saveSettings, hasKey, generate, vision, visionLast, migrateToShared, CLAUDE_MODELS };
 })(window.App = window.App || {});

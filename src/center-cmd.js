@@ -36,7 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
-    sig: { tracks: [], stages: [], status: "", files: [], rows: null, reg: null, manual: {}, reading: false, prog: "", failed: [], titles: [] },
+    sig: { tracks: [], stages: [], status: "", files: [], fast: (() => { try { return localStorage.getItem("tamkeen:sig-fast") === "1"; } catch (e) { return false; } })(), rows: null, reg: null, manual: {}, reading: false, prog: "", failed: [], titles: [] },
     att: { alwaysToday: false, from: "", to: "", thr: 3, excused: false, max: 80, tracks: [], stages: [], out: null },   // الحضور والغياب
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1985,12 +1985,14 @@
     if (!c.files.length) throw new Error("أضف صور الأوراق أولاً.");
     if (!App.ai || !App.ai.hasKey()) throw new Error("NO_KEY");
     c.reading = true; c.prog = "جارٍ قراءة الصور…"; c.failed = []; render();
+    const t0 = Date.now(); let dn = 0, tot = c.files.length;
+    const tick = setInterval(() => { c.prog = (dn ? "قُرئت " + dn + " من " + tot + " صورة" : "جارٍ قراءة " + tot + " صورة") + " · " + Math.round((Date.now() - t0) / 1000) + " ث"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; }, 1000);
     try {
-      const r = await App.centerSign.readSheets(c.files, { onProgress: (d, n) => { c.prog = "قُرئت " + d + " من " + n + " صورة…"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; } });
+      const r = await App.centerSign.readSheets(c.files, { fast: c.fast, onProgress: (d, n) => { dn = d; tot = n; c.prog = "قُرئت " + d + " من " + n + " صورة…"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; } });
       c.rows = r.rows.map((x) => Object.assign({ keep: true }, x)); c.failed = r.failed; c.titles = r.titles; c.manual = {};
       if (!c.rows.length && !r.failed.length) state.resultError = "لم أجد أسماء في الصور. تأكد أن الصورة واضحة وتظهر فيها قائمة الأسماء.";
       else state.resultError = "";
-    } finally { c.reading = false; c.prog = ""; render(); }
+    } finally { clearInterval(tick); c.reading = false; c.prog = ""; const vl = App.ai && App.ai.visionLast; c.took = Math.round((Date.now() - t0) / 1000) + " ث" + (vl && vl.model ? " · " + vl.model : ""); render(); }
   }
   async function runSign() {
     const c = state.sig;
@@ -2019,7 +2021,7 @@
         <label class="cc-field cc-wide"><span>١. صور الأوراق (JPG أو PNG، أكثر من صورة)</span><input type="file" id="cc-sig-files" accept="image/*" multiple></label>
         ${c.files.length ? `<div class="cc-sig-thumbs">${c.files.map((f, i) => `<figure><img src="${f.thumb}" alt="${esc(f.name)}"><figcaption>${esc(f.name)}</figcaption><button type="button" class="cc-link" data-cc="sig-rm" data-i="${i}">إزالة</button></figure>`).join("")}</div>` : ""}
         <p class="cc-note">🔒 تُرسَل الصور إلى <b>${provider}</b> بمفتاحك لقراءتها فقط، ولا تُحفظ في تمكين ولا تُرفع إلى أي مكان آخر. وفيها أسماء متدربين.${hasKey ? "" : ' <b class="cc-bad">لا يوجد مفتاح ذكاء اصطناعي: أضفه من صفحة «المراسلات والتقارير» ← إعدادات الذكاء الاصطناعي.</b>'}</p>
-        <div class="cc-row"><button type="button" class="btn navy" data-cc="sig-read" ${c.files.length && !c.reading ? "" : "disabled"}>${c.reading ? "جارٍ القراءة…" : "٢. اقرأ الصور"}</button><span class="cc-note" id="cc-sig-prog">${esc(c.prog)}</span></div>
+        <div class="cc-row"><button type="button" class="btn navy" data-cc="sig-read" ${c.files.length && !c.reading ? "" : "disabled"}>${c.reading ? "جارٍ القراءة…" : "٢. اقرأ الصور"}</button><label class="cc-field" style="min-width:0"><span>السرعة</span><select data-sig="speed"><option value="" ${c.fast ? "" : "selected"}>دقيق (افتراضي)</option><option value="fast" ${c.fast ? "selected" : ""}>سريع (نموذج أخف)</option></select></label><span class="cc-note" id="cc-sig-prog">${esc(c.prog || (c.took ? "آخر قراءة: " + c.took : ""))}</span></div>
         ${c.failed.length ? `<p class="cc-alert warn">تعذّرت قراءة ${ui.fmt(c.failed.length)} صورة: ${c.failed.map((x) => esc(x.name + " (" + x.error + ")")).join("، ")}</p>` : ""}
         ${c.rows ? sigRowsEditor() : ""}
         <div class="cc-grid"><label class="cc-field"><span>حالة الطالب في المقارنة</span><select data-sig="status"><option value="">كل الحالات</option>${statusOpts.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String(c.status) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></div>
@@ -3326,6 +3328,7 @@
         for (const f of files) { try { add.push(await App.centerSign.prepare(f)); } catch (e) { state.resultError = e.message; } }
         state.sig.files.push(...add); t.value = ""; return render();
       }
+      if (t.dataset.sig === "speed") { state.sig.fast = t.value === "fast"; try { localStorage.setItem("tamkeen:sig-fast", state.sig.fast ? "1" : ""); } catch (e) { /* */ } return; }
       if (t.dataset.sig === "status") { state.sig.status = t.value; return render(); }
       if (t.dataset.sigName !== undefined) { const r = state.sig.rows[Number(t.dataset.sigName)]; if (r) r.name = t.value; return; }
       if (t.dataset.sigNid !== undefined) { const r = state.sig.rows[Number(t.dataset.sigNid)]; if (r) r.nid = t.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""); return; }
