@@ -563,5 +563,19 @@ async function suite() {
     agent.run = oldRun; c.state.mode = "report"; c.state.xl.out = null; c.state.xl.reg = null; c.state.xl.sheets = []; c.render();
   }
 
+  // تقرير الصباح: حضور اليوم + الناقصون، وملخص واحد
+  {
+    c.state.mode = "morning"; c.state.groups = []; c.state.att = Object.assign(c.state.att, { tracks: [], stages: [], out: null, alwaysToday: false, thr: 3 }); c.state.mis.out = null; c.state.morning.mis = true; c.state.wideLimit = 100000; c.state.wide = null; c.render();
+    ok("تبويب تقرير الصباح: زر البدء وخيار الناقصين", !!b.querySelector('[data-cc="run-morning"]') && !!b.querySelector('[data-morning="mis"]'), "view");
+    calls.length = 0; b.querySelector('[data-cc="run-morning"]').click();
+    for (let i = 0; i < 80 && !(c.state.att.out && c.state.mis.out) && !c.state.resultError; i++) await wait(200); await wait(300);
+    ok("تقرير الصباح: قُرئ الحضور بتاريخ اليوم والناقصون", c.state.att.from === App.ui.todayISO() && c.state.att.to === App.ui.todayISO() && !!c.state.att.out && !!c.state.mis.out, JSON.stringify({ f: c.state.att.from, a: !!c.state.att.out, m: !!c.state.mis.out, err: c.state.resultError }));
+    let morTxt = ""; const ocM = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { morTxt = x; } }, configurable: true });
+    const mb = b.querySelector('[data-cc="morning-copy"]'); if (mb) { mb.click(); await wait(200); }
+    ok("ملخص واتساب لتقرير الصباح", /^\*تقرير الصباح — /.test(morTxt) && /الغياب بحسب المجموعة|لا غياب/.test(morTxt) && /ناقصو التقييمات|أكملوا التقييمات/.test(morTxt), morTxt.slice(0, 200));
+    try { Object.defineProperty(navigator, "clipboard", { value: ocM, configurable: true }); } catch (e) { /* */ }
+    c.state.mode = "report"; c.state.att.out = null; c.state.mis.out = null; c.state.wideLimit = 0; c.render();
+  }
+
   return R;
 }
