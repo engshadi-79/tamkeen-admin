@@ -494,5 +494,40 @@ async function suite() {
     location.hash = "#dashboard";
   }
 
+  // مطابقة أوراق التوقيع: قراءة بالذكاء الاصطناعي (مُحاكاة) ← مراجعة ← مقارنة بالمسجلين ← قائمة من لم يوقّع
+  {
+    const oldVision = App.ai.vision, oldHas = App.ai.hasKey, oldRun = agent.run;
+    App.ai.hasKey = () => true;
+    App.ai.vision = async () => JSON.stringify({ title: "ورقة 1", rows: [
+      { name: "أحمد علي محمد", signed: true, confidence: 0.95 },
+      { name: "خالد سعيد", signed: false, confidence: 0.9 },
+      { name: "محمود يوسف حسن", signed: true, confidence: 0.9 },
+      { name: "اسم غريب تماما", signed: true, confidence: 0.9 },
+      { name: "سمي عمرو", id: "٢٠٢٠٢٠٢٠٢٠", signed: true, confidence: 0.9 },
+    ] });
+    agent.run = async (cmds) => ({ results: cmds.map((cm) => ({ type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية"], rows: [
+      { cells: ["أحمد علي محمد", "101", "G1"] }, { cells: ["خالد سعيد", "102", "G1"] }, { cells: ["سامي عمر", "103", "G1", "2020202020"] }, { cells: ["محمود يوسف حسين", "104", "G1"] },
+    ] })) });
+    c.state.mode = "sign"; c.state.groups = []; c.state.sig = Object.assign(c.state.sig, { tracks: ["1"], stages: [], status: "9", files: [{ name: "ورقة1.jpg", mime: "image/jpeg", data: "AAAA", thumb: "data:image/jpeg;base64,AAAA", w: 10, h: 10 }], rows: null, reg: null, manual: {} });
+    c.render();
+    ok("تبويب مطابقة التوقيعات: حقل الصور وزر القراءة", !!b.querySelector("#cc-sig-files") && !!b.querySelector('[data-cc="sig-read"]') && !!b.querySelector('[data-cc="run-sig"]'), "view");
+    b.querySelector('[data-cc="sig-read"]').click();
+    for (let i = 0; i < 40 && !c.state.sig.rows; i++) await wait(100); await wait(150);
+    ok("قراءة الصورة: خمسة أسماء في المحرّر", !!c.state.sig.rows && c.state.sig.rows.length === 5 && [...b.querySelectorAll("#cc-sig input")].some((i) => /أحمد علي محمد/.test(i.value)), JSON.stringify(c.state.sig.rows && c.state.sig.rows.length));
+    b.querySelector('[data-cc="run-sig"]').click();
+    for (let i = 0; i < 40 && !c.state.sig.reg; i++) await wait(100); await wait(300);
+    const sg = c.state.sig;
+    ok("المسجلون من نظام المركز: أربعة", !!sg.reg && sg.reg.length === 4, JSON.stringify(sg.reg && sg.reg.length) + " " + c.state.resultError);
+    let sgCopy = ""; const ocS = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { sgCopy = x; } }, configurable: true });
+    const unsigned = b.querySelector('[data-tblbox="sig-miss"]') ? b.querySelector('[data-tblbox="sig-miss"]').textContent : b.textContent;
+    ok("من لم يوقّع: خالد فقط (ورقته فارغة)؛ سامي طابقته الهوية رغم تشوّه اسمه", /خالد سعيد/.test(unsigned) && !/سامي عمر/.test(unsigned) && !/أحمد علي محمد/.test(unsigned), unsigned.replace(/\s+/g, " ").slice(0, 200));
+    ok("تقارب الأسماء (حسين/حسن) يُطابَق ولا يُعدّ غائباً", !/محمود يوسف حسين/.test(unsigned), "fuzzy");
+    const cp = b.querySelector('[data-cc="sig-copy"]'); if (cp) { cp.click(); await wait(150); }
+    ok("نسخ قائمة من لم يوقّعوا", /لم يوقّعوا/.test(sgCopy) && /خالد سعيد/.test(sgCopy) && sgCopy.includes("\n"), sgCopy.slice(0, 120));
+    try { Object.defineProperty(navigator, "clipboard", { value: ocS, configurable: true }); } catch (e) { /* */ }
+    ok("زر تنزيل Excel للمطابقة", !!b.querySelector('[data-cc="export-sig"]'), "xlsx");
+    App.ai.vision = oldVision; App.ai.hasKey = oldHas; agent.run = oldRun; c.state.mode = "report"; c.state.sig.rows = null; c.state.sig.reg = null; c.render();
+  }
+
   return R;
 }
