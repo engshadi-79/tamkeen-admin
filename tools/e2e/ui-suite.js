@@ -526,6 +526,15 @@ async function suite() {
     ok("نسخ قائمة من لم يوقّعوا", /لم يوقّعوا/.test(sgCopy) && /خالد سعيد/.test(sgCopy) && sgCopy.includes("\n"), sgCopy.slice(0, 120));
     try { Object.defineProperty(navigator, "clipboard", { value: ocS, configurable: true }); } catch (e) { /* */ }
     ok("زر تنزيل Excel للمطابقة", !!b.querySelector('[data-cc="export-sig"]'), "xlsx");
+    // اختيار كل المراحل (بعناوينها) يجب أن يُترجَم إلى دورات لا إلى خطأ «لا توجد دورة»
+    c.state.sig.tracks = []; c.state.sig.stages = ["المرحلة الأولى", "المرحلة الثانية", "المرحلة الثالثة"]; c.state.sig.reg = null; c.state.resultError = ""; c.render();
+    calls.length = 0; calls.plist = []; let sent = [];
+    const runB = agent.run; agent.run = async (cmds) => { sent = cmds.map((x) => x.params); return runB(cmds); };
+    c.state.wideLimit = 1000; c.state.wide = null;
+    b.querySelector('[data-cc="run-sig"]').click();
+    for (let i = 0; i < 40 && !c.state.sig.reg && !c.state.resultError; i++) await wait(100); await wait(200);
+    ok("كل المراحل: تُجلب المسجلون بلا خطأ «لا توجد دورة»", !/لا توجد دورة/.test(c.state.resultError || "") && !!c.state.sig.reg && c.state.sig.reg.length >= 1, JSON.stringify({ err: c.state.resultError, sent, wide: !!c.state.wide, busy: c.state.busy }));
+    agent.run = runB;
     App.ai.vision = oldVision; App.ai.hasKey = oldHas; agent.run = oldRun; c.state.mode = "report"; c.state.sig.rows = null; c.state.sig.reg = null; c.render();
   }
 
