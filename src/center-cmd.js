@@ -1919,7 +1919,8 @@
     const common = c.status ? { status: c.status } : {};
     const mk = (params, label) => ({ type: "list", label, params: Object.assign({}, params, common) });
     if (c.stages.length) {
-      const courses = courseOpts().filter((x) => c.stages.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track)));
+      const stageKeys = STAGES.filter((x) => c.stages.includes(x.t)).map((x) => x.k);
+      const courses = courseOpts().filter((x) => stageKeys.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track)));
       if (!courses.length) { if (soft) return []; throw new Error("لا توجد دورة تجمع المسار والمرحلة المختارين."); }
       return courses.map((x) => mk({ training_course_id: x.v }, x.t));
     }
