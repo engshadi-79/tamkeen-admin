@@ -19,6 +19,44 @@
 {"title":"عنوان الورقة أو التاريخ إن ظهر","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","signed":true,"confidence":0.0}]}
 حيث confidence رقم بين 0 و1 لثقتك في قراءة الاسم والحكم على التوقيع.`;
 
+  const TABLE_SYSTEM = `أنت تحوّل صور الجداول (كشوف أسماء، درجات، هويات، حضور) إلى بيانات منظمة، وتعيد JSON فقط.
+- أعد رؤوس الأعمدة كما تظهر في الصورة، ثم كل صف بنفس عدد الأعمدة وبالترتيب.
+- انقل النص والأرقام حرفياً بلا تصحيح ولا اجتهاد، والأرقام بالصيغة الإنجليزية 0-9.
+- الخلية الفارغة أو غير المقروءة اكتبها "" ولا تخترع قيماً.
+- تجاهل العناوين والأختام خارج الجدول.
+- الرد JSON وحده بلا شرح.`;
+  const TABLE_PROMPT = 'حوّل الجدول في الصورة وأعد JSON بهذا الشكل بالضبط: {"title":"عنوان الجدول إن ظهر","heads":["عمود1","عمود2"],"rows":[["قيمة","قيمة"]]}';
+
+  /* صورة جدول ← { title, heads, rows } (الصفوف تُوحَّد على عدد الرؤوس) */
+  async function readTable(image, opts) {
+    const ai = (opts && opts.ai) || App.ai;
+    if (!ai || !ai.vision) throw new Error("خدمة قراءة الصور غير متاحة");
+    const text = await ai.vision({ images: [{ mime: image.mime, data: image.data }], prompt: TABLE_PROMPT, system: TABLE_SYSTEM, signal: opts && opts.signal, fast: !!(opts && opts.fast) });
+    const j = parseJson(text);
+    const heads = (Array.isArray(j.heads) ? j.heads : []).map((h) => String(h == null ? "" : h).trim());
+    let rows = (Array.isArray(j.rows) ? j.rows : []).filter(Array.isArray).map((r) => r.map((c) => String(c == null ? "" : c).replace(/\s+/g, " ").trim()));
+    const n = Math.max(heads.length, ...rows.map((r) => r.length), 0);
+    while (heads.length < n) heads.push("عمود " + (heads.length + 1));
+    rows = rows.map((r) => { const o = r.slice(0, n); while (o.length < n) o.push(""); return o; }).filter((r) => r.some(Boolean));
+    return { name: image.name, title: String(j.title || "").slice(0, 120), heads, rows };
+  }
+  async function readTables(images, opts) {
+    const out = { tables: new Array(images.length), failed: [] };
+    let next = 0, done = 0;
+    const worker = async () => {
+      while (next < images.length) {
+        if (opts && opts.signal && opts.signal.aborted) return;
+        const k = next++, im = images[k];
+        try { out.tables[k] = await readTable(im, opts); }
+        catch (e) { if (e && e.message === "NO_KEY") throw e; out.failed.push({ name: im.name, error: (e && e.message) || String(e) }); }
+        done++; if (opts && opts.onProgress) opts.onProgress(done, images.length);
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    out.tables = out.tables.filter(Boolean);
+    return out;
+  }
+
   /* ملف صورة ← { mime, data(base64), thumb(dataURL صغيرة) } بعد تصغيره */
   function prepare(file) {
     return new Promise((resolve, reject) => {
@@ -100,5 +138,5 @@
     return out;
   }
 
-  App.centerSign = { prepare, readSheet, readSheets, parseJson, normRow, SYSTEM, PROMPT };
+  App.centerSign = { prepare, readSheet, readSheets, readTable, readTables, parseJson, normRow, SYSTEM, PROMPT };
 })(window.App = window.App || {});

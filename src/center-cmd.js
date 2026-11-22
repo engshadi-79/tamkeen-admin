@@ -36,6 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
+    img: { files: [], fast: false, tables: null, reading: false, prog: "", failed: [], took: "" },
     grad: { from: "", to: "", maxAbs: 3, minRate: 75, countExcused: false, requireEval: false, out: null },
     morning: { mis: true },
     xl: { tracks: [], stages: [], status: "", name: "", sheets: [], sheet: 0, map: {}, reg: null, out: null },
@@ -2227,6 +2228,64 @@
     return wb.xlsx.writeBuffer().then((b) => ui.download("جاهزية التخرج " + ui.todayISO() + ".xlsx", new Blob([b], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })));
   }
 
+  /* ===== صورة إلى جدول: كشف أو درجات أو هويات مصوّرة ← جدول يُنزَّل Excel أو يُقارَن بالمسجلين ===== */
+  function imgView() {
+    const c = state.img, ai = App.ai && App.ai.settings ? App.ai.settings() : {}, provider = ai.provider === "claude" ? "Claude" : "Gemini";
+    return `<section class="cc-card" id="cc-img">
+      <header class="cc-card-h"><h3>صورة إلى جدول</h3><p>صوّر كشف أسماء أو درجات أو هويات، فيقرأه الذكاء الاصطناعي جدولاً تراجعه وتنزّله Excel، أو ترسله مباشرة إلى «مقارنة ملف Excel» لمقارنته بالمسجلين.</p></header>
+      <div class="cc-card-b">
+        <label class="cc-field cc-wide"><span>١. صور الجداول (JPG أو PNG، صورة أو أكثر)</span><input type="file" id="cc-img-files" accept="image/*" multiple></label>
+        ${c.files.length ? `<div class="cc-sig-thumbs">${c.files.map((f, i) => `<figure><img src="${f.thumb}" alt="${esc(f.name)}"><figcaption>${esc(f.name)}</figcaption><button type="button" class="cc-link" data-cc="img-rm" data-i="${i}">إزالة</button></figure>`).join("")}</div>` : ""}
+        <p class="cc-note">🔒 تُرسَل الصور إلى <b>${provider}</b> بمفتاحك لقراءتها فقط، ولا تُحفظ في تمكين. قد تحوي أسماء وهويات متدربين، فاستعملها بحسب سياسة المركز.</p>
+        <div class="cc-row"><button type="button" class="btn navy" data-cc="img-read" ${c.files.length && !c.reading ? "" : "disabled"}>${c.reading ? "جارٍ القراءة…" : "٢. اقرأ الصور"}</button>
+          <label class="cc-field" style="min-width:0"><span>السرعة</span><select data-img="speed"><option value="" ${c.fast ? "" : "selected"}>دقيق (افتراضي)</option><option value="fast" ${c.fast ? "selected" : ""}>سريع (نموذج أخف)</option></select></label>
+          <span class="cc-note" id="cc-img-prog">${esc(c.prog || (c.took ? "آخر قراءة: " + c.took : ""))}</span></div>
+        ${c.failed.length ? `<p class="cc-alert warn">تعذّرت قراءة ${ui.fmt(c.failed.length)} صورة: ${c.failed.map((x) => esc(x.name + " (" + x.error + ")")).join("، ")}</p>` : ""}
+      </div>
+    </section>`;
+  }
+  async function imgRead() {
+    const c = state.img;
+    if (!c.files.length) throw new Error("أضف صور الجداول أولاً.");
+    if (!App.ai || !App.ai.hasKey()) throw new Error("NO_KEY");
+    c.reading = true; c.failed = []; c.prog = "جارٍ قراءة الصور…"; state.resultError = ""; render();
+    const t0 = Date.now(); let dn = 0, tot = c.files.length;
+    const tick = setInterval(() => { c.prog = (dn ? "قُرئت " + dn + " من " + tot : "جارٍ قراءة " + tot + " صورة") + " · " + Math.round((Date.now() - t0) / 1000) + " ث"; const el = document.getElementById("cc-img-prog"); if (el) el.textContent = c.prog; }, 1000);
+    try {
+      const r = await App.centerSign.readTables(c.files, { fast: c.fast, onProgress: (d, n) => { dn = d; tot = n; } });
+      c.tables = r.tables; c.failed = r.failed;
+      if (!c.tables.length && !r.failed.length) state.resultError = "لم أجد جدولاً في الصور.";
+    } finally { clearInterval(tick); c.reading = false; c.prog = ""; const vl = App.ai && App.ai.visionLast; c.took = Math.round((Date.now() - t0) / 1000) + " ث" + (vl && vl.model ? " · " + vl.model : ""); render(); }
+  }
+  /* جداول الصور المتطابقة الرؤوس تُدمَج في واحد؛ وإلا يبقى لكل صورة جدولها */
+  function imgMerged() {
+    const ts = (state.img.tables || []).filter((t) => t.rows.length);
+    if (ts.length > 1 && ts.every((t) => t.heads.length === ts[0].heads.length)) return [{ name: "كل الصور", title: ts.map((t) => t.name).join("، "), heads: ts[0].heads, rows: ts.flatMap((t) => t.rows) }];
+    return ts;
+  }
+  function imgResult() {
+    const c = state.img; if (!c.tables) return "";
+    const ts = imgMerged();
+    if (!ts.length) return '<section class="cc-results"><p class="cc-alert warn">لم تُقرأ أي صفوف من الصور.</p></section>';
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> الجدول المقروء</h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(ts.reduce((n, t) => n + t.rows.length, 0))}</b> صفاً</span><button type="button" class="btn secondary small" data-cc="export-img">تنزيل Excel</button><button type="button" class="btn secondary small" data-cc="img-xl">قارنه بالمسجلين ←</button></div>
+      <p class="cc-note">القراءة الآلية قد تخطئ في الأرقام والخط اليدوي، فراجع الجدول قبل الاعتماد عليه.</p>
+      ${ts.map((t, i) => `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>${esc(t.title || t.name)}</h4><span class="cc-badge">${ui.fmt(t.rows.length)}</span></div></header>${dataTable("img-" + i, t.heads, t.rows)}</article>`).join("")}</section>`;
+  }
+  function imgExport() {
+    const ts = imgMerged(); if (!ts.length) return;
+    const wb = new ExcelJS.Workbook(), used = new Set();
+    ts.forEach((t, i) => { let n = (t.name || "ورقة " + (i + 1)).replace(/[\\/?*[\]:]/g, " ").slice(0, 28) || "ورقة"; while (used.has(n)) n += "'"; used.add(n); fmtSheet(wb.addWorksheet(n), t.heads, t.rows); });
+    return wb.xlsx.writeBuffer().then((b) => ui.download("جدول من صورة " + ui.todayISO() + ".xlsx", new Blob([b], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })));
+  }
+  function imgToCompare() {
+    const ts = imgMerged(); if (!ts.length) return;
+    const c = state.xl;
+    c.sheets = ts.map((t) => ({ name: t.name, heads: t.heads, rows: t.rows })); c.sheet = 0; c.name = "من صورة"; c.out = null;
+    c.map = App.centerXl.detect(c.sheets[0].heads, c.sheets[0].rows);
+    state.mode = "xl"; state.resultError = ""; render();
+  }
+
   function attView() {
     const c = state.att, today = ui.todayISO();
     return `<section class="cc-card" id="cc-att">
@@ -2892,10 +2951,10 @@
       ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "img" ? imgView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "grad" ? gradResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "grad" ? gradResult() : mode === "img" ? imgResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
       ${settingsCard()}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
@@ -2970,11 +3029,11 @@
   }
   /* شريط التبويبات الأفقي: عناوين قصيرة في صف واحد مجمّعة، والشرح في التلميح */
   const MODE_GROUPS = [
-    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["morning", "تقرير الصباح", "حضور اليوم والناقصون في صفحة واحدة"], ["grad", "جاهزية التخرج", "من يستوفي شروط الحضور والتقييمات"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
+    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["morning", "تقرير الصباح", "حضور اليوم والناقصون في صفحة واحدة"], ["grad", "جاهزية التخرج", "من يستوفي شروط الحضور والتقييمات"], ["img", "صورة إلى جدول", "حوّل صورة كشف أو درجات إلى Excel"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
     [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
     [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
   ];
-  const MODE_ICO = { grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const MODE_ICO = { img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
   const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" title="${esc(h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
@@ -3293,6 +3352,10 @@
         } else if (act === "run-xl") { return runXl();
         } else if (act === "run-morning") { return runMorning();
         } else if (act === "run-grad") { return runGrad();
+        } else if (act === "img-read") { try { return await imgRead(); } catch (e) { state.resultError = e.message === "NO_KEY" ? "أضف مفتاح الذكاء الاصطناعي أولاً (صفحة «المراسلات والتقارير» ← الإعدادات)." : (e.message || String(e)); return render(); }
+        } else if (act === "img-rm") { state.img.files.splice(Number(b.dataset.i), 1); return render();
+        } else if (act === "export-img") { return imgExport();
+        } else if (act === "img-xl") { return imgToCompare();
         } else if (act === "export-grad") { return gradExport();
         } else if (act === "grad-copy") { const o = state.grad.out; if (!o) return; const no = o.rows.filter((g) => !g.ok); const t = "*غير مستوفين للتخرج (" + no.length + ")*\n" + no.map((g, i) => (i + 1) + ". " + g.s.name + (g.s.group ? " — " + g.s.group : "") + " (" + g.reasons.join("، ") + ")").join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
         } else if (act === "morning-copy") { const t = morningText(); if (!t) return; return ui.copyText(t).then(() => ui.toast("نُسخ تقرير الصباح"));
@@ -3502,6 +3565,14 @@
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
       if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }
+      if (t.id === "cc-img-files") {
+        const files = [...(t.files || [])].filter((f) => /^image\//.test(f.type));
+        if (!files.length) return;
+        const add = [];
+        for (const f of files) { try { add.push(await App.centerSign.prepare(f)); } catch (e) { state.resultError = e.message; } }
+        state.img.files.push(...add); t.value = ""; return render();
+      }
+      if (t.dataset.img === "speed") { state.img.fast = t.value === "fast"; return; }
       if (t.dataset.grad) { const k = t.dataset.grad; state.grad[k] = t.type === "checkbox" ? !!t.checked : (k === "from" || k === "to" ? t.value : t.value); return render(); }
       if (t.dataset.morning === "mis") { state.morning.mis = !!t.checked; return render(); }
       if (t.id === "cc-xl-file") {

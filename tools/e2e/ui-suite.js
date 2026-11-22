@@ -612,5 +612,20 @@ async function suite() {
     window.prompt = oldPrompt; c.state.saved = []; App.centerCmd.renderDash(); c.render();
   }
 
+  // صورة إلى جدول: قراءة (مُحاكاة) ← جدول ← تحويله إلى مقارنة Excel
+  {
+    const oldVision = App.ai.vision, oldHas = App.ai.hasKey;
+    App.ai.hasKey = () => true;
+    App.ai.vision = async () => JSON.stringify({ title: "كشف", heads: ["الاسم", "رقم الهوية", "الجوال"], rows: [["أحمد علي محمد", "1012345678", "0501112222"], ["ليلى حسن", "1099999999", "0503334444"], ["نورة خالد", "1066666666", "0507776666"]] });
+    c.state.mode = "img"; c.state.img = Object.assign(c.state.img, { files: [{ name: "كشف.jpg", mime: "image/jpeg", data: "AAAA", thumb: "data:image/jpeg;base64,AAAA", w: 10, h: 10 }], tables: null, failed: [] }); c.render();
+    ok("تبويب صورة إلى جدول: حقل الصور وزر القراءة", !!b.querySelector("#cc-img-files") && !!b.querySelector('[data-cc="img-read"]'), "view");
+    b.querySelector('[data-cc="img-read"]').click();
+    for (let i = 0; i < 40 && !c.state.img.tables; i++) await wait(100); await wait(200);
+    ok("الجدول المقروء يظهر بصفوفه الثلاثة", !!c.state.img.tables && c.state.img.tables[0].rows.length === 3 && !!b.querySelector('[data-tblbox="img-0"]') && /نورة خالد/.test(b.querySelector('[data-tblbox="img-0"]').textContent), JSON.stringify(c.state.img.tables && c.state.img.tables.length));
+    b.querySelector('[data-cc="img-xl"]').click(); await wait(200);
+    ok("«قارنه بالمسجلين»: ينتقل إلى مقارنة Excel ومعه الأعمدة المخمّنة", c.state.mode === "xl" && c.state.xl.sheets.length === 1 && c.state.xl.map.name === 0 && c.state.xl.map.id === 1 && c.state.xl.map.phone === 2, JSON.stringify({ m: c.state.mode, map: c.state.xl.map }));
+    App.ai.vision = oldVision; App.ai.hasKey = oldHas; c.state.mode = "report"; c.state.img.tables = null; c.state.img.files = []; c.state.xl.sheets = []; c.render();
+  }
+
   return R;
 }
