@@ -88,6 +88,7 @@
   const keyList = (raw) => [...new Set(String(raw || "").split(/[\s,;،]+/).map((k) => k.trim()).filter(Boolean))];
   const COOL_KEY = "tamkeen:gemini-cool";
   const keyTag = (k) => k.slice(-6);
+  let rrIdx = 0; const keyStats = {};   // rrIdx: عدّاد التناوب؛ keyStats: عدد الطلبات الناجحة لكل مفتاح (آخر 6 خانات)
   const coolMap = () => { try { return JSON.parse(localStorage.getItem(COOL_KEY) || "{}"); } catch (e) { return {}; } };
   const coolSet = (k, ms) => { const m = coolMap(); m[keyTag(k)] = Date.now() + ms; try { localStorage.setItem(COOL_KEY, JSON.stringify(m)); } catch (e) { /* تخزين غير متاح */ } };
   const isCool = (k) => (coolMap()[keyTag(k)] || 0) > Date.now();
@@ -99,10 +100,13 @@
   async function withGeminiKeys(raw, fn, started) {
     const keys = keyList(raw);
     if (!keys.length) throw new Error("NO_KEY");
-    const order = [...keys.filter((k) => !isCool(k)), ...keys.filter((k) => isCool(k))];
+    // توزيع بالتساوي: كل طلب يبدأ بمفتاح مختلف بالتناوب (round-robin) بين المفاتيح الصالحة، فتتوزع الصور على كل المفاتيح ويُستفاد من حدّ كل مفتاح معاً
+    const live = keys.filter((k) => !isCool(k)), cool = keys.filter((k) => isCool(k));
+    const at = live.length ? rrIdx++ % live.length : 0;
+    const order = [...live.slice(at), ...live.slice(0, at), ...cool];
     let last = null, failed = 0;
     for (const k of order) {
-      try { return await fn(k); }
+      try { const out = await fn(k); keyStats[keyTag(k)] = (keyStats[keyTag(k)] || 0) + 1; return out; }
       catch (e) {
         if (e && (e.name === "AbortError" || e.message === "NO_KEY")) throw e;
         if (started && started()) throw e;
@@ -338,5 +342,6 @@
     if (App.ui) App.ui.toast("صار مفتاح الذكاء الاصطناعي موحّداً لكل مستخدمي المركز");
   }
 
-  App.ai = { settings, saveSettings, hasKey, generate, vision, visionLast, keyList, _rotate: withGeminiKeys, migrateToShared, CLAUDE_MODELS };
+  App.ai = { settings, saveSettings, hasKey, generate, vision, visionLast, keyList, _rotate: withGeminiKeys, _setRR: (n) => { rrIdx = n; }, keyStats: () => Object.assign({}, keyStats), resetKeyStats: () => { Object.keys(keyStats).forEach((k) => delete keyStats[k]); },
+    keyCount: (provider) => { const s = loadSettings(); return (provider || s.provider) === "claude" ? 1 : Math.max(1, keyList(s.geminiKey).length); }, migrateToShared, CLAUDE_MODELS };
 })(window.App = window.App || {});
