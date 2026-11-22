@@ -2307,7 +2307,7 @@
     let fit = 5;
     try {
       for (let k = 6; k <= 36; k++) {
-        const pages = App.docRender.paginate(host, App.pledgeSheet.build(sample.slice(0, k), Object.assign({}, o, { perPage: k, byGroup: false })).blocks);
+        const pages = App.docRender.paginate(host, App.pledgeSheet.build(sample.slice(0, k), Object.assign({}, o, { perPage: k, split: "none" })).blocks);
         if (pages > 1) break;
         fit = k;
       }
@@ -2337,7 +2337,7 @@
           <label class="cc-chk"><input type="checkbox" data-pl="autoFit" ${o.autoFit ? "checked" : ""}> <span>عدد الصفوف يلائم الصفحة تلقائياً</span></label>
           <label class="cc-field"><span>حالة الطالب</span><select data-pledge="status">${(filterField("status").options || []).map((x) => `<option value="${esc(x.v)}" ${String(c.status) === String(x.v) ? "selected" : ""}>${esc(x.t)}</option>`).join("")}</select></label>
           <label class="cc-chk"><input type="checkbox" data-pl="repeatPreamble" ${o.repeatPreamble ? "checked" : ""}> <span>كرّر الديباجة في أعلى كل ورقة</span></label>
-          <label class="cc-chk"><input type="checkbox" data-pl="byGroup" ${o.byGroup ? "checked" : ""}> <span>ورقة مستقلة لكل مجموعة</span></label>
+          <label class="cc-field"><span>تقسيم الأوراق</span><select data-pl="split"><option value="track"${sel("track", o.split)}>بحسب المسار (كل المراحل والمجموعات معاً)</option><option value="group"${sel("group", o.split)}>بحسب المجموعة</option><option value="none"${sel("none", o.split)}>كشف واحد للجميع</option></select></label>
         </div>
         <p class="cc-note">الرقم الأول هو عدد الأوراق يحسبه التطبيق، والثاني رقم الورقة: مجموعة من خمس أوراق تُرقَّم (5-1) إلى (5-5). الورقة الوحيدة بلا رقم. الأسماء مرتبة أبجدياً.</p>
         <label class="cc-field cc-wide"><span>أو ارفع قائمة من Excel (أعمدة: الاسم، الهوية، وأيضاً المرحلة والمجموعة إن وُجدت)</span><input type="file" id="cc-pledge-file" accept=".xlsx"></label>
@@ -2359,19 +2359,21 @@
       const results = await runCommands(sigCommands(false, c));
       const reg = sigRegistered(results);
       if (!reg.length) throw new Error("لم أجد مسجلين في المرحلة المختارة. تحقق من المرحلة والمسار وحالة الطالب.");
-      c.students = reg.map((r) => { const g = grpCode(r.group) || ""; return { name: r.name, id: r.id, group: g, course: r.course, stage: stageOf(r.course) || stageFromGroup(g) || "" }; });
+      c.students = reg.map((r) => { const g = grpCode(r.group) || ""; return { name: r.name, id: r.id, group: g, course: r.course, track: pledgeTrackOf(r.course), stage: stageOf(r.course) || stageFromGroup(g) || "" }; });
       c.source = "نظام المركز";
       ui.toast("جُلب " + ui.fmt(c.students.length) + " طالباً");
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
   }
+  /* اسم المسار من عنوان الدورة: «مسار الحلاقة الرجالية - المرحلة الثالثة» ← «مسار الحلاقة الرجالية» */
+  const pledgeTrackOf = (course) => { const t = clean(course), m = t.match(/\s*[-–—]?\s*المرحلة\s*\S+/); return clean((m ? t.replace(m[0], "") : t).replace(/[-–—\s]+$/, "")); };
   async function pledgeFromFile(f) {
     const wb = await App.centerXl.readWorkbook(f);
     if (!wb.sheets.length) throw new Error("الملف فارغ.");
-    const sh = wb.sheets[0], m = App.centerXl.detect(sh.heads, sh.rows), iS = sh.heads.findIndex((h) => /مرحلة|stage/i.test(h));
+    const sh = wb.sheets[0], m = App.centerXl.detect(sh.heads, sh.rows), iS = sh.heads.findIndex((h) => /مرحلة|stage/i.test(h)), iT = sh.heads.findIndex((h) => /^(ال)?مسار|track/i.test(h));
     if (m.name < 0) throw new Error("لم أجد عمود الاسم في الملف.");
     const get = (r, i) => (i >= 0 ? clean(r[i]) : "");
-    state.pledge.students = sh.rows.map((r) => { const g = get(r, m.group); return { name: get(r, m.name), id: get(r, m.id), group: g, course: "", stage: get(r, iS) || stageFromGroup(g) || "" }; }).filter((s) => s.name);
+    state.pledge.students = sh.rows.map((r) => { const g = get(r, m.group); return { name: get(r, m.name), id: get(r, m.id), group: g, course: "", track: get(r, iT), stage: get(r, iS) || stageFromGroup(g) || "" }; }).filter((s) => s.name);
     state.pledge.source = "ملف " + f.name;
   }
   async function pledgeOutput(kind) {
@@ -3717,7 +3719,7 @@
       if (t.dataset.pl) {
         const k = t.dataset.pl, o = state.pledge.opts;
         o[k] = t.type === "checkbox" ? !!t.checked : t.value; pledgeSave();
-        if (k === "prefixMode" || t.type === "checkbox" || k === "perPage" || k === "preamble" || k === "title") render();
+        if (k === "prefixMode" || k === "split" || t.type === "checkbox" || k === "perPage" || k === "preamble" || k === "title") render();
         return;
       }
       if (t.dataset.grad) { const k = t.dataset.grad; state.grad[k] = t.type === "checkbox" ? !!t.checked : (k === "from" || k === "to" ? t.value : t.value); return render(); }

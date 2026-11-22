@@ -710,17 +710,17 @@ async function suite() {
     const fit = {};
     for (const k of [8, 9, 10, 11, 12, 13, 14, 15]) {
       const h = document.createElement("div"); h.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(h);
-      fit[k] = App.docRender.paginate(h, App.pledgeSheet.build(c.state.pledge.students.slice(0, k), { perPage: k, byGroup: false }).blocks); h.remove();
+      fit[k] = App.docRender.paginate(h, App.pledgeSheet.build(c.state.pledge.students.slice(0, k), { perPage: k, split: "none" }).blocks); h.remove();
     }
     ok("معايرة الصفوف في الورقة المطبوعة (صفحات لكل عدد)", true, JSON.stringify(fit));
     const dk = App.pledgeSheet.DEFAULTS.perPage, h2 = document.createElement("div"); h2.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(h2);
-    const pcd = App.docRender.paginate(h2, App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, byGroup: true }).blocks); h2.remove();
-    ok("الصفوف الافتراضية في الورقة تتّسع بلا فيض (كل ورقة تطبع صفحة واحدة)", pcd === App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, byGroup: true }).pages, { pcd, dk });
+    const pcd = App.docRender.paginate(h2, App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, split: "group" }).blocks); h2.remove();
+    ok("الصفوف الافتراضية في الورقة تتّسع بلا فيض (كل ورقة تطبع صفحة واحدة)", pcd === App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, split: "group" }).pages, { pcd, dk });
     // عدد الصفوف يلائم الصفحة تلقائياً: كل ورقة تُطبع صفحة واحدة بلا فيض، ويتغيّر مع طول الديباجة
     c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { autoFit: true }); c.render();
     const fit1 = c.state.pledge.fit;
     const hostA = document.createElement("div"); hostA.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(hostA);
-    const bl = App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students, c.state.pledge.students), Object.assign({}, c.state.pledge.opts, { perPage: fit1, byGroup: false }));
+    const bl = App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students, c.state.pledge.students), Object.assign({}, c.state.pledge.opts, { perPage: fit1, split: "none" }));
     const pcA = App.docRender.paginate(hostA, bl.blocks); hostA.remove();
     ok("الملاءمة التلقائية: صفوف الورقة تتّسع بلا فيض (كل ورقة صفحة)", fit1 >= 8 && pcA === bl.pages, { fit1, pcA, pages: bl.pages });
     ok("الخانة تعرض العدد المحسوب وتُعطَّل", b.querySelector('[data-pl="perPage"]').disabled && Number(b.querySelector('[data-pl="perPage"]').value) === fit1, b.querySelector('[data-pl="perPage"]').value);
