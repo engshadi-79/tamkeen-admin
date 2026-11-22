@@ -2566,28 +2566,45 @@
   /* الأعمدة: بيانات الطالب (مع المسار والمرحلة والمجموعة)، ثم عمود مستقل لكل نموذج، ثم عدد الناقص وملخّصه */
   const sigMatrixHeads = (m) => ["الاسم", "رقم الهوية", "الجوال", "المسار", "المرحلة", "المجموعة", ...m.forms, "عدد الناقص", "ينقصه"];
   const sigMatrixRow = (x) => [x.reg.name, x.reg.id, x.reg.phone, pledgeTrackOf(x.reg.course), stageOf(x.reg.course) || stageFromGroup(grpCode(x.reg.group) || "") || "", grpCode(x.reg.group) || x.reg.group, ...x.sts.map((s) => SIG_CELL[s]), x.miss.length, x.miss.length ? x.miss.join("، ") : x.rev.length ? "مكتمل (يحتاج مراجعة: " + x.rev.join("، ") + ")" : "مكتمل ✓"];
-  /* ===== رسائل واتساب بالنواقص: لكل طالب ناقص رسالة جاهزة بنواقصه، تُفتح في واتساب ويرسلها المستخدم بنفسه (رابط wa.me). لا إرسال تلقائي ===== */
-  const SIG_WA_KEY = "tamkeen:sig-wa-msg";
-  const SIG_WA_DEF = "السلام عليكم {الاسم}، تبيّن لنا أنك لم توقّع على: {النواقص}. نرجو مراجعة المركز للتوقيع في أقرب وقت. شكراً لتعاونك. مركز مسارات التمكين";
-  const sigWaTpl = () => { try { return localStorage.getItem(SIG_WA_KEY) || SIG_WA_DEF; } catch (e) { return SIG_WA_DEF; } };
-  function sigWaRows() {
-    const m = sigMatrix(); if (!m) return { rows: [], noPhone: 0 };
-    const tpl = sigWaTpl(), rows = []; let noPhone = 0;
-    m.rows.filter((x) => x.miss.length).forEach((x) => {
-      const num = waIntl(phoneNorm(x.reg.phone), state.wa.cc);
-      if (!num) { noPhone++; return; }
-      const msg = tpl.replace(/\{الاسم الكامل\}/g, x.reg.name).replace(/\{الاسم\}/g, x.reg.name.split(" ")[0] || x.reg.name).replace(/\{النواقص\}/g, x.miss.join("، ")).replace(/\{المسار\}/g, pledgeTrackOf(x.reg.course)).replace(/\{المجموعة\}/g, grpCode(x.reg.group) || x.reg.group || "");
-      rows.push({ x, num, msg, url: "https://wa.me/" + num + "?text=" + encodeURIComponent(msg) });
+  /* ===== رسالة واتساب بالنواقص: رسالة واحدة لكل مسار فيها كل طلابه الناقصين مرقّمين =====
+     «١- الاسم / المسار · المرحلة · المجموعة / ينقصه: النماذج». لا إرسال تلقائي: تُنسخ أو تُفتح في واتساب ويرسلها المستخدم بنفسه. */
+  const SIG_WA_HEAD_KEY = "tamkeen:sig-wa-head", SIG_WA_DETAIL_KEY = "tamkeen:sig-wa-detail", SIG_WA_MAX = 1800;
+  const SIG_WA_HEAD_DEF = "*نواقص التوقيع — {المسار} ({العدد})*";
+  const sigWaHead = () => { try { const v = localStorage.getItem(SIG_WA_HEAD_KEY); return v === null ? SIG_WA_HEAD_DEF : v; } catch (e) { return SIG_WA_HEAD_DEF; } };
+  const sigWaDetail = () => { try { return localStorage.getItem(SIG_WA_DETAIL_KEY) !== "0"; } catch (e) { return true; } };
+  function sigWaMsgs() {
+    const m = sigMatrix(); if (!m) return [];
+    const by = new Map();
+    m.rows.filter((x) => x.miss.length).forEach((x) => { const tr = (pledgeTrackOf(x.reg.course) || "").replace(/^مسار\s*/, "") || "بلا مسار"; (by.get(tr) || by.set(tr, []).get(tr)).push(x); });
+    const head = sigWaHead(), detail = sigWaDetail();
+    const stageOfX = (x) => stageOf(x.reg.course) || stageFromGroup(grpCode(x.reg.group) || "") || "";
+    return [...by.keys()].sort((p, q) => p.localeCompare(q, "ar")).map((tr) => {
+      const list = by.get(tr).slice().sort((p, q) => stageOfX(p).localeCompare(stageOfX(q), "ar") || String(grpCode(p.reg.group) || p.reg.group).localeCompare(String(grpCode(q.reg.group) || q.reg.group), "ar", { numeric: true }) || p.reg.name.localeCompare(q.reg.name, "ar"));
+      const entries = list.map((x, i) => (i + 1) + "- " + x.reg.name + (detail ? "\n   " + [tr, stageOfX(x), grpCode(x.reg.group) || x.reg.group].filter(Boolean).join(" · ") : "") + "\n   ينقصه: " + x.miss.join("، "));
+      const headText = (k, total) => head.replace(/\{المسار\}/g, tr).replace(/\{العدد\}/g, String(list.length)) + (total > 1 ? " — جزء " + k + "/" + total : "");
+      const full = (head ? headText(1, 1) + "\n\n" : "") + entries.join("\n");
+      // رسالة طويلة: تُقسَّم عند حدود الطلاب (لا يُقطع طالب بين جزأين) وتتكرر الترويسة في كل جزء
+      let parts = [full];
+      if (full.length > SIG_WA_MAX) {
+        const chunks = []; let cur = [], len = 0;
+        entries.forEach((en) => { if (cur.length && len + en.length > SIG_WA_MAX) { chunks.push(cur); cur = []; len = 0; } cur.push(en); len += en.length + 1; });
+        if (cur.length) chunks.push(cur);
+        parts = chunks.map((c, k) => (head ? headText(k + 1, chunks.length) + "\n\n" : "") + c.join("\n"));
+      }
+      return { tr, n: list.length, msg: full, parts };
     });
-    return { rows, noPhone };
   }
   function sigWaBlock() {
-    const w = sigWaRows();
-    return `<details class="cc-help cc-sigwa" open><summary><b>رسائل واتساب بالنواقص</b> — ${ui.fmt(w.rows.length)} طالباً بجوال صالح${w.noPhone ? " · " + ui.fmt(w.noPhone) + " ناقصاً بلا جوال صالح" : ""}</summary>
-      <label class="cc-field cc-wide"><span>نص الرسالة (المتغيرات: {الاسم} {الاسم الكامل} {النواقص} {المسار} {المجموعة})</span><textarea data-sigwa="tpl" rows="3">${esc(sigWaTpl())}</textarea></label>
-      <div class="cc-row"><button type="button" class="btn secondary small" data-cc="sigwa-copy-all" ${w.rows.length ? "" : "disabled"}>نسخ كل الرسائل</button><button type="button" class="btn secondary small" data-cc="sigwa-xlsx" ${w.rows.length ? "" : "disabled"}>تنزيل ملف الرسائل (Excel)</button><button type="button" class="btn secondary small" data-cc="sigwa-reset">النص الافتراضي</button></div>
-      <p class="cc-note">لا يُرسَل شيء تلقائياً: زر «واتساب» بجانب كل طالب يفتح محادثته برسالة جاهزة بنواقصه، وأنت تضغط إرسال بنفسك.</p>
-      ${w.rows.length ? `<div class="cc-sigwa-list">${w.rows.slice(0, 300).map((r, i) => `<div class="cc-sigwa-r"><span><b>${esc(r.x.reg.name)}</b> <small>${esc(r.num)} · ينقصه: ${esc(r.x.miss.join("، "))}</small></span><span><a class="btn secondary small" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(r.msg)}">واتساب</a> <button type="button" class="btn secondary small" data-cc="sigwa-copy" data-i="${i}">نسخ</button></span></div>`).join("")}</div>${w.rows.length > 300 ? `<p class="cc-note">يُعرض أول 300؛ الباقي في ملف Excel.</p>` : ""}` : '<p class="cc-note">لا طالب ناقص بجوال صالح.</p>'}
+    const ms = sigWaMsgs(), total = ms.reduce((n, x) => n + x.n, 0);
+    return `<details class="cc-help cc-sigwa" open><summary><b>رسالة واتساب بالنواقص</b> — ${ui.fmt(ms.length)} ${ms.length === 1 ? "مسار" : "مسارات"} · ${ui.fmt(total)} طالباً ناقصاً</summary>
+      <div class="cc-grid">
+        <label class="cc-field cc-wide"><span>سطر العنوان (المتغيرات: {المسار} {العدد}؛ اتركه فارغاً لحذفه)</span><input type="text" data-sigwa="head" value="${esc(sigWaHead())}"></label>
+        <label class="cc-chk"><input type="checkbox" data-sigwa="detail" ${sigWaDetail() ? "checked" : ""}> <span>اذكر المسار والمرحلة والمجموعة تحت كل اسم</span></label>
+      </div>
+      <div class="cc-row"><button type="button" class="btn secondary small" data-cc="sigwa-copy-all" ${ms.length ? "" : "disabled"}>نسخ رسائل كل المسارات</button><button type="button" class="btn secondary small" data-cc="sigwa-xlsx" ${ms.length ? "" : "disabled"}>تنزيل Excel</button></div>
+      <p class="cc-note">رسالة واحدة لكل مسار. لا يُرسَل شيء تلقائياً: انسخ الرسالة أو افتحها في واتساب (تختار المحادثة بنفسك) ثم أرسلها.</p>
+      ${ms.length ? ms.map((x, i) => `<div class="cc-sigwa-card"><div class="cc-sigwa-h"><b>${esc(x.tr)}</b> <span class="cc-badge bad">${ui.fmt(x.n)}</span></div><pre class="cc-sigwa-pre" dir="rtl">${esc(x.msg)}</pre>
+        <div class="cc-row"><button type="button" class="btn secondary small" data-cc="sigwa-copy" data-i="${i}">نسخ الرسالة</button>${x.parts.map((pt, k) => `<a class="btn secondary small" href="https://wa.me/?text=${encodeURIComponent(pt)}" target="_blank" rel="noopener">واتساب${x.parts.length > 1 ? " (" + (k + 1) + "/" + x.parts.length + ")" : ""}</a>`).join("")}</div></div>`).join("") : '<p class="cc-note">لا طالب ناقص.</p>'}
     </details>`;
   }
   function sigMatrixBlock() {
@@ -3720,10 +3737,9 @@
         } else if (act === "grad-copy") { const o = state.grad.out; if (!o) return; const no = o.rows.filter((g) => !g.ok); const t = "*غير مستوفين للتخرج (" + no.length + ")*\n" + no.map((g, i) => (i + 1) + ". " + g.s.name + (g.s.group ? " — " + g.s.group : "") + " (" + g.reasons.join("، ") + ")").join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
         } else if (act === "morning-copy") { const t = morningText(); if (!t) return; return ui.copyText(t).then(() => ui.toast("نُسخ تقرير الصباح"));
         } else if (act === "export-xl") { return xlExport();
-        } else if (act === "sigwa-copy") { const r = sigWaRows().rows[Number(b.dataset.i)]; if (!r) return; return ui.copyText(r.msg).then(() => ui.toast("نُسخت رسالة " + r.x.reg.name.split(" ")[0]));
-        } else if (act === "sigwa-copy-all") { const rs = sigWaRows().rows; if (!rs.length) return; return ui.copyText(rs.map((r) => "📱 " + r.x.reg.name + " — " + r.num + "\n" + r.msg).join("\n\n————————\n\n")).then(() => ui.toast("نُسخت " + ui.fmt(rs.length) + " رسالة"));
-        } else if (act === "sigwa-reset") { try { localStorage.removeItem(SIG_WA_KEY); } catch (e) { /* */ } return render();
-        } else if (act === "sigwa-xlsx") { const rs = sigWaRows().rows; if (!rs.length) return; const wb = new ExcelJS.Workbook(); fmtSheet(wb.addWorksheet("رسائل النواقص"), ["الاسم", "الجوال", "المسار", "المجموعة", "ينقصه", "الرسالة", "رابط واتساب"], rs.map((r) => [r.x.reg.name, r.num, pledgeTrackOf(r.x.reg.course), grpCode(r.x.reg.group) || r.x.reg.group, r.x.miss.join("، "), r.msg, r.url])); return ui.download("رسائل نواقص التوقيع " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        } else if (act === "sigwa-copy") { const x = sigWaMsgs()[Number(b.dataset.i)]; if (!x) return; return ui.copyText(x.msg).then(() => ui.toast("نُسخت رسالة " + x.tr));
+        } else if (act === "sigwa-copy-all") { const ms = sigWaMsgs(); if (!ms.length) return; return ui.copyText(ms.map((x) => x.msg).join("\n\n————————\n\n")).then(() => ui.toast("نُسخت رسائل " + ui.fmt(ms.length) + " مسارات"));
+        } else if (act === "sigwa-xlsx") { const ms = sigWaMsgs(); if (!ms.length) return; const wb = new ExcelJS.Workbook(); fmtSheet(wb.addWorksheet("رسائل المسارات"), ["المسار", "عدد الطلاب", "الرسالة"], ms.map((x) => [x.tr, x.n, x.msg])); return ui.download("رسائل نواقص التوقيع " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         } else if (act === "sig-copy-miss") { const m = sigMatrix(); if (!m) return; const lack = m.rows.filter((x) => x.miss.length); const t = "*ناقصو التوقيع (" + lack.length + " من " + m.rows.length + ")*\n" + lack.map((x, i) => (i + 1) + ". " + x.reg.name + " — ينقصه: " + x.miss.join("، ")).join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت قائمة الناقصين"));
         } else if (act === "sig-clear") { if (!window.confirm("تُمسح الجلسة المحفوظة (المقروء من الصور والمسجلون المجلوبون ونتائج البحث) ولا يمكن التراجع. متابعة؟")) return; sigClear(); return render();
         } else if (act === "sig-lookup") { return runSigLookup();
@@ -3981,7 +3997,8 @@
       if (t.dataset.sig === "batch") { state.sig.batch = Number(t.value) || 1; try { localStorage.setItem("tamkeen:sig-batch", String(state.sig.batch)); } catch (e) { /* */ } return; }
       if (t.dataset.sig === "speed") { state.sig.fast = t.value === "fast"; try { localStorage.setItem("tamkeen:sig-fast", state.sig.fast ? "1" : ""); } catch (e) { /* */ } return; }
       if (t.dataset.sig === "status") { state.sig.status = t.value; return render(); }
-      if (t.dataset.sigwa === "tpl") { try { localStorage.setItem(SIG_WA_KEY, t.value); } catch (e) { /* */ } return render(); }
+      if (t.dataset.sigwa === "head") { try { localStorage.setItem(SIG_WA_HEAD_KEY, t.value); } catch (e) { /* */ } return render(); }
+      if (t.dataset.sigwa === "detail") { try { localStorage.setItem(SIG_WA_DETAIL_KEY, t.checked ? "1" : "0"); } catch (e) { /* */ } return render(); }
       if (t.dataset.sig === "form") { state.sig.formName = t.value; return; }
       if (t.dataset.sigFname !== undefined) { sigRenameForm(t.dataset.sigFname, t.value); sigSaveSoon(); return render(); }
       if (t.dataset.sigForm !== undefined) { const r = state.sig.rows[Number(t.dataset.sigForm)]; if (r) r.form = clean(t.value); sigSaveSoon(); return render(); }

@@ -882,14 +882,23 @@ async function suite() {
     ok("Excel: عمود مستقل لكل نموذج، قبل «عدد الناقص» و«ينقصه»", mh.heads.indexOf("تعهد الحقيبة") > iG && mh.heads.indexOf("كشف حضور") > iG && mh.heads.indexOf("كشف حضور") < iN && iN < iM, mh.heads);
     const sam = App.centerCmd._sig.sheets()[0].rows.find((r) => r[0] === "سامي عمر");
     ok("صف سامي: مسار ومجموعة، ونموذجان ناقصان في عمودين مستقلين، وعددهما 2", !!sam && sam[iG] === "G1" && String(sam[iT]).length > 0 && /ناقص/.test(sam[mh.heads.indexOf("تعهد الحقيبة")]) && /ناقص/.test(sam[mh.heads.indexOf("كشف حضور")]) && sam[iN] === 2, sam);
-    // رسائل واتساب بالنواقص
-    const wl = [...b.querySelectorAll(".cc-sigwa-r a")];
-    ok("رسالة واتساب لكل ناقص بجوال صالح (سامي وخالد)", wl.length === 2 && wl.every((x) => /^https:\/\/wa\.me\/\d+\?text=/.test(x.href)), wl.map((x) => x.href.slice(0, 40)));
-    ok("الرسالة بنواقص الطالب والاسم الأول، والرابط يفتح في تبويب جديد بلا إرسال تلقائي", wl.every((x) => x.target === "_blank" && /rel="noopener"|noopener/.test(x.rel)) && wl.some((x) => /خالد/.test(decodeURIComponent(x.href)) && /كشف حضور/.test(decodeURIComponent(x.href))) && wl.some((x) => /سامي/.test(decodeURIComponent(x.href)) && /تعهد الحقيبة/.test(decodeURIComponent(x.href)) && /كشف حضور/.test(decodeURIComponent(x.href))), wl.map((x) => decodeURIComponent(x.href).slice(0, 140)));
-    ok("أحمد المكتمل لا رسالة له", !wl.some((x) => /أحمد/.test(decodeURIComponent(x.href))), "no-complete");
-    const ta2 = b.querySelector('[data-sigwa="tpl"]'); ta2.value = "مرحباً {الاسم الكامل} — ناقصك: {النواقص}"; ta2.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);
-    ok("تعديل نص الرسالة يُحفظ ويُطبَّق", [...b.querySelectorAll(".cc-sigwa-r a")].some((x) => /مرحباً خالد سعيد — ناقصك: كشف حضور/.test(decodeURIComponent(x.href))) && /مرحباً/.test(localStorage.getItem("tamkeen:sig-wa-msg") || ""), localStorage.getItem("tamkeen:sig-wa-msg"));
-    localStorage.removeItem("tamkeen:sig-wa-msg"); c.render(); await wait(100);
+    // رسالة واتساب واحدة لكل مسار فيها طلابه الناقصون مرقّمين
+    const cards = [...b.querySelectorAll(".cc-sigwa-card")], pre = cards[0] && cards[0].querySelector(".cc-sigwa-pre");
+    ok("رسالة واحدة للمسار (كل المسجلين في مسار واحد)", cards.length === 1 && !b.querySelector(".cc-sigwa-r"), cards.length);
+    ok("صيغة الرسالة: ترقيم، ثم المسار · المرحلة · المجموعة، ثم «ينقصه»", !!pre && /^\*نواقص التوقيع — الحلاقة الرجالية \(2\)\*/.test(pre.textContent) && /1- خالد سعيد\n {3}الحلاقة الرجالية · المرحلة الثانية · G1\n {3}ينقصه: كشف حضور/.test(pre.textContent) && /2- سامي عمر\n {3}الحلاقة الرجالية · المرحلة الثانية · G1\n {3}ينقصه: (تعهد الحقيبة، كشف حضور)/.test(pre.textContent) && !/أحمد علي/.test(pre.textContent), pre && pre.textContent);
+    const wl = [...b.querySelectorAll(".cc-sigwa-card a")];
+    ok("زر واتساب يفتح الرسالة جاهزة في تبويب جديد بلا إرسال تلقائي", wl.length === 1 && /^https:\/\/wa\.me\/\?text=/.test(wl[0].href) && wl[0].target === "_blank" && /خالد سعيد/.test(decodeURIComponent(wl[0].href)), wl.map((x) => x.href.slice(0, 50)));
+    // نسخ رسالة المسار
+    let cpw = ""; const ocW = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { cpw = x; } }, configurable: true });
+    const bw = b.querySelector('[data-cc="sigwa-copy"]'); if (bw) { bw.click(); await wait(200); }
+    ok("نسخ رسالة المسار يعطي النص نفسه", cpw === (pre && pre.textContent), cpw.slice(0, 60));
+    try { Object.defineProperty(navigator, "clipboard", { value: ocW, configurable: true }); } catch (e) { /* */ }
+    // تعديل العنوان وإخفاء التفاصيل
+    const hd = b.querySelector('[data-sigwa="head"]'); hd.value = "تذكير: {المسار}"; hd.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);
+    ok("العنوان المعدّل يظهر ويُحفظ", /^تذكير: الحلاقة الرجالية\n/.test(b.querySelector(".cc-sigwa-pre").textContent) && localStorage.getItem("tamkeen:sig-wa-head") === "تذكير: {المسار}", localStorage.getItem("tamkeen:sig-wa-head"));
+    const dt = b.querySelector('[data-sigwa="detail"]'); dt.checked = false; dt.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);
+    ok("إخفاء المسار والمرحلة والمجموعة تحت الأسماء", !/المرحلة الثانية/.test(b.querySelector(".cc-sigwa-pre").textContent) && /1- خالد سعيد\n {3}ينقصه: كشف حضور/.test(b.querySelector(".cc-sigwa-pre").textContent), b.querySelector(".cc-sigwa-pre").textContent);
+    localStorage.removeItem("tamkeen:sig-wa-head"); localStorage.removeItem("tamkeen:sig-wa-detail"); c.render(); await wait(100);
     let cpm = ""; const ocP = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { cpm = x; } }, configurable: true });
     const cb = b.querySelector('[data-cc="sig-copy-miss"]'); if (cb) { cb.click(); await wait(200); }
     ok("نسخ قائمة الناقصين: لكل طالب ما ينقصه", /^\*ناقصو التوقيع \(2 من 3\)/.test(cpm) && /سامي عمر — ينقصه: .*كشف حضور/.test(cpm) && /خالد سعيد — ينقصه: كشف حضور/.test(cpm) && !/أحمد علي محمد —/.test(cpm), cpm);
