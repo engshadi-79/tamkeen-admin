@@ -165,7 +165,10 @@
         if (opts && opts.onProgress) opts.onProgress(done, images.length);
       }
     };
-    await Promise.all([worker(), worker(), worker(), worker()]);
+    // عدد الطلبات المتوازية يتناسب مع عدد المفاتيح (لكل مفتاح حدّه): مفتاحان فأكثر ← طلبان لكل مفتاح، بسقف 12
+    const ai0 = (opts && opts.ai) || App.ai, kc = ai0 && ai0.keyCount ? ai0.keyCount() : 1;
+    const W = Math.min(12, Math.max(4, kc * 2));
+    await Promise.all(Array.from({ length: Math.min(W, groups.length) || 1 }, () => worker()));
     // ما لم يُقرأ بسبب الحد اليومي يُسجَّل غير مقروء
     if (out.quota) { const have = new Set(out.failed.map((x) => x.name)); images.forEach((im) => { if (!have.has(im.name) && !out.rows.some((r) => r.file === im.name)) out.failed.push({ name: im.name, error: "حد الاستخدام اليومي" }); }); }
     return out;

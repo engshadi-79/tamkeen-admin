@@ -2116,8 +2116,9 @@
     if (!pending.length) { c.files = []; state.resultError = "هذه الصور سبق قراءتها في الجلسة الحالية، فلم أقرأها مرة ثانية."; return render(); }
     if (skipped) ui.toast("تُجوِّزت " + ui.fmt(skipped) + " صورة سبق قراءتها");
     c.reading = true; c.prog = "جارٍ قراءة الصور…"; c.failed = []; render();
+    if (App.ai && App.ai.resetKeyStats) App.ai.resetKeyStats();
     const t0 = Date.now(); let dn = 0, tot = pending.length;
-    const tick = setInterval(() => { c.prog = (dn ? "قُرئت " + dn + " من " + tot + " صورة" : "جارٍ قراءة " + tot + " صورة") + " · " + Math.round((Date.now() - t0) / 1000) + " ث"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; }, 1000);
+    const tick = setInterval(() => { c.prog = (dn ? "قُرئت " + dn + " من " + tot + " صورة" : "جارٍ قراءة " + tot + " صورة" + (App.ai && App.ai.keyCount && App.ai.keyCount() > 1 ? " بـ " + App.ai.keyCount() + " مفاتيح" : "")) + " · " + Math.round((Date.now() - t0) / 1000) + " ث"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; }, 1000);
     try {
       const r = await App.centerSign.readSheets(pending, { fast: c.fast, batch: c.batch, onProgress: (d, n) => { dn = d; tot = n; c.prog = "قُرئت " + d + " من " + n + " صورة…"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; } });
       const failedNames = new Set(r.failed.map((x) => x.name)), keyOf = new Map(pending.map((f) => [f.name, f.key]));
@@ -2130,7 +2131,12 @@
       if (r.quota) state.resultError = QUOTA_HELP(add.length, r.failed.length);
       else if (!add.length && !r.failed.length) state.resultError = "لم أجد أسماء في الصور. تأكد أن الصورة واضحة وتظهر فيها قائمة الأسماء.";
       else state.resultError = "";
-    } finally { clearInterval(tick); c.reading = false; c.prog = ""; const vl = App.ai && App.ai.visionLast; c.took = Math.round((Date.now() - t0) / 1000) + " ث" + (vl && vl.model ? " · " + vl.model : ""); render(); }
+    } finally { clearInterval(tick); c.reading = false; c.prog = ""; const vl = App.ai && App.ai.visionLast; c.took = Math.round((Date.now() - t0) / 1000) + " ث" + (vl && vl.model ? " · " + vl.model : "") + sigKeysNote(); render(); }
+  }
+  /* توزيع الطلبات على المفاتيح بعد القراءة، مثل « · 3 مفاتيح (4/4/3 طلبات)» */
+  function sigKeysNote() {
+    const st = App.ai && App.ai.keyStats ? Object.values(App.ai.keyStats()) : [], n = App.ai && App.ai.keyCount ? App.ai.keyCount() : 1;
+    return n > 1 && st.length ? " · " + n + " مفاتيح (" + st.sort((a, b) => b - a).join("/") + " طلبات)" : "";
   }
   async function runSigLookup() {
     const c = state.sig;
