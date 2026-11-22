@@ -405,6 +405,20 @@
   const STICKY_KEY = "tamkeen-admin:conv-sticky";
   const getSticky = () => { try { return JSON.parse(localStorage.getItem(STICKY_KEY)) || {}; } catch (e) { return {}; } };
   const setSticky = (k, v) => { try { const o = getSticky(); o[k] = v; localStorage.setItem(STICKY_KEY, JSON.stringify(o)); } catch (e) { /* وضع التصفح الخاص */ } };
+  /* إعدادات توليد تواريخ الحضور تُحفظ على هذا الجهاز وتعود في كل مرة، وتُعدَّل متى شئت.
+     أيام المجموعات تُحفظ مجمَّعة لكل المجموعات التي ضُبطت قبلاً، فتعود عند رجوع المجموعة في ملف آخر. */
+  const savedDates = () => { const d = getSticky().dates; return d && typeof d === "object" ? d : {}; };
+  function saveDates() {
+    const old = savedDates();
+    setSticky("dates", { enabled: !!state.datesEnabled, start: state.datesStart || "", end: state.datesEnd || "", weekdays: state.datesWeekdays || [], gdays: Object.assign({}, old.gdays, state.groupWeekdays) });
+  }
+  function restoreDates() {
+    const d = savedDates();
+    state.datesEnabled = !!d.enabled; state.datesStart = d.start || ""; state.datesEnd = d.end || "";
+    state.datesWeekdays = Array.isArray(d.weekdays) ? d.weekdays.slice() : [];
+    state.groupWeekdays = Object.assign({}, d.gdays);
+  }
+  const restoreGroupDays = () => { state.groupWeekdays = Object.assign({}, savedDates().gdays); };
 
   /* عمود اسم الطالب في بيانات الكشف: «اسم الطالب/المتدرب/المستفيد»، ثم «الاسم» وحده، ثم أي عمود فيه «اسم» عدا المدرب والمسار */
   function studentNameColumn(headers) {
@@ -1432,8 +1446,7 @@
       if (!state.groupBy1 && hint.length) { state.groupBy1 = hint[0]; state.groupBy2 = hint[1] || ""; }
       state.autoNumberHeader = "";
       state.sortRowsBy = "";
-      state.groupWeekdays = {};
-      state.datesWeekdays = [];
+      restoreDates();   // إعدادات التواريخ وأيام المجموعات المحفوظة تعود مع كل ملف
       applyProfile();
       const sticky = getSticky();
       if (!state.autoNumberHeader && sticky.auto && templateHeaders.includes(sticky.auto)) state.autoNumberHeader = sticky.auto;
@@ -2046,12 +2059,12 @@
       return;
     }
     switch (t.id) {
-      case "conv-group1": state.groupBy1 = t.value; if (!t.value || t.value === state.groupBy2) state.groupBy2 = ""; state.groupWeekdays = {}; break;
-      case "conv-group2": state.groupBy2 = t.value; state.groupWeekdays = {}; break;
+      case "conv-group1": state.groupBy1 = t.value; if (!t.value || t.value === state.groupBy2) state.groupBy2 = ""; restoreGroupDays(); break;
+      case "conv-group2": state.groupBy2 = t.value; restoreGroupDays(); break;
       case "conv-fit": state.fitGroupToOnePage = t.checked; return;
-      case "conv-dates": state.datesEnabled = t.checked; break;
-      case "conv-dates-start": state.datesStart = t.value; return;
-      case "conv-dates-end": state.datesEnd = t.value; return;
+      case "conv-dates": state.datesEnabled = t.checked; saveDates(); break;
+      case "conv-dates-start": state.datesStart = t.value; saveDates(); return;
+      case "conv-dates-end": state.datesEnd = t.value; saveDates(); return;
       case "conv-autonum": state.autoNumberHeader = t.value; setSticky("auto", t.value); break;
       case "conv-sort": state.sortRowsBy = t.value; setSticky("sort", t.value); return;
       default:
@@ -2060,11 +2073,13 @@
           const day = Number(t.dataset.day);
           const current = state.groupWeekdays[key] || [];
           state.groupWeekdays[key] = t.checked ? [...current, day].sort() : current.filter((d) => d !== day);
+          saveDates();
           return;
         }
         if (t.dataset.dayAll != null) {
           const day = Number(t.dataset.dayAll);
           state.datesWeekdays = t.checked ? [...state.datesWeekdays, day].sort() : state.datesWeekdays.filter((d) => d !== day);
+          saveDates();
           return;
         }
         return;
@@ -2127,6 +2142,7 @@
   }
 
   function init() {
+    restoreDates();
     initTabs();
     document.querySelectorAll("[data-conv-mode]").forEach((b) =>
       b.addEventListener("click", () => { state.mode = b.dataset.convMode; renderSource(); })
@@ -2325,5 +2341,5 @@
     $("conv-parse").scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  App.converter = { init, render: renderSource, refresh: refreshSaved, useData, fixedFields };
+  App.converter = { init, render: renderSource, refresh: refreshSaved, useData, fixedFields, _dates: { state: () => state, save: saveDates, restore: restoreDates, restoreGroupDays } };
 })(window.App = window.App || {});

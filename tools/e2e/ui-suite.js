@@ -662,5 +662,27 @@ async function suite() {
     c.state.gopen = ""; [c.state.sel, c.state.mis, c.state.cmp, c.state.sib, c.state.dq, c.state.grp, c.state.imp, c.state.att, c.state.sig, c.state.xl].forEach((x) => { x.tracks = []; if ("stages" in x) x.stages = []; }); c.render();
   }
 
+  // إعدادات توليد تواريخ الحضور تُحفظ وتعود في كل مرة
+  {
+    const D = App.converter._dates, st = D.state(), key = "tamkeen-admin:conv-sticky";
+    const old = localStorage.getItem(key);
+    localStorage.removeItem(key);
+    Object.assign(st, { datesEnabled: true, datesStart: "2026-12-01", datesEnd: "2026-12-15", datesWeekdays: [0, 2], groupWeekdays: { "S3G1": [0, 2, 4] } });
+    D.save();
+    Object.assign(st, { datesEnabled: false, datesStart: "", datesEnd: "", datesWeekdays: [], groupWeekdays: {} });
+    D.restore();
+    ok("التواريخ المحفوظة تعود: التفعيل والمدى وأيام الأسبوع", st.datesEnabled === true && st.datesStart === "2026-12-01" && st.datesEnd === "2026-12-15" && JSON.stringify(st.datesWeekdays) === "[0,2]", JSON.stringify([st.datesEnabled, st.datesStart, st.datesEnd, st.datesWeekdays]));
+    ok("أيام كل مجموعة تعود", JSON.stringify(st.groupWeekdays) === JSON.stringify({ "S3G1": [0, 2, 4] }), JSON.stringify(st.groupWeekdays));
+    // تعديل مجموعة أخرى لا يمحو المحفوظة، والتعديل يُحفظ
+    st.groupWeekdays = { "S3G2": [1, 3] }; st.datesEnd = "2026-12-20"; D.save();
+    st.groupWeekdays = {}; D.restore();
+    ok("التعديل يُحفظ ولا يمحو مجموعات سبق ضبطها", st.datesEnd === "2026-12-20" && JSON.stringify(st.groupWeekdays["S3G1"]) === "[0,2,4]" && JSON.stringify(st.groupWeekdays["S3G2"]) === "[1,3]", JSON.stringify(st.groupWeekdays));
+    // إلغاء كل أيام مجموعة يُحفظ فعلاً
+    st.groupWeekdays = { "S3G1": [] }; D.save(); st.groupWeekdays = {}; D.restore();
+    ok("إلغاء أيام مجموعة يتغلّب على المحفوظ", JSON.stringify(st.groupWeekdays["S3G1"]) === "[]", JSON.stringify(st.groupWeekdays));
+    Object.assign(st, { datesEnabled: false, datesStart: "", datesEnd: "", datesWeekdays: [], groupWeekdays: {} });
+    if (old === null) localStorage.removeItem(key); else localStorage.setItem(key, old);
+  }
+
   return R;
 }
