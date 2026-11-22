@@ -1123,5 +1123,6 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 .cc-sig-rows > div { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
 .cc-sig-unsure { background: rgba(240,180,41,.18); border-radius: 8px; }
 .cc-sig-rev { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.cc-sig-r { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.cc-sig-r { padding: 6px 8px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px 10px; justify-content: space-between; align-items: center; }
+.cc-sig-r > span { min-width: 0; overflow-wrap: anywhere; }
 .cc-sig-prog { font-size: .85rem; color: var(--muted, #667); }
