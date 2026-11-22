@@ -872,8 +872,16 @@ async function suite() {
     ok("نموذج التعهد: لم يوقّع سامي فقط", !!t0 && /سامي عمر/.test(t0.textContent) && !/خالد سعيد/.test(t0.textContent) && !/أحمد علي/.test(t0.textContent), t0 && t0.textContent.slice(0, 120));
     ok("نموذج الحضور: لم يوقّع خالد وسامي", !!t1 && /خالد سعيد/.test(t1.textContent) && /سامي عمر/.test(t1.textContent) && !/أحمد علي/.test(t1.textContent), t1 && t1.textContent.slice(0, 120));
     ok("عنوان لكل نموذج وجدول متابعة لكل منهما", /النموذج: تعهد الحقيبة/.test(b.textContent) && /النموذج: كشف حضور/.test(b.textContent) && !!b.querySelector('[data-tblbox="sig-all-0"]') && !!b.querySelector('[data-tblbox="sig-all-1"]'), "titles");
+    const mx = b.querySelector('[data-tblbox="sig-matrix"]');
+    const mrow = (nm) => [...(mx ? mx.querySelectorAll("tbody tr") : [])].find((r) => r.textContent.includes(nm));
+    ok("ما ينقص كل طالب: جدول بكل المسجلين (3) مرتباً بالأكثر نقصاً", !!mx && mx.querySelectorAll("tbody tr").length === 3 && /سامي عمر/.test(mx.querySelector("tbody tr").textContent), mx && mx.textContent.slice(0, 200));
+    ok("سامي ينقصه النموذجان، وخالد ينقصه «كشف حضور» فقط، وأحمد مكتمل", !!mrow("سامي عمر") && /تعهد الحقيبة، كشف حضور|كشف حضور، تعهد الحقيبة/.test(mrow("سامي عمر").textContent) && /ينقصه|كشف حضور/.test(mrow("خالد سعيد").textContent) && !/تعهد الحقيبة\s*$/.test("") && /مكتمل ✓/.test(mrow("أحمد علي محمد").textContent), [mrow("سامي عمر"), mrow("خالد سعيد"), mrow("أحمد علي محمد")].map((r) => r && r.textContent.replace(/\s+/g, " ").slice(0, 160)));
+    let cpm = ""; const ocP = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { cpm = x; } }, configurable: true });
+    const cb = b.querySelector('[data-cc="sig-copy-miss"]'); if (cb) { cb.click(); await wait(200); }
+    ok("نسخ قائمة الناقصين: لكل طالب ما ينقصه", /^\*ناقصو التوقيع \(2 من 3\)/.test(cpm) && /سامي عمر — ينقصه: .*كشف حضور/.test(cpm) && /خالد سعيد — ينقصه: كشف حضور/.test(cpm) && !/أحمد علي محمد —/.test(cpm), cpm);
+    try { Object.defineProperty(navigator, "clipboard", { value: ocP, configurable: true }); } catch (e) { /* */ }
     const sh = App.centerCmd._sig.sheets();
-    ok("Excel: ورقة «النماذج» وورقات لكل نموذج ببادئة ن1/ن2", sh[0].name === "النماذج" && sh.some((x) => /^ن1 - /.test(x.name)) && sh.some((x) => /^ن2 - /.test(x.name)) && sh.every((x) => x.name.length <= 31), sh.map((x) => x.name));
+    ok("Excel: ورقة «ما ينقص كل طالب» ثم «النماذج» وورقات لكل نموذج ببادئة ن1/ن2", sh[0].name === "ما ينقص كل طالب" && sh[1].name === "النماذج" && sh.some((x) => /^ن1 - /.test(x.name)) && sh.some((x) => /^ن2 - /.test(x.name)) && sh.every((x) => x.name.length <= 31), sh.map((x) => x.name));
     // إعادة تسمية نموذج بنفس اسم آخر تدمجهما
     const fn = b.querySelector('[data-sig-fname="كشف حضور"]');
     fn.value = "تعهد الحقيبة"; fn.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);
