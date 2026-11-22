@@ -882,6 +882,14 @@ async function suite() {
     ok("Excel: عمود مستقل لكل نموذج، قبل «عدد الناقص» و«ينقصه»", mh.heads.indexOf("تعهد الحقيبة") > iG && mh.heads.indexOf("كشف حضور") > iG && mh.heads.indexOf("كشف حضور") < iN && iN < iM, mh.heads);
     const sam = App.centerCmd._sig.sheets()[0].rows.find((r) => r[0] === "سامي عمر");
     ok("صف سامي: مسار ومجموعة، ونموذجان ناقصان في عمودين مستقلين، وعددهما 2", !!sam && sam[iG] === "G1" && String(sam[iT]).length > 0 && /ناقص/.test(sam[mh.heads.indexOf("تعهد الحقيبة")]) && /ناقص/.test(sam[mh.heads.indexOf("كشف حضور")]) && sam[iN] === 2, sam);
+    // رسائل واتساب بالنواقص
+    const wl = [...b.querySelectorAll(".cc-sigwa-r a")];
+    ok("رسالة واتساب لكل ناقص بجوال صالح (سامي وخالد)", wl.length === 2 && wl.every((x) => /^https:\/\/wa\.me\/\d+\?text=/.test(x.href)), wl.map((x) => x.href.slice(0, 40)));
+    ok("الرسالة بنواقص الطالب والاسم الأول، والرابط يفتح في تبويب جديد بلا إرسال تلقائي", wl.every((x) => x.target === "_blank" && /rel="noopener"|noopener/.test(x.rel)) && wl.some((x) => /خالد/.test(decodeURIComponent(x.href)) && /كشف حضور/.test(decodeURIComponent(x.href))) && wl.some((x) => /سامي/.test(decodeURIComponent(x.href)) && /تعهد الحقيبة/.test(decodeURIComponent(x.href)) && /كشف حضور/.test(decodeURIComponent(x.href))), wl.map((x) => decodeURIComponent(x.href).slice(0, 140)));
+    ok("أحمد المكتمل لا رسالة له", !wl.some((x) => /أحمد/.test(decodeURIComponent(x.href))), "no-complete");
+    const ta2 = b.querySelector('[data-sigwa="tpl"]'); ta2.value = "مرحباً {الاسم الكامل} — ناقصك: {النواقص}"; ta2.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);
+    ok("تعديل نص الرسالة يُحفظ ويُطبَّق", [...b.querySelectorAll(".cc-sigwa-r a")].some((x) => /مرحباً خالد سعيد — ناقصك: كشف حضور/.test(decodeURIComponent(x.href))) && /مرحباً/.test(localStorage.getItem("tamkeen:sig-wa-msg") || ""), localStorage.getItem("tamkeen:sig-wa-msg"));
+    localStorage.removeItem("tamkeen:sig-wa-msg"); c.render(); await wait(100);
     let cpm = ""; const ocP = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { cpm = x; } }, configurable: true });
     const cb = b.querySelector('[data-cc="sig-copy-miss"]'); if (cb) { cb.click(); await wait(200); }
     ok("نسخ قائمة الناقصين: لكل طالب ما ينقصه", /^\*ناقصو التوقيع \(2 من 3\)/.test(cpm) && /سامي عمر — ينقصه: .*كشف حضور/.test(cpm) && /خالد سعيد — ينقصه: كشف حضور/.test(cpm) && !/أحمد علي محمد —/.test(cpm), cpm);
