@@ -2089,6 +2089,7 @@
   const sigRowCells = (x) => [x.reg.name, x.reg.stu, x.reg.id, x.reg.phone, x.reg.group, x.reg.course, SIG_ST[x.st]];
   function sigSheets() {
     const forms = sigForms(), multi = forms.length > 1, out = [];
+    if (multi) { const m = sigMatrix(); if (m) out.push({ name: "ما ينقص كل طالب", heads: sigMatrixHeads(m), rows: m.rows.map(sigMatrixRow) }); }
     if (multi) out.push({ name: "النماذج", heads: ["الرقم", "اسم النموذج", "عدد الأسماء المقروءة"], rows: forms.map((f, i) => [String(i + 1), f, String((state.sig.rows || []).filter((r) => r.keep !== false && sigFormOf(r) === f).length)]) });
     forms.forEach((fm, i) => sigSheetsFor(fm).forEach((x) => out.push(multi ? Object.assign({}, x, { name: ("ن" + (i + 1) + " - " + x.name).slice(0, 31) }) : x)));
     return out;
@@ -2550,9 +2551,32 @@
     App.docRender.exportWord(b.blocks, App.docRender.cleanFileName(title + " " + ui.todayISO()));
   }
 
+  /* ما ينقص كل طالب: صفّه في كل نموذج (وقّع/لم يوقّع/مراجعة) وقائمة النماذج التي لم يوقّعها */
+  const SIG_CELL = { signed: "✓ وقّع", blank: "✗ بلا توقيع", absent: "✗ لم يوقّع", review: "؟ مراجعة" };
+  function sigMatrix() {
+    const forms = sigForms(), os = forms.map((f) => sigCompute(f));
+    if (!os.length || os.some((o) => !o)) return null;
+    const rows = os[0].items.map((it, i) => {
+      const sts = os.map((o) => o.items[i].st);
+      return { reg: it.reg, sts, miss: forms.filter((f, k) => sts[k] === "absent" || sts[k] === "blank"), rev: forms.filter((f, k) => sts[k] === "review") };
+    });
+    rows.sort((a, b) => b.miss.length - a.miss.length || a.reg.name.localeCompare(b.reg.name, "ar"));
+    return { forms, rows };
+  }
+  const sigMatrixHeads = (m) => ["الاسم", "رقم الهوية", "الجوال", "المجموعة", ...m.forms, "ينقصه", "عدد الناقص"];
+  const sigMatrixRow = (x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, ...x.sts.map((s) => SIG_CELL[s]), x.miss.length ? x.miss.join("، ") : x.rev.length ? "مكتمل (يحتاج مراجعة: " + x.rev.join("، ") + ")" : "مكتمل ✓", x.miss.length];
+  function sigMatrixBlock() {
+    const m = sigMatrix(); if (!m || m.forms.length < 2) return "";
+    const lacking = m.rows.filter((x) => x.miss.length).length, done = m.rows.length - lacking;
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> ما ينقص كل طالب <small>(${ui.fmt(m.forms.length)} نماذج)</small></h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(m.rows.length)}</b> مسجّلاً</span><span class="cc-stat ok"><b>${ui.fmt(done)}</b> أكملوا كل النماذج</span><span class="cc-stat ${lacking ? "bad" : "ok"}"><b>${ui.fmt(lacking)}</b> ينقصهم نموذج أو أكثر</span>
+        <button type="button" class="btn secondary small" data-cc="sig-copy-miss" ${lacking ? "" : "disabled"}>نسخ قائمة الناقصين</button><button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div>
+      <p class="cc-note">الأكثر نقصاً أولاً. العمود «ينقصه» يذكر النماذج التي لم يوقّعها الطالب (غاب اسمه عنها أو ورد بلا توقيع).</p>
+      ${dataTable("sig-matrix", sigMatrixHeads(m), m.rows.map(sigMatrixRow))}</section>`;
+  }
   function sigResult() {
     const forms = sigForms(), multi = forms.length > 1;
-    return (multi ? `<section class="cc-results"><p class="cc-alert ok">في الصور ${ui.fmt(forms.length)} نماذج: ${forms.map((f) => "<b>" + esc(f) + "</b>").join("، ")}. لكل نموذج مقارنته وتقريره أدناه، ويضمّها ملف Excel في ورقات منفصلة.</p></section>` : "") + forms.map((f, i) => sigResultFor(f, i, multi)).join("");
+    return sigMatrixBlock() + (multi ? `<section class="cc-results"><p class="cc-alert ok">في الصور ${ui.fmt(forms.length)} نماذج: ${forms.map((f) => "<b>" + esc(f) + "</b>").join("، ")}. لكل نموذج مقارنته وتقريره أدناه، ويضمّها ملف Excel في ورقات منفصلة.</p></section>` : "") + forms.map((f, i) => sigResultFor(f, i, multi)).join("");
   }
   function attView() {
     const c = state.att, today = ui.todayISO();
@@ -3670,6 +3694,7 @@
         } else if (act === "grad-copy") { const o = state.grad.out; if (!o) return; const no = o.rows.filter((g) => !g.ok); const t = "*غير مستوفين للتخرج (" + no.length + ")*\n" + no.map((g, i) => (i + 1) + ". " + g.s.name + (g.s.group ? " — " + g.s.group : "") + " (" + g.reasons.join("، ") + ")").join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
         } else if (act === "morning-copy") { const t = morningText(); if (!t) return; return ui.copyText(t).then(() => ui.toast("نُسخ تقرير الصباح"));
         } else if (act === "export-xl") { return xlExport();
+        } else if (act === "sig-copy-miss") { const m = sigMatrix(); if (!m) return; const lack = m.rows.filter((x) => x.miss.length); const t = "*ناقصو التوقيع (" + lack.length + " من " + m.rows.length + ")*\n" + lack.map((x, i) => (i + 1) + ". " + x.reg.name + " — ينقصه: " + x.miss.join("، ")).join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت قائمة الناقصين"));
         } else if (act === "sig-clear") { if (!window.confirm("تُمسح الجلسة المحفوظة (المقروء من الصور والمسجلون المجلوبون ونتائج البحث) ولا يمكن التراجع. متابعة؟")) return; sigClear(); return render();
         } else if (act === "sig-lookup") { return runSigLookup();
         } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
