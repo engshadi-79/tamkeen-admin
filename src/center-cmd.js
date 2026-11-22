@@ -36,7 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
-    pledge: { tracks: [], stages: [], status: "", students: null, source: "", opts: null },
+    pledge: { tracks: [], stages: [], status: "graduated", students: null, source: "", opts: null, fit: 0 },
     img: { files: [], fast: false, tables: null, reading: false, prog: "", failed: [], took: "" },
     grad: { from: "", to: "", maxAbs: 3, minRate: 75, countExcused: false, requireEval: false, out: null },
     morning: { mis: true },
@@ -2295,10 +2295,31 @@
   function pledgeStudents() {
     const c = state.pledge; return c.students || [];
   }
+  /* أكبر عدد صفوف يتّسع في الورقة الواحدة المطبوعة على الترويسة مع الديباجة الحالية (يُقاس فعلياً بالتقسيم إلى صفحات) */
+  const fitCache = {};
+  function pledgeFitRows(o) {
+    const key = JSON.stringify([o.title, o.preamble, o.repeatPreamble]);
+    if (fitCache[key]) return fitCache[key];
+    const sample = Array.from({ length: 40 }, (_, i) => ({ name: "اسم متدرب رباعي طويل نسبياً " + (i + 1), id: "1000000000", stage: "المرحلة الثالثة", group: "S3G1", course: "" }));
+    const host = document.createElement("div");
+    host.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size";
+    document.body.appendChild(host);
+    let fit = 5;
+    try {
+      for (let k = 6; k <= 36; k++) {
+        const pages = App.docRender.paginate(host, App.pledgeSheet.build(sample.slice(0, k), Object.assign({}, o, { perPage: k, byGroup: false })).blocks);
+        if (pages > 1) break;
+        fit = k;
+      }
+    } finally { host.remove(); }
+    return (fitCache[key] = Math.max(5, fit - 1));   // هامش صف واحد لاختلاف Word عن الطباعة
+  }
   function pledgeBlocks() {
     const st = pledgeStudents(); if (!st.length) return null;
     if (!state.pledge.opts) state.pledge.opts = pledgeOpts();
-    return App.pledgeSheet.build(st, state.pledge.opts);
+    const o = Object.assign({}, state.pledge.opts);
+    if (o.autoFit) { state.pledge.fit = pledgeFitRows(o); o.perPage = state.pledge.fit; }
+    return App.pledgeSheet.build(st, o);
   }
   function pledgeView() {
     const c = state.pledge; if (!c.opts) c.opts = pledgeOpts();
@@ -2312,7 +2333,9 @@
           <label class="cc-field cc-wide"><span>الديباجة (نص التعهد)</span><textarea data-pl="preamble" rows="4">${esc(o.preamble)}</textarea></label>
           <label class="cc-field"><span>ترقيم الأوراق</span><select data-pl="prefixMode"><option value="count"${sel("count", o.prefixMode)}>حسب عدد أوراق المجموعة: (5-1) (5-2)…</option><option value="all"${sel("all", o.prefixMode)}>حسب عدد كل الأوراق</option><option value="fixed"${sel("fixed", o.prefixMode)}>رقم ثابت أكتبه</option><option value="none"${sel("none", o.prefixMode)}>تسلسل فقط: (1) (2)…</option></select></label>
           <label class="cc-field"><span>الرقم الثابت (مثل 5)</span><input type="text" data-pl="prefix" value="${esc(o.prefix)}" ${o.prefixMode === "fixed" ? "" : "disabled"}></label>
-          <label class="cc-field"><span>صفوف في الورقة</span><input type="number" min="5" max="40" data-pl="perPage" value="${esc(o.perPage)}"></label>
+          <label class="cc-field"><span>صفوف في الورقة</span><input type="number" min="5" max="40" data-pl="perPage" value="${esc(o.autoFit && c.fit ? c.fit : o.perPage)}" ${o.autoFit ? "disabled" : ""}></label>
+          <label class="cc-chk"><input type="checkbox" data-pl="autoFit" ${o.autoFit ? "checked" : ""}> <span>عدد الصفوف يلائم الصفحة تلقائياً</span></label>
+          <label class="cc-field"><span>حالة الطالب</span><select data-pledge="status">${(filterField("status").options || []).map((x) => `<option value="${esc(x.v)}" ${String(c.status) === String(x.v) ? "selected" : ""}>${esc(x.t)}</option>`).join("")}</select></label>
           <label class="cc-chk"><input type="checkbox" data-pl="repeatPreamble" ${o.repeatPreamble ? "checked" : ""}> <span>كرّر الديباجة في أعلى كل ورقة</span></label>
           <label class="cc-chk"><input type="checkbox" data-pl="byGroup" ${o.byGroup ? "checked" : ""}> <span>ورقة مستقلة لكل مجموعة</span></label>
         </div>
@@ -3690,10 +3713,11 @@
         try { await pledgeFromFile(f); state.resultError = ""; } catch (e) { state.resultError = "تعذّرت قراءة الملف: " + (e.message || e); }
         t.value = ""; return render();
       }
+      if (t.dataset.pledge === "status") { state.pledge.status = t.value; state.pledge.students = null; return render(); }
       if (t.dataset.pl) {
         const k = t.dataset.pl, o = state.pledge.opts;
         o[k] = t.type === "checkbox" ? !!t.checked : t.value; pledgeSave();
-        if (k === "prefixMode" || t.type === "checkbox" || k === "perPage") render();
+        if (k === "prefixMode" || t.type === "checkbox" || k === "perPage" || k === "preamble" || k === "title") render();
         return;
       }
       if (t.dataset.grad) { const k = t.dataset.grad; state.grad[k] = t.type === "checkbox" ? !!t.checked : (k === "from" || k === "to" ? t.value : t.value); return render(); }
