@@ -809,5 +809,49 @@ async function suite() {
     ok("قائمة المفاتيح تُستخرج من الأسطر", App.ai.keyList("AIza111\nAIza222").length === 2 && typeof App.ai.generate === "function", "keyList");
   }
 
+  // جلسة التوقيعات المحفوظة: تُضاف الصور تباعاً بلا إعادة جلب المسجلين، وتُستعاد بعد إعادة الفتح
+  {
+    const oldRun = agent.run, oldVision = App.ai.vision, oldHas = App.ai.hasKey, oldConfirm = window.confirm;
+    let listCalls = 0, visionCalls = 0;
+    App.ai.hasKey = () => true;
+    App.ai.vision = async () => { visionCalls++; return JSON.stringify({ title: "ورقة " + visionCalls, rows: visionCalls === 1 ? [{ name: "أحمد علي محمد", signed: true, confidence: 0.95 }] : [{ name: "خالد سعيد", signed: true, confidence: 0.95 }] }); };
+    agent.run = async (cmds) => ({ results: cmds.map((cm) => { if (cm.type === "list") listCalls++; return { type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية", "الجوال"], rows: [
+      { cells: ["أحمد علي محمد", "101", "G1", "1012345678", "0501112222"] }, { cells: ["خالد سعيد", "102", "G1", "1055555555", "0503334444"] }, { cells: ["سامي عمر", "103", "G1", "1066666666", "0509998888"] } ] }; }) });
+    window.confirm = () => true;
+    App.centerCmd._sig.clear();
+    const fileOf = (nm, data) => ({ name: nm, mime: "image/jpeg", data, thumb: "data:image/jpeg;base64,AAAA", w: 10, h: 10 });
+    c.state.mode = "sign"; c.state.groups = []; c.state.wideLimit = 100000; c.state.wide = null;
+    c.state.sig = Object.assign(c.state.sig, { tracks: ["1"], stages: [], status: "6", files: [fileOf("ورقة-1.jpg", "AAAA1111")], failed: [] }); c.render();
+    b.querySelector('[data-cc="sig-read"]').click();
+    for (let i = 0; i < 40 && !(c.state.sig.rows && c.state.sig.rows.length); i++) await wait(100); await wait(200);
+    b.querySelector('[data-cc="run-sig"]').click();
+    for (let i = 0; i < 60 && !c.state.sig.reg && !c.state.resultError; i++) await wait(100); await wait(400);
+    ok("الجلسة: بعد الدفعة الأولى وُجد المسجلون (3) وقراءة اسم واحد وخالد غير موقّع", !!c.state.sig.reg && c.state.sig.reg.length === 3 && c.state.sig.rows.length === 1 && /خالد سعيد/.test((b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent || ""), JSON.stringify({ reg: c.state.sig.reg && c.state.sig.reg.length, rows: c.state.sig.rows && c.state.sig.rows.length, err: c.state.resultError }));
+    ok("جدول المتابعة الكامل يعرض كل المسجلين بحالتهم", !!b.querySelector('[data-tblbox="sig-all"]') && b.querySelectorAll('[data-tblbox="sig-all"] tbody tr').length === 3, b.querySelector('[data-tblbox="sig-all"]') && b.querySelector('[data-tblbox="sig-all"]').textContent.slice(0, 100));
+    const listsAfterFirst = listCalls;
+    // محاكاة إغلاق الأداة وفتحها: الحفظ ثم المسح من الذاكرة ثم الاستعادة
+    App.centerCmd._sig.save();
+    const keep = { rows: c.state.sig.rows.length, reg: c.state.sig.reg.length };
+    Object.assign(c.state.sig, { rows: null, reg: null, regScope: null, fileKeys: [], done: [], manual: {}, lookups: {} });
+    App.centerCmd._sig.load(); c.render();
+    ok("الاستعادة بعد إعادة الفتح: الأسماء والمسجلون والصور المقروءة", c.state.sig.rows && c.state.sig.rows.length === keep.rows && c.state.sig.reg && c.state.sig.reg.length === keep.reg && c.state.sig.done.length === 1 && /جلسة محفوظة/.test(b.textContent), JSON.stringify({ rows: c.state.sig.rows && c.state.sig.rows.length, done: c.state.sig.done.length }));
+    // دفعة ثانية: تُضاف، ولا يُعاد جلب المسجلين
+    c.state.sig.files = [fileOf("ورقة-2.jpg", "BBBB2222")]; c.render();
+    b.querySelector('[data-cc="sig-read"]').click();
+    for (let i = 0; i < 40 && c.state.sig.rows.length < 2; i++) await wait(100); await wait(300);
+    ok("الدفعة الثانية تُضاف إلى السابقة (اسمان)", c.state.sig.rows.length === 2 && c.state.sig.done.length === 2, c.state.sig.rows.length);
+    ok("لم يُعد جلب المسجلين من النظام عند إضافة الصور", listCalls === listsAfterFirst, { before: listsAfterFirst, after: listCalls });
+    ok("النتيجة تتحدّث فوراً: خالد صار موقّعاً ولا قسم «لم يوقّعوا» له", !/خالد سعيد/.test((b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent || "") && /سامي عمر/.test((b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent || ""), (b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent);
+    // إعادة إضافة صورة قُرئت من قبل: تُتجاوز
+    c.state.sig.files = [fileOf("نسخة-من-ورقة-1.jpg", "AAAA1111")]; c.render();
+    const vBefore = visionCalls;
+    b.querySelector('[data-cc="sig-read"]').click(); await wait(500);
+    ok("الصورة المكرّرة لا تُقرأ ثانية ولا تضيف أسماء", visionCalls === vBefore && c.state.sig.rows.length === 2 && /سبق قراءتها/.test(c.state.resultError || ""), { visionCalls, vBefore, err: c.state.resultError });
+    // مسح الجلسة
+    b.querySelector('[data-cc="sig-clear"]').click(); await wait(200);
+    ok("مسح الجلسة يفرّغ الذاكرة ومخزن الجهاز", !c.state.sig.rows && !c.state.sig.reg && !localStorage.getItem("tamkeen:sig-session"), JSON.stringify([!!c.state.sig.rows, !!c.state.sig.reg, !!localStorage.getItem("tamkeen:sig-session")]));
+    agent.run = oldRun; App.ai.vision = oldVision; App.ai.hasKey = oldHas; window.confirm = oldConfirm; c.state.mode = "report"; c.state.wideLimit = 0; c.render();
+  }
+
   return R;
 }
