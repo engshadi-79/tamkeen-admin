@@ -2001,8 +2001,9 @@
   const sigScopeText = (raw) => { try { const o = JSON.parse(raw); return [o.s.length ? o.s.join("، ") : "", o.t.length ? "مسارات: " + trackNamesOf(o.t).join("، ") : "", o.g.length ? "مجموعات: " + o.g.join("، ") : ""].filter(Boolean).join(" · ") || "كل النطاق"; } catch (e) { return ""; } };
   /* من يحتاج بحثاً في النظام ولم يُبحث عنه بعد (بهويته أو جواله) */
   function sigPendingLookups() {
-    const c = state.sig, o = sigCompute(); if (!o) return [];
-    const need = [...o.orphans, ...o.items.filter((x) => x.st === "review" && x.found).map((x) => x.found)];
+    const c = state.sig; if (!c.reg || !c.rows) return [];
+    const need = [];
+    sigForms().forEach((fm) => { const o = sigCompute(fm); if (o) need.push(...o.orphans, ...o.items.filter((x) => x.st === "review" && x.found).map((x) => x.found)); });
     const seen = new Set(), out = [];
     need.forEach((f) => { if (seen.has(f.id) || (c.lookups || {})[f.id]) return; seen.add(f.id); const nid = digits(f.nid), ph = phoneNorm(f.phone); const q = nid.length >= 9 ? nid : ph.length >= 9 ? ph : ""; if (q) out.push({ f, q }); });
     return out;
@@ -2019,10 +2020,31 @@
     const s = lk.list[0];
     return "في النظام: " + s.name + [s.stage, s.group ? "مجموعة " + s.group : "", s.track].filter(Boolean).map((x) => " · " + x).join("");
   };
-  /* يقابل المسجلين بالأسماء المقروءة، ويطبّق قرارات المراجعة اليدوية */
-  function sigCompute() {
+  /* ===== نماذج متعددة في الصور (مثل تعهد الحقيبة وكشف الحضور): لكل نموذج مقارنته وتقريره ===== */
+  const SIG_DEF_FORM = "النموذج 1";
+  const sigFormOf = (r) => clean(r && r.form) || SIG_DEF_FORM;
+  function sigForms() {
+    const seen = [];
+    ((state.sig.rows) || []).forEach((r) => { if (r.keep === false) return; const f = sigFormOf(r); if (!seen.includes(f)) seen.push(f); });
+    return seen.length ? seen : [SIG_DEF_FORM];
+  }
+  /* اسم نموذج الدفعة: ما كتبه المستخدم، وإلا ما استخرجه الذكاء الاصطناعي من الترويسة موحَّداً مع نموذج سابق قريب الاسم */
+  function sigAssignForm(r, userForm) {
+    const user = clean(userForm); if (user) return user;
+    const auto = clean(r.formAuto); if (!auto) return "";
+    const known = sigForms().filter((f) => f !== SIG_DEF_FORM);
+    const near = known.map((f) => ({ f, sc: App.ccUtil.nameScore(f, auto) })).sort((a, b) => b.sc - a.sc)[0];
+    return near && near.sc >= 0.7 ? near.f : auto;
+  }
+  function sigRenameForm(from, to) {
+    const c = state.sig; to = clean(to); if (!to || to === from) return;
+    (c.rows || []).forEach((r) => { if (sigFormOf(r) === from) r.form = to; });
+    Object.keys(c.manual || {}).forEach((k) => { if (k.startsWith(from + "|")) { c.manual[to + "|" + k.slice(from.length + 1)] = c.manual[k]; delete c.manual[k]; } });
+  }
+  /* يقابل المسجلين بالأسماء المقروءة (لنموذج واحد)، ويطبّق قرارات المراجعة اليدوية */
+  function sigCompute(form) {
     const c = state.sig; if (!c.reg || !c.rows) return null;
-    const found = c.rows.filter((r) => r.keep !== false);
+    const found = c.rows.filter((r) => r.keep !== false && (form === undefined || sigFormOf(r) === form));
     const m = App.ccUtil.matchNames(c.reg, found.map((f) => ({ name: f.name, id: f.nid, phone: f.phone })));
     /* نتائج البحث في نظام المركز بالهوية/الجوال لما لم يُطابَق (أو طُوبق بالاسم وحده): إن دلّ على مسجّل في القائمة اعتُمد الربط */
     const foundIdx = new Map(found.map((f, j) => [f.id, j]));
@@ -2041,7 +2063,7 @@
     const byReg = new Map(m.pairs.map((p) => [p.reg, p]));
     const usedFound = new Set();
     const items = c.reg.map((r, i) => {
-      const man = c.manual[r.key];
+      const man = c.manual[(form === undefined ? "" : form) + "|" + r.key];
       let f = null, how = "", score = 0, state1, rev = false;
       if (man && man !== "none") { f = found.find((x) => x.id === man) || null; how = f ? "مراجعتك" : ""; score = 1; }
       else if (man === "none") { how = "رفضتَ المطابقة"; }
@@ -2062,11 +2084,17 @@
     return { items, orphans, resolved, found };
   }
   const SIG_ST = { signed: "وقّع", blank: "اسمه في الورقة بلا توقيع", absent: "لا يظهر اسمه في الأوراق", review: "يحتاج مراجعة" };
-  function sigUnsignedRows() { const o = sigCompute(); return o ? o.items.filter((x) => x.st === "absent" || x.st === "blank") : []; }
+  function sigUnsignedRows(form) { const o = sigCompute(form); return o ? o.items.filter((x) => x.st === "absent" || x.st === "blank") : []; }
   const sigHeads = () => ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "الحالة"];
   const sigRowCells = (x) => [x.reg.name, x.reg.stu, x.reg.id, x.reg.phone, x.reg.group, x.reg.course, SIG_ST[x.st]];
   function sigSheets() {
-    const o = sigCompute(); if (!o) return [];
+    const forms = sigForms(), multi = forms.length > 1, out = [];
+    if (multi) out.push({ name: "النماذج", heads: ["الرقم", "اسم النموذج", "عدد الأسماء المقروءة"], rows: forms.map((f, i) => [String(i + 1), f, String((state.sig.rows || []).filter((r) => r.keep !== false && sigFormOf(r) === f).length)]) });
+    forms.forEach((fm, i) => sigSheetsFor(fm).forEach((x) => out.push(multi ? Object.assign({}, x, { name: ("ن" + (i + 1) + " - " + x.name).slice(0, 31) }) : x)));
+    return out;
+  }
+  function sigSheetsFor(form) {
+    const o = sigCompute(form); if (!o) return [];
     const by = (st) => o.items.filter((x) => st.includes(x.st));
     return [
       { name: "المتابعة (الكل)", heads: sigAllHeads(), rows: o.items.map(sigAllRow) },
@@ -2093,7 +2121,8 @@
     try {
       const r = await App.centerSign.readSheets(pending, { fast: c.fast, batch: c.batch, onProgress: (d, n) => { dn = d; tot = n; c.prog = "قُرئت " + d + " من " + n + " صورة…"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; } });
       const failedNames = new Set(r.failed.map((x) => x.name)), keyOf = new Map(pending.map((f) => [f.name, f.key]));
-      const add = r.rows.map((x) => Object.assign({ keep: true }, x, { id: String(keyOf.get(x.file) || "").replace(/\W/g, "").slice(-6) + "|" + x.id }));
+      const add = r.rows.map((x) => Object.assign({ keep: true }, x, { form: "" }, { id: String(keyOf.get(x.file) || "").replace(/\W/g, "").slice(-6) + "|" + x.id }));
+      add.forEach((x) => { x.form = sigAssignForm(x, c.formName); });
       c.rows = (c.rows || []).concat(add); c.failed = r.failed; c.titles = (c.titles || []).concat(r.titles);
       c.fileKeys = c.fileKeys || []; c.done = c.done || [];
       pending.forEach((f) => { if (!failedNames.has(f.name)) { c.fileKeys.push(f.key); c.done.push({ name: f.name, key: f.key, rows: add.filter((x) => x.file === f.name).length, at: new Date().toISOString() }); } });
@@ -2138,6 +2167,7 @@
     const stale = c.reg && c.regScope && c.regScope !== sigScopeNow();
     return `<div class="cc-alert ok cc-sig-ses" role="status"><span>💾 <b>جلسة محفوظة</b> على هذا الجهاز: ${ui.fmt(nImg)} صورة مقروءة · ${ui.fmt(nRows)} اسماً${c.reg ? " · " + ui.fmt(c.reg.length) + " مسجّلاً جُلبوا" + (c.regAt ? " (" + esc(when(c.regAt)) + ")" : "") + (c.regScope ? " من: " + esc(sigScopeText(c.regScope)) : "") : " · لم تُجلب قائمة المسجلين بعد"}.</span><button type="button" class="btn secondary small" data-cc="sig-clear">امسح الجلسة وابدأ من جديد</button></div>
       ${stale ? '<p class="cc-alert warn">النطاق المختار الآن يختلف عن النطاق الذي جُلب منه المسجلون المحفوظون. اضغط «حدّث المسجلين من النظام» إن أردت المقارنة بالنطاق الجديد.</p>' : ""}
+      ${sigForms().length > 1 || sigForms()[0] !== SIG_DEF_FORM ? `<details class="cc-help"><summary>النماذج (${ui.fmt(sigForms().length)}) — غيّر الاسم لتوحيد نموذجين أو تصحيحه</summary><div class="cc-grid">${sigForms().map((f) => `<label class="cc-field"><span>${ui.fmt((c.rows || []).filter((r) => r.keep !== false && sigFormOf(r) === f).length)} اسماً</span><input type="text" data-sig-fname="${esc(f)}" value="${esc(f)}"></label>`).join("")}</div></details>` : ""}
       ${nImg ? `<details class="cc-help"><summary>الصور التي قُرئت (${ui.fmt(nImg)})</summary><div class="cc-note">${c.done.map((d) => esc(sigShort(d.name)) + " — " + ui.fmt(d.rows) + " اسم").join("<br>")}</div></details>` : ""}`;
   }
   function sigView() {
@@ -2149,6 +2179,8 @@
       <header class="cc-card-h"><h3>مطابقة التوقيعات</h3><p>ارفع صور أوراق التوقيع، فيقرأ الذكاء الاصطناعي الأسماء ويحكم أيوجد توقيع، ثم تُقارَن بالمسجلين في المرحلة التي تختارها من «النطاق» لتعرف من لم يوقّع. للقراءة فقط، والمقارنة بطلب منك وحدك.</p></header>
       <div class="cc-card-b">
         ${sigSessionBar()}
+        <datalist id="cc-sig-forms">${sigForms().filter((f) => f !== SIG_DEF_FORM).map((f) => `<option value="${esc(f)}">`).join("")}</datalist>
+        <label class="cc-field cc-wide"><span>اسم النموذج لهذه الدفعة (اختياري)</span><input type="text" list="cc-sig-forms" data-sig="form" value="${esc(c.formName || "")}" placeholder="اتركه فارغاً ليُستخرج من عنوان كل ورقة"></label>
         <label class="cc-field cc-wide"><span>١. صور الأوراق (JPG أو PNG، أضف دفعة بعد دفعة؛ تُضاف إلى ما قُرئ سابقاً)</span><input type="file" id="cc-sig-files" accept="image/*" multiple></label>
         ${c.files.length ? `<div class="cc-sig-thumbs">${c.files.map((f, i) => `<figure><img src="${f.thumb}" alt="${esc(f.name)}"><figcaption>${esc(f.name)}</figcaption><button type="button" class="cc-link" data-cc="sig-rm" data-i="${i}">إزالة</button></figure>`).join("")}</div>` : ""}
         <p class="cc-note">🔒 تُرسَل الصور إلى <b>${provider}</b> بمفتاحك لقراءتها فقط، ولا تُحفظ في تمكين ولا تُرفع إلى أي مكان آخر. وفيها أسماء متدربين.${hasKey ? "" : ' <b class="cc-bad">لا يوجد مفتاح ذكاء اصطناعي: أضفه من صفحة «المراسلات والتقارير» ← إعدادات الذكاء الاصطناعي.</b>'}</p>
@@ -2167,27 +2199,27 @@
     const signed = rows.filter((r) => r.keep !== false && r.signed === true).length, unsure = rows.filter((r) => r.keep !== false && (r.signed === null || r.conf < 0.6)).length;
     return `<div class="cc-sig-rows"><h4>الأسماء المقروءة <small>${ui.fmt(rows.filter((r) => r.keep !== false).length)} اسماً · ${ui.fmt(signed)} موقّعاً${unsure ? " · " + ui.fmt(unsure) + " تحتاج نظرتك" : ""}</small></h4>
       <p class="cc-note">راجع القراءة قبل المقارنة: صحّح الاسم، وفعّل «وقّع» إن رأيتَ توقيعاً لم يُلتقط، واحذف ما ليس متدرباً. السطور الصفراء قراءتها غير مؤكدة.</p>
-      <div class="cc-scroll"><table class="cc-table"><thead><tr><th>الاسم كما قُرئ</th><th>رقم الهوية</th><th>الجوال</th><th>وقّع</th><th>الثقة</th><th>الورقة</th><th></th></tr></thead><tbody>${rows.map((r, i) => r.keep === false ? "" : `<tr class="${r.signed === null || r.conf < 0.6 ? "cc-sig-unsure" : ""}"><td><input type="text" value="${esc(r.name)}" data-sig-name="${i}" aria-label="الاسم"></td><td><input type="text" inputmode="numeric" value="${esc(r.nid || "")}" data-sig-nid="${i}" aria-label="رقم الهوية" size="11"></td><td><input type="text" inputmode="numeric" value="${esc(r.phone || "")}" data-sig-phone="${i}" aria-label="الجوال" size="10"></td><td><input type="checkbox" data-sig-signed="${i}" ${r.signed === true ? "checked" : ""} aria-label="وقّع">${r.signed === null ? ' <small>؟</small>' : ""}</td><td>${Math.round(r.conf * 100)}%</td><td><small>${esc(r.file)}</small></td><td><button type="button" class="cc-link" data-cc="sig-del" data-i="${i}">حذف</button></td></tr>`).join("")}</tbody></table></div>
+      <div class="cc-scroll"><table class="cc-table"><thead><tr><th>الاسم كما قُرئ</th><th>النموذج</th><th>رقم الهوية</th><th>الجوال</th><th>وقّع</th><th>الثقة</th><th>الورقة</th><th></th></tr></thead><tbody>${rows.map((r, i) => r.keep === false ? "" : `<tr class="${r.signed === null || r.conf < 0.6 ? "cc-sig-unsure" : ""}"><td><input type="text" value="${esc(r.name)}" data-sig-name="${i}" aria-label="الاسم"></td><td><input type="text" list="cc-sig-forms" value="${esc(r.form || "")}" placeholder="${esc(SIG_DEF_FORM)}" data-sig-form="${i}" aria-label="النموذج" size="12"></td><td><input type="text" inputmode="numeric" value="${esc(r.nid || "")}" data-sig-nid="${i}" aria-label="رقم الهوية" size="11"></td><td><input type="text" inputmode="numeric" value="${esc(r.phone || "")}" data-sig-phone="${i}" aria-label="الجوال" size="10"></td><td><input type="checkbox" data-sig-signed="${i}" ${r.signed === true ? "checked" : ""} aria-label="وقّع">${r.signed === null ? ' <small>؟</small>' : ""}</td><td>${Math.round(r.conf * 100)}%</td><td><small>${esc(r.file)}</small></td><td><button type="button" class="cc-link" data-cc="sig-del" data-i="${i}">حذف</button></td></tr>`).join("")}</tbody></table></div>
       <div class="cc-row"><button type="button" class="btn secondary small" data-cc="sig-add">+ اسم ناقص</button></div></div>`;
   }
-  function sigResult() {
-    const c = state.sig, o = sigCompute();
+  function sigResultFor(form, idx, multi) {
+    const c = state.sig, o = sigCompute(form), K = (k) => k + (multi ? "-" + idx : ""), FM = esc(form);
     if (!o) return "";
     const cnt = (st) => o.items.filter((x) => x.st === st).length;
     const miss = o.items.filter((x) => x.st === "absent" || x.st === "blank"), review = o.items.filter((x) => x.st === "review");
     const tbl = (k, items) => dataTable(k, sigHeads(), items.map(sigRowCells));
-    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> نتيجة المطابقة</h3>
-      <details class="cc-help" open><summary><b>جدول المتابعة</b> — كل المسجلين (${ui.fmt(o.items.length)}) بحالة توقيع كل منهم؛ يكتمل كلما أضفتَ صوراً</summary>${dataTable("sig-all", sigAllHeads(), o.items.map(sigAllRow))}</details>
-      ${miss.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(miss.length)}</b> من ${ui.fmt(o.items.length)} مسجّلاً لم يوقّعوا.</span><button type="button" class="btn secondary small" data-cc="sig-copy">نسخ قائمة غير الموقّعين</button></div>` : '<p class="cc-alert ok">✓ كل المسجلين وقّعوا.</p>'}
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> ${multi ? "النموذج: " + FM + " <small>(" + ui.fmt(o.found.length) + " اسماً مقروءاً)</small>" : "نتيجة المطابقة"}</h3>
+      <details class="cc-help" open><summary><b>جدول المتابعة</b> — كل المسجلين (${ui.fmt(o.items.length)}) بحالة توقيع كل منهم؛ يكتمل كلما أضفتَ صوراً</summary>${dataTable(K("sig-all"), sigAllHeads(), o.items.map(sigAllRow))}</details>
+      ${miss.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(miss.length)}</b> من ${ui.fmt(o.items.length)} مسجّلاً لم يوقّعوا.</span><button type="button" class="btn secondary small" data-cc="sig-copy" data-form="${FM}">نسخ قائمة غير الموقّعين</button></div>` : '<p class="cc-alert ok">✓ كل المسجلين وقّعوا.</p>'}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.items.length)}</b> مسجّلاً</span><span class="cc-stat"><b>${ui.fmt(cnt("signed"))}</b> وقّعوا</span>${o.resolved.length ? `<span class="cc-stat"><b>${ui.fmt(o.resolved.length)}</b> عُرفوا بالهوية/الجوال (خارج القائمة)</span>` : ""}<span class="cc-stat"><b>${ui.fmt(cnt("absent"))}</b> لا يظهرون في الأوراق</span><span class="cc-stat"><b>${ui.fmt(cnt("blank"))}</b> بلا توقيع</span><span class="cc-stat"><b>${ui.fmt(review.length)}</b> تحتاج مراجعة</span><span class="cc-stat"><b>${ui.fmt(o.orphans.length)}</b> أسماء لا تطابق أحداً</span>
         <button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div>
       ${review.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>تحتاج مراجعتك</h4><span class="cc-badge">${ui.fmt(review.length)}</span></div></header><p class="cc-note">تشابه جزئي بين اسم مسجّل واسم مقروء. أكّد أو ارفض.</p>
-        <div class="cc-sig-rev">${review.map((x) => `<div class="cc-sig-r"><span><b>${esc(x.reg.name)}</b> ↔ ${x.found ? esc(x.found.name) : "—"} <small>${x.found ? Math.round(x.score * 100) + "%" + (x.found.signed === true ? " · موقّع" : x.found.signed === false ? " · بلا توقيع" : " · توقيع غير محسوم") + (x.how ? " · " + esc(x.how) : "") + (x.found.nid ? " · هوية " + esc(x.found.nid) : "") + (x.found.phone ? " · جوال " + esc(x.found.phone) : "") + (sigLookupText(x.found) ? " · <b>" + esc(sigLookupText(x.found)) + "</b>" : "") : ""}</small></span><span><button type="button" class="btn secondary small" data-cc="sig-ok" data-k="${esc(x.reg.key)}" data-f="${x.found ? esc(x.found.id) : ""}">نعم هو</button> <button type="button" class="btn secondary small" data-cc="sig-no" data-k="${esc(x.reg.key)}">ليس هو</button></span></div>`).join("")}</div></article>` : ""}
-      ${miss.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>لم يوقّعوا</h4><span class="cc-badge bad">${ui.fmt(miss.length)}</span></div></header>${tbl("sig-miss", miss)}</article>` : ""}
-      ${o.resolved.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>عُرفوا بالهوية أو الجوال من نظام المركز</h4><span class="cc-badge">${ui.fmt(o.resolved.length)}</span></div></header><p class="cc-note">رقم الهوية أو الجوال المقروء دلّ على طالب في النظام ليس ضمن قائمة المرحلة/الحالة المختارة، فعُرض باسمه في النظام ولو كان اسمه في الورقة مكتوباً خطأً.</p>${dataTable("sig-found", sigFoundHeads(), o.resolved.map(sigFoundRow))}</article>` : ""}
+        <div class="cc-sig-rev">${review.map((x) => `<div class="cc-sig-r"><span><b>${esc(x.reg.name)}</b> ↔ ${x.found ? esc(x.found.name) : "—"} <small>${x.found ? Math.round(x.score * 100) + "%" + (x.found.signed === true ? " · موقّع" : x.found.signed === false ? " · بلا توقيع" : " · توقيع غير محسوم") + (x.how ? " · " + esc(x.how) : "") + (x.found.nid ? " · هوية " + esc(x.found.nid) : "") + (x.found.phone ? " · جوال " + esc(x.found.phone) : "") + (sigLookupText(x.found) ? " · <b>" + esc(sigLookupText(x.found)) + "</b>" : "") : ""}</small></span><span><button type="button" class="btn secondary small" data-cc="sig-ok" data-form="${FM}" data-k="${esc(x.reg.key)}" data-f="${x.found ? esc(x.found.id) : ""}">نعم هو</button> <button type="button" class="btn secondary small" data-cc="sig-no" data-form="${FM}" data-k="${esc(x.reg.key)}">ليس هو</button></span></div>`).join("")}</div></article>` : ""}
+      ${miss.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>لم يوقّعوا</h4><span class="cc-badge bad">${ui.fmt(miss.length)}</span></div></header>${tbl(K("sig-miss"), miss)}</article>` : ""}
+      ${o.resolved.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>عُرفوا بالهوية أو الجوال من نظام المركز</h4><span class="cc-badge">${ui.fmt(o.resolved.length)}</span></div></header><p class="cc-note">رقم الهوية أو الجوال المقروء دلّ على طالب في النظام ليس ضمن قائمة المرحلة/الحالة المختارة، فعُرض باسمه في النظام ولو كان اسمه في الورقة مكتوباً خطأً.</p>${dataTable(K("sig-found"), sigFoundHeads(), o.resolved.map(sigFoundRow))}</article>` : ""}
       ${o.orphans.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>أسماء في الأوراق لا تطابق مسجّلاً في هذه المرحلة</h4><span class="cc-badge">${ui.fmt(o.orphans.length)}</span></div></header><p class="cc-note">قد تكون قراءة خاطئة أو متدرباً من مرحلة أخرى. إن كان أحدها لمسجّل فاختره:</p>
-        <div class="cc-sig-rev">${o.orphans.map((f) => `<div class="cc-sig-r"><span><b>${esc(f.name)}</b> <small>${f.signed === true ? "موقّع" : "غير محسوم"} · ${esc(sigShort(f.file))}${sigLookupText(f) ? " · <b>" + esc(sigLookupText(f)) + "</b>" : ""}</small></span><select data-sig-assign="${esc(f.id)}"><option value="">— ليس من المسجلين —</option>${miss.map((x) => `<option value="${esc(x.reg.key)}">${esc(x.reg.name)}</option>`).join("")}</select></div>`).join("")}</div></article>` : ""}
-      <details class="cc-help"><summary>الذين وقّعوا (${ui.fmt(cnt("signed"))})</summary>${cnt("signed") ? tbl("sig-ok", o.items.filter((x) => x.st === "signed")) : '<p class="cc-note">لا أحد.</p>'}</details>
+        <div class="cc-sig-rev">${o.orphans.map((f) => `<div class="cc-sig-r"><span><b>${esc(f.name)}</b> <small>${f.signed === true ? "موقّع" : "غير محسوم"} · ${esc(sigShort(f.file))}${sigLookupText(f) ? " · <b>" + esc(sigLookupText(f)) + "</b>" : ""}</small></span><select data-sig-assign="${esc(f.id)}" data-form="${FM}"><option value="">— ليس من المسجلين —</option>${miss.map((x) => `<option value="${esc(x.reg.key)}">${esc(x.reg.name)}</option>`).join("")}</select></div>`).join("")}</div></article>` : ""}
+      <details class="cc-help"><summary>الذين وقّعوا (${ui.fmt(cnt("signed"))})</summary>${cnt("signed") ? tbl(K("sig-ok"), o.items.filter((x) => x.st === "signed")) : '<p class="cc-note">لا أحد.</p>'}</details>
       <p class="cc-note">القراءة بالذكاء الاصطناعي قد تخطئ في الأسماء المكتوبة بخط اليد أو الصور غير الواضحة، فراجع «تحتاج مراجعتك» قبل أن تعتمد القائمة. لا يُكتب شيء في نظام المركز.</p></section>`;
   }
 
@@ -2512,6 +2544,10 @@
     App.docRender.exportWord(b.blocks, App.docRender.cleanFileName(title + " " + ui.todayISO()));
   }
 
+  function sigResult() {
+    const forms = sigForms(), multi = forms.length > 1;
+    return (multi ? `<section class="cc-results"><p class="cc-alert ok">في الصور ${ui.fmt(forms.length)} نماذج: ${forms.map((f) => "<b>" + esc(f) + "</b>").join("، ")}. لكل نموذج مقارنته وتقريره أدناه، ويضمّها ملف Excel في ورقات منفصلة.</p></section>` : "") + forms.map((f, i) => sigResultFor(f, i, multi)).join("");
+  }
   function attView() {
     const c = state.att, today = ui.todayISO();
     return `<section class="cc-card" id="cc-att">
@@ -3633,9 +3669,9 @@
         } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
         } else if (act === "sig-del") { const r = state.sig.rows[Number(b.dataset.i)]; if (r) r.keep = false; return render();
         } else if (act === "sig-add") { state.sig.rows = state.sig.rows || []; state.sig.rows.push({ id: "m:" + Date.now(), file: "(أضفتَه)", name: "", nid: "", phone: "", signed: false, conf: 1, keep: true }); return render();
-        } else if (act === "sig-ok") { state.sig.manual[b.dataset.k] = b.dataset.f || "none"; return render();
-        } else if (act === "sig-no") { state.sig.manual[b.dataset.k] = "none"; return render();
-        } else if (act === "sig-copy") { const t = "*لم يوقّعوا (" + sigUnsignedRows().length + ")*\n" + sigUnsignedRows().map((x, i) => (i + 1) + ". " + x.reg.name + (x.reg.group ? " — " + x.reg.group : "")).join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
+        } else if (act === "sig-ok") { state.sig.manual[(b.dataset.form || "") + "|" + b.dataset.k] = b.dataset.f || "none"; return render();
+        } else if (act === "sig-no") { state.sig.manual[(b.dataset.form || "") + "|" + b.dataset.k] = "none"; return render();
+        } else if (act === "sig-copy") { const fm = b.dataset.form, un = sigUnsignedRows(fm); const t = "*لم يوقّعوا" + (sigForms().length > 1 ? " — " + fm : "") + " (" + un.length + ")*\n" + un.map((x, i) => (i + 1) + ". " + x.reg.name + (x.reg.group ? " — " + x.reg.group : "")).join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
         } else if (act === "export-sig") { const sh = sigSheets(); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => fmtSheet(wb.addWorksheet(x.name.slice(0, 31)), x.heads, x.rows)); return ui.download("مطابقة التوقيعات " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         } else if (act === "att-today") { return runAttend();
         } else if (act === "att-wa") { const e = attGroups()[Number(b.dataset.i)]; if (!e) return; return ui.copyText(attGroupText(e, state.att.out.lastDay)).then(() => ui.toast("نُسخ نص مجموعة " + e.track + (e.group ? " " + e.group : "")));
@@ -3884,11 +3920,14 @@
       if (t.dataset.sig === "batch") { state.sig.batch = Number(t.value) || 1; try { localStorage.setItem("tamkeen:sig-batch", String(state.sig.batch)); } catch (e) { /* */ } return; }
       if (t.dataset.sig === "speed") { state.sig.fast = t.value === "fast"; try { localStorage.setItem("tamkeen:sig-fast", state.sig.fast ? "1" : ""); } catch (e) { /* */ } return; }
       if (t.dataset.sig === "status") { state.sig.status = t.value; return render(); }
+      if (t.dataset.sig === "form") { state.sig.formName = t.value; return; }
+      if (t.dataset.sigFname !== undefined) { sigRenameForm(t.dataset.sigFname, t.value); sigSaveSoon(); return render(); }
+      if (t.dataset.sigForm !== undefined) { const r = state.sig.rows[Number(t.dataset.sigForm)]; if (r) r.form = clean(t.value); sigSaveSoon(); return render(); }
       if (t.dataset.sigName !== undefined) { const r = state.sig.rows[Number(t.dataset.sigName)]; if (r) r.name = t.value; sigSaveSoon(); return; }
       if (t.dataset.sigNid !== undefined) { const r = state.sig.rows[Number(t.dataset.sigNid)]; if (r) r.nid = t.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""); sigSaveSoon(); return; }
       if (t.dataset.sigPhone !== undefined) { const r = state.sig.rows[Number(t.dataset.sigPhone)]; if (r) r.phone = t.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""); sigSaveSoon(); return; }
       if (t.dataset.sigSigned !== undefined) { const r = state.sig.rows[Number(t.dataset.sigSigned)]; if (r) { r.signed = !!t.checked; } return render(); }
-      if (t.dataset.sigAssign !== undefined) { const k = t.value, fid = t.dataset.sigAssign; if (k) state.sig.manual[k] = fid; return render(); }
+      if (t.dataset.sigAssign !== undefined) { const k = t.value, fid = t.dataset.sigAssign; if (k) state.sig.manual[(t.dataset.form || "") + "|" + k] = fid; return render(); }
       if (t.dataset.att) { const k = t.dataset.att; state.att[k] = t.type === "checkbox" ? !!t.checked : (k === "thr" || k === "max" ? Number(t.value) || 0 : t.value); if (t.type === "checkbox" || k === "thr") render(); return; }
       if (t.dataset.sc) { scopeSet(t.dataset.sc, t.value, t.checked); render(); return; }
       if (t.hasAttribute("data-gf")) { const v = String(t.value), at = state.groups.indexOf(v); if (t.checked && at < 0) state.groups.push(v); else if (!t.checked && at >= 0) state.groups.splice(at, 1); render(); return; }
@@ -4004,7 +4043,7 @@
   /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
   sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
-  App.centerCmd = { allowed: centerAllowed, renderDash, _sig: { save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+  App.centerCmd = { allowed: centerAllowed, renderDash, _sig: { save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});

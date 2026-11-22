@@ -40,6 +40,13 @@ ok("signed مجهول", S.normRow({ name: "س" }, "f", 2).signed === null);
   ok("الحد اليومي: quota=true وتوقف الطلبات (≤4 لا 12)", rq.quota === true && qc <= 4 && rq.failed.length === 12, { qc, quota: rq.quota, failed: rq.failed.length });
   ok("الحد اليومي: كل الصور مسجّلة غير مقروءة بسبب الحد", rq.failed.every((x) => x.error === "حد الاستخدام اليومي"), rq.failed[0]);
   ok("isDayQuota يميّز الحد اليومي لا الدقيقة", S.isDayQuota(new Error("limit exceeded per day")) && !S.isDayQuota(new Error("rate limit per minute")), "isDayQuota");
+  // اسم النموذج من ترويسة الورقة
+  const ff = { vision: async () => JSON.stringify({ title: "ورقة", form: "تعهد استلام الحقيبة", rows: [{ name: "أ ب ج", signed: true, confidence: 0.9 }] }) };
+  const rf = await S.readSheet({ name: "f.jpg", mime: "image/jpeg", data: "x" }, { ai: ff });
+  ok("اسم النموذج يُستخرج ويُنسَب لكل صف (formAuto)", rf.form === "تعهد استلام الحقيبة" && rf.rows[0].formAuto === "تعهد استلام الحقيبة", rf);
+  const fb2 = { vision: async ({ images }) => JSON.stringify({ sheets: images.map((_, k) => ({ image: k + 1, form: k === 0 ? "تعهد الحقيبة" : "كشف حضور", rows: [{ name: "س " + k, signed: true }] })) }) };
+  const rb2 = await S.readBatch([{ name: "1.jpg", mime: "image/jpeg", data: "x" }, { name: "2.jpg", mime: "image/jpeg", data: "x" }], { ai: fb2 });
+  ok("دفعة بنموذجين: لكل صورة اسم نموذجها", rb2[0].rows[0].formAuto === "تعهد الحقيبة" && rb2[1].rows[0].formAuto === "كشف حضور", rb2.map((x) => x.form));
   console.log(bad ? bad + " فشل" : "كل اختبارات الجداول نجحت"); process.exit(bad ? 1 : 0);
 })();
 
