@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="styles/executive.css?v=406">
   <!-- هوية «منجز» منقولة من D:i\Mahamm: تأخذ البنية من السابق وتستبدل الصبغة -->
   <!-- هوية «نظام جرد مركز التدريب»: كحلي وفيروزي، منقولة من الملف الذي أرسلته -->
-  <link rel="stylesheet" href="styles/center.css?v=413">
+  <link rel="stylesheet" href="styles/center.css?v=414">
   <link rel="stylesheet" href="styles/clear.css?v=411">
   <link rel="stylesheet" href="styles/center-clean.css?v=435">
 </head>
@@ -764,11 +764,11 @@
           <div class="cv-trust"><span>▦ Excel</span><span>▤ Word</span><span>🔒 معالجة محلية</span></div>
         </div>
         <div class="cv-tabs" role="tablist">
-          <button type="button" class="cv-tab" role="tab" data-cv-tab="fill"><b>إكمال ومقارنة</b><small>املأ الناقص من نظام المركز</small></button>
-          <button type="button" class="cv-tab" role="tab" data-cv-tab="exam"><b>جدول الاختبارات</b><small>جداول الامتحان وكشوف التوقيع</small></button>
-          <button type="button" class="cv-tab" role="tab" data-cv-tab="quick"><b>استخراج سريع</b><small>اختر حقولاً من Excel واطبعها</small></button>
-          <button type="button" class="cv-tab" role="tab" data-cv-tab="tpl"><b>تحويل حسب قالب</b><small>املأ قالب Word أو Excel ببياناتك</small></button>
-          <button type="button" class="cv-tab" role="tab" data-cv-tab="center"><b>أوامر المركز</b><small>سجّل واستعلم واستخرج من نظام المركز</small></button>
+          <button type="button" class="cv-tab" role="tab" data-cv-tab="fill" data-tip-t="إكمال ومقارنة" data-tip="يملأ الخانات الفارغة في كشوفك (هوية، جوال، مجموعة…) من بيانات نظام المركز بالمطابقة برقم الهوية.&#10;أو يُصدر تقرير مقارنة: من ليس في النظام، وأين تختلف القيم، ومن سبق أن التحق بدورة.&#10;يحتاج ملف النظام (json) من سكربت تشغّله أنت في نظام المركز، وملفات Excel الناقصة."><b>إكمال ومقارنة</b><small>املأ الناقص من نظام المركز</small></button>
+          <button type="button" class="cv-tab" role="tab" data-cv-tab="exam" data-tip-t="جدول الاختبارات" data-tip="يصنع جداول الاختبارات من ملف الطلبة بتصميم نموذج Word الرسمي: جدول لكل مجموعة ومسار.&#10;تحدّد موعد النظري ومواعيد العملي لكل مسار، ويمكنك إضافة كشوف الحضور والدرجات ونماذج التقييم (اختيارية)."><b>جدول الاختبارات</b><small>جداول الامتحان وكشوف التوقيع</small></button>
+          <button type="button" class="cv-tab" role="tab" data-cv-tab="quick" data-tip-t="استخراج سريع" data-tip="بلا قالب: ارفع أي ملف Excel، وأشّر على الحقول التي تريدها، وصفِّ الصفوف إن شئت.&#10;ثم اطبعها على الترويسة الرسمية أو صدّرها Excel أو Word."><b>استخراج سريع</b><small>اختر حقولاً من Excel واطبعها</small></button>
+          <button type="button" class="cv-tab" role="tab" data-cv-tab="tpl" data-tip-t="تحويل حسب قالب" data-tip="يملأ قالب Word أو Excel ببيانات ملف Excel.&#10;١) اختر القالب (محفوظاً أو جديداً) وملف البيانات.&#10;٢) اربط أعمدة القالب بأعمدة البيانات.&#10;٣) راجع ونزّل ملفاً لكل مسار أو مجموعة، مع ترقيم تلقائي وترتيب أبجدي وتواريخ حضور."><b>تحويل حسب قالب</b><small>املأ قالب Word أو Excel ببياناتك</small></button>
+          <button type="button" class="cv-tab" role="tab" data-cv-tab="center" data-tip-t="أوامر المركز" data-tip="يتصل بنظام المركز عبر إضافة المتصفح: بحث وتقارير الطلاب، الحضور والغياب، مطابقة التوقيعات، المقارنات، كشوف التعهد، وغيرها.&#10;لا يُقرأ شيء من النظام إلا بضغطتك أنت، ولا يُكتب فيه شيء بلا موافقتك."><b>أوامر المركز</b><small>سجّل واستعلم واستخرج من نظام المركز</small></button>
         </div>
         <div class="cv-pane" data-cv-pane="fill" role="tabpanel" hidden>
         <div class="card fx-fill-card">
@@ -822,8 +822,8 @@
         <div class="card">
           <div class="cv-card-heading"><div><span class="cv-step-tag">الخطوة 1</span><h3>اختر القالب وملف البيانات</h3><p>يمكنك استخدام قالب محفوظ أو رفع قالب جديد.</p></div><span class="cv-required">مطلوب لإكمال التحويل</span></div>
           <div class="conv-tabs full">
-            <button type="button" data-conv-mode="saved">من القوالب المحفوظة</button>
-            <button type="button" data-conv-mode="upload">رفع قالب جديد</button>
+            <button type="button" data-conv-mode="saved" data-tip-t="من القوالب المحفوظة" data-tip="اختر قالباً سبق أن رفعتَه وحفظتَه في التطبيق بدل رفعه من جديد في كل مرة.">من القوالب المحفوظة</button>
+            <button type="button" data-conv-mode="upload" data-tip-t="رفع قالب جديد" data-tip="ارفع ملف القالب من جهازك (Word أو Excel) لاستعماله في هذا التحويل.">رفع قالب جديد</button>
           </div>
           <div class="grid-fields conv-files">
             <div id="conv-saved-box" hidden>
@@ -1635,9 +1635,10 @@
   <script src="src/center-agent.js?v=415"></script>
   <script src="src/center-util.js?v=439"></script>
   <script src="src/center-sign.js?v=8"></script>
+  <script src="src/tips.js?v=2"></script>
   <script src="src/center-xl.js?v=2"></script>
   <script src="src/pledge-sheet.js?v=9"></script>
-  <script src="src/center-cmd.js?v=469"></script>
+  <script src="src/center-cmd.js?v=470"></script>
   <script src="vendor/supabase.min.js"></script>
   <script src="src/hospitality.js?v=456"></script>
   <script src="src/forms.js?v=458"></script>

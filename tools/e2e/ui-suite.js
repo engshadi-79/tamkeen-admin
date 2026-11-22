@@ -912,5 +912,39 @@ async function suite() {
     App.centerCmd._sig.clear(); agent.run = oldRun; window.confirm = oldConfirm; c.state.mode = "report"; c.state.wideLimit = 0; c.render();
   }
 
+  // فقاعات الشرح عند مرور المؤشر على تبويبات «تحويل ملف حسب قالب»
+  {
+    const tabs = [...document.querySelectorAll(".cv-tab")];
+    ok("للتبويبات الخمسة شرح (عنوان ونص مفصّل)", tabs.length === 5 && tabs.every((t) => (t.dataset.tip || "").length > 60 && !!t.dataset.tipT), tabs.map((t) => (t.dataset.tip || "").length));
+    const hover = async (el) => { el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); await wait(350); };
+    const tip = () => document.getElementById("tk-tip");
+    location.hash = "#converter"; await wait(300);
+    const t1 = document.querySelector('.cv-tab[data-cv-tab="tpl"]');
+    await hover(t1);
+    ok("المرور على «تحويل حسب قالب» يُظهر فقاعة بعنوانها وشرحها", !!tip() && !tip().hidden && /تحويل حسب قالب/.test(tip().textContent) && /اربط أعمدة القالب/.test(tip().textContent), tip() && tip().textContent.slice(0, 80));
+    const rt = tip().getBoundingClientRect();
+    ok("الفقاعة داخل حدود الشاشة", rt.left >= 0 && rt.right <= window.innerWidth && rt.top >= 0 && rt.bottom <= window.innerHeight, JSON.stringify([rt.left, rt.right, rt.top, rt.bottom, window.innerWidth, window.innerHeight]));
+    t1.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })); await wait(50);
+    ok("تختفي الفقاعة بخروج المؤشر", tip().hidden, "hidden");
+    for (const k of ["fill", "exam", "quick", "center"]) {
+      const t = document.querySelector('.cv-tab[data-cv-tab="' + k + '"]'); await hover(t);
+      ok("فقاعة تبويب «" + t.dataset.tipT + "»", !tip().hidden && tip().textContent.includes(t.dataset.tipT) && tip().textContent.length > 80, tip().textContent.slice(0, 60));
+      t.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })); await wait(30);
+    }
+    // تبويبات «أوامر المركز» الداخلية
+    c.state.mode = "report"; c.render();
+    const modes = [...b.querySelectorAll('.cc-modes button[data-m]')];
+    ok("كل تبويب داخل «أوامر المركز» له شرح مفصّل بلا title مكرر", modes.length >= 15 && modes.every((x) => (x.dataset.tip || "").length > 40 && !x.hasAttribute("title")), modes.filter((x) => (x.dataset.tip || "").length <= 40).map((x) => x.dataset.m));
+    const sg = b.querySelector('.cc-modes button[data-m="sign"]'); await hover(sg);
+    ok("فقاعة «مطابقة التوقيعات» تشرح مهامها", !tip().hidden && /مطابقة التوقيعات/.test(tip().textContent) && /ما ينقص كل طالب/.test(tip().textContent), tip().textContent.slice(0, 80));
+    sg.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })); await wait(30);
+    // التركيز بلوحة المفاتيح يُظهر الفقاعة أيضاً، وEsc يخفيها
+    t1.dispatchEvent(new FocusEvent("focusin", { bubbles: true })); await wait(50);
+    ok("التركيز بلوحة المفاتيح يُظهر الفقاعة", !tip().hidden, "focus");
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await wait(30);
+    ok("Esc يُخفي الفقاعة", tip().hidden, "esc");
+    location.hash = "#dashboard";
+  }
+
   return R;
 }
