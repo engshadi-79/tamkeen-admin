@@ -771,5 +771,33 @@ async function suite() {
     agent.run = oldRun; c.state.mode = "report"; c.state.pledge.students = null; c.state.pledge.opts = null; c.state.wideLimit = 0; c.render();
   }
 
+  // مطابقة التوقيعات: ما لم يُطابَق يُبحث عنه في النظام بالجوال أو الهوية (الاسم المقروء قد يكون خاطئاً)
+  {
+    const oldRun = agent.run; const lookups = [];
+    agent.run = async (cmds) => ({ results: cmds.map((cm) => {
+      if (cm.type === "lookup") return { type: "lookup", label: cm.label, items: (cm.items || []).map((it) => { lookups.push(it.q);
+        const d = String(it.q).replace(/\D/g, "");
+        const row = d === "0597636723" ? ["نداء أبو الكاس", "7001", "المرحلة الثانية", "الاولى", "مسار الحلاقة", "0597636723", "1000000001"] : d === "0500000001" ? ["ريم سالم", "7002", "المرحلة الثالثة", "S3G1", "مسار الحلاقة", "0500000001", "9000000001"] : null;
+        return row ? { q: it.q, count: 1, heads: ["الاسم", "رقم الطالب", "المرحلة", "المجموعة", "المسار", "الجوال", "رقم الهوية"], rows: [{ cells: row }] } : { q: it.q, count: 0, heads: [], rows: [] }; }) };
+      return { type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية", "الجوال"], rows: [{ cells: ["ريم سالم", "7002", "S3G1", "9000000001", ""] }, { cells: ["سلمى ياسر", "7003", "S3G1", "9000000003", "0507777777"] }] };
+    }) });
+    c.state.mode = "sign"; c.state.groups = [];
+    c.state.sig = Object.assign(c.state.sig, { tracks: ["1"], stages: [], status: "5", files: [], manual: {}, lookups: {}, reg: null,
+      rows: [
+        { id: "a:0", file: "a", name: "نداء أبو بكر", nid: "", phone: "0597636723", signed: true, conf: 0.9, keep: true },        // الاسم مقروء خطأ، والجوال لمسجّل خارج المرحلة
+        { id: "a:1", file: "a", name: "اسم مشوّه جداً", nid: "", phone: "0500000001", signed: true, conf: 0.4, keep: true },      // الجوال لمسجّل في المرحلة لا يحمل جوالاً في القائمة
+        { id: "a:2", file: "a", name: "سلمى ياسر", nid: "", phone: "", signed: true, conf: 0.95, keep: true },
+      ] });
+    c.state.wideLimit = 100000; c.state.wide = null; c.render();
+    b.querySelector('[data-cc="run-sig"]').click();
+    for (let i = 0; i < 60 && !c.state.sig.reg && !c.state.resultError; i++) await wait(100); await wait(500);
+    ok("البحث في النظام بالجوال لما لم يُطابَق", lookups.some((q) => /0597636723/.test(q)) && lookups.some((q) => /0500000001/.test(q)), JSON.stringify({ lookups, err: c.state.resultError }));
+    ok("الاسم غير الواضح يُعرَف بجواله: يظهر الاسم الحقيقي والمرحلة", /نداء أبو الكاس/.test(b.textContent) && /المرحلة الثانية/.test(b.textContent), b.querySelector("#cc-sig") ? "" : "no view");
+    const sgItems = c.state.sig.reg ? [...b.querySelectorAll(".cc-results")].map((x) => x.textContent).join(" ") : "";
+    ok("الاسم المشوّه يُربط بمسجّل عبر جواله في النظام (ريم سالم وقّعت)", !/ريم سالم/.test((b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent || "") , (b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent);
+    ok("لا بحث لمن طُوبق سليماً (سلمى بلا رقم)", !lookups.some((q) => /سلمى/.test(q)), lookups);
+    agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.wideLimit = 0; c.render();
+  }
+
   return R;
 }
