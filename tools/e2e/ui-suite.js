@@ -640,5 +640,27 @@ async function suite() {
     ok("توليد القالب مع ترتيب أبجدي حسب «الطالب»", JSON.stringify(got) === JSON.stringify(want), got);
   }
 
+  // الشريط التعاقبي: اختيار المرحلة يقصر المسارات على المرتبطة بها ويُسقط ما لم يعد مرتبطاً
+  {
+    c.state.mode = "report"; c.state.gopen = ""; c.state.groups = [];
+    [c.state.sel, c.state.mis, c.state.cmp, c.state.sib, c.state.dq, c.state.grp, c.state.imp, c.state.att, c.state.sig, c.state.xl].forEach((x) => { x.tracks = []; if ("stages" in x) x.stages = []; });
+    const trF = App.centerSchema.studentFilters.fields.find((f) => f.name === "track_id").options;
+    const trAr = trF.find((o) => /الترجمة/.test(o.t)).v;      // مسار ليس له دورة في المرحلة الثالثة
+    c.render();
+    b.querySelector('.cc-pill[data-gk="tracks"]').click(); await wait(100);
+    const allTracks = [...b.querySelectorAll('[data-sc="tracks"]')].map((x) => x.nextElementSibling.textContent);
+    ok("بلا مرحلة: كل المسارات تظهر (بينها الترجمة)", allTracks.length >= 6 && allTracks.some((n) => /الترجمة/.test(n)), allTracks);
+    c.state.sel.tracks = [String(trAr)]; c.state.att.tracks = [String(trAr)];
+    b.querySelector('.cc-pill[data-gk="stages"]').click(); await wait(100);
+    const s3 = [...b.querySelectorAll('[data-sc="stages"]')].find((x) => x.value === "المرحلة الثالثة");
+    s3.click(); await wait(150);
+    ok("اختيار المرحلة الثالثة يُسقط مسار الترجمة المحدَّد (لا دورة له فيها)", !c.state.sel.tracks.includes(String(trAr)) && !c.state.att.tracks.includes(String(trAr)), JSON.stringify(c.state.sel.tracks));
+    b.querySelector('.cc-pill[data-gk="tracks"]').click(); await wait(100);
+    const t3 = [...b.querySelectorAll('[data-sc="tracks"]')].map((x) => x.nextElementSibling.textContent);
+    ok("المرحلة الثالثة: المسارات المرتبطة بها فقط (خمسة بلا الترجمة)", t3.length === 5 && !t3.some((n) => /الترجمة/.test(n)) && t3.some((n) => /الحلاقة/.test(n)), t3);
+    ok("ترتيب الأقراص: المراحل ثم المسارات ثم المجموعات", (() => { const k = [...b.querySelectorAll(".cc-gbar .cc-pill")].map((x) => x.dataset.gk); return k.join() === "stages,tracks,groups"; })(), [...b.querySelectorAll(".cc-gbar .cc-pill")].map((x) => x.dataset.gk));
+    c.state.gopen = ""; [c.state.sel, c.state.mis, c.state.cmp, c.state.sib, c.state.dq, c.state.grp, c.state.imp, c.state.att, c.state.sig, c.state.xl].forEach((x) => { x.tracks = []; if ("stages" in x) x.stages = []; }); c.render();
+  }
+
   return R;
 }
