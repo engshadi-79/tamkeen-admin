@@ -54,4 +54,6 @@ ok("المرحلة في عمودها لكل طالب (أولى وثانية في
 ok("لا اسم مجموعة في ورقة المسار", !r.blocks.some((b) => /^المجموعة/.test(b.text || "")));
 r = P.build(mt(4, "مسار الحلاقة", "المرحلة الأولى", "الاولى"), { split: "group" });
 ok("التقسيم بالمجموعة: المسار في الوسط ثم «المجموعة: الاولى» بلا مدرب", r.blocks.filter((b) => b.kind === "title").map((b) => b.text).join("|").includes("مسار الحلاقة|المجموعة: الاولى"), r.blocks.filter((b) => b.kind === "title").map((b) => b.text));
+// الديباجة المعتمدة
+ok("الديباجة المعتمدة: استعمال الحقيبة في المشروع الخاص وعدم البيع", /في مشروعي الخاص/.test(P.DEFAULTS.preamble) && /بعدم بيعها/.test(P.DEFAULTS.preamble) && !/في التدريب فقط/.test(P.DEFAULTS.preamble), P.DEFAULTS.preamble);
 console.log(bad ? bad + " فشل" : "كل الاختبارات نجحت (" + n + ")"); process.exit(bad ? 1 : 0);
