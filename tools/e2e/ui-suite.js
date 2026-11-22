@@ -794,6 +794,9 @@ async function suite() {
     ok("البحث في النظام بالجوال لما لم يُطابَق", lookups.some((q) => /0597636723/.test(q)) && lookups.some((q) => /0500000001/.test(q)), JSON.stringify({ lookups, err: c.state.resultError }));
     ok("الاسم غير الواضح يُعرَف بجواله: يظهر الاسم الحقيقي والمرحلة", /نداء أبو الكاس/.test(b.textContent) && /المرحلة الثانية/.test(b.textContent), b.querySelector("#cc-sig") ? "" : "no view");
     const sgItems = c.state.sig.reg ? [...b.querySelectorAll(".cc-results")].map((x) => x.textContent).join(" ") : "";
+    const fnd = b.querySelector('[data-tblbox="sig-found"]');
+    ok("المعرَّف بالجوال من خارج القائمة: جدول «عُرفوا» باسمه في النظام ومرحلته، لا اسم الورقة الخاطئ أولاً", !!fnd && /نداء أبو الكاس/.test(fnd.textContent) && /المرحلة الثانية/.test(fnd.textContent) && fnd.querySelector("tbody tr td").textContent.trim() === "نداء أبو الكاس", fnd && fnd.textContent.slice(0, 160));
+    ok("لا يبقى المعرَّف في «أسماء لا تطابق مسجّلاً»", ![...b.querySelectorAll(".cc-sig-r")].some((x) => /نداء أبو بكر/.test(x.textContent)), [...b.querySelectorAll(".cc-sig-r")].map((x) => x.textContent.slice(0, 40)));
     ok("الاسم المشوّه يُربط بمسجّل عبر جواله في النظام (ريم سالم وقّعت)", !/ريم سالم/.test((b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent || "") , (b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent);
     ok("لا بحث لمن طُوبق سليماً (سلمى بلا رقم)", !lookups.some((q) => /سلمى/.test(q)), lookups);
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.wideLimit = 0; c.render();

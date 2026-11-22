@@ -1985,6 +1985,9 @@
     });
     c.lookupCapped = targets.length > slice.length;
   }
+  const sigShort = (t) => { t = String(t || ""); return t.length > 22 ? t.slice(0, 10) + "…" + t.slice(-8) : t; };
+  const sigFoundHeads = () => ["الاسم في النظام", "الاسم المقروء من الورقة", "رقم الهوية", "الجوال", "المرحلة", "المجموعة", "المسار", "الحكم"];
+  const sigFoundRow = (x) => [x.s.name, x.f.name, x.s.id || x.f.nid || "", x.s.phone || x.f.phone || "", x.s.stage, x.s.group, x.s.track, x.f.signed === true ? "موقّع" : "غير محسوم"];
   const sigLookupText = (f) => {
     const lk = (state.sig.lookups || {})[f.id]; if (!lk) return "";
     if (lk.none) return "بحثتُ عنه بـ" + (digits(f.nid).length >= 9 ? "الهوية" : "الجوال") + " في النظام فلم أجد طالباً";
@@ -2027,8 +2030,12 @@
       else state1 = "review";
       return { reg: r, found: f, score, how, st: state1 };
     });
-    const orphans = found.filter((f) => !usedFound.has(f.id) && f.signed !== false);
-    return { items, orphans, found };
+    const orphans = [], resolved = [];
+    found.filter((f) => !usedFound.has(f.id) && f.signed !== false).forEach((f) => {
+      const lk = (c.lookups || {})[f.id];
+      if (lk && lk.list && lk.list.length === 1) resolved.push({ f, s: lk.list[0] }); else orphans.push(f);   // عُرف بالهوية/الجوال في النظام: يُعرض باسمه في النظام
+    });
+    return { items, orphans, resolved, found };
   }
   const SIG_ST = { signed: "وقّع", blank: "اسمه في الورقة بلا توقيع", absent: "لا يظهر اسمه في الأوراق", review: "يحتاج مراجعة" };
   function sigUnsignedRows() { const o = sigCompute(); return o ? o.items.filter((x) => x.st === "absent" || x.st === "blank") : []; }
@@ -2040,6 +2047,7 @@
     return [
       { name: "لم يوقّعوا", heads: sigHeads(), rows: by(["absent", "blank"]).map(sigRowCells) },
       { name: "تحتاج مراجعة", heads: ["الاسم المسجّل", "الاسم المقروء", "الهوية المقروءة", "الجوال المقروء", "درجة التشابه", "ملاحظة", "الدورة"], rows: by(["review"]).map((x) => [x.reg.name, x.found ? x.found.name : "", x.found ? x.found.nid || "" : "", x.found ? x.found.phone || "" : "", x.found ? Math.round(x.score * 100) + "%" : "", x.how, x.reg.course]) },
+      { name: "عُرفوا بالبحث", heads: sigFoundHeads(), rows: o.resolved.map(sigFoundRow) },
       { name: "أسماء في الأوراق", heads: ["الاسم المقروء", "الهوية", "الجوال", "نتيجة البحث في النظام", "الورقة", "الحكم", "الثقة"], rows: o.orphans.map((f) => [f.name, f.nid || "", f.phone || "", sigLookupText(f), f.file, f.signed === true ? "موقّع" : "غير محسوم", Math.round(f.conf * 100) + "%"]) },
       { name: "وقّعوا", heads: sigHeads(), rows: by(["signed"]).map(sigRowCells) },
     ].filter((x) => x.rows.length);
@@ -2113,13 +2121,14 @@
     const tbl = (k, items) => dataTable(k, sigHeads(), items.map(sigRowCells));
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> نتيجة المطابقة</h3>
       ${miss.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(miss.length)}</b> من ${ui.fmt(o.items.length)} مسجّلاً لم يوقّعوا.</span><button type="button" class="btn secondary small" data-cc="sig-copy">نسخ قائمة غير الموقّعين</button></div>` : '<p class="cc-alert ok">✓ كل المسجلين وقّعوا.</p>'}
-      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.items.length)}</b> مسجّلاً</span><span class="cc-stat"><b>${ui.fmt(cnt("signed"))}</b> وقّعوا</span><span class="cc-stat"><b>${ui.fmt(cnt("absent"))}</b> لا يظهرون في الأوراق</span><span class="cc-stat"><b>${ui.fmt(cnt("blank"))}</b> بلا توقيع</span><span class="cc-stat"><b>${ui.fmt(review.length)}</b> تحتاج مراجعة</span><span class="cc-stat"><b>${ui.fmt(o.orphans.length)}</b> أسماء لا تطابق أحداً</span>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.items.length)}</b> مسجّلاً</span><span class="cc-stat"><b>${ui.fmt(cnt("signed"))}</b> وقّعوا</span>${o.resolved.length ? `<span class="cc-stat"><b>${ui.fmt(o.resolved.length)}</b> عُرفوا بالهوية/الجوال (خارج القائمة)</span>` : ""}<span class="cc-stat"><b>${ui.fmt(cnt("absent"))}</b> لا يظهرون في الأوراق</span><span class="cc-stat"><b>${ui.fmt(cnt("blank"))}</b> بلا توقيع</span><span class="cc-stat"><b>${ui.fmt(review.length)}</b> تحتاج مراجعة</span><span class="cc-stat"><b>${ui.fmt(o.orphans.length)}</b> أسماء لا تطابق أحداً</span>
         <button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div>
       ${review.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>تحتاج مراجعتك</h4><span class="cc-badge">${ui.fmt(review.length)}</span></div></header><p class="cc-note">تشابه جزئي بين اسم مسجّل واسم مقروء. أكّد أو ارفض.</p>
         <div class="cc-sig-rev">${review.map((x) => `<div class="cc-sig-r"><span><b>${esc(x.reg.name)}</b> ↔ ${x.found ? esc(x.found.name) : "—"} <small>${x.found ? Math.round(x.score * 100) + "%" + (x.found.signed === true ? " · موقّع" : x.found.signed === false ? " · بلا توقيع" : " · توقيع غير محسوم") + (x.how ? " · " + esc(x.how) : "") + (x.found.nid ? " · هوية " + esc(x.found.nid) : "") + (x.found.phone ? " · جوال " + esc(x.found.phone) : "") + (sigLookupText(x.found) ? " · <b>" + esc(sigLookupText(x.found)) + "</b>" : "") : ""}</small></span><span><button type="button" class="btn secondary small" data-cc="sig-ok" data-k="${esc(x.reg.key)}" data-f="${x.found ? esc(x.found.id) : ""}">نعم هو</button> <button type="button" class="btn secondary small" data-cc="sig-no" data-k="${esc(x.reg.key)}">ليس هو</button></span></div>`).join("")}</div></article>` : ""}
       ${miss.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>لم يوقّعوا</h4><span class="cc-badge bad">${ui.fmt(miss.length)}</span></div></header>${tbl("sig-miss", miss)}</article>` : ""}
+      ${o.resolved.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>عُرفوا بالهوية أو الجوال من نظام المركز</h4><span class="cc-badge">${ui.fmt(o.resolved.length)}</span></div></header><p class="cc-note">رقم الهوية أو الجوال المقروء دلّ على طالب في النظام ليس ضمن قائمة المرحلة/الحالة المختارة، فعُرض باسمه في النظام ولو كان اسمه في الورقة مكتوباً خطأً.</p>${dataTable("sig-found", sigFoundHeads(), o.resolved.map(sigFoundRow))}</article>` : ""}
       ${o.orphans.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>أسماء في الأوراق لا تطابق مسجّلاً في هذه المرحلة</h4><span class="cc-badge">${ui.fmt(o.orphans.length)}</span></div></header><p class="cc-note">قد تكون قراءة خاطئة أو متدرباً من مرحلة أخرى. إن كان أحدها لمسجّل فاختره:</p>
-        <div class="cc-sig-rev">${o.orphans.map((f) => `<div class="cc-sig-r"><span><b>${esc(f.name)}</b> <small>${f.signed === true ? "موقّع" : "غير محسوم"} · ${esc(f.file)}${sigLookupText(f) ? " · <b>" + esc(sigLookupText(f)) + "</b>" : ""}</small></span><select data-sig-assign="${esc(f.id)}"><option value="">— ليس من المسجلين —</option>${miss.map((x) => `<option value="${esc(x.reg.key)}">${esc(x.reg.name)}</option>`).join("")}</select></div>`).join("")}</div></article>` : ""}
+        <div class="cc-sig-rev">${o.orphans.map((f) => `<div class="cc-sig-r"><span><b>${esc(f.name)}</b> <small>${f.signed === true ? "موقّع" : "غير محسوم"} · ${esc(sigShort(f.file))}${sigLookupText(f) ? " · <b>" + esc(sigLookupText(f)) + "</b>" : ""}</small></span><select data-sig-assign="${esc(f.id)}"><option value="">— ليس من المسجلين —</option>${miss.map((x) => `<option value="${esc(x.reg.key)}">${esc(x.reg.name)}</option>`).join("")}</select></div>`).join("")}</div></article>` : ""}
       <details class="cc-help"><summary>الذين وقّعوا (${ui.fmt(cnt("signed"))})</summary>${cnt("signed") ? tbl("sig-ok", o.items.filter((x) => x.st === "signed")) : '<p class="cc-note">لا أحد.</p>'}</details>
       <p class="cc-note">القراءة بالذكاء الاصطناعي قد تخطئ في الأسماء المكتوبة بخط اليد أو الصور غير الواضحة، فراجع «تحتاج مراجعتك» قبل أن تعتمد القائمة. لا يُكتب شيء في نظام المركز.</p></section>`;
   }
