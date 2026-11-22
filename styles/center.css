@@ -1128,3 +1128,7 @@ html:root:root:root .fx-step .field { margin-bottom: 8px; }
 .cc-sig-prog { font-size: .85rem; color: var(--muted, #667); }
 
 .cc-sig-ses { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin: 6px 0; }
+
+.cc-sigwa-list { display: grid; gap: 4px; max-height: 320px; overflow: auto; margin: 6px 0; }
+.cc-sigwa-r { display: flex; flex-wrap: wrap; gap: 6px 10px; justify-content: space-between; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.cc-sigwa-r > span { min-width: 0; overflow-wrap: anywhere; }
