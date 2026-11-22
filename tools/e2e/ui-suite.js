@@ -595,5 +595,22 @@ async function suite() {
     c.state.mode = "report"; c.state.att.out = null; c.state.grad.out = null; c.state.wideLimit = 0; c.render();
   }
 
+  // تذكير دوري بالتقارير المحفوظة
+  {
+    const oldPrompt = window.prompt;
+    c.state.mode = "report"; c.state.saved = [{ id: String(Date.now() - 5 * 86400000), name: "تقرير اختبار التذكير", mode: "report", cfg: JSON.parse(JSON.stringify(c.state.sel)) }]; c.render();
+    window.prompt = () => "2";
+    const rb = b.querySelector('[data-cc="sv-remind"]');
+    ok("زر التذكير الدوري بجانب التقرير المحفوظ", !!rb, "btn");
+    if (rb) { rb.click(); await wait(200); }
+    ok("ضبط التذكير كل يومين", c.state.saved[0].every === 2, JSON.stringify(c.state.saved[0].every));
+    App.centerCmd.renderDash(); await wait(100);
+    const dsh = document.getElementById("dash-saved");
+    ok("اللوحة الرئيسية تعرض التقرير المستحق (مضى 5 أيام > 2)", !!dsh && !dsh.hidden && /تقرير اختبار التذكير/.test(dsh.textContent) && /شغّله الآن/.test(dsh.textContent) && /تذكير كل/.test(dsh.textContent), dsh && dsh.textContent.slice(0, 160));
+    c.state.saved[0].ran = new Date().toISOString(); App.centerCmd.renderDash(); await wait(100);
+    ok("بعد التشغيل لا يظهر تنبيه الاستحقاق", !/شغّله الآن/.test((document.getElementById("dash-saved") || {}).textContent || ""), "after-run");
+    window.prompt = oldPrompt; c.state.saved = []; App.centerCmd.renderDash(); c.render();
+  }
+
   return R;
 }
