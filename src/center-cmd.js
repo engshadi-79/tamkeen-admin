@@ -31,7 +31,7 @@
     cmp: { tracks: [], status: "", multiOnly: true, goal: "multi", out: null }, // مقارنة المراحل
     sib: { tracks: [], status: "", phone: true, name: true, loose: false, both: false, stageMode: false, stages: [], baseStage: "المرحلة الثالثة", cmpStages: [], out: null }, // مقارنة الإخوة
     mis: { kind: "pre", tracks: [], stages: [], status: "active", verify: true, msg: "", out: null }, // استبيانات وتعهدات
-    dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false }, out: null, rows: null, diff: null },
+    dq: { tracks: [], stages: [], status: "active", checks: { dupId: true, badId: true, noPhone: true, noGroup: true, shortName: true, dupName: true, dupPhone: false, twoGroups: true }, out: null, rows: null, diff: null },
     mask: false, idleMin: 20, lastAct: Date.now(), extLatest: "", errors: [],
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
@@ -1411,7 +1411,7 @@
   }
 
   /* ===== فحص البيانات: ملاحظات الجودة + مقارنة بلقطة سابقة ===== */
-  const DQ_CHECKS = [["dupId", "هوية مكررة لطالبين مختلفين"], ["badId", "هوية ليست 9 أرقام"], ["noPhone", "جوال ناقص أو غير صالح"], ["noGroup", "بلا مجموعة"], ["shortName", "اسم أقل من رباعي"], ["dupName", "اسم مكرر بهويات مختلفة"], ["dupPhone", "جوال مشترك بين طلاب (قد يكونون إخوة)"]];
+  const DQ_CHECKS = [["dupId", "هوية مكررة لطالبين مختلفين"], ["badId", "هوية ليست 9 أرقام"], ["noPhone", "جوال ناقص أو غير صالح"], ["noGroup", "بلا مجموعة"], ["shortName", "اسم أقل من رباعي"], ["dupName", "اسم مكرر بهويات مختلفة"], ["dupPhone", "جوال مشترك بين طلاب (قد يكونون إخوة)"], ["twoGroups", "طالب مسجَّل في أكثر من مجموعة"]];
   const DQ_LABEL = Object.fromEntries(DQ_CHECKS);
   const dqHeads = () => ["نوع الملاحظة", "الاسم", "رقم الهوية", "رقم الطالب", "الجوال", "المسار", "المرحلة", "المجموعة", "تفاصيل"];
   const dqTable = () => ((state.dq.out && state.dq.out.issues) || []).map((x) => [DQ_LABEL[x.type], x.s.name, x.s.id, x.s.stu, x.s.phone, x.s.track, x.s.stage, x.s.group, x.detail]);
@@ -1436,8 +1436,8 @@
         l.rows.forEach((x) => students.push({ name: clean(x.cells[iN]), id: digits(x.cells[iI]), stu: iS >= 0 ? clean(x.cells[iS]) : "", phone: iP >= 0 ? phoneNorm(x.cells[iP]) : "", track: trackShort(l.tid), stage: stageOf(x.course || ""), group: iG >= 0 ? clean(x.cells[iG]).replace(/^[-–—]$/, "") : "" }));
       });
       if (c.stages.length) students = students.filter((st) => c.stages.includes(st.stage));      // الفحص داخل المراحل المختارة فقط
-      const uniq = new Map();
-      students.forEach((st) => { const k = st.stu || st.id + "|" + st.name; if (!uniq.has(k)) uniq.set(k, st); });
+      const uniq = new Map(), grpsBy = new Map();
+      students.forEach((st) => { const k = st.stu || st.id + "|" + st.name; if (!uniq.has(k)) uniq.set(k, st); if (st.group) (grpsBy.get(k) || grpsBy.set(k, new Set()).get(k)).add(st.group); });
       students = [...uniq.values()];
       const issues = [];
       const push = (type, st, detail) => issues.push({ type, s: st, detail: detail || "" });
@@ -1449,6 +1449,7 @@
       if (c.checks.shortName) students.forEach((st) => { if (normName(st.name).split(" ").filter(Boolean).length < 4) push("shortName", st, "عدد أجزاء الاسم: " + normName(st.name).split(" ").filter(Boolean).length); });
       if (c.checks.dupName) groupBy((st) => normName(st.name)).forEach((arr) => { if (new Set(arr.map((x) => x.id)).size > 1) arr.forEach((st) => push("dupName", st, "نفس الاسم بهوية مختلفة عند " + (arr.length - 1) + " آخر")); });
       if (c.checks.dupPhone) groupBy((st) => st.phone).forEach((arr) => { if (new Set(arr.map((x) => x.id)).size > 1) arr.forEach((st) => push("dupPhone", st, "الجوال نفسه عند: " + arr.filter((x) => x !== st).slice(0, 3).map((x) => x.name).join("، "))); });
+      if (c.checks.twoGroups) students.forEach((st) => { const g = grpsBy.get(st.stu || st.id + "|" + st.name); if (g && g.size > 1) push("twoGroups", st, "المجموعات: " + [...g].join("، ")); });
       const order = DQ_CHECKS.map((x) => x[0]);
       issues.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type) || a.s.name.localeCompare(b.s.name, "ar"));
       const byType = {}; issues.forEach((x) => { byType[x.type] = (byType[x.type] || 0) + 1; });
@@ -1853,19 +1854,20 @@
   const trackNamesOf = (ids) => (ids || []).map((id) => { const o = trackOpts().find((x) => String(x.v) === String(id)); return o ? o.t.replace(/^مسار\s*/, "") : ""; }).filter(Boolean);
   function attAggregate(sessions) {
     const by = new Map();
-    sessions.forEach((se) => (se.rows || []).forEach((r) => {
+    sessions.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach((se) => (se.rows || []).forEach((r) => {
       const key = r.sid || r.name;
-      const e = by.get(key) || by.set(key, { name: r.name, stu: r.stu, track: attTrackName(se.track), group: se.group, present: 0, late: 0, absent: 0, excused: 0, sessions: 0, lastAbsent: "" }).get(key);
+      const e = by.get(key) || by.set(key, { name: r.name, stu: r.stu, track: attTrackName(se.track), group: se.group, present: 0, late: 0, absent: 0, excused: 0, sessions: 0, lastAbsent: "", streak: 0, maxStreak: 0 }).get(key);
       e.sessions++; if (e[r.status] != null) e[r.status]++;
+      if (r.status === "absent") { e.streak++; if (e.streak > e.maxStreak) e.maxStreak = e.streak; } else e.streak = 0;   // الغياب المتتالي بترتيب التاريخ
       if (r.status === "absent" && se.date > e.lastAbsent) e.lastAbsent = se.date;
     }));
     return [...by.values()];
   }
   const attCount = (e) => e.absent + (state.att.excused ? e.excused : 0);
   const attFlagged = () => ((state.att.out && state.att.out.students) || []).filter((e) => attCount(e) > Number(state.att.thr || 3));
-  const attHeads = () => ["الطالب", "الرقم", "المسار", "المجموعة", "غائب", "بعذر", "متأخر", "حاضر", "الجلسات", "آخر غياب", "التنبيه"];
+  const attHeads = () => ["الطالب", "الرقم", "المسار", "المجموعة", "غائب", "بعذر", "متأخر", "حاضر", "الجلسات", "آخر غياب", "أطول غياب متتالٍ", "التنبيه"];
   const attTable = () => ((state.att.out && state.att.out.students) || []).slice().sort((a, b) => attCount(b) - attCount(a) || a.name.localeCompare(b.name, "ar"))
-    .map((e) => [e.name, e.stu, e.track, e.group, e.absent, e.excused, e.late, e.present, e.sessions, e.lastAbsent || "—", attCount(e) > Number(state.att.thr || 3) ? "⚠ تجاوز " + state.att.thr : ""]);
+    .map((e) => [e.name, e.stu, e.track, e.group, e.absent, e.excused, e.late, e.present, e.sessions, e.lastAbsent || "—", e.maxStreak || 0, [attCount(e) > Number(state.att.thr || 3) ? "⚠ تجاوز " + state.att.thr : "", e.maxStreak >= 3 ? "⚠ " + e.maxStreak + " جلسات متتالية" : ""].filter(Boolean).join(" · ")]);
   /* غائبو آخر يوم مقروء مجمّعين بالمسار والمجموعة، لكل مجموعة نص واتساب جاهز */
   function attGroups() {
     const o = state.att.out; if (!o || !o.lastDay) return [];
