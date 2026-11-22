@@ -72,4 +72,7 @@ const pn = P.build(mk(20), { perPage: 10 }).blocks;
 const kinds = pn.map((b) => b.kind);
 ok("رقم الورقة بعد الجدول لا قبله", kinds.indexOf("pagenum") > kinds.indexOf("table") && !kinds.includes("meta"), kinds);
 ok("كل ورقة لها كتلة رقم واحدة (2)", kinds.filter((k) => k === "pagenum").length === 2, kinds);
+// خط المذيع قابل للتصغير ويتبعه ارتفاع الصف
+const small = P.build(mk(5), { announcerSizePt: 12 }, "announcer").blocks.find((b) => b.kind === "table");
+ok("خط المذيع 12 ← ارتفاع صف أصغر", small.sizePt === 12 && small.rowHeightTw === 360, [small.sizePt, small.rowHeightTw]);
 console.log(bad ? bad + " فشل" : "كل الاختبارات نجحت (" + n + ")"); process.exit(bad ? 1 : 0);
