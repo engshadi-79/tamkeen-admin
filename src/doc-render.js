@@ -25,6 +25,7 @@
 
   function rowEl(cells, b) {
     const tr = document.createElement("tr");
+    if (b.rowHeightTw) tr.style.height = cqw(b.rowHeightTw / 20);
     cells.forEach((c, i) => {
       const td = document.createElement("td");
       td.textContent = c == null ? "" : String(c);
@@ -107,6 +108,7 @@
     container.innerHTML = "";
     let body = newPage(container);
     list.forEach((b) => {
+      if (b.kind === "pagebreak") { if (body.children.length) body = newPage(container); return; }
       if (b.kind === "table") {
         let table = tableEl(b);
         body.appendChild(table);

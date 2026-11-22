@@ -121,7 +121,8 @@
       `<w:tc><w:tcPr><w:tcW w:w="${widths[i]}" w:type="dxa"/>${header ? '<w:shd w:val="clear" w:color="auto" w:fill="DFF4F4"/>' : ""}<w:vAlign w:val="center"/></w:tcPr>` +
       cellPara(text == null ? "" : String(text), header || (block.align && block.align[i] === "center") ? "center" : "left", header) + `</w:tc>`;
     const headerRow = `<w:tr><w:trPr><w:tblHeader/></w:trPr>${block.headers.map((h, i) => cell(h, i, true)).join("")}</w:tr>`;
-    const rows = block.rows.map((r) => `<w:tr><w:trPr><w:cantSplit/></w:trPr>${r.map((c, i) => cell(c, i, false)).join("")}</w:tr>`).join("");
+    const rowH = block.rowHeightTw ? `<w:trHeight w:val="${Math.round(block.rowHeightTw)}" w:hRule="atLeast"/>` : "";   // ارتفاع أدنى للصف (مثلاً خانة توقيع)
+    const rows = block.rows.map((r) => `<w:tr><w:trPr><w:cantSplit/>${rowH}</w:trPr>${r.map((c, i) => cell(c, i, false)).join("")}</w:tr>`).join("");
     return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="${TEXT_WIDTH_TWIPS}" w:type="dxa"/><w:tblBorders>${border}</w:tblBorders>` +
       `<w:tblLayout w:type="fixed"/><w:tblLook w:val="04A0"/></w:tblPr>` +
       `<w:tblGrid>${widths.map((w) => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>${headerRow}${rows}</w:tbl>` +
@@ -156,6 +157,7 @@
 
   function paragraph(block, media) {
     if (block.kind === "table") return table(block);
+    if (block.kind === "pagebreak") return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:br w:type="page"/></w:r></w:p>`;
     if (block.kind === "image") return image(block, media);
     if (block.kind === "addressee") return addressee(block);
     if (block.kind === "signature") {
