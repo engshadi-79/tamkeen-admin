@@ -367,6 +367,7 @@ async function suite() {
   ok("الحضور: طالبان من أربع جلسات، وأمر قراءة واحد", !!ao && ao.students.length === 2 && ao.sessions === 4 && calls.length === 1 && /^attendance/.test(calls[0]), JSON.stringify({ calls, err: c.state.resultError, n: ao && ao.students.length }));
   const attRows = [...b.querySelectorAll('[data-tblbox="att-0"] tbody tr')].map((r) => r.textContent.replace(/\s+/g, " "));
   ok("الطالب الذي غاب 4 مرات يظهر أولاً بعلامة التنبيه", attRows.length === 2 && /طالب كثير الغياب/.test(attRows[0]) && /⚠ تجاوز 3/.test(attRows[0]) && !/⚠/.test(attRows[1]), JSON.stringify(attRows));
+  ok("الغياب المتتالي يظهر في جدول الطالب كثير الغياب", /أطول غياب متتالٍ/.test(b.querySelector('[data-tblbox="att-0"] thead').textContent) && /جلسات متتالية/.test(attRows[0]), attRows[0]);
   ok("شريط التنبيه: طالب واحد تجاوز 3 غيابات", /طالباً تجاوزوا 3 غيابات/.test(b.textContent) && !!b.querySelector('[data-cc="att-copy"]'), "banner");
   // غائبو آخر يوم بحسب المجموعة + نص واتساب
   let waAtt = ""; const ocA = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { waAtt = x; } }, configurable: true });
