@@ -56,4 +56,15 @@ r = P.build(mt(4, "مسار الحلاقة", "المرحلة الأولى", "ا�
 ok("التقسيم بالمجموعة: المسار في الوسط ثم «المجموعة: الاولى» بلا مدرب", r.blocks.filter((b) => b.kind === "title").map((b) => b.text).join("|").includes("مسار الحلاقة|المجموعة: الاولى"), r.blocks.filter((b) => b.kind === "title").map((b) => b.text));
 // الديباجة المعتمدة
 ok("الديباجة المعتمدة: استعمال الحقيبة في المشروع الخاص وعدم البيع", /في مشروعي الخاص/.test(P.DEFAULTS.preamble) && /بعدم بيعها/.test(P.DEFAULTS.preamble) && !/في التدريب فقط/.test(P.DEFAULTS.preamble), P.DEFAULTS.preamble);
+// نسخة المذيع: الترتيب نفسه، وجدول (م، الاسم، المرحلة) بلا ديباجة ولا توقيع
+const ST = [...mt(5, "مسار الحلاقة", "المرحلة الأولى", "الاولى"), ...mt(4, "مسار الحلاقة", "المرحلة الثانية", "الثانية"), ...mt(3, "مسار التطريز", "المرحلة الأولى", "الاولى")];
+const sign = P.build(ST, { perPage: 20 }), ann = P.build(ST, { perPage: 20 }, "announcer");
+const at = ann.blocks.filter((b) => b.kind === "table"), stb = sign.blocks.filter((b) => b.kind === "table");
+ok("المذيع: رؤوس الجدول م|الاسم|المرحلة", at[0].headers.join("|") === "م|الاسم|المرحلة", at[0].headers);
+ok("المذيع: بلا ديباجة ولا عمود توقيع أو هوية", !ann.blocks.some((b) => b.kind === "para") && at.every((t) => t.rows.every((r) => r.length === 3)));
+ok("المذيع: الأسماء والمراحل بالترتيب نفسه وبترقيم م نفسه", at.length === stb.length && at.every((t, k) => t.rows.every((r, j) => r[0] === stb[k].rows[j][0] && r[1] === stb[k].rows[j][1] && r[2] === stb[k].rows[j][3])), at.map((t) => t.rows.length));
+ok("المذيع: اسم المسار في الوسط وعنوان النسخة", ann.blocks.filter((b) => b.kind === "title").map((b) => b.text).join("|").includes("كشف أسماء الخريجين") && ann.blocks.some((b) => b.kind === "title" && b.text === "مسار الحلاقة"));
+ok("المذيع: خط أكبر في الجدول", at[0].sizePt >= 14);
+const ann2 = P.build(mk(30), { perPage: 10 }, "announcer");
+ok("المذيع: ترقيم الأوراق نفسه (3-1) (3-2) (3-3)", ann2.blocks.filter((b) => b.kind === "meta").map((b) => b.text).join() === "(3-1),(3-2),(3-3)", ann2.blocks.filter((b) => b.kind === "meta").map((b) => b.text));
 console.log(bad ? bad + " فشل" : "كل الاختبارات نجحت (" + n + ")"); process.exit(bad ? 1 : 0);

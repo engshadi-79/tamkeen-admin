@@ -10,6 +10,7 @@
   function tableEl(b) {
     const table = document.createElement("table");
     table.className = "lb lb-table";
+    if (b.sizePt) table.style.fontSize = cqw(b.sizePt);
     if (b.widths) {
       const cg = document.createElement("colgroup");
       b.widths.forEach((w) => { const c = document.createElement("col"); c.style.width = `${w * 100}%`; cg.append(c); });
