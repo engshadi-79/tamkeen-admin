@@ -10,7 +10,7 @@
     autoFit: true,           // عدد الصفوف يُقاس تلقائياً ليلائم الصفحة المطبوعة (يعتمد طول الديباجة)
     perPage: 12,    // معايرة الطباعة على الترويسة: 13 صفاً تتّسع و14 لا؛ 12 هامش أمان للديباجة الأطول
     repeatPreamble: true,    // الديباجة في أعلى كل ورقة (لتكون كل ورقة موقَّعة مكتملة)
-    byGroup: true,           // ورقة (أو أكثر) مستقلة لكل مجموعة
+    split: "track",          // track: أسماء كل مسار معاً (حتى لو أكثر من مرحلة أو مجموعة) | group: ورقة لكل مجموعة | none: كشف واحد
   };
 
   const clean = (v) => String(v == null ? "" : v).replace(/\s+/g, " ").trim();
@@ -34,8 +34,8 @@
     const perPage = Math.max(5, Math.min(40, Math.round(Number(o.perPage)) || DEFAULTS.perPage));
     const list = students.filter((s) => clean(s.name));
     const groups = new Map();
-    if (o.byGroup) list.forEach((s) => { const k = clean(s.group) || "—"; (groups.get(k) || groups.set(k, []).get(k)).push(s); });
-    else groups.set("", list.slice());
+    const keyOf = o.split === "group" ? (s) => clean(s.group) || "—" : o.split === "none" ? () => "" : (s) => clean(s.track) || "—";
+    list.forEach((s) => { const k = keyOf(s); (groups.get(k) || groups.set(k, []).get(k)).push(s); });
     const keys = [...groups.keys()].sort((a, b) => a.localeCompare(b, "ar", { numeric: true }));
     const blocks = [], sheets = [];   // sheets: لكل ورقة { meta, k (داخل مجموعتها), gTotal }
 
@@ -48,8 +48,10 @@
         blocks.push(meta);
         sheets.push({ meta, k: ci + 1, gTotal: chunks.length });
         blocks.push({ kind: "title", text: clean(o.title) });
-        const info = [chunk[0] && chunk[0].course ? clean(chunk[0].course) : "", o.byGroup && gk && gk !== "—" ? "المجموعة: " + gk : ""].filter(Boolean).join(" — ");
-        if (info) blocks.push({ kind: "bold", text: info });
+        // اسم المسار في الوسط تحت العنوان؛ وعند التقسيم بالمجموعة يُذكر اسمها (بلا اسم المدرب) تحته
+        const trackName = o.split === "track" ? (gk !== "—" ? gk : "") : clean(chunk[0] && chunk[0].track);
+        if (trackName) blocks.push({ kind: "title", text: trackName, sizePt: 13 });
+        if (o.split === "group" && gk && gk !== "—") blocks.push({ kind: "title", text: "المجموعة: " + gk, sizePt: 12 });
         if (ci === 0 || o.repeatPreamble) blocks.push({ kind: "para", text: clean(o.preamble) });
         blocks.push({
           kind: "table", headers: HEADERS, widths: WIDTHS, align: ALIGN, rowHeightTw: 480,
