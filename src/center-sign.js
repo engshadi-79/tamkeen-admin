@@ -41,14 +41,14 @@
     return { name: image.name, title: String(j.title || "").slice(0, 120), heads, rows };
   }
   async function readTables(images, opts) {
-    const out = { tables: new Array(images.length), failed: [] };
+    const out = { tables: new Array(images.length), failed: [], quota: false };
     let next = 0, done = 0;
     const worker = async () => {
       while (next < images.length) {
-        if (opts && opts.signal && opts.signal.aborted) return;
+        if ((opts && opts.signal && opts.signal.aborted) || out.quota) return;
         const k = next++, im = images[k];
         try { out.tables[k] = await readTable(im, opts); }
-        catch (e) { if (e && e.message === "NO_KEY") throw e; out.failed.push({ name: im.name, error: (e && e.message) || String(e) }); }
+        catch (e) { if (e && e.message === "NO_KEY") throw e; if (isDayQuota(e)) out.quota = true; out.failed.push({ name: im.name, error: out.quota ? "حد الاستخدام اليومي" : (e && e.message) || String(e) }); }
         done++; if (opts && opts.onProgress) opts.onProgress(done, images.length);
       }
     };
@@ -114,29 +114,56 @@
     return { title: String(j.title || "").slice(0, 120), rows };
   }
 
-  /* عدة صور: أربع معاً كحد أقصى، والتقدّم يُبلَّغ. إخفاق صورة لا يوقف البقية */
+  /* بلوغ الحد اليومي المجاني: لا جدوى من إعادة المحاولة، فتُوقَف بقية الطلبات فوراً */
+  const isDayQuota = (e) => /per day|PerDay|requests per day|PerDayPerProject/i.test((e && e.message) || "");
+  const QUOTA_MSG = "بلغتَ الحد اليومي المجاني لمزوّد الذكاء الاصطناعي فتوقّفت القراءة.";
+
+  const MULTI_PROMPT = (n) => `أمامك ${n} صور لأوراق مختلفة بالترتيب (الصورة 1 ثم 2 … ثم ${n}). اقرأ كل ورقة على حدة وأعد JSON بهذا الشكل بالضبط:
+{"sheets":[{"image":1,"title":"عنوان الورقة أو التاريخ إن ظهر","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","signed":true,"confidence":0.0}]}]}
+عنصر واحد في sheets لكل صورة بنفس ترتيبها، ولا تخلط أسماء صورة بصورة أخرى. confidence بين 0 و1.`;
+
+  /* عدة صور في طلب واحد (يوفّر حصة الطلبات): يعيد [{ title, rows }] بترتيب الصور */
+  async function readBatch(images, opts) {
+    if (images.length === 1) return [await readSheet(images[0], opts)];
+    const ai = (opts && opts.ai) || App.ai;
+    if (!ai || !ai.vision) throw new Error("خدمة قراءة الصور غير متاحة");
+    const text = await ai.vision({ images: images.map((im) => ({ mime: im.mime, data: im.data })), prompt: MULTI_PROMPT(images.length), system: SYSTEM, signal: opts && opts.signal, fast: !!(opts && opts.fast) });
+    const j = parseJson(text), sheets = Array.isArray(j.sheets) ? j.sheets : null;
+    if (!sheets || !sheets.length) throw new Error("لم يرجع النموذج بيانات الصور المتعددة بالشكل المطلوب.");
+    return images.map((im, k) => {
+      const sh = sheets.find((x) => Number(x && x.image) === k + 1) || sheets[k] || { rows: [] };
+      return { title: String(sh.title || "").slice(0, 120), rows: (Array.isArray(sh.rows) ? sh.rows : []).map((r, i) => normRow(r, im.name, i)).filter(Boolean) };
+    });
+  }
+
+  /* عدة صور: opts.batch صورة في كل طلب (الافتراضي 1)، وأربعة طلبات معاً كحد أقصى. إخفاق طلب لا يوقف البقية،
+     وبلوغ الحد اليومي يوقف الباقي ويضع out.quota */
   async function readSheets(images, opts) {
-    const out = { rows: [], titles: [], failed: [] };
+    const out = { rows: [], titles: [], failed: [], quota: false };
+    const B = Math.max(1, Math.min(6, Math.round(Number(opts && opts.batch)) || 1));
+    const groups = []; for (let i = 0; i < images.length; i += B) groups.push(images.slice(i, i + B));
     let next = 0, done = 0;
     const worker = async () => {
-      while (next < images.length) {
-        if (opts && opts.signal && opts.signal.aborted) return;
-        const im = images[next++];
+      while (next < groups.length) {
+        if ((opts && opts.signal && opts.signal.aborted) || out.quota) return;
+        const g = groups[next++];
         try {
-          const r = await readSheet(im, opts);
-          r.rows.forEach((x) => out.rows.push(x));
-          if (r.title) out.titles.push(im.name + ": " + r.title);
+          const rs = await readBatch(g, opts);
+          rs.forEach((r, k) => { r.rows.forEach((x) => out.rows.push(x)); if (r.title) out.titles.push(g[k].name + ": " + r.title); });
         } catch (e) {
           if (e && e.message === "NO_KEY") throw e;
-          out.failed.push({ name: im.name, error: (e && e.message) || String(e) });
+          if (isDayQuota(e)) out.quota = true;
+          g.forEach((im) => out.failed.push({ name: im.name, error: out.quota ? "حد الاستخدام اليومي" : (e && e.message) || String(e) }));
         }
-        done++;
+        done += g.length;
         if (opts && opts.onProgress) opts.onProgress(done, images.length);
       }
     };
     await Promise.all([worker(), worker(), worker(), worker()]);
+    // ما لم يُقرأ بسبب الحد اليومي يُسجَّل غير مقروء
+    if (out.quota) { const have = new Set(out.failed.map((x) => x.name)); images.forEach((im) => { if (!have.has(im.name) && !out.rows.some((r) => r.file === im.name)) out.failed.push({ name: im.name, error: "حد الاستخدام اليومي" }); }); }
     return out;
   }
 
-  App.centerSign = { prepare, readSheet, readSheets, readTable, readTables, parseJson, normRow, SYSTEM, PROMPT };
+  App.centerSign = { prepare, readSheet, readBatch, readSheets, readTable, readTables, parseJson, normRow, isDayQuota, QUOTA_MSG, SYSTEM, PROMPT };
 })(window.App = window.App || {});
