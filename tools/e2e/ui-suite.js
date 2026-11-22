@@ -577,5 +577,22 @@ async function suite() {
     c.state.mode = "report"; c.state.att.out = null; c.state.mis.out = null; c.state.wideLimit = 0; c.render();
   }
 
+  // جاهزية التخرج: حضور الفترة (+ التقييمات) ← مستوفون وغير مستوفين بأسبابهم
+  {
+    c.state.mode = "grad"; c.state.groups = []; c.state.att = Object.assign(c.state.att, { tracks: [], stages: [], out: null }); c.state.mis.out = null;
+    c.state.grad = Object.assign(c.state.grad, { from: "2026-11-08", to: "2026-11-11", maxAbs: 1, minRate: 0, countExcused: false, requireEval: false, out: null }); c.state.wideLimit = 100000; c.state.wide = null; c.render();
+    ok("تبويب الجاهزية: الحقول وزر الفحص", !!b.querySelector('[data-grad="maxAbs"]') && !!b.querySelector('[data-cc="run-grad"]') && !b.querySelector('[data-cc="run-grad"]').disabled, "view");
+    b.querySelector('[data-cc="run-grad"]').click();
+    for (let i = 0; i < 80 && !c.state.grad.out && !c.state.resultError; i++) await wait(200); await wait(300);
+    const go = c.state.grad.out;
+    ok("الجاهزية: طالبان، أحدهما غاب أكثر من الحد (1)", !!go && go.rows.length === 2 && go.rows.filter((g) => !g.ok).length >= 1 && go.rows.some((g) => g.reasons.some((x) => /غياب/.test(x))), JSON.stringify({ n: go && go.rows.length, err: c.state.resultError }));
+    ok("عرض غير المستوفين وزر التنزيل والنسخ", !!b.querySelector('[data-tblbox="grad-no"]') && !!b.querySelector('[data-cc="export-grad"]') && !!b.querySelector('[data-cc="grad-copy"]'), "view2");
+    let gTxt = ""; const ocG = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { gTxt = x; } }, configurable: true });
+    b.querySelector('[data-cc="grad-copy"]').click(); await wait(200);
+    ok("نسخ قائمة غير المستوفين", /^\*غير مستوفين للتخرج/.test(gTxt) && /غياب/.test(gTxt), gTxt.slice(0, 120));
+    try { Object.defineProperty(navigator, "clipboard", { value: ocG, configurable: true }); } catch (e) { /* */ }
+    c.state.mode = "report"; c.state.att.out = null; c.state.grad.out = null; c.state.wideLimit = 0; c.render();
+  }
+
   return R;
 }

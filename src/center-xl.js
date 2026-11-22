@@ -70,5 +70,24 @@
     };
   }
 
-  App.centerXl = { readWorkbook, splitHeader, detect, compare, clean };
+  /* جاهزية التخرج: حضور (غياب أقصى ونسبة حضور دنيا) + نواقص التقييمات.
+     students: [{name,stu,track,group,absent,excused,late,present,sessions}]؛ missing: [{stu,id,name,items:[...]}] */
+  function gradEval(students, missing, cfg) {
+    const maxAbs = Number(cfg.maxAbs), minRate = Number(cfg.minRate) || 0;
+    const key = (x) => (x.stu ? "s:" + x.stu : "n:" + U().arKey(x.name));
+    const miss = new Map();
+    (missing || []).forEach((m) => { if (m.stu) miss.set("s:" + m.stu, m); miss.set("n:" + U().arKey(m.name), m); });
+    return students.map((s) => {
+      const abs = s.absent + (cfg.countExcused ? s.excused : 0);
+      const attended = s.present + s.late, rate = s.sessions ? Math.round((attended / s.sessions) * 100) : 100;
+      const m = miss.get(key(s)) || miss.get("n:" + U().arKey(s.name));
+      const items = m ? m.items.slice() : [], reasons = [];
+      if (!isNaN(maxAbs) && abs > maxAbs) reasons.push("غياب " + abs + " (الحد " + maxAbs + ")");
+      if (minRate && rate < minRate) reasons.push("نسبة الحضور " + rate + "% (الحد " + minRate + "%)");
+      if (cfg.requireEval && items.length) reasons.push("ينقصه: " + items.join("، "));
+      return { s, abs, rate, items, reasons, ok: !reasons.length };
+    }).sort((a, b) => Number(a.ok) - Number(b.ok) || b.reasons.length - a.reasons.length || a.s.name.localeCompare(b.s.name, "ar"));
+  }
+
+  App.centerXl = { readWorkbook, splitHeader, detect, compare, gradEval, clean };
 })(window.App = window.App || {});

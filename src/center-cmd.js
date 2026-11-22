@@ -36,6 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
+    grad: { from: "", to: "", maxAbs: 3, minRate: 75, countExcused: false, requireEval: false, out: null },
     morning: { mis: true },
     xl: { tracks: [], stages: [], status: "", name: "", sheets: [], sheet: 0, map: {}, reg: null, out: null },
     sig: { tracks: [], stages: [], status: "", files: [], fast: (() => { try { return localStorage.getItem("tamkeen:sig-fast") === "1"; } catch (e) { return false; } })(), rows: null, reg: null, manual: {}, reading: false, prog: "", failed: [], titles: [] },
@@ -1247,7 +1248,7 @@
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
   const CFG = { attend: "att", impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
   const MODE_NAME = { attend: "الحضور والغياب", impact: "قياس الأثر", report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
-  const RUN_BTN = { sign: "run-sig", xl: "run-xl", morning: "run-morning", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
+  const RUN_BTN = { sign: "run-sig", xl: "run-xl", morning: "run-morning", grad: "run-grad", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
   /* نسخة من إعدادات التبويب بلا نتائجه ولا بياناته */
   const cfgOf = (mode) => JSON.parse(JSON.stringify(state[CFG[mode]], (key, v) => (key === "out" || key === "rows" || key === "msg" || key === "diff" ? undefined : v)));
   function applyCfg(mode, cfg) {
@@ -1331,7 +1332,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-morning", "run-xl", "run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-grad", "run-morning", "run-xl", "run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1343,6 +1344,7 @@
       }
       if (act === "load-groups") return 1;
       if (act === "run-sig") return Math.max(1, sigCommands(true).length);
+      if (act === "run-grad") { const c = state.grad, d = Math.max(1, Math.round((Date.parse(c.to || ui.todayISO()) - Date.parse(c.from || ui.todayISO())) / 86400000) + 1); return 1 + Math.min(Number(state.att.max) || 80, d * 2) + (c.requireEval ? (estimateReads("run-mis") || 0) : 0); }
       if (act === "run-morning") return (estimateReads("att-today") || 0) + (state.morning.mis ? (estimateReads("run-mis") || 0) : 0);
       if (act === "run-xl") return Math.max(1, sigCommands(true, state.xl).length);
       if (act === "run-att" || act === "att-today") { const c = state.att, d = Math.max(1, Math.round((Date.parse(c.to || ui.todayISO()) - Date.parse(c.from || ui.todayISO())) / 86400000) + 1); return 1 + Math.min(Number(c.max) || 80, d * Math.max(1, (state.groups || []).length || (c.tracks.length || 5))); }
@@ -2162,6 +2164,56 @@
       ${attResult()}${mo ? missingResult() : ""}</section>`;
   }
 
+  /* ===== جاهزية التخرج: الحضور والتقييمات ← من يستوفي الشروط ومن ينقصه شيء ===== */
+  function gradView() {
+    const c = state.grad, today = ui.todayISO();
+    return `<section class="cc-card" id="cc-grad">
+      <header class="cc-card-h"><h3>جاهزية التخرج</h3><p>يقرأ حضور الفترة (وتقييمات الطلاب إن شئت) ويحكم من يستوفي شروطك ومن ينقصه شيء وسبب النقص. الشروط تضعها أنت، ولا يُغيَّر شيء في نظام المركز.</p></header>
+      <div class="cc-card-b"><div class="cc-grid">
+        <label class="cc-field"><span>من تاريخ (بداية الدورة)</span><input type="date" data-grad="from" value="${esc(c.from || "")}"></label>
+        <label class="cc-field"><span>إلى تاريخ</span><input type="date" data-grad="to" value="${esc(c.to || today)}"></label>
+        <label class="cc-field"><span>أقصى عدد غيابات مسموح</span><input type="number" min="0" max="50" data-grad="maxAbs" value="${esc(c.maxAbs)}"></label>
+        <label class="cc-field"><span>أدنى نسبة حضور %</span><input type="number" min="0" max="100" data-grad="minRate" value="${esc(c.minRate)}"></label>
+        <label class="cc-chk"><input type="checkbox" data-grad="countExcused" ${c.countExcused ? "checked" : ""}> <span>احسب «غياب بعذر» ضمن الغياب</span></label>
+        <label class="cc-chk"><input type="checkbox" data-grad="requireEval" ${c.requireEval ? "checked" : ""}> <span>اشترط إكمال الاستبيانات والتعهد (قراءات أكثر)</span></label>
+      </div><p class="cc-note">اختر المسار والمرحلة من شريط «النطاق». الفترة الطويلة تعني قراءات كثيرة (قراءة لكل جلسة)، فاختر مجموعة أو مساراً إن أمكن.</p></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-grad"))} أمر قراءة (تقدير أقصى)</b><span>${esc(scopeSummaryText())}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-grad" ${state.busy || !c.from ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "افحص الجاهزية"}</button></div></footer>
+    </section>`;
+  }
+  async function runGrad() {
+    const c = state.grad;
+    if (!c.from) { state.resultError = "حدّد بداية الفترة."; return render(); }
+    state.att.from = c.from; state.att.to = c.to || ui.todayISO(); state.att.excused = !!c.countExcused;
+    await runAttend();
+    if (state.resultError || !state.att.out) return render();
+    if (c.requireEval) { state.mis.kind = "all"; await runMissing(); if (state.resultError) return render(); }
+    const missing = c.requireEval && state.mis.out ? state.mis.out.rows.map((x) => ({ stu: x.stu || "", id: x.id || "", name: x.name, items: itemsOf(x, "all") })) : [];
+    c.out = { rows: App.centerXl.gradEval(state.att.out.students, missing, c), sessions: state.att.out.sessions, from: state.att.from, to: state.att.to, evalRead: !!(c.requireEval && state.mis.out) };
+    render();
+  }
+  const GRAD_HEADS = ["الطالب", "الرقم", "المسار", "المجموعة", "غياب", "نسبة الحضور", "الحالة", "السبب"];
+  const gradRow = (g) => [g.s.name, g.s.stu, g.s.track, g.s.group, g.abs, g.rate + "%", g.ok ? "مستوفٍ" : "غير مستوفٍ", g.reasons.join(" · ")];
+  function gradResult() {
+    const o = state.grad.out; if (!o) return "";
+    const no = o.rows.filter((g) => !g.ok), yes = o.rows.filter((g) => g.ok);
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> نتيجة الجاهزية</h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.rows.length)}</b> طالباً · ${ui.fmt(o.sessions)} جلسة</span><span class="cc-stat ok"><b>${ui.fmt(yes.length)}</b> مستوفون</span><span class="cc-stat ${no.length ? "bad" : "ok"}"><b>${ui.fmt(no.length)}</b> غير مستوفين</span>
+        <button type="button" class="btn secondary small" data-cc="grad-copy" ${no.length ? "" : "disabled"}>نسخ قائمة غير المستوفين</button><button type="button" class="btn secondary small" data-cc="export-grad">تنزيل Excel</button></div>
+      ${o.evalRead ? "" : '<p class="cc-note">لم تُفحص التقييمات (الحكم على الحضور فقط).</p>'}
+      ${no.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>غير مستوفين</h4><span class="cc-badge bad">${ui.fmt(no.length)}</span></div></header>${dataTable("grad-no", GRAD_HEADS, no.map(gradRow))}</article>` : '<p class="cc-alert ok">كل الطلاب يستوفون الشروط ✓</p>'}
+      ${yes.length ? `<details class="cc-help"><summary>المستوفون (${ui.fmt(yes.length)})</summary>${dataTable("grad-yes", GRAD_HEADS, yes.map(gradRow))}</details>` : ""}
+      <p class="cc-note">الحكم مبني على جلسات الفترة المقروءة وعلى شروطك أعلاه؛ تأكد أن الفترة تغطي الدورة كلها قبل الاعتماد.</p>
+    </section>`;
+  }
+  function gradExport() {
+    const o = state.grad.out; if (!o) return;
+    const wb = new ExcelJS.Workbook();
+    fmtSheet(wb.addWorksheet("غير مستوفين"), GRAD_HEADS, o.rows.filter((g) => !g.ok).map(gradRow));
+    fmtSheet(wb.addWorksheet("مستوفون"), GRAD_HEADS, o.rows.filter((g) => g.ok).map(gradRow));
+    return wb.xlsx.writeBuffer().then((b) => ui.download("جاهزية التخرج " + ui.todayISO() + ".xlsx", new Blob([b], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })));
+  }
+
   function attView() {
     const c = state.att, today = ui.todayISO();
     return `<section class="cc-card" id="cc-att">
@@ -2827,10 +2879,10 @@
       ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "grad" ? gradResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
       ${settingsCard()}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
@@ -2905,15 +2957,15 @@
   }
   /* شريط التبويبات الأفقي: عناوين قصيرة في صف واحد مجمّعة، والشرح في التلميح */
   const MODE_GROUPS = [
-    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["morning", "تقرير الصباح", "حضور اليوم والناقصون في صفحة واحدة"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
+    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["morning", "تقرير الصباح", "حضور اليوم والناقصون في صفحة واحدة"], ["grad", "جاهزية التخرج", "من يستوفي شروط الحضور والتقييمات"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
     [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
     [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
   ];
-  const MODE_ICO = { morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const MODE_ICO = { grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
   const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" title="${esc(h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
-  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att }[mode] || state.sel);
+  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att, grad: state.att }[mode] || state.sel);
   function scopeNow() {
     const c = scopeCfg(state.adding || state.proposal ? "ask" : state.mode);
     const byK = c === state.sel || c === state.mis;
@@ -3227,6 +3279,9 @@
         } else if (act === "run-sig") { return runSign();
         } else if (act === "run-xl") { return runXl();
         } else if (act === "run-morning") { return runMorning();
+        } else if (act === "run-grad") { return runGrad();
+        } else if (act === "export-grad") { return gradExport();
+        } else if (act === "grad-copy") { const o = state.grad.out; if (!o) return; const no = o.rows.filter((g) => !g.ok); const t = "*غير مستوفين للتخرج (" + no.length + ")*\n" + no.map((g, i) => (i + 1) + ". " + g.s.name + (g.s.group ? " — " + g.s.group : "") + " (" + g.reasons.join("، ") + ")").join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
         } else if (act === "morning-copy") { const t = morningText(); if (!t) return; return ui.copyText(t).then(() => ui.toast("نُسخ تقرير الصباح"));
         } else if (act === "export-xl") { return xlExport();
         } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
@@ -3428,6 +3483,7 @@
       if (t.dataset.impsrv) { state.imp.srv[t.dataset.impsrv] = t.value; return; }
       if (t.dataset.imp === "pages") { const c = state.imp, v = t.value, at = c.pages.indexOf(v); if (t.checked && at < 0) c.pages.push(v); else if (!t.checked && at >= 0 && c.pages.length > 1) c.pages.splice(at, 1); c.page = c.pages[0]; c.srv = {}; render(); return; }
       if (t.dataset.imp === "view") { const c = state.imp; if (c.outs[t.value]) { c.view = t.value; c.out = c.outs[t.value]; c.course = ""; } render(); return; }
+      if (t.dataset.grad) { const k = t.dataset.grad; state.grad[k] = t.type === "checkbox" ? !!t.checked : (k === "from" || k === "to" ? t.value : t.value); return render(); }
       if (t.dataset.morning === "mis") { state.morning.mis = !!t.checked; return render(); }
       if (t.id === "cc-xl-file") {
         const f = (t.files || [])[0]; if (!f) return;
