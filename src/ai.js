@@ -84,6 +84,37 @@
     try { return await res.json(); } catch (e) { return null; }
   }
 
+  /* ===== عدة مفاتيح Gemini: مفتاح في كل سطر (أو مفصولة بفاصلة/مسافة). عند بلوغ حد مفتاح ينتقل الطلب إلى التالي ===== */
+  const keyList = (raw) => [...new Set(String(raw || "").split(/[\s,;،]+/).map((k) => k.trim()).filter(Boolean))];
+  const COOL_KEY = "tamkeen:gemini-cool";
+  const keyTag = (k) => k.slice(-6);
+  const coolMap = () => { try { return JSON.parse(localStorage.getItem(COOL_KEY) || "{}"); } catch (e) { return {}; } };
+  const coolSet = (k, ms) => { const m = coolMap(); m[keyTag(k)] = Date.now() + ms; try { localStorage.setItem(COOL_KEY, JSON.stringify(m)); } catch (e) { /* تخزين غير متاح */ } };
+  const isCool = (k) => (coolMap()[keyTag(k)] || 0) > Date.now();
+  const isQuotaErr = (e) => /حد الاستخدام المجاني|quota|429|RESOURCE_EXHAUSTED/i.test((e && e.message) || "");
+  const isDayErr = (e) => /per day|PerDay/i.test((e && e.message) || "");
+  const isBadKeyErr = (e) => /مفتاح Gemini غير صحيح/.test((e && e.message) || "");
+  /* يجرّب المفاتيح بالتتابع؛ ما بلغ حده يُؤجَّل (6 ساعات للحد اليومي، دقيقة وبضع ثوانٍ للحد الدقيقي).
+     started(): هل بدأ إخراج الطلب فعلاً؟ عندها لا يُعاد (حتى لا يتكرر نص) */
+  async function withGeminiKeys(raw, fn, started) {
+    const keys = keyList(raw);
+    if (!keys.length) throw new Error("NO_KEY");
+    const order = [...keys.filter((k) => !isCool(k)), ...keys.filter((k) => isCool(k))];
+    let last = null, failed = 0;
+    for (const k of order) {
+      try { return await fn(k); }
+      catch (e) {
+        if (e && (e.name === "AbortError" || e.message === "NO_KEY")) throw e;
+        if (started && started()) throw e;
+        if (isQuotaErr(e)) { coolSet(k, isDayErr(e) ? 6 * 3600e3 : 70e3); last = e; failed++; continue; }
+        if (isBadKeyErr(e) && keys.length > 1) { coolSet(k, 10 * 60e3); last = e; failed++; continue; }
+        throw e;
+      }
+    }
+    if (keys.length > 1 && last) throw new Error("نفدت حصة كل مفاتيح Gemini (" + keys.length + " مفاتيح) أو تعذّر استعمالها.\n" + last.message);
+    throw last || new Error("تعذّر الطلب");
+  }
+
   /* ===== Google Gemini ===== */
   const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
   // نماذج مستقرة معروفة تُجرَّب إن لم تتوفر قائمة النماذج
@@ -234,8 +265,9 @@
       : Object.entries(context || {}).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join("\n");
     const userContent = `${contextText ? `${asText ? "المحتوى" : "بيانات المراسلة"}:\n${contextText}\n\n` : ""}المطلوب كتابته:\n${request}`;
 
-    const run = use === "claude" ? generateClaude : generateGemini;
-    return run({ key, userContent, onText, signal, model: s.claudeModel, systemPrompt });
+    if (use === "claude") return generateClaude({ key, userContent, onText, signal, model: s.claudeModel, systemPrompt });
+    let began = false;
+    return withGeminiKeys(key, (k) => generateGemini({ key: k, userContent, onText: onText ? (t) => { began = true; onText(t); } : onText, signal, model: s.claudeModel, systemPrompt }), () => began);
   }
 
   /* ===== قراءة صور (رؤية): يرسل صوراً مع تعليمات ويعيد نصاً (JSON غالباً) ===== */
@@ -284,9 +316,11 @@
     const use = provider || s.provider;
     const key = use === "claude" ? s.claudeKey : s.geminiKey;
     if (!key) throw new Error("NO_KEY");
-    const run = use === "claude" ? visionClaude : visionGemini;
     const t0 = Date.now(); visionLast.model = use === "claude" ? (s.claudeModel || CLAUDE_MODEL) : "";
-    try { return await run({ key, prompt, images, system, signal, model: s.claudeModel, fast }); } finally { visionLast.ms = Date.now() - t0; }
+    try {
+      if (use === "claude") return await visionClaude({ key, prompt, images, system, signal, model: s.claudeModel, fast });
+      return await withGeminiKeys(key, (k) => visionGemini({ key: k, prompt, images, system, signal, fast }));
+    } finally { visionLast.ms = Date.now() - t0; }
   }
 
   /* ترحيل المفتاح القديم المحفوظ على هذا الجهاز إلى إعدادات المركز، ليعمل عند الجميع */
@@ -304,5 +338,5 @@
     if (App.ui) App.ui.toast("صار مفتاح الذكاء الاصطناعي موحّداً لكل مستخدمي المركز");
   }
 
-  App.ai = { settings, saveSettings, hasKey, generate, vision, visionLast, migrateToShared, CLAUDE_MODELS };
+  App.ai = { settings, saveSettings, hasKey, generate, vision, visionLast, keyList, _rotate: withGeminiKeys, migrateToShared, CLAUDE_MODELS };
 })(window.App = window.App || {});

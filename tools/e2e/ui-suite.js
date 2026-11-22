@@ -802,5 +802,12 @@ async function suite() {
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.wideLimit = 0; c.render();
   }
 
+  // إعدادات الذكاء الاصطناعي: عدة مفاتيح Gemini في حقل متعدد الأسطر
+  {
+    const gk = document.getElementById("ai-gemini-key");
+    ok("حقل مفاتيح Gemini متعدد الأسطر", !!gk && gk.tagName === "TEXTAREA", gk && gk.tagName);
+    ok("قائمة المفاتيح تُستخرج من الأسطر", App.ai.keyList("AIza111\nAIza222").length === 2 && typeof App.ai.generate === "function", "keyList");
+  }
+
   return R;
 }
