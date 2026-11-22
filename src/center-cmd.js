@@ -2552,7 +2552,7 @@
   }
 
   /* ما ينقص كل طالب: صفّه في كل نموذج (وقّع/لم يوقّع/مراجعة) وقائمة النماذج التي لم يوقّعها */
-  const SIG_CELL = { signed: "✓ وقّع", blank: "✗ بلا توقيع", absent: "✗ لم يوقّع", review: "؟ مراجعة" };
+  const SIG_CELL = { signed: "✓ وقّع", blank: "✗ ناقص (بلا توقيع)", absent: "✗ ناقص", review: "؟ مراجعة" };
   function sigMatrix() {
     const forms = sigForms(), os = forms.map((f) => sigCompute(f));
     if (!os.length || os.some((o) => !o)) return null;
@@ -2563,8 +2563,9 @@
     rows.sort((a, b) => b.miss.length - a.miss.length || a.reg.name.localeCompare(b.reg.name, "ar"));
     return { forms, rows };
   }
-  const sigMatrixHeads = (m) => ["الاسم", "رقم الهوية", "الجوال", "المجموعة", ...m.forms, "ينقصه", "عدد الناقص"];
-  const sigMatrixRow = (x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, ...x.sts.map((s) => SIG_CELL[s]), x.miss.length ? x.miss.join("، ") : x.rev.length ? "مكتمل (يحتاج مراجعة: " + x.rev.join("، ") + ")" : "مكتمل ✓", x.miss.length];
+  /* الأعمدة: بيانات الطالب (مع المسار والمرحلة والمجموعة)، ثم عمود مستقل لكل نموذج، ثم عدد الناقص وملخّصه */
+  const sigMatrixHeads = (m) => ["الاسم", "رقم الهوية", "الجوال", "المسار", "المرحلة", "المجموعة", ...m.forms, "عدد الناقص", "ينقصه"];
+  const sigMatrixRow = (x) => [x.reg.name, x.reg.id, x.reg.phone, pledgeTrackOf(x.reg.course), stageOf(x.reg.course) || stageFromGroup(grpCode(x.reg.group) || "") || "", grpCode(x.reg.group) || x.reg.group, ...x.sts.map((s) => SIG_CELL[s]), x.miss.length, x.miss.length ? x.miss.join("، ") : x.rev.length ? "مكتمل (يحتاج مراجعة: " + x.rev.join("، ") + ")" : "مكتمل ✓"];
   function sigMatrixBlock() {
     const m = sigMatrix(); if (!m || m.forms.length < 2) return "";
     const lacking = m.rows.filter((x) => x.miss.length).length, done = m.rows.length - lacking;
@@ -3703,7 +3704,7 @@
         } else if (act === "sig-ok") { state.sig.manual[(b.dataset.form || "") + "|" + b.dataset.k] = b.dataset.f || "none"; return render();
         } else if (act === "sig-no") { state.sig.manual[(b.dataset.form || "") + "|" + b.dataset.k] = "none"; return render();
         } else if (act === "sig-copy") { const fm = b.dataset.form, un = sigUnsignedRows(fm); const t = "*لم يوقّعوا" + (sigForms().length > 1 ? " — " + fm : "") + " (" + un.length + ")*\n" + un.map((x, i) => (i + 1) + ". " + x.reg.name + (x.reg.group ? " — " + x.reg.group : "")).join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
-        } else if (act === "export-sig") { const sh = sigSheets(); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => fmtSheet(wb.addWorksheet(x.name.slice(0, 31)), x.heads, x.rows)); return ui.download("مطابقة التوقيعات " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        } else if (act === "export-sig") { const sh = sigSheets(); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => { const ws = wb.addWorksheet(x.name.slice(0, 31)); fmtSheet(ws, x.heads, x.rows); if (x.name === "ما ينقص كل طالب") ws.eachRow((r, n) => { if (n > 1) r.eachCell((cell) => { const v = String(cell.value == null ? "" : cell.value); if (v.startsWith("✗")) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFDE2E2" } }; else if (v.startsWith("✓")) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE3F6EA" } }; }); }); }); return ui.download("مطابقة التوقيعات " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         } else if (act === "att-today") { return runAttend();
         } else if (act === "att-wa") { const e = attGroups()[Number(b.dataset.i)]; if (!e) return; return ui.copyText(attGroupText(e, state.att.out.lastDay)).then(() => ui.toast("نُسخ نص مجموعة " + e.track + (e.group ? " " + e.group : "")));
         } else if (act === "att-wa-all") { const day = state.att.out && state.att.out.lastDay; const t = attGroups().map((e) => attGroupText(e, day)).join("\n\n━━━━━━━━\n\n"); if (!t) return; return ui.copyText(t).then(() => ui.toast("نُسخت نصوص كل المجموعات"));

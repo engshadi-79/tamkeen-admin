@@ -876,6 +876,12 @@ async function suite() {
     const mrow = (nm) => [...(mx ? mx.querySelectorAll("tbody tr") : [])].find((r) => r.textContent.includes(nm));
     ok("ما ينقص كل طالب: جدول بكل المسجلين (3) مرتباً بالأكثر نقصاً", !!mx && mx.querySelectorAll("tbody tr").length === 3 && /سامي عمر/.test(mx.querySelector("tbody tr").textContent), mx && mx.textContent.slice(0, 200));
     ok("سامي ينقصه النموذجان، وخالد ينقصه «كشف حضور» فقط، وأحمد مكتمل", !!mrow("سامي عمر") && /تعهد الحقيبة، كشف حضور|كشف حضور، تعهد الحقيبة/.test(mrow("سامي عمر").textContent) && /ينقصه|كشف حضور/.test(mrow("خالد سعيد").textContent) && !/تعهد الحقيبة\s*$/.test("") && /مكتمل ✓/.test(mrow("أحمد علي محمد").textContent), [mrow("سامي عمر"), mrow("خالد سعيد"), mrow("أحمد علي محمد")].map((r) => r && r.textContent.replace(/\s+/g, " ").slice(0, 160)));
+    const mh = App.centerCmd._sig.sheets()[0];
+    const iT = mh.heads.indexOf("المسار"), iS = mh.heads.indexOf("المرحلة"), iG = mh.heads.indexOf("المجموعة"), iN = mh.heads.indexOf("عدد الناقص"), iM = mh.heads.indexOf("ينقصه");
+    ok("Excel «ما ينقص كل طالب»: أعمدة المسار والمرحلة والمجموعة موجودة", iT >= 0 && iS >= 0 && iG >= 0 && iT < iG, mh.heads);
+    ok("Excel: عمود مستقل لكل نموذج، قبل «عدد الناقص» و«ينقصه»", mh.heads.indexOf("تعهد الحقيبة") > iG && mh.heads.indexOf("كشف حضور") > iG && mh.heads.indexOf("كشف حضور") < iN && iN < iM, mh.heads);
+    const sam = App.centerCmd._sig.sheets()[0].rows.find((r) => r[0] === "سامي عمر");
+    ok("صف سامي: مسار ومجموعة، ونموذجان ناقصان في عمودين مستقلين، وعددهما 2", !!sam && sam[iG] === "G1" && String(sam[iT]).length > 0 && /ناقص/.test(sam[mh.heads.indexOf("تعهد الحقيبة")]) && /ناقص/.test(sam[mh.heads.indexOf("كشف حضور")]) && sam[iN] === 2, sam);
     let cpm = ""; const ocP = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { cpm = x; } }, configurable: true });
     const cb = b.querySelector('[data-cc="sig-copy-miss"]'); if (cb) { cb.click(); await wait(200); }
     ok("نسخ قائمة الناقصين: لكل طالب ما ينقصه", /^\*ناقصو التوقيع \(2 من 3\)/.test(cpm) && /سامي عمر — ينقصه: .*كشف حضور/.test(cpm) && /خالد سعيد — ينقصه: كشف حضور/.test(cpm) && !/أحمد علي محمد —/.test(cpm), cpm);
