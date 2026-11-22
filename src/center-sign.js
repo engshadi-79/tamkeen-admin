@@ -11,12 +11,13 @@
 - لكل صف احكم هل يوجد توقيع المتدرب: signed=true إن وُجد في خانة التوقيع أي خط أو توقيع أو إمضاء أو اختصار بخط اليد أو علامة من المتدرب، وsigned=false إن كانت الخانة فارغة، وsigned=null إن لم تستطع الجزم.
 - اقرأ الأسماء كما هي بالعربية بلا تصحيح ولا اجتهاد، وإن كان الاسم غير واضح فاكتب أقرب قراءة وخفّض الثقة.
 - إن وُجد في الورقة عمود لرقم الهوية أو رقم الجوال فاقرأه لكل صف حرفياً كأرقام (id وphone)، وإن لم يوجد أو لم يُقرأ فاتركه فارغاً "". لا تخمّن أرقاماً.
+- حدّد «اسم النموذج» من ترويسة الورقة أو عنوانها (كلمات قليلة تميّز نوع الوثيقة، مثل «تعهد استلام الحقيبة» أو «كشف حضور»)، وأعطِ الاسم نفسه لكل الأوراق من النوع ذاته.
 - تجاهل العناوين والتواريخ والأختام وأسماء المدربين وصفوف الترويسة.
 - لا تخترع أسماء غير موجودة في الصورة.
 - الرد JSON وحده بلا شرح.`;
 
   const PROMPT = `اقرأ الورقة المرفقة وأعد JSON بهذا الشكل بالضبط:
-{"title":"عنوان الورقة أو التاريخ إن ظهر","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","signed":true,"confidence":0.0}]}
+{"title":"عنوان الورقة أو التاريخ إن ظهر","form":"اسم النموذج من الترويسة","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","signed":true,"confidence":0.0}]}
 حيث confidence رقم بين 0 و1 لثقتك في قراءة الاسم والحكم على التوقيع.`;
 
   const TABLE_SYSTEM = `أنت تحوّل صور الجداول (كشوف أسماء، درجات، هويات، حضور) إلى بيانات منظمة، وتعيد JSON فقط.
@@ -111,7 +112,9 @@
     const text = await ai.vision({ images: [{ mime: image.mime, data: image.data }], prompt: PROMPT, system: SYSTEM, signal: opts && opts.signal, fast: !!(opts && opts.fast) });
     const j = parseJson(text);
     const rows = (Array.isArray(j.rows) ? j.rows : []).map((r, i) => normRow(r, image.name, i)).filter(Boolean);
-    return { title: String(j.title || "").slice(0, 120), rows };
+    const form = String(j.form || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    rows.forEach((r) => { r.formAuto = form; });
+    return { title: String(j.title || "").slice(0, 120), form, rows };
   }
 
   /* بلوغ الحد اليومي المجاني: لا جدوى من إعادة المحاولة، فتُوقَف بقية الطلبات فوراً */
@@ -119,7 +122,7 @@
   const QUOTA_MSG = "بلغتَ الحد اليومي المجاني لمزوّد الذكاء الاصطناعي فتوقّفت القراءة.";
 
   const MULTI_PROMPT = (n) => `أمامك ${n} صور لأوراق مختلفة بالترتيب (الصورة 1 ثم 2 … ثم ${n}). اقرأ كل ورقة على حدة وأعد JSON بهذا الشكل بالضبط:
-{"sheets":[{"image":1,"title":"عنوان الورقة أو التاريخ إن ظهر","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","signed":true,"confidence":0.0}]}]}
+{"sheets":[{"image":1,"title":"عنوان الورقة أو التاريخ إن ظهر","form":"اسم النموذج من الترويسة","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","signed":true,"confidence":0.0}]}]}
 عنصر واحد في sheets لكل صورة بنفس ترتيبها، ولا تخلط أسماء صورة بصورة أخرى. confidence بين 0 و1.`;
 
   /* عدة صور في طلب واحد (يوفّر حصة الطلبات): يعيد [{ title, rows }] بترتيب الصور */
@@ -132,7 +135,10 @@
     if (!sheets || !sheets.length) throw new Error("لم يرجع النموذج بيانات الصور المتعددة بالشكل المطلوب.");
     return images.map((im, k) => {
       const sh = sheets.find((x) => Number(x && x.image) === k + 1) || sheets[k] || { rows: [] };
-      return { title: String(sh.title || "").slice(0, 120), rows: (Array.isArray(sh.rows) ? sh.rows : []).map((r, i) => normRow(r, im.name, i)).filter(Boolean) };
+      const rows = (Array.isArray(sh.rows) ? sh.rows : []).map((r, i) => normRow(r, im.name, i)).filter(Boolean);
+      const form = String(sh.form || "").replace(/\s+/g, " ").trim().slice(0, 80);
+      rows.forEach((r) => { r.formAuto = form; });
+      return { title: String(sh.title || "").slice(0, 120), form, rows };
     });
   }
 

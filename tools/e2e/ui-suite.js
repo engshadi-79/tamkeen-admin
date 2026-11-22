@@ -853,5 +853,33 @@ async function suite() {
     agent.run = oldRun; App.ai.vision = oldVision; App.ai.hasKey = oldHas; window.confirm = oldConfirm; c.state.mode = "report"; c.state.wideLimit = 0; c.render();
   }
 
+  // نموذجان في الصور: لكل نموذج مقارنته وتقريره
+  {
+    const oldRun = agent.run, oldConfirm = window.confirm;
+    agent.run = async (cmds) => ({ results: cmds.map((cm) => ({ type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية", "الجوال"], rows: [
+      { cells: ["أحمد علي محمد", "101", "G1", "1012345678", "0501112222"] }, { cells: ["خالد سعيد", "102", "G1", "1055555555", "0503334444"] }, { cells: ["سامي عمر", "103", "G1", "1066666666", "0509998888"] } ] })) });
+    window.confirm = () => true; App.centerCmd._sig.clear();
+    const mk = (id, name, form) => ({ id, file: "f", name, nid: "", phone: "", signed: true, conf: 0.95, keep: true, form });
+    c.state.mode = "sign"; c.state.groups = []; c.state.wideLimit = 100000; c.state.wide = null;
+    c.state.sig = Object.assign(c.state.sig, { tracks: ["1"], stages: [], status: "4", files: [], failed: [], manual: {}, lookups: {}, reg: null, rows: [
+      mk("p1", "أحمد علي محمد", "تعهد الحقيبة"), mk("p2", "خالد سعيد", "تعهد الحقيبة"),
+      mk("h1", "أحمد علي محمد", "كشف حضور"),
+    ] }); c.render();
+    b.querySelector('[data-cc="run-sig"]').click();
+    for (let i = 0; i < 60 && !c.state.sig.reg && !c.state.resultError; i++) await wait(100); await wait(400);
+    ok("نموذجان في الصور: النماذج المعروفة", JSON.stringify(App.centerCmd._sig.forms()) === JSON.stringify(["تعهد الحقيبة", "كشف حضور"]), App.centerCmd._sig.forms());
+    const t0 = b.querySelector('[data-tblbox="sig-miss-0"]'), t1 = b.querySelector('[data-tblbox="sig-miss-1"]');
+    ok("نموذج التعهد: لم يوقّع سامي فقط", !!t0 && /سامي عمر/.test(t0.textContent) && !/خالد سعيد/.test(t0.textContent) && !/أحمد علي/.test(t0.textContent), t0 && t0.textContent.slice(0, 120));
+    ok("نموذج الحضور: لم يوقّع خالد وسامي", !!t1 && /خالد سعيد/.test(t1.textContent) && /سامي عمر/.test(t1.textContent) && !/أحمد علي/.test(t1.textContent), t1 && t1.textContent.slice(0, 120));
+    ok("عنوان لكل نموذج وجدول متابعة لكل منهما", /النموذج: تعهد الحقيبة/.test(b.textContent) && /النموذج: كشف حضور/.test(b.textContent) && !!b.querySelector('[data-tblbox="sig-all-0"]') && !!b.querySelector('[data-tblbox="sig-all-1"]'), "titles");
+    const sh = App.centerCmd._sig.sheets();
+    ok("Excel: ورقة «النماذج» وورقات لكل نموذج ببادئة ن1/ن2", sh[0].name === "النماذج" && sh.some((x) => /^ن1 - /.test(x.name)) && sh.some((x) => /^ن2 - /.test(x.name)) && sh.every((x) => x.name.length <= 31), sh.map((x) => x.name));
+    // إعادة تسمية نموذج بنفس اسم آخر تدمجهما
+    const fn = b.querySelector('[data-sig-fname="كشف حضور"]');
+    fn.value = "تعهد الحقيبة"; fn.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);
+    ok("توحيد اسمي النموذجين يدمجهما في نموذج واحد", App.centerCmd._sig.forms().length === 1 && !!b.querySelector('[data-tblbox="sig-miss"]'), App.centerCmd._sig.forms());
+    App.centerCmd._sig.clear(); agent.run = oldRun; window.confirm = oldConfirm; c.state.mode = "report"; c.state.wideLimit = 0; c.render();
+  }
+
   return R;
 }
