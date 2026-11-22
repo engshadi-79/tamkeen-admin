@@ -2569,7 +2569,7 @@
   /* ===== رسالة واتساب بالنواقص: رسالة واحدة لكل مسار فيها كل طلابه الناقصين مرقّمين =====
      «١- الاسم / المسار · المرحلة · المجموعة / ينقصه: النماذج». لا إرسال تلقائي: تُنسخ أو تُفتح في واتساب ويرسلها المستخدم بنفسه. */
   const SIG_WA_HEAD_KEY = "tamkeen:sig-wa-head", SIG_WA_DETAIL_KEY = "tamkeen:sig-wa-detail", SIG_WA_MAX = 1800;
-  const SIG_WA_HEAD_DEF = "*نواقص التوقيع — {المسار} ({العدد})*";
+  const SIG_WA_HEAD_DEF = "*نواقص التوقيع — {المسار} ({العدد})*", SIG_WA_SEP = "──────────────";
   const sigWaHead = () => { try { const v = localStorage.getItem(SIG_WA_HEAD_KEY); return v === null ? SIG_WA_HEAD_DEF : v; } catch (e) { return SIG_WA_HEAD_DEF; } };
   const sigWaDetail = () => { try { return localStorage.getItem(SIG_WA_DETAIL_KEY) !== "0"; } catch (e) { return true; } };
   function sigWaMsgs() {
@@ -2580,16 +2580,18 @@
     const stageOfX = (x) => stageOf(x.reg.course) || stageFromGroup(grpCode(x.reg.group) || "") || "";
     return [...by.keys()].sort((p, q) => p.localeCompare(q, "ar")).map((tr) => {
       const list = by.get(tr).slice().sort((p, q) => stageOfX(p).localeCompare(stageOfX(q), "ar") || String(grpCode(p.reg.group) || p.reg.group).localeCompare(String(grpCode(q.reg.group) || q.reg.group), "ar", { numeric: true }) || p.reg.name.localeCompare(q.reg.name, "ar"));
-      const entries = list.map((x, i) => (i + 1) + "- " + x.reg.name + (detail ? "\n   " + [tr, stageOfX(x), grpCode(x.reg.group) || x.reg.group].filter(Boolean).join(" · ") : "") + "\n   ينقصه: " + x.miss.join("، "));
+      // النواقص تحت بعضها (نقطة لكل نموذج)، وبين كل طالب وطالب خط فاصل؛ ونموذج واحد ناقص يبقى في سطر الطالب نفسه
+      const entries = list.map((x, i) => (i + 1) + "- " + x.reg.name + (detail ? "\n   " + [tr, stageOfX(x), grpCode(x.reg.group) || x.reg.group].filter(Boolean).join(" · ") : "") + (x.miss.length === 1 ? "\n   ينقصه: " + x.miss[0] : "\n   ينقصه:\n" + x.miss.map((f) => "   • " + f).join("\n")));
       const headText = (k, total) => head.replace(/\{المسار\}/g, tr).replace(/\{العدد\}/g, String(list.length)) + (total > 1 ? " — جزء " + k + "/" + total : "");
-      const full = (head ? headText(1, 1) + "\n\n" : "") + entries.join("\n");
+      const SEP = "\n" + SIG_WA_SEP + "\n";
+      const full = (head ? headText(1, 1) + "\n\n" : "") + entries.join(SEP);
       // رسالة طويلة: تُقسَّم عند حدود الطلاب (لا يُقطع طالب بين جزأين) وتتكرر الترويسة في كل جزء
       let parts = [full];
       if (full.length > SIG_WA_MAX) {
         const chunks = []; let cur = [], len = 0;
-        entries.forEach((en) => { if (cur.length && len + en.length > SIG_WA_MAX) { chunks.push(cur); cur = []; len = 0; } cur.push(en); len += en.length + 1; });
+        entries.forEach((en) => { if (cur.length && len + en.length > SIG_WA_MAX) { chunks.push(cur); cur = []; len = 0; } cur.push(en); len += en.length + SEP.length; });
         if (cur.length) chunks.push(cur);
-        parts = chunks.map((c, k) => (head ? headText(k + 1, chunks.length) + "\n\n" : "") + c.join("\n"));
+        parts = chunks.map((c, k) => (head ? headText(k + 1, chunks.length) + "\n\n" : "") + c.join(SEP));
       }
       return { tr, n: list.length, msg: full, parts };
     });

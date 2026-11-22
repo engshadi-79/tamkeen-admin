@@ -885,7 +885,7 @@ async function suite() {
     // رسالة واتساب واحدة لكل مسار فيها طلابه الناقصون مرقّمين
     const cards = [...b.querySelectorAll(".cc-sigwa-card")], pre = cards[0] && cards[0].querySelector(".cc-sigwa-pre");
     ok("رسالة واحدة للمسار (كل المسجلين في مسار واحد)", cards.length === 1 && !b.querySelector(".cc-sigwa-r"), cards.length);
-    ok("صيغة الرسالة: ترقيم، ثم المسار · المرحلة · المجموعة، ثم «ينقصه»", !!pre && /^\*نواقص التوقيع — الحلاقة الرجالية \(2\)\*/.test(pre.textContent) && /1- خالد سعيد\n {3}الحلاقة الرجالية · المرحلة الثانية · G1\n {3}ينقصه: كشف حضور/.test(pre.textContent) && /2- سامي عمر\n {3}الحلاقة الرجالية · المرحلة الثانية · G1\n {3}ينقصه: (تعهد الحقيبة، كشف حضور)/.test(pre.textContent) && !/أحمد علي/.test(pre.textContent), pre && pre.textContent);
+    ok("صيغة الرسالة: ترقيم، ثم المسار · المرحلة · المجموعة، ثم «ينقصه»", !!pre && /^\*نواقص التوقيع — الحلاقة الرجالية \(2\)\*/.test(pre.textContent) && /1- خالد سعيد\n {3}الحلاقة الرجالية · المرحلة الثانية · G1\n {3}ينقصه: كشف حضور/.test(pre.textContent) && /ينقصه: كشف حضور\n──────────────\n2- سامي عمر\n {3}الحلاقة الرجالية · المرحلة الثانية · G1\n {3}ينقصه:\n {3}• تعهد الحقيبة\n {3}• كشف حضور$/.test(pre.textContent) && !/أحمد علي/.test(pre.textContent), pre && pre.textContent);
     const wl = [...b.querySelectorAll(".cc-sigwa-card a")];
     ok("زر واتساب يفتح الرسالة جاهزة في تبويب جديد بلا إرسال تلقائي", wl.length === 1 && /^https:\/\/wa\.me\/\?text=/.test(wl[0].href) && wl[0].target === "_blank" && /خالد سعيد/.test(decodeURIComponent(wl[0].href)), wl.map((x) => x.href.slice(0, 50)));
     // نسخ رسالة المسار
