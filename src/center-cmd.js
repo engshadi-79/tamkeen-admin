@@ -3044,6 +3044,40 @@
     const stages = (c.stages || []).map((x) => (byK ? (STAGES.find((g) => g.k === x) || {}).t : x)).filter(Boolean);
     return { tracks: (c.tracks || []).map(String), stages, hasStages: "stages" in c };
   }
+  /* ===== النطاق التعاقبي: المرحلة تحدّد المسارات والمجموعات المرتبطة بها فقط ===== */
+  function trackStageMap() {   // رقم المسار ← مراحله (عناوين) من دورات النظام
+    const m = new Map();
+    courseOpts().forEach((c) => { const st = (STAGES.find((g) => g.k === c.stage) || {}).t; if (!c.track || !st) return; (m.get(c.track) || m.set(c.track, new Set()).get(c.track)).add(st); });
+    return m;
+  }
+  function groupLinks() {      // رمز المجموعة ← { مراحل، مسارات } من الذاكرة المحمّلة إن وُجدت
+    const m = new Map(), ensure = (g) => m.get(g) || m.set(g, { stages: new Set(), tracks: new Set() }).get(g);
+    if (state.cache) state.cache.items.forEach((it) => {
+      const iG = it.heads.findIndex((h) => /^المجموعة/.test(clean(h))), iC = it.heads.findIndex((h) => /(دورة|الدورة|مساق)/.test(clean(h)));
+      if (iG < 0) return;
+      it.rows.forEach((x) => { const g = grpCode(x.cells[iG]); if (!g) return; const e = ensure(g); if (it.trackId != null) e.tracks.add(String(it.trackId)); const st = iC >= 0 ? stageOf(x.cells[iC]) : ""; if (st) e.stages.add(st); });
+    });
+    return m;
+  }
+  /* ما يُعرض في الشريط بعد تطبيق المرحلة (والمسار للمجموعات). ما لا يُعرف ارتباطه يبقى ظاهراً */
+  function scopeAvail() {
+    const sc = scopeNow(), tsm = trackStageMap(), gl = groupLinks();
+    const tracks = trackOpts().filter((o) => { if (!sc.stages.length || !tsm.size) return true; const st = tsm.get(String(o.v)); return !!st && [...st].some((x) => sc.stages.includes(x)); });
+    const groups = groupOptions().filter((g) => {
+      const e = gl.get(g), fb = stageFromGroup(g);
+      const stages = e && e.stages.size ? e.stages : fb ? new Set([fb]) : null;
+      if (sc.stages.length && stages && ![...stages].some((x) => sc.stages.includes(x))) return false;
+      if (sc.tracks.length && e && e.tracks.size && ![...e.tracks].some((t) => sc.tracks.includes(t))) return false;
+      return true;
+    });
+    return { tracks, groups };
+  }
+  /* بعد تغيير المرحلة أو المسار: يُسقَط من الاختيار ما لم يعد مرتبطاً */
+  function pruneScope() {
+    const av = scopeAvail(), okT = new Set(av.tracks.map((o) => String(o.v))), okG = new Set(av.groups);
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => { if (c.tracks && c.tracks.length) c.tracks = c.tracks.filter((t) => okT.has(String(t))); });
+    if ((state.groups || []).length) state.groups = state.groups.filter((g) => okG.has(g));
+  }
   function scopeSet(kind, value, on) {
     const upd = (c, key, v) => { const arr = (c[key] = c[key] || []); const at = arr.indexOf(v); if (on && at < 0) arr.push(v); else if (!on && at >= 0) arr.splice(at, 1); };
     if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => upd(c, "tracks", String(value)));
@@ -3051,6 +3085,7 @@
       [state.sel, state.mis].forEach((c) => upd(c, "stages", stageK(value)));
       [state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => upd(c, "stages", value));
     }
+    pruneScope();
   }
   function scopeClear() {
     [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
@@ -3066,20 +3101,20 @@
     });
   }
   function groupBar() {
-    const opts = groupOptions(), on = state.groups || [], sc = scopeNow();
+    const av = scopeAvail(), opts = av.groups, on = state.groups || [], sc = scopeNow();
     const sum = (list, all) => (list.length ? list.slice(0, 2).join("، ") + (list.length > 2 ? " +" + (list.length - 2) : "") : all);
     const trNames = sc.tracks.map((id) => { const o = trackOpts().find((x) => String(x.v) === id); return o ? o.t.replace(/^مسار\s*/, "") : id; });
     const open = state.gopen;   // اللوح مفتوح؛ الأقراص تبدّله
     const pill = (key, label, list, all, has) => has === false ? "" : `<button type="button" class="cc-pill ${list.length ? "on" : ""}" data-cc="gtoggle" data-gk="${key}" aria-expanded="${open === key}">${label}: <b>${esc(sum(list, all))}</b> <span aria-hidden="true">${open === key ? "▴" : "▾"}</span></button>`;
     const chips = (name, items, onList) => `<div class="cc-chips">${items.map(([v, t]) => `<label class="cc-chk"><input type="checkbox" ${name} value="${esc(v)}" ${onList.includes(String(v)) ? "checked" : ""}> <span>${esc(t)}</span></label>`).join("")}</div>`;
     let panel = "";
-    if (open === "tracks") panel = chips("data-sc=\"tracks\"", trackOpts().map((o) => [o.v, o.t.replace(/^مسار\s*/, "")]), sc.tracks);
-    else if (open === "stages") panel = chips("data-sc=\"stages\"", STAGES.map((g) => [g.t, g.t]), sc.stages) + '<p class="cc-note">اتركها فارغة لتشمل كل المراحل.</p>';
+    if (open === "tracks") panel = (av.tracks.length ? chips("data-sc=\"tracks\"", av.tracks.map((o) => [o.v, o.t.replace(/^مسار\s*/, "")]), sc.tracks) : '<p class="cc-note">لا مسارات مرتبطة بالمرحلة المختارة.</p>') + (sc.stages.length ? '<p class="cc-note">تظهر المسارات المرتبطة بالمرحلة المختارة فقط.</p>' : "");
+    else if (open === "stages") panel = chips("data-sc=\"stages\"", STAGES.map((g) => [g.t, g.t]), sc.stages) + '<p class="cc-note">اتركها فارغة لتشمل كل المراحل. باختيار مرحلة تظهر المسارات والمجموعات المرتبطة بها فقط.</p>';
     else if (open === "groups") panel = `${opts.length ? chips("data-gf", opts.map((g) => [g, g]), on) : '<p class="cc-note">لا مجموعات محفوظة بعد. اضغط «حمّل قائمة المجموعات» (قراءة واحدة) فتُحفظ وتظهر في كل زيارة.</p>'}
         <div class="cc-row"><button type="button" class="btn secondary small" data-cc="load-groups" ${state.busy ? "disabled" : ""}>${opts.length ? "حدّث قائمة المجموعات" : "حمّل قائمة المجموعات"}</button><span class="cc-note">في «قياس الأثر» تُقرأ كل مجموعة على حدة من صفحة النظام.</span></div>`;
     const any = sc.tracks.length || sc.stages.length || on.length;
     return `<div class="cc-gbar"><span class="cc-gl">النطاق</span>
-      ${pill("tracks", "المسارات", trNames, "الكل")}${pill("stages", "المراحل", sc.stages.map((t) => t.replace(/^المرحلة\s*/, "")), "الكل", sc.hasStages)}${pill("groups", "المجموعات", on, "الكل")}
+      ${pill("stages", "المراحل", sc.stages.map((t) => t.replace(/^المرحلة\s*/, "")), "الكل", sc.hasStages)}${pill("tracks", "المسارات", trNames, "الكل")}${pill("groups", "المجموعات", on, "الكل")}
       ${any ? '<button type="button" class="cc-link" data-cc="gclear">مسح الكل</button>' : ""}${panel ? `<div class="cc-gpanel">${panel}</div>` : ""}</div>`;
   }
   let runStats = { sent: 0, cached: 0 };
