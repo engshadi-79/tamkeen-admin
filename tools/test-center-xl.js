@@ -27,4 +27,19 @@ ok("غير موجود في الملف: فهد", r.notInFile.length === 1 && r.no
 const dl = r.diffs.find((d) => d.reg.key === "2");
 ok("فرق الجوال يُرصد", dl && dl.why.includes("الجوال") && !dl.why.includes("الهوية"), r.diffs);
 ok("الاسم المختلف مع هوية مطابقة لا يُعدّ فرقاً (الهوية حاسمة)", !r.diffs.find((d) => d.reg.key === "3"), r.diffs);
+
+const G = X.gradEval([
+  { name: "أحمد علي", stu: "1", absent: 1, excused: 0, late: 0, present: 9, sessions: 10 },
+  { name: "ليلى حسن", stu: "2", absent: 5, excused: 0, late: 0, present: 5, sessions: 10 },
+  { name: "سامي عمر", stu: "3", absent: 0, excused: 2, late: 0, present: 8, sessions: 10 },
+  { name: "نورة خالد", stu: "4", absent: 0, excused: 0, late: 0, present: 10, sessions: 10 },
+], [{ stu: "4", name: "نورة خالد", items: ["التعهد"] }, { stu: "", name: "أحمد  علي", items: ["الاستبيان البعدي"] }], { maxAbs: 3, minRate: 75, requireEval: true, countExcused: false });
+const gb = Object.fromEntries(G.map((g) => [g.s.stu, g]));
+ok("تخرج: غياب زائد يمنع", !gb["2"].ok && gb["2"].reasons.some((r) => /غياب 5/.test(r)) && gb["2"].reasons.some((r) => /نسبة الحضور 50/.test(r)), gb["2"]);
+ok("تخرج: نقص تقييم يمنع (بالرقم)", !gb["4"].ok && /التعهد/.test(gb["4"].reasons[0]), gb["4"]);
+ok("تخرج: نقص تقييم بالاسم عند غياب الرقم", !gb["1"].ok && /البعدي/.test(gb["1"].reasons.join()), gb["1"]);
+ok("تخرج: الغياب بعذر لا يُحسب إن لم يُطلب", gb["3"].ok, gb["3"]);
+ok("تخرج: غير المستحقين أولاً", !G[0].ok && G[G.length - 1].ok, G.map((g) => g.s.stu));
+const G2 = X.gradEval([{ name: "سامي عمر", stu: "3", absent: 0, excused: 4, late: 0, present: 6, sessions: 10 }], [], { maxAbs: 3, minRate: 0, requireEval: false, countExcused: true });
+ok("تخرج: احتساب الغياب بعذر عند الطلب", !G2[0].ok, G2[0]);
 console.log(bad ? bad + " فشل" : "كل الاختبارات نجحت (" + n + ")"); process.exit(bad ? 1 : 0);
