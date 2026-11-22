@@ -41,7 +41,7 @@
     grad: { from: "", to: "", maxAbs: 3, minRate: 75, countExcused: false, requireEval: false, out: null },
     morning: { mis: true },
     xl: { tracks: [], stages: [], status: "", name: "", sheets: [], sheet: 0, map: {}, reg: null, out: null },
-    sig: { tracks: [], stages: [], status: "", files: [], batch: (() => { try { return Number(localStorage.getItem("tamkeen:sig-batch")) || 3; } catch (e) { return 3; } })(), fast: (() => { try { return localStorage.getItem("tamkeen:sig-fast") === "1"; } catch (e) { return false; } })(), rows: null, reg: null, manual: {}, reading: false, prog: "", failed: [], titles: [] },
+    sig: { tracks: [], stages: [], status: "", files: [], batch: (() => { try { return Number(localStorage.getItem("tamkeen:sig-batch")) || 3; } catch (e) { return 3; } })(), fast: (() => { try { return localStorage.getItem("tamkeen:sig-fast") === "1"; } catch (e) { return false; } })(), rows: null, reg: null, regScope: null, regAt: "", manual: {}, lookups: {}, fileKeys: [], done: [], savedAt: "", reading: false, prog: "", failed: [], titles: [] },
     att: { alwaysToday: false, from: "", to: "", thr: 3, excused: false, max: 80, tracks: [], stages: [], out: null },   // الحضور والغياب
     bundle: { open: false, pick: [], msg: "" },
     wa: { contact: "", phone: "", breakdown: true, names: true, texts: {}, dirty: {}, part: {}, cc: "970" }, contacts: [],
@@ -1966,16 +1966,8 @@
   }
   /* ما لم يُطابَق أو طُوبق بالاسم وحده يُبحث عنه في نظام المركز بالهوية (أو الجوال إن لم تُقرأ الهوية). قراءة فقط، ضمن ضغطتك على «اجلب المسجلين وقارن» */
   async function sigResolve() {
-    const c = state.sig; c.lookups = {};
-    const o = sigCompute(); if (!o) return;
-    const need = [...o.orphans, ...o.items.filter((x) => x.st === "review" && x.found).map((x) => x.found)];
-    const seen = new Set(), targets = [];
-    need.forEach((f) => {
-      if (seen.has(f.id)) return; seen.add(f.id);
-      const nid = digits(f.nid), ph = phoneNorm(f.phone);
-      const q = nid.length >= 9 ? nid : ph.length >= 9 ? ph : "";
-      if (q) targets.push({ f, q });
-    });
+    const c = state.sig; c.lookups = c.lookups || {};
+    const targets = sigPendingLookups();
     const slice = targets.slice(0, 40);
     if (!slice.length) return;
     const r = (await runCommands([{ type: "lookup", label: "بحث بالهوية/الجوال", items: slice.map((t) => ({ q: t.q })) }], { noCache: true }))[0];
@@ -1985,6 +1977,38 @@
     });
     c.lookupCapped = targets.length > slice.length;
   }
+  /* ===== جلسة المطابقة المحفوظة على هذا الجهاز: المقروء من الصور، والمسجلون المجلوبون، والبحث والقرارات، والصور التي قُرئت =====
+     كل صور جديدة تُقرأ وتُضاف، ولا يُعاد جلب المسجلين إلا بطلبك. الصور نفسها لا تُحفظ، والجلسة تُمسح بزر «امسح الجلسة». */
+  const SIG_SES = "tamkeen:sig-session";
+  function sigLoad() {
+    try {
+      const d = JSON.parse(localStorage.getItem(SIG_SES) || "null"); if (!d || d.v !== 1) return;
+      const c = state.sig; ["rows", "reg", "regScope", "regAt", "manual", "lookups", "fileKeys", "done", "titles", "savedAt"].forEach((k) => { if (d[k] !== undefined && d[k] !== null) c[k] = d[k]; });
+    } catch (e) { /* لا جلسة */ }
+  }
+  function sigSaveNow() {
+    const c = state.sig; if (!c.rows && !c.reg) return;
+    try { c.savedAt = new Date().toISOString(); localStorage.setItem(SIG_SES, JSON.stringify({ v: 1, savedAt: c.savedAt, rows: c.rows, reg: c.reg, regScope: c.regScope, regAt: c.regAt, manual: c.manual, lookups: c.lookups, fileKeys: c.fileKeys, done: c.done, titles: c.titles })); } catch (e) { /* التخزين ممتلئ أو غير متاح */ }
+  }
+  let sigTimer = 0;
+  const sigSaveSoon = () => { clearTimeout(sigTimer); sigTimer = setTimeout(sigSaveNow, 400); };
+  function sigClear() {
+    try { localStorage.removeItem(SIG_SES); } catch (e) { /* */ }
+    Object.assign(state.sig, { rows: null, reg: null, regScope: null, regAt: "", manual: {}, lookups: {}, fileKeys: [], done: [], titles: [], files: [], failed: [], savedAt: "" });
+  }
+  const sigFileKey = (f) => { const d = f.data || ""; let h = 0; const st = Math.max(1, Math.floor(d.length / 4000)); for (let i = 0; i < d.length; i += st) h = (h * 31 + d.charCodeAt(i)) | 0; return d.length + ":" + (h >>> 0).toString(36); };
+  const sigScopeNow = () => { const sc = scopeNow(); return JSON.stringify({ t: sc.tracks.slice().sort(), s: sc.stages.slice().sort(), g: (state.groups || []).slice().sort(), st: state.sig.status || "" }); };
+  const sigScopeText = (raw) => { try { const o = JSON.parse(raw); return [o.s.length ? o.s.join("، ") : "", o.t.length ? "مسارات: " + trackNamesOf(o.t).join("، ") : "", o.g.length ? "مجموعات: " + o.g.join("، ") : ""].filter(Boolean).join(" · ") || "كل النطاق"; } catch (e) { return ""; } };
+  /* من يحتاج بحثاً في النظام ولم يُبحث عنه بعد (بهويته أو جواله) */
+  function sigPendingLookups() {
+    const c = state.sig, o = sigCompute(); if (!o) return [];
+    const need = [...o.orphans, ...o.items.filter((x) => x.st === "review" && x.found).map((x) => x.found)];
+    const seen = new Set(), out = [];
+    need.forEach((f) => { if (seen.has(f.id) || (c.lookups || {})[f.id]) return; seen.add(f.id); const nid = digits(f.nid), ph = phoneNorm(f.phone); const q = nid.length >= 9 ? nid : ph.length >= 9 ? ph : ""; if (q) out.push({ f, q }); });
+    return out;
+  }
+  const sigAllHeads = () => ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "الحالة", "الاسم المقروء من الورقة", "الورقة", "المطابقة"];
+  const sigAllRow = (x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, x.reg.course, SIG_ST[x.st], x.found ? x.found.name : "", x.found ? sigShort(x.found.file) : "", x.how];
   const sigShort = (t) => { t = String(t || ""); return t.length > 22 ? t.slice(0, 10) + "…" + t.slice(-8) : t; };
   const sigFoundHeads = () => ["الاسم في النظام", "الاسم المقروء من الورقة", "رقم الهوية", "الجوال", "المرحلة", "المجموعة", "المسار", "الحكم"];
   const sigFoundRow = (x) => [x.s.name, x.f.name, x.s.id || x.f.nid || "", x.s.phone || x.f.phone || "", x.s.stage, x.s.group, x.s.track, x.f.signed === true ? "موقّع" : "غير محسوم"];
@@ -2045,6 +2069,7 @@
     const o = sigCompute(); if (!o) return [];
     const by = (st) => o.items.filter((x) => st.includes(x.st));
     return [
+      { name: "المتابعة (الكل)", heads: sigAllHeads(), rows: o.items.map(sigAllRow) },
       { name: "لم يوقّعوا", heads: sigHeads(), rows: by(["absent", "blank"]).map(sigRowCells) },
       { name: "تحتاج مراجعة", heads: ["الاسم المسجّل", "الاسم المقروء", "الهوية المقروءة", "الجوال المقروء", "درجة التشابه", "ملاحظة", "الدورة"], rows: by(["review"]).map((x) => [x.reg.name, x.found ? x.found.name : "", x.found ? x.found.nid || "" : "", x.found ? x.found.phone || "" : "", x.found ? Math.round(x.score * 100) + "%" : "", x.how, x.reg.course]) },
       { name: "عُرفوا بالبحث", heads: sigFoundHeads(), rows: o.resolved.map(sigFoundRow) },
@@ -2057,16 +2082,36 @@
     const c = state.sig;
     if (!c.files.length) throw new Error("أضف صور الأوراق أولاً.");
     if (!App.ai || !App.ai.hasKey()) throw new Error("NO_KEY");
+    c.files.forEach((f) => { if (!f.key) f.key = sigFileKey(f); });
+    const pending = c.files.filter((f) => !(c.fileKeys || []).includes(f.key));
+    const skipped = c.files.length - pending.length;
+    if (!pending.length) { c.files = []; state.resultError = "هذه الصور سبق قراءتها في الجلسة الحالية، فلم أقرأها مرة ثانية."; return render(); }
+    if (skipped) ui.toast("تُجوِّزت " + ui.fmt(skipped) + " صورة سبق قراءتها");
     c.reading = true; c.prog = "جارٍ قراءة الصور…"; c.failed = []; render();
-    const t0 = Date.now(); let dn = 0, tot = c.files.length;
+    const t0 = Date.now(); let dn = 0, tot = pending.length;
     const tick = setInterval(() => { c.prog = (dn ? "قُرئت " + dn + " من " + tot + " صورة" : "جارٍ قراءة " + tot + " صورة") + " · " + Math.round((Date.now() - t0) / 1000) + " ث"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; }, 1000);
     try {
-      const r = await App.centerSign.readSheets(c.files, { fast: c.fast, batch: c.batch, onProgress: (d, n) => { dn = d; tot = n; c.prog = "قُرئت " + d + " من " + n + " صورة…"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; } });
-      c.rows = r.rows.map((x) => Object.assign({ keep: true }, x)); c.failed = r.failed; c.titles = r.titles; c.manual = {};
-      if (r.quota) state.resultError = QUOTA_HELP(c.rows.length, r.failed.length);
-      else if (!c.rows.length && !r.failed.length) state.resultError = "لم أجد أسماء في الصور. تأكد أن الصورة واضحة وتظهر فيها قائمة الأسماء.";
+      const r = await App.centerSign.readSheets(pending, { fast: c.fast, batch: c.batch, onProgress: (d, n) => { dn = d; tot = n; c.prog = "قُرئت " + d + " من " + n + " صورة…"; const el = document.getElementById("cc-sig-prog"); if (el) el.textContent = c.prog; } });
+      const failedNames = new Set(r.failed.map((x) => x.name)), keyOf = new Map(pending.map((f) => [f.name, f.key]));
+      const add = r.rows.map((x) => Object.assign({ keep: true }, x, { id: String(keyOf.get(x.file) || "").replace(/\W/g, "").slice(-6) + "|" + x.id }));
+      c.rows = (c.rows || []).concat(add); c.failed = r.failed; c.titles = (c.titles || []).concat(r.titles);
+      c.fileKeys = c.fileKeys || []; c.done = c.done || [];
+      pending.forEach((f) => { if (!failedNames.has(f.name)) { c.fileKeys.push(f.key); c.done.push({ name: f.name, key: f.key, rows: add.filter((x) => x.file === f.name).length, at: new Date().toISOString() }); } });
+      c.files = c.files.filter((f) => failedNames.has(f.name));   // ما قُرئ يُزال من الانتظار، وما أخفق يبقى لإعادة المحاولة
+      if (r.quota) state.resultError = QUOTA_HELP(add.length, r.failed.length);
+      else if (!add.length && !r.failed.length) state.resultError = "لم أجد أسماء في الصور. تأكد أن الصورة واضحة وتظهر فيها قائمة الأسماء.";
       else state.resultError = "";
     } finally { clearInterval(tick); c.reading = false; c.prog = ""; const vl = App.ai && App.ai.visionLast; c.took = Math.round((Date.now() - t0) / 1000) + " ث" + (vl && vl.model ? " · " + vl.model : ""); render(); }
+  }
+  async function runSigLookup() {
+    const c = state.sig;
+    state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
+    try {
+      requireAgent15();
+      await sigResolve();
+      ui.toast("انتهى البحث في النظام");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
   }
   async function runSign() {
     const c = state.sig;
@@ -2076,15 +2121,24 @@
       requireAgent15();
       const cmds = sigCommands();
       const results = await runCommands(cmds);
-      c.reg = sigRegistered(results);
+      c.reg = sigRegistered(results); c.regScope = sigScopeNow(); c.regAt = new Date().toISOString();
       if (!c.reg.length) throw new Error("لم أجد مسجلين في المرحلة المختارة. تحقق من المرحلة والمسار وحالة الطالب.");
-      c.manual = {}; c.lookups = {};
+      c.manual = c.manual || {};
       state.progress = "أبحث في النظام بالهوية أو الجوال عمّن لم يُطابَق…";
       try { await sigResolve(); } catch (e) { if (/الجلسة|NO_AGENT/.test(String(e && e.message))) throw e; /* البحث مكمِّل: إخفاقه لا يُسقط المقارنة */ }
       const n = sigUnsignedRows().length;
       ui.toast(n ? "⚠ " + ui.fmt(n) + " مسجّلاً لم يوقّعوا" : "كل المسجلين وقّعوا ✓");
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
+  }
+  function sigSessionBar() {
+    const c = state.sig; if (!(c.rows && c.rows.length) && !c.reg) return "";
+    const nImg = (c.done || []).length, nRows = (c.rows || []).filter((r) => r.keep !== false).length;
+    const when = (iso) => { try { return new Date(iso).toLocaleString("ar", { dateStyle: "short", timeStyle: "short" }); } catch (e) { return ""; } };
+    const stale = c.reg && c.regScope && c.regScope !== sigScopeNow();
+    return `<div class="cc-alert ok cc-sig-ses" role="status"><span>💾 <b>جلسة محفوظة</b> على هذا الجهاز: ${ui.fmt(nImg)} صورة مقروءة · ${ui.fmt(nRows)} اسماً${c.reg ? " · " + ui.fmt(c.reg.length) + " مسجّلاً جُلبوا" + (c.regAt ? " (" + esc(when(c.regAt)) + ")" : "") + (c.regScope ? " من: " + esc(sigScopeText(c.regScope)) : "") : " · لم تُجلب قائمة المسجلين بعد"}.</span><button type="button" class="btn secondary small" data-cc="sig-clear">امسح الجلسة وابدأ من جديد</button></div>
+      ${stale ? '<p class="cc-alert warn">النطاق المختار الآن يختلف عن النطاق الذي جُلب منه المسجلون المحفوظون. اضغط «حدّث المسجلين من النظام» إن أردت المقارنة بالنطاق الجديد.</p>' : ""}
+      ${nImg ? `<details class="cc-help"><summary>الصور التي قُرئت (${ui.fmt(nImg)})</summary><div class="cc-note">${c.done.map((d) => esc(sigShort(d.name)) + " — " + ui.fmt(d.rows) + " اسم").join("<br>")}</div></details>` : ""}`;
   }
   function sigView() {
     const c = state.sig, ai = App.ai && App.ai.settings ? App.ai.settings() : {};
@@ -2094,17 +2148,18 @@
     return `<section class="cc-card" id="cc-sig">
       <header class="cc-card-h"><h3>مطابقة التوقيعات</h3><p>ارفع صور أوراق التوقيع، فيقرأ الذكاء الاصطناعي الأسماء ويحكم أيوجد توقيع، ثم تُقارَن بالمسجلين في المرحلة التي تختارها من «النطاق» لتعرف من لم يوقّع. للقراءة فقط، والمقارنة بطلب منك وحدك.</p></header>
       <div class="cc-card-b">
-        <label class="cc-field cc-wide"><span>١. صور الأوراق (JPG أو PNG، أكثر من صورة)</span><input type="file" id="cc-sig-files" accept="image/*" multiple></label>
+        ${sigSessionBar()}
+        <label class="cc-field cc-wide"><span>١. صور الأوراق (JPG أو PNG، أضف دفعة بعد دفعة؛ تُضاف إلى ما قُرئ سابقاً)</span><input type="file" id="cc-sig-files" accept="image/*" multiple></label>
         ${c.files.length ? `<div class="cc-sig-thumbs">${c.files.map((f, i) => `<figure><img src="${f.thumb}" alt="${esc(f.name)}"><figcaption>${esc(f.name)}</figcaption><button type="button" class="cc-link" data-cc="sig-rm" data-i="${i}">إزالة</button></figure>`).join("")}</div>` : ""}
         <p class="cc-note">🔒 تُرسَل الصور إلى <b>${provider}</b> بمفتاحك لقراءتها فقط، ولا تُحفظ في تمكين ولا تُرفع إلى أي مكان آخر. وفيها أسماء متدربين.${hasKey ? "" : ' <b class="cc-bad">لا يوجد مفتاح ذكاء اصطناعي: أضفه من صفحة «المراسلات والتقارير» ← إعدادات الذكاء الاصطناعي.</b>'}</p>
         <div class="cc-row"><button type="button" class="btn navy" data-cc="sig-read" ${c.files.length && !c.reading ? "" : "disabled"}>${c.reading ? "جارٍ القراءة…" : "٢. اقرأ الصور"}</button><label class="cc-field" style="min-width:0"><span>السرعة</span><select data-sig="speed"><option value="" ${c.fast ? "" : "selected"}>دقيق (افتراضي)</option><option value="fast" ${c.fast ? "selected" : ""}>سريع (نموذج أخف)</option></select></label><label class="cc-field" style="min-width:0" title="إرسال عدة صور في طلب واحد يوفّر الحصة المجانية اليومية"><span>صور في الطلب</span><select data-sig="batch">${[1, 2, 3, 5].map((n) => `<option value="${n}" ${Number(c.batch) === n ? "selected" : ""}>${n}</option>`).join("")}</select></label><span class="cc-note" id="cc-sig-prog">${esc(c.prog || (c.took ? "آخر قراءة: " + c.took : ""))}</span></div>
         ${c.failed.length ? `<p class="cc-alert warn">تعذّرت قراءة ${ui.fmt(c.failed.length)} صورة: ${c.failed.map((x) => esc(x.name + " (" + x.error + ")")).join("، ")}</p>` : ""}
         ${c.rows ? sigRowsEditor() : ""}
         <div class="cc-grid"><label class="cc-field"><span>حالة الطالب في المقارنة</span><select data-sig="status"><option value="">كل الحالات</option>${statusOpts.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String(c.status) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></div>
-        <p class="cc-note">٣. اختر <b>المرحلة</b> (والمسار والمجموعة إن شئت) من شريط «النطاق» أعلاه، ثم اضغط «اجلب المسجلين وقارن».</p>
+        <p class="cc-note">٣. اختر <b>المرحلة</b> (والمسار والمجموعة إن شئت) من شريط «النطاق» أعلاه، ثم اضغط «${c.reg ? "حدّث المسجلين من النظام" : "اجلب المسجلين وقارن"}». ${c.reg ? "المسجلون محفوظون فلا حاجة لجلبهم في كل مرة: أضف صوراً جديدة واقرأها فتُحدَّث النتيجة فوراً." : ""}</p>
       </div>
       <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-sig"))} أمر قراءة</b><span>${esc(scopeSummaryText())}</span></div>
-        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-sig" ${state.busy || !(c.rows && c.rows.length) ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب المسجلين وقارن"}</button></div></footer></section>`;
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-sig" ${state.busy || !(c.rows && c.rows.length) ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : c.reg ? "حدّث المسجلين من النظام" : "اجلب المسجلين وقارن"}</button>${c.reg && sigPendingLookups().length ? `<button type="button" class="btn secondary" data-cc="sig-lookup" ${state.busy ? "disabled" : ""} title="قراءة من النظام بالهوية أو الجوال فقط، لمن لم يُطابَق">ابحث في النظام عمّن لم يُطابَق (${ui.fmt(sigPendingLookups().length)})</button>` : ""}</div></footer></section>`;
   }
   const scopeSummaryText = () => { const sc = scopeNow(); return [sc.stages.length ? "المراحل: " + sc.stages.join("، ") : "", sc.tracks.length ? "مسارات: " + trackNamesOf(sc.tracks).join("، ") : "", (state.groups || []).length ? "مجموعات: " + state.groups.join("، ") : ""].filter(Boolean).join(" · ") || "اختر النطاق"; };
   function sigRowsEditor() {
@@ -2122,6 +2177,7 @@
     const miss = o.items.filter((x) => x.st === "absent" || x.st === "blank"), review = o.items.filter((x) => x.st === "review");
     const tbl = (k, items) => dataTable(k, sigHeads(), items.map(sigRowCells));
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> نتيجة المطابقة</h3>
+      <details class="cc-help" open><summary><b>جدول المتابعة</b> — كل المسجلين (${ui.fmt(o.items.length)}) بحالة توقيع كل منهم؛ يكتمل كلما أضفتَ صوراً</summary>${dataTable("sig-all", sigAllHeads(), o.items.map(sigAllRow))}</details>
       ${miss.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(miss.length)}</b> من ${ui.fmt(o.items.length)} مسجّلاً لم يوقّعوا.</span><button type="button" class="btn secondary small" data-cc="sig-copy">نسخ قائمة غير الموقّعين</button></div>` : '<p class="cc-alert ok">✓ كل المسجلين وقّعوا.</p>'}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.items.length)}</b> مسجّلاً</span><span class="cc-stat"><b>${ui.fmt(cnt("signed"))}</b> وقّعوا</span>${o.resolved.length ? `<span class="cc-stat"><b>${ui.fmt(o.resolved.length)}</b> عُرفوا بالهوية/الجوال (خارج القائمة)</span>` : ""}<span class="cc-stat"><b>${ui.fmt(cnt("absent"))}</b> لا يظهرون في الأوراق</span><span class="cc-stat"><b>${ui.fmt(cnt("blank"))}</b> بلا توقيع</span><span class="cc-stat"><b>${ui.fmt(review.length)}</b> تحتاج مراجعة</span><span class="cc-stat"><b>${ui.fmt(o.orphans.length)}</b> أسماء لا تطابق أحداً</span>
         <button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div>
@@ -3104,6 +3160,7 @@
     if (!centerAllowed()) { box.innerHTML = '<p class="cc-alert warn">هذا التبويب مخصّص لمدير النظام. اطلب من المدير إتاحته لك.</p>'; return; }
     if (state.cache && Date.now() - state.cache.at.getTime() > CACHE_TTL) { state.cache = null; ui.toast("مُسحت الذاكرة المحمّلة لمرور ساعتين؛ حمّلها من جديد عند الحاجة"); }
     const mode = state.adding || state.proposal ? "ask" : state.mode;
+    if (mode === "sign") sigSaveSoon();
     const info = statusInfo();
     const viaExt = App.centerAgent && App.centerAgent.isReady();
     if (state.busy && !state._wasBusy) { state._runStart = Date.now(); state._runMode = mode; state.stopping = false; runStats = { sent: 0, cached: 0 }; }
@@ -3571,6 +3628,8 @@
         } else if (act === "grad-copy") { const o = state.grad.out; if (!o) return; const no = o.rows.filter((g) => !g.ok); const t = "*غير مستوفين للتخرج (" + no.length + ")*\n" + no.map((g, i) => (i + 1) + ". " + g.s.name + (g.s.group ? " — " + g.s.group : "") + " (" + g.reasons.join("، ") + ")").join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
         } else if (act === "morning-copy") { const t = morningText(); if (!t) return; return ui.copyText(t).then(() => ui.toast("نُسخ تقرير الصباح"));
         } else if (act === "export-xl") { return xlExport();
+        } else if (act === "sig-clear") { if (!window.confirm("تُمسح الجلسة المحفوظة (المقروء من الصور والمسجلون المجلوبون ونتائج البحث) ولا يمكن التراجع. متابعة؟")) return; sigClear(); return render();
+        } else if (act === "sig-lookup") { return runSigLookup();
         } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
         } else if (act === "sig-del") { const r = state.sig.rows[Number(b.dataset.i)]; if (r) r.keep = false; return render();
         } else if (act === "sig-add") { state.sig.rows = state.sig.rows || []; state.sig.rows.push({ id: "m:" + Date.now(), file: "(أضفتَه)", name: "", nid: "", phone: "", signed: false, conf: 1, keep: true }); return render();
@@ -3819,15 +3878,15 @@
         if (!files.length) return;
         state.progress = "";
         const add = [];
-        for (const f of files) { try { add.push(await App.centerSign.prepare(f)); } catch (e) { state.resultError = e.message; } }
+        for (const f of files) { try { const im = await App.centerSign.prepare(f); im.key = sigFileKey(im); add.push(im); } catch (e) { state.resultError = e.message; } }
         state.sig.files.push(...add); t.value = ""; return render();
       }
       if (t.dataset.sig === "batch") { state.sig.batch = Number(t.value) || 1; try { localStorage.setItem("tamkeen:sig-batch", String(state.sig.batch)); } catch (e) { /* */ } return; }
       if (t.dataset.sig === "speed") { state.sig.fast = t.value === "fast"; try { localStorage.setItem("tamkeen:sig-fast", state.sig.fast ? "1" : ""); } catch (e) { /* */ } return; }
       if (t.dataset.sig === "status") { state.sig.status = t.value; return render(); }
-      if (t.dataset.sigName !== undefined) { const r = state.sig.rows[Number(t.dataset.sigName)]; if (r) r.name = t.value; return; }
-      if (t.dataset.sigNid !== undefined) { const r = state.sig.rows[Number(t.dataset.sigNid)]; if (r) r.nid = t.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""); return; }
-      if (t.dataset.sigPhone !== undefined) { const r = state.sig.rows[Number(t.dataset.sigPhone)]; if (r) r.phone = t.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""); return; }
+      if (t.dataset.sigName !== undefined) { const r = state.sig.rows[Number(t.dataset.sigName)]; if (r) r.name = t.value; sigSaveSoon(); return; }
+      if (t.dataset.sigNid !== undefined) { const r = state.sig.rows[Number(t.dataset.sigNid)]; if (r) r.nid = t.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""); sigSaveSoon(); return; }
+      if (t.dataset.sigPhone !== undefined) { const r = state.sig.rows[Number(t.dataset.sigPhone)]; if (r) r.phone = t.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""); sigSaveSoon(); return; }
       if (t.dataset.sigSigned !== undefined) { const r = state.sig.rows[Number(t.dataset.sigSigned)]; if (r) { r.signed = !!t.checked; } return render(); }
       if (t.dataset.sigAssign !== undefined) { const k = t.value, fid = t.dataset.sigAssign; if (k) state.sig.manual[k] = fid; return render(); }
       if (t.dataset.att) { const k = t.dataset.att; state.att[k] = t.type === "checkbox" ? !!t.checked : (k === "thr" || k === "max" ? Number(t.value) || 0 : t.value); if (t.type === "checkbox" || k === "thr") render(); return; }
@@ -3944,7 +4003,8 @@
 
   /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
-  App.centerCmd = { allowed: centerAllowed, renderDash, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+  sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
+  App.centerCmd = { allowed: centerAllowed, renderDash, _sig: { save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
