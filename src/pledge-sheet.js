@@ -4,6 +4,7 @@
 (function (App) {
   const DEFAULTS = {
     title: "تعهد استلام الحقيبة التدريبية",
+    announcerTitle: "كشف أسماء الخريجين",   // عنوان نسخة المذيع
     preamble: "أقرّ أنا المتدرب/ـة الموقِّع/ـة أدناه بأنني استلمتُ الحقيبة التدريبية الخاصة بي كاملةً وبحالة سليمة، وأتعهّد باستعمالها في مشروعي الخاص، وبعدم بيعها أو التنازل عنها أو التصرف فيها بأي صورة لأي جهة أو شخص، وأتحمّل كامل المسؤولية عن مخالفة ذلك.",
     prefixMode: "count",     // count: (عدد أوراق المجموعة-الرقم) | all: (عدد كل الأوراق-الرقم) | fixed: رقم يكتبه المستخدم | none: (الرقم) فقط
     prefix: "1",
@@ -17,6 +18,8 @@
   const HEADERS = ["م", "الاسم", "رقم الهوية", "المرحلة", "التوقيع"];
   const WIDTHS = [0.07, 0.38, 0.17, 0.15, 0.23];
   const ALIGN = ["center", "left", "center", "center", "center"];
+  // نسخة المذيع: الترتيب نفسه، بجدول (م، الاسم، المرحلة) بخط أكبر ليُقرأ على المنصة
+  const A_HEADERS = ["م", "الاسم", "المرحلة"], A_WIDTHS = [0.1, 0.62, 0.28], A_ALIGN = ["center", "left", "center"];
 
   /* ترتيب أبجدي عربي يتجاهل «ال» والهمزات (نفس منطق ترتيب المحوّل) */
   const sortKey = (n) => clean(n).replace(/^ال/, "").replace(/[أإآٱ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ً-ْ]/g, "");
@@ -29,7 +32,8 @@
        fixed: (رقم يكتبه المستخدم-رقم الورقة)
        none:  (رقم الورقة) فقط
      والورقة الوحيدة في نطاق ترقيمها لا رقم لها (عدا الرقم الثابت). */
-  function build(students, options) {
+  function build(students, options, mode) {
+    const ann = mode === "announcer";
     const o = Object.assign({}, DEFAULTS, options || {});
     const perPage = Math.max(5, Math.min(40, Math.round(Number(o.perPage)) || DEFAULTS.perPage));
     const list = students.filter((s) => clean(s.name));
@@ -47,13 +51,16 @@
         const meta = { kind: "meta", text: "" };
         blocks.push(meta);
         sheets.push({ meta, k: ci + 1, gTotal: chunks.length });
-        blocks.push({ kind: "title", text: clean(o.title) });
+        blocks.push({ kind: "title", text: clean(ann ? o.announcerTitle : o.title) });
         // اسم المسار في الوسط تحت العنوان؛ وعند التقسيم بالمجموعة يُذكر اسمها (بلا اسم المدرب) تحته
         const trackName = o.split === "track" ? (gk !== "—" ? gk : "") : clean(chunk[0] && chunk[0].track);
         if (trackName) blocks.push({ kind: "title", text: trackName, sizePt: 13 });
         if (o.split === "group" && gk && gk !== "—") blocks.push({ kind: "title", text: "المجموعة: " + gk, sizePt: 12 });
-        if (ci === 0 || o.repeatPreamble) blocks.push({ kind: "para", text: clean(o.preamble) });
-        blocks.push({
+        if (!ann && (ci === 0 || o.repeatPreamble)) blocks.push({ kind: "para", text: clean(o.preamble) });
+        blocks.push(ann ? {
+          kind: "table", headers: A_HEADERS, widths: A_WIDTHS, align: A_ALIGN, rowHeightTw: 420, sizePt: 14,
+          rows: chunk.map((s, i) => [String(ci * perPage + i + 1), clean(s.name), clean(s.stage)]),
+        } : {
           kind: "table", headers: HEADERS, widths: WIDTHS, align: ALIGN, rowHeightTw: 480,
           rows: chunk.map((s, i) => [String(ci * perPage + i + 1), clean(s.name), clean(s.id), clean(s.stage), ""]),
         });

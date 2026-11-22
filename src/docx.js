@@ -104,13 +104,13 @@
   const TEXT_WIDTH_TWIPS = 9360; // عرض منطقة النص (6.5 إنش) بين هامشَي الترويسة
   const TABLE_SIZE = 24; // 12pt داخل الجداول
 
-  const cellPara = (text, jc, bold) =>
+  const cellPara = (text, jc, bold, size) => { const SZ = size || TABLE_SIZE; return (
     `<w:p><w:pPr><w:bidi/><w:spacing w:before="20" w:after="20"/><w:jc w:val="${jc}"/>` +
-    `<w:rPr><w:rtl/><w:sz w:val="${TABLE_SIZE}"/><w:szCs w:val="${TABLE_SIZE}"/></w:rPr></w:pPr>` +
+    `<w:rPr><w:rtl/><w:sz w:val="${SZ}"/><w:szCs w:val="${SZ}"/></w:rPr></w:pPr>` +
     (text === "" || text == null ? "" :
       `<w:r><w:rPr><w:rFonts w:ascii="${FONT}" w:hAnsi="${FONT}" w:eastAsia="${FONT}" w:cs="${FONT}"/>${bold ? "<w:b/><w:bCs/>" : ""}` +
-      `<w:sz w:val="${TABLE_SIZE}"/><w:szCs w:val="${TABLE_SIZE}"/><w:rtl/></w:rPr><w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>`) +
-    `</w:p>`;
+      `<w:sz w:val="${SZ}"/><w:szCs w:val="${SZ}"/><w:rtl/></w:rPr><w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>`) +
+    `</w:p>`); };
 
   function table(block) {
     const n = block.headers.length;
@@ -119,7 +119,7 @@
       .map((s) => `<w:${s} w:val="single" w:sz="6" w:space="0" w:color="7F8C9D"/>`).join("");
     const cell = (text, i, header) =>
       `<w:tc><w:tcPr><w:tcW w:w="${widths[i]}" w:type="dxa"/>${header ? '<w:shd w:val="clear" w:color="auto" w:fill="DFF4F4"/>' : ""}<w:vAlign w:val="center"/></w:tcPr>` +
-      cellPara(text == null ? "" : String(text), header || (block.align && block.align[i] === "center") ? "center" : "left", header) + `</w:tc>`;
+      cellPara(text == null ? "" : String(text), header || (block.align && block.align[i] === "center") ? "center" : "left", header, block.sizePt ? Math.round(block.sizePt * 2) : 0) + `</w:tc>`;
     const headerRow = `<w:tr><w:trPr><w:tblHeader/></w:trPr>${block.headers.map((h, i) => cell(h, i, true)).join("")}</w:tr>`;
     const rowH = block.rowHeightTw ? `<w:trHeight w:val="${Math.round(block.rowHeightTw)}" w:hRule="atLeast"/>` : "";   // ارتفاع أدنى للصف (مثلاً خانة توقيع)
     const rows = block.rows.map((r) => `<w:tr><w:trPr><w:cantSplit/>${rowH}</w:trPr>${r.map((c, i) => cell(c, i, false)).join("")}</w:tr>`).join("");

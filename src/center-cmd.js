@@ -2297,8 +2297,8 @@
   }
   /* أكبر عدد صفوف يتّسع في الورقة الواحدة المطبوعة على الترويسة مع الديباجة الحالية (يُقاس فعلياً بالتقسيم إلى صفحات) */
   const fitCache = {};
-  function pledgeFitRows(o) {
-    const key = JSON.stringify([o.title, o.preamble, o.repeatPreamble]);
+  function pledgeFitRows(o, mode) {
+    const key = JSON.stringify([mode || "", o.title, o.announcerTitle, o.preamble, o.repeatPreamble]);
     if (fitCache[key]) return fitCache[key];
     const sample = Array.from({ length: 40 }, (_, i) => ({ name: "اسم متدرب رباعي طويل نسبياً " + (i + 1), id: "1000000000", stage: "المرحلة الثالثة", group: "S3G1", course: "" }));
     const host = document.createElement("div");
@@ -2307,19 +2307,20 @@
     let fit = 5;
     try {
       for (let k = 6; k <= 36; k++) {
-        const pages = App.docRender.paginate(host, App.pledgeSheet.build(sample.slice(0, k), Object.assign({}, o, { perPage: k, split: "none" })).blocks);
+        const pages = App.docRender.paginate(host, App.pledgeSheet.build(sample.slice(0, k), Object.assign({}, o, { perPage: k, split: "none" }), mode).blocks);
         if (pages > 1) break;
         fit = k;
       }
     } finally { host.remove(); }
     return (fitCache[key] = Math.max(5, fit - 1));   // هامش صف واحد لاختلاف Word عن الطباعة
   }
-  function pledgeBlocks() {
+  function pledgeBlocks(mode) {
     const st = pledgeStudents(); if (!st.length) return null;
     if (!state.pledge.opts) state.pledge.opts = pledgeOpts();
     const o = Object.assign({}, state.pledge.opts);
-    if (o.autoFit) { state.pledge.fit = pledgeFitRows(o); o.perPage = state.pledge.fit; }
-    return App.pledgeSheet.build(st, o);
+    if (o.autoFit) { const f = pledgeFitRows(o, mode); if (!mode) state.pledge.fit = f; o.perPage = f; }
+    else if (mode === "announcer") o.perPage = Math.min(Number(o.perPage) || 12, 14);
+    return App.pledgeSheet.build(st, o, mode);
   }
   function pledgeView() {
     const c = state.pledge; if (!c.opts) c.opts = pledgeOpts();
@@ -2330,6 +2331,7 @@
       <div class="cc-card-b">
         <div class="cc-grid">
           <label class="cc-field cc-wide"><span>عنوان الكشف</span><input type="text" data-pl="title" value="${esc(o.title)}"></label>
+          <label class="cc-field cc-wide"><span>عنوان نسخة المذيع</span><input type="text" data-pl="announcerTitle" value="${esc(o.announcerTitle)}"></label>
           <label class="cc-field cc-wide"><span>الديباجة (نص التعهد)</span><textarea data-pl="preamble" rows="4">${esc(o.preamble)}</textarea></label>
           <label class="cc-field"><span>ترقيم الأوراق</span><select data-pl="prefixMode"><option value="count"${sel("count", o.prefixMode)}>حسب عدد أوراق المجموعة: (5-1) (5-2)…</option><option value="all"${sel("all", o.prefixMode)}>حسب عدد كل الأوراق</option><option value="fixed"${sel("fixed", o.prefixMode)}>رقم ثابت أكتبه</option><option value="none"${sel("none", o.prefixMode)}>تسلسل فقط: (1) (2)…</option></select></label>
           <label class="cc-field"><span>الرقم الثابت (مثل 5)</span><input type="text" data-pl="prefix" value="${esc(o.prefix)}" ${o.prefixMode === "fixed" ? "" : "disabled"}></label>
@@ -2347,6 +2349,8 @@
       <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-pledge"))} أمر قراءة</b><span>${esc(scopeSummaryText())}</span></div>
         <div class="cc-act"><button type="button" class="btn secondary small" data-cc="pledge-reset">الديباجة الافتراضية</button>
           <button type="button" class="btn secondary" data-cc="run-pledge" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الطلاب من المركز"}</button>
+          <button type="button" class="btn secondary" data-cc="pledge-ann-word" ${n ? "" : "disabled"} title="الترتيب نفسه بجدول (م، الاسم، المرحلة) بخط أكبر ليقرأه المذيع">نسخة المذيع — Word</button>
+          <button type="button" class="btn secondary" data-cc="pledge-ann-print" ${n ? "" : "disabled"} title="الترتيب نفسه بجدول (م، الاسم، المرحلة) بخط أكبر ليقرأه المذيع">نسخة المذيع — طباعة</button>
           <button type="button" class="btn secondary" data-cc="pledge-word" ${n ? "" : "disabled"}>تنزيل Word</button>
           <button type="button" class="btn navy" data-cc="pledge-print" ${n ? "" : "disabled"}>طباعة على الترويسة</button></div></footer>
     </section>`;
@@ -2376,9 +2380,9 @@
     state.pledge.students = sh.rows.map((r) => { const g = get(r, m.group); return { name: get(r, m.name), id: get(r, m.id), group: g, course: "", track: get(r, iT), stage: get(r, iS) || stageFromGroup(g) || "" }; }).filter((s) => s.name);
     state.pledge.source = "ملف " + f.name;
   }
-  async function pledgeOutput(kind) {
-    const b = pledgeBlocks(); if (!b) return;
-    const title = state.pledge.opts.title || "تعهد استلام الحقيبة";
+  async function pledgeOutput(kind, mode) {
+    const b = pledgeBlocks(mode); if (!b) return;
+    const title = mode === "announcer" ? (state.pledge.opts.announcerTitle || "كشف أسماء الخريجين") : (state.pledge.opts.title || "تعهد استلام الحقيبة");
     if (kind === "print") return App.docRender.print(b.blocks, title, false);
     try { if (App.docx && App.docx.load) await App.docx.load(); } catch (e) { /* يُحمَّل عند الحاجة */ }
     App.docRender.exportWord(b.blocks, App.docRender.cleanFileName(title + " " + ui.todayISO()));
@@ -3488,6 +3492,8 @@
         } else if (act === "run-pledge") { return runPledge();
         } else if (act === "pledge-print") { return pledgeOutput("print");
         } else if (act === "pledge-word") { return pledgeOutput("word");
+        } else if (act === "pledge-ann-print") { return pledgeOutput("print", "announcer");
+        } else if (act === "pledge-ann-word") { return pledgeOutput("word", "announcer");
         } else if (act === "pledge-reset") { state.pledge.opts.preamble = App.pledgeSheet.DEFAULTS.preamble; state.pledge.opts.title = App.pledgeSheet.DEFAULTS.title; pledgeSave(); return render();
         } else if (act === "img-read") { try { return await imgRead(); } catch (e) { state.resultError = e.message === "NO_KEY" ? "أضف مفتاح الذكاء الاصطناعي أولاً (صفحة «المراسلات والتقارير» ← الإعدادات)." : (e.message || String(e)); return render(); }
         } else if (act === "img-rm") { state.img.files.splice(Number(b.dataset.i), 1); return render();

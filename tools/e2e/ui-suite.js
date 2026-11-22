@@ -727,6 +727,16 @@ async function suite() {
     c.state.pledge.opts.preamble = App.pledgeSheet.DEFAULTS.preamble + " " + App.pledgeSheet.DEFAULTS.preamble + " " + App.pledgeSheet.DEFAULTS.preamble; c.render();
     ok("ديباجة أطول ← صفوف أقل في الورقة", c.state.pledge.fit < fit1, { before: fit1, after: c.state.pledge.fit });
     c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { perPage: 15, autoFit: false }); c.render();
+    // نسخة المذيع: لا فيض في الطباعة، وWord بجدول (م، الاسم، المرحلة) بلا توقيع
+    c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { autoFit: true }); c.render();
+    const annB = App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), Object.assign({}, c.state.pledge.opts, { perPage: 9, split: "none" }), "announcer");
+    const hostB = document.createElement("div"); hostB.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(hostB);
+    const pcB = App.docRender.paginate(hostB, annB.blocks); hostB.remove();
+    ok("نسخة المذيع: 9 صفوف بخط 14 تتّسع في كل ورقة بلا فيض", pcB === annB.pages, { pcB, pages: annB.pages });
+    ok("أزرار نسخة المذيع ظاهرة وفعّالة", !!b.querySelector('[data-cc="pledge-ann-print"]') && !b.querySelector('[data-cc="pledge-ann-word"]').disabled, "btns");
+    await App.docx.load();
+    const annBytes = new Uint8Array(await App.docx.build(annB.blocks).arrayBuffer()); const annTxt = new TextDecoder("utf-8", { fatal: false }).decode(annBytes);
+    ok("Word المذيع: رؤوس م/الاسم/المرحلة وبلا «التوقيع» وخط 28 نصف نقطة", />المرحلة</.test(annTxt) && !/>التوقيع</.test(annTxt) && /w:sz w:val="28"/.test(annTxt), { len: annBytes.length });
     // Word على الترويسة: الملف يحوي الرقمين والأسماء
     await App.docx.load();
     const blob = App.docx.build(built.blocks); const bytes = new Uint8Array(await blob.arrayBuffer());
