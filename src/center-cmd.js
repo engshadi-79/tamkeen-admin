@@ -1260,7 +1260,7 @@
   function savedBar(mode) {
     if (!CFG[mode]) return "";
     const mine = state.saved.filter((x) => x.mode === mode);
-    return `<div class="cc-saved"><span class="cc-saved-t">تقاريري المحفوظة:</span>${mine.map((x) => `<span class="cc-sv"><button type="button" class="cc-sv-n" data-cc="sv-load" data-id="${x.id}" title="تحميل هذا الاختيار">${esc(x.name)}</button><button type="button" class="cc-sv-b" data-cc="sv-run" data-id="${x.id}" title="تحميل وتنفيذ" aria-label="تنفيذ">▶</button><button type="button" class="cc-sv-b" data-cc="sv-del" data-id="${x.id}" title="حذف" aria-label="حذف">×</button></span>`).join("") || '<span class="cc-note">لا شيء بعد</span>'}<button type="button" class="cc-link" data-cc="sv-save">＋ احفظ هذا الاختيار</button>${state.saved.length > 1 ? '<button type="button" class="cc-link" data-cc="bundle-toggle">📦 حزمة تقارير</button>' : ""}</div>
+    return `<div class="cc-saved"><span class="cc-saved-t">تقاريري المحفوظة:</span>${mine.map((x) => `<span class="cc-sv"><button type="button" class="cc-sv-n" data-cc="sv-load" data-id="${x.id}" title="تحميل هذا الاختيار">${esc(x.name)}</button><button type="button" class="cc-sv-b" data-cc="sv-run" data-id="${x.id}" title="تحميل وتنفيذ" aria-label="تنفيذ">▶</button><button type="button" class="cc-sv-b" data-cc="sv-remind" data-id="${x.id}" title="${x.every ? "يُذكّرك كل " + x.every + " يوماً (اضغط للتغيير)" : "ذكّرني بتشغيله دورياً"}" aria-label="تذكير">${x.every ? "⏰" + x.every : "⏰"}</button><button type="button" class="cc-sv-b" data-cc="sv-del" data-id="${x.id}" title="حذف" aria-label="حذف">×</button></span>`).join("") || '<span class="cc-note">لا شيء بعد</span>'}<button type="button" class="cc-link" data-cc="sv-save">＋ احفظ هذا الاختيار</button>${state.saved.length > 1 ? '<button type="button" class="cc-link" data-cc="bundle-toggle">📦 حزمة تقارير</button>' : ""}</div>
       ${state.bundle.open && state.saved.length ? `<div class="cc-bundle"><b>شغّل عدة تقارير محفوظة معاً في ملف Excel واحد:</b><div class="cc-chips">${state.saved.map((x) => `<label class="cc-chk"><input type="checkbox" data-bundle value="${esc(x.id)}" ${state.bundle.pick.includes(x.id) ? "checked" : ""}> <span>${esc(x.name)} <small>${esc(MODE_NAME[x.mode] || "")}</small></span></label>`).join("")}</div>
         <div class="cc-row"><button type="button" class="btn navy small" data-cc="bundle-run" ${state.busy ? "disabled" : ""}>شغّل الحزمة وحمّل Excel</button><span class="cc-note">${esc(state.bundle.msg || "تُشغَّل بالتتابع ولا تغيّر اختياراتك الحالية.")}</span></div></div>` : ""}`;
   }
@@ -1386,8 +1386,18 @@
     render();
     const rb = $("cc-body").querySelector('[data-cc="run-mis"]'); if (rb && !rb.disabled) rb.click();
   }
+  /* تقارير محفوظة لها تذكير دوري (every أيام) ومرّت مدته منذ آخر تشغيل (ran) أو منذ حفظها */
+  function savedDue() {
+    const now = Date.now();
+    return (state.saved || []).filter((x) => Number(x.every) > 0).map((x) => {
+      const base = x.ran ? Date.parse(x.ran) : Number(x.id) || now;
+      return { x, days: Math.floor((now - base) / 86400000), never: !x.ran };
+    }).filter((d) => d.days >= Number(d.x.every));
+  }
+  function markRan(id) { const it = state.saved.find((x) => x.id === id); if (!it) return; it.ran = new Date().toISOString(); lsSet(SV_KEY, state.saved); renderDash(); }
   function runSavedById(id) {
     const it = state.saved.find((x) => x.id === id); if (!it) return ui.toast("التقرير المحفوظ غير موجود");
+    markRan(id);
     state.mode = it.mode; state.adding = ""; state.proposal = null; applyCfg(it.mode, it.cfg);
     render();
     const rb = $("cc-body").querySelector('[data-cc="' + RUN_BTN[it.mode] + '"]'); if (rb && !rb.disabled) rb.click();
@@ -1397,10 +1407,11 @@
     const el = document.getElementById("dash-saved"); if (!el) return;
     let w = { due: false };
     try { w = weeklyNow(); } catch (e) { /* لا يضرّ */ }
-    const saved = (state.saved || []).slice(-4).reverse();
-    if (!centerAllowed() || (!saved.length && !w.due)) { el.hidden = true; el.innerHTML = ""; return; }
+    const saved = (state.saved || []).slice(-4).reverse(), due = savedDue();
+    if (!centerAllowed() || (!saved.length && !w.due && !due.length)) { el.hidden = true; el.innerHTML = ""; return; }
     el.hidden = false;
     el.innerHTML = `<div class="dash-section-head"><div><span class="dash-section-kicker">نظام المركز</span><h3>تقارير المركز</h3><p>تُشغَّل بنقرة، وتظهر النتيجة في «أوامر المركز»</p></div></div>
+      ${due.map((d) => `<div class="dash-weekly"><span>«${esc(d.x.name)}»: ${d.never ? "لم يُشغَّل بعد" : "مرّت " + ui.fmt(d.days) + " أيام على آخر تشغيل"} (تذكير كل ${ui.fmt(d.x.every)} يوماً)</span><button type="button" class="dash-saved-btn" data-dash-saved="${esc(d.x.id)}">شغّله الآن</button></div>`).join("")}
       ${w.due ? `<div class="dash-weekly"><span>${esc(weeklyText(w))}</span><button type="button" class="dash-saved-btn" data-dash-weekly>شغّل التقرير الشامل</button></div>` : ""}
       ${saved.length ? `<div class="dash-saved-list">${saved.map((x) => `<button type="button" class="dash-saved-btn" data-dash-saved="${esc(x.id)}"><span class="material-symbols-outlined" aria-hidden="true">play_arrow</span><span>${esc(x.name)}<small>${esc(MODE_NAME[x.mode] || "")}</small></span></button>`).join("")}</div>` : ""}`;
   }
@@ -3362,8 +3373,14 @@
           if (!it) return;
           state.mode = it.mode; state.adding = ""; state.proposal = null; applyCfg(it.mode, it.cfg);
           render();
-          if (act === "sv-run") { const rb = box.querySelector('[data-cc="' + RUN_BTN[it.mode] + '"]'); if (rb && !rb.disabled) rb.click(); }
+          if (act === "sv-run") { markRan(it.id); const rb = box.querySelector('[data-cc="' + RUN_BTN[it.mode] + '"]'); if (rb && !rb.disabled) rb.click(); }
           return;
+        } else if (act === "sv-remind") {
+          const it = state.saved.find((x) => x.id === b.dataset.id); if (!it) return;
+          const v = window.prompt("ذكّرني بتشغيل «" + it.name + "» كل كم يوم؟ (اكتب 0 لإلغاء التذكير)", it.every || "7");
+          if (v === null) return;
+          const n = Math.max(0, Math.min(365, Math.round(Number(v)) || 0));
+          it.every = n; lsSet(SV_KEY, state.saved); ui.toast(n ? "سيُذكَّرك كل " + n + " يوماً على اللوحة الرئيسية" : "أُلغي التذكير"); renderDash();
         } else if (act === "sv-del") {
           state.saved = state.saved.filter((x) => x.id !== b.dataset.id); lsSet(SV_KEY, state.saved); renderDash();
         } else if (act === "toggle-mask") {
@@ -3632,7 +3649,7 @@
 
   /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
-  App.centerCmd = { allowed: centerAllowed, missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+  App.centerCmd = { allowed: centerAllowed, renderDash, missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
