@@ -1952,6 +1952,7 @@
             outputFormat: t.isDocx ? "docx" : "xlsx",
             groupByColumns: groupsForExtra.length ? groupsForExtra : undefined,
             autoNumberHeader: t.headers.find((h) => h === state.autoNumberHeader) || undefined,
+            sortRowsBy: state.sortRowsBy || undefined,   // القوالب الإضافية تتبع نفس الترتيب الأبجدي
             fitGroupToOnePage: state.fitGroupToOnePage,
             sessionDates: t.isDocx ? undefined : sessionDates,
           });

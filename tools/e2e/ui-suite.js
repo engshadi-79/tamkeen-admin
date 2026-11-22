@@ -627,5 +627,18 @@ async function suite() {
     App.ai.vision = oldVision; App.ai.hasKey = oldHas; c.state.mode = "report"; c.state.img.tables = null; c.state.img.files = []; c.state.xl.sheets = []; c.render();
   }
 
+  // الترتيب الأبجدي في توليد القوالب (الأساسي) يجب أن يعطي أسماء مرتّبة
+  {
+    const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet("ورقة");
+    ws.addRow(["م", "الطالب"]); ws.addRow(["1", "مثال"]);
+    const buf = await wb.xlsx.writeBuffer();
+    const names = ["سمر فريد", "أحمد علي", "ياسمين", "إسراء حسن", "بشرى سعد", "الجوهرة محمد", "ليلى"];
+    const gen = await App.converterCore.generate({ templateBuffer: buf, templateIsDocx: false, templateName: "اختبار", templateHeaders: ["م", "الطالب"], mapping: { "م": "", "الطالب": "الطالب" }, dataRows: names.map((n) => ({ "الطالب": n })), outputFormat: "xlsx", autoNumberHeader: "م", sortRowsBy: "الطالب" });
+    const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(await gen.blob.arrayBuffer());
+    const got = []; wb2.worksheets[0].eachRow((r, n) => { if (n > 1) got.push(String(r.getCell(2).value)); });
+    const want = ["أحمد علي", "إسراء حسن", "بشرى سعد", "الجوهرة محمد", "سمر فريد", "ليلى", "ياسمين"];
+    ok("توليد القالب مع ترتيب أبجدي حسب «الطالب»", JSON.stringify(got) === JSON.stringify(want), got);
+  }
+
   return R;
 }
