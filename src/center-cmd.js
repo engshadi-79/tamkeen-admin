@@ -36,6 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
+    pledge: { tracks: [], stages: [], status: "", students: null, source: "", opts: null },
     img: { files: [], fast: false, tables: null, reading: false, prog: "", failed: [], took: "" },
     grad: { from: "", to: "", maxAbs: 3, minRate: 75, countExcused: false, requireEval: false, out: null },
     morning: { mis: true },
@@ -1249,7 +1250,7 @@
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
   const CFG = { attend: "att", impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
   const MODE_NAME = { attend: "الحضور والغياب", impact: "قياس الأثر", report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
-  const RUN_BTN = { sign: "run-sig", xl: "run-xl", morning: "run-morning", grad: "run-grad", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
+  const RUN_BTN = { sign: "run-sig", xl: "run-xl", morning: "run-morning", grad: "run-grad", pledge: "run-pledge", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
   /* نسخة من إعدادات التبويب بلا نتائجه ولا بياناته */
   const cfgOf = (mode) => JSON.parse(JSON.stringify(state[CFG[mode]], (key, v) => (key === "out" || key === "rows" || key === "msg" || key === "diff" ? undefined : v)));
   function applyCfg(mode, cfg) {
@@ -1333,7 +1334,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-grad", "run-morning", "run-xl", "run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-pledge", "run-grad", "run-morning", "run-xl", "run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1345,6 +1346,7 @@
       }
       if (act === "load-groups") return 1;
       if (act === "run-sig") return Math.max(1, sigCommands(true).length);
+      if (act === "run-pledge") return Math.max(1, sigCommands(true, state.pledge).length);
       if (act === "run-grad") { const c = state.grad, d = Math.max(1, Math.round((Date.parse(c.to || ui.todayISO()) - Date.parse(c.from || ui.todayISO())) / 86400000) + 1); return 1 + Math.min(Number(state.att.max) || 80, d * 2) + (c.requireEval ? (estimateReads("run-mis") || 0) : 0); }
       if (act === "run-morning") return (estimateReads("att-today") || 0) + (state.morning.mis ? (estimateReads("run-mis") || 0) : 0);
       if (act === "run-xl") return Math.max(1, sigCommands(true, state.xl).length);
@@ -2286,6 +2288,77 @@
     state.mode = "xl"; state.resultError = ""; render();
   }
 
+  /* ===== كشف تعهد استلام الحقيبة: ديباجة + جدول توقيع على الترويسة، بترقيم الأوراق (5-1) (5-2) ===== */
+  const PLEDGE_KEY = "tamkeen:pledge-opts";
+  const pledgeOpts = () => Object.assign({}, App.pledgeSheet.DEFAULTS, lsGet(PLEDGE_KEY, {}));
+  const pledgeSave = () => lsSet(PLEDGE_KEY, state.pledge.opts);
+  function pledgeStudents() {
+    const c = state.pledge; return c.students || [];
+  }
+  function pledgeBlocks() {
+    const st = pledgeStudents(); if (!st.length) return null;
+    if (!state.pledge.opts) state.pledge.opts = pledgeOpts();
+    return App.pledgeSheet.build(st, state.pledge.opts);
+  }
+  function pledgeView() {
+    const c = state.pledge; if (!c.opts) c.opts = pledgeOpts();
+    const o = c.opts, n = pledgeStudents().length, built = n ? pledgeBlocks() : null;
+    const sel = (v, cur) => (v === cur ? " selected" : "");
+    return `<section class="cc-card" id="cc-pledge">
+      <header class="cc-card-h"><h3>كشف تعهد استلام الحقيبة</h3><p>كشف يوقّع عليه المتدربون على الترويسة الرسمية: ديباجة التعهد ثم جدول (م، الاسم، رقم الهوية، المرحلة، التوقيع). وعند تعدد الأوراق تُرقَّم (5-1) (5-2) وهكذا.</p></header>
+      <div class="cc-card-b">
+        <div class="cc-grid">
+          <label class="cc-field cc-wide"><span>عنوان الكشف</span><input type="text" data-pl="title" value="${esc(o.title)}"></label>
+          <label class="cc-field cc-wide"><span>الديباجة (نص التعهد)</span><textarea data-pl="preamble" rows="4">${esc(o.preamble)}</textarea></label>
+          <label class="cc-field"><span>ترقيم الأوراق</span><select data-pl="prefixMode"><option value="count"${sel("count", o.prefixMode)}>حسب عدد أوراق المجموعة: (5-1) (5-2)…</option><option value="all"${sel("all", o.prefixMode)}>حسب عدد كل الأوراق</option><option value="fixed"${sel("fixed", o.prefixMode)}>رقم ثابت أكتبه</option><option value="none"${sel("none", o.prefixMode)}>تسلسل فقط: (1) (2)…</option></select></label>
+          <label class="cc-field"><span>الرقم الثابت (مثل 5)</span><input type="text" data-pl="prefix" value="${esc(o.prefix)}" ${o.prefixMode === "fixed" ? "" : "disabled"}></label>
+          <label class="cc-field"><span>صفوف في الورقة</span><input type="number" min="5" max="40" data-pl="perPage" value="${esc(o.perPage)}"></label>
+          <label class="cc-chk"><input type="checkbox" data-pl="repeatPreamble" ${o.repeatPreamble ? "checked" : ""}> <span>كرّر الديباجة في أعلى كل ورقة</span></label>
+          <label class="cc-chk"><input type="checkbox" data-pl="byGroup" ${o.byGroup ? "checked" : ""}> <span>ورقة مستقلة لكل مجموعة</span></label>
+        </div>
+        <p class="cc-note">الرقم الأول هو عدد الأوراق يحسبه التطبيق، والثاني رقم الورقة: مجموعة من خمس أوراق تُرقَّم (5-1) إلى (5-5). الورقة الوحيدة بلا رقم. الأسماء مرتبة أبجدياً.</p>
+        <label class="cc-field cc-wide"><span>أو ارفع قائمة من Excel (أعمدة: الاسم، الهوية، وأيضاً المرحلة والمجموعة إن وُجدت)</span><input type="file" id="cc-pledge-file" accept=".xlsx"></label>
+        <p class="cc-note">أو اختر <b>المرحلة</b> (والمسار والمجموعة) من شريط «النطاق» ثم اضغط «اجلب الطلاب من المركز».</p>
+        ${n ? `<p class="cc-alert ok">${ui.fmt(n)} طالباً (${esc(c.source)}) ← ${ui.fmt(built.pages)} ${built.pages === 1 ? "ورقة" : "ورقة/أوراق"}.</p>` : ""}
+      </div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-pledge"))} أمر قراءة</b><span>${esc(scopeSummaryText())}</span></div>
+        <div class="cc-act"><button type="button" class="btn secondary small" data-cc="pledge-reset">الديباجة الافتراضية</button>
+          <button type="button" class="btn secondary" data-cc="run-pledge" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الطلاب من المركز"}</button>
+          <button type="button" class="btn secondary" data-cc="pledge-word" ${n ? "" : "disabled"}>تنزيل Word</button>
+          <button type="button" class="btn navy" data-cc="pledge-print" ${n ? "" : "disabled"}>طباعة على الترويسة</button></div></footer>
+    </section>`;
+  }
+  async function runPledge() {
+    const c = state.pledge;
+    state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
+    try {
+      requireAgent15();
+      const results = await runCommands(sigCommands(false, c));
+      const reg = sigRegistered(results);
+      if (!reg.length) throw new Error("لم أجد مسجلين في المرحلة المختارة. تحقق من المرحلة والمسار وحالة الطالب.");
+      c.students = reg.map((r) => { const g = grpCode(r.group) || ""; return { name: r.name, id: r.id, group: g, course: r.course, stage: stageOf(r.course) || stageFromGroup(g) || "" }; });
+      c.source = "نظام المركز";
+      ui.toast("جُلب " + ui.fmt(c.students.length) + " طالباً");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  async function pledgeFromFile(f) {
+    const wb = await App.centerXl.readWorkbook(f);
+    if (!wb.sheets.length) throw new Error("الملف فارغ.");
+    const sh = wb.sheets[0], m = App.centerXl.detect(sh.heads, sh.rows), iS = sh.heads.findIndex((h) => /مرحلة|stage/i.test(h));
+    if (m.name < 0) throw new Error("لم أجد عمود الاسم في الملف.");
+    const get = (r, i) => (i >= 0 ? clean(r[i]) : "");
+    state.pledge.students = sh.rows.map((r) => { const g = get(r, m.group); return { name: get(r, m.name), id: get(r, m.id), group: g, course: "", stage: get(r, iS) || stageFromGroup(g) || "" }; }).filter((s) => s.name);
+    state.pledge.source = "ملف " + f.name;
+  }
+  async function pledgeOutput(kind) {
+    const b = pledgeBlocks(); if (!b) return;
+    const title = state.pledge.opts.title || "تعهد استلام الحقيبة";
+    if (kind === "print") return App.docRender.print(b.blocks, title, false);
+    try { if (App.docx && App.docx.load) await App.docx.load(); } catch (e) { /* يُحمَّل عند الحاجة */ }
+    App.docRender.exportWord(b.blocks, App.docRender.cleanFileName(title + " " + ui.todayISO()));
+  }
+
   function attView() {
     const c = state.att, today = ui.todayISO();
     return `<section class="cc-card" id="cc-att">
@@ -2951,7 +3024,7 @@
       ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "img" ? imgView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "pledge" ? pledgeView() : mode === "img" ? imgView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${planView()}
       ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "grad" ? gradResult() : mode === "img" ? imgResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
@@ -3029,15 +3102,15 @@
   }
   /* شريط التبويبات الأفقي: عناوين قصيرة في صف واحد مجمّعة، والشرح في التلميح */
   const MODE_GROUPS = [
-    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["morning", "تقرير الصباح", "حضور اليوم والناقصون في صفحة واحدة"], ["grad", "جاهزية التخرج", "من يستوفي شروط الحضور والتقييمات"], ["img", "صورة إلى جدول", "حوّل صورة كشف أو درجات إلى Excel"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
+    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["morning", "تقرير الصباح", "حضور اليوم والناقصون في صفحة واحدة"], ["grad", "جاهزية التخرج", "من يستوفي شروط الحضور والتقييمات"], ["img", "صورة إلى جدول", "حوّل صورة كشف أو درجات إلى Excel"], ["pledge", "كشف تعهد الحقيبة", "كشف توقيع على الترويسة بترقيم الأوراق"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
     [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
     [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
   ];
-  const MODE_ICO = { img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const MODE_ICO = { pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
   const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" title="${esc(h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
-  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att, grad: state.att }[mode] || state.sel);
+  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att, grad: state.att, pledge: state.pledge }[mode] || state.sel);
   function scopeNow() {
     const c = scopeCfg(state.adding || state.proposal ? "ask" : state.mode);
     const byK = c === state.sel || c === state.mis;
@@ -3075,20 +3148,20 @@
   /* بعد تغيير المرحلة أو المسار: يُسقَط من الاختيار ما لم يعد مرتبطاً */
   function pruneScope() {
     const av = scopeAvail(), okT = new Set(av.tracks.map((o) => String(o.v))), okG = new Set(av.groups);
-    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => { if (c.tracks && c.tracks.length) c.tracks = c.tracks.filter((t) => okT.has(String(t))); });
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => { if (c.tracks && c.tracks.length) c.tracks = c.tracks.filter((t) => okT.has(String(t))); });
     if ((state.groups || []).length) state.groups = state.groups.filter((g) => okG.has(g));
   }
   function scopeSet(kind, value, on) {
     const upd = (c, key, v) => { const arr = (c[key] = c[key] || []); const at = arr.indexOf(v); if (on && at < 0) arr.push(v); else if (!on && at >= 0) arr.splice(at, 1); };
-    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => upd(c, "tracks", String(value)));
+    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => upd(c, "tracks", String(value)));
     else {
       [state.sel, state.mis].forEach((c) => upd(c, "stages", stageK(value)));
-      [state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => upd(c, "stages", value));
+      [state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => upd(c, "stages", value));
     }
     pruneScope();
   }
   function scopeClear() {
-    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
     state.groups = [];
   }
   /* القوائم المكررة داخل التبويبات (المسارات/المراحل) تُخفى لأن الشريط يتولاها */
@@ -3387,6 +3460,10 @@
         } else if (act === "run-xl") { return runXl();
         } else if (act === "run-morning") { return runMorning();
         } else if (act === "run-grad") { return runGrad();
+        } else if (act === "run-pledge") { return runPledge();
+        } else if (act === "pledge-print") { return pledgeOutput("print");
+        } else if (act === "pledge-word") { return pledgeOutput("word");
+        } else if (act === "pledge-reset") { state.pledge.opts.preamble = App.pledgeSheet.DEFAULTS.preamble; state.pledge.opts.title = App.pledgeSheet.DEFAULTS.title; pledgeSave(); return render();
         } else if (act === "img-read") { try { return await imgRead(); } catch (e) { state.resultError = e.message === "NO_KEY" ? "أضف مفتاح الذكاء الاصطناعي أولاً (صفحة «المراسلات والتقارير» ← الإعدادات)." : (e.message || String(e)); return render(); }
         } else if (act === "img-rm") { state.img.files.splice(Number(b.dataset.i), 1); return render();
         } else if (act === "export-img") { return imgExport();
@@ -3608,6 +3685,17 @@
         state.img.files.push(...add); t.value = ""; return render();
       }
       if (t.dataset.img === "speed") { state.img.fast = t.value === "fast"; return; }
+      if (t.id === "cc-pledge-file") {
+        const f = (t.files || [])[0]; if (!f) return;
+        try { await pledgeFromFile(f); state.resultError = ""; } catch (e) { state.resultError = "تعذّرت قراءة الملف: " + (e.message || e); }
+        t.value = ""; return render();
+      }
+      if (t.dataset.pl) {
+        const k = t.dataset.pl, o = state.pledge.opts;
+        o[k] = t.type === "checkbox" ? !!t.checked : t.value; pledgeSave();
+        if (k === "prefixMode" || t.type === "checkbox" || k === "perPage") render();
+        return;
+      }
       if (t.dataset.grad) { const k = t.dataset.grad; state.grad[k] = t.type === "checkbox" ? !!t.checked : (k === "from" || k === "to" ? t.value : t.value); return render(); }
       if (t.dataset.morning === "mis") { state.morning.mis = !!t.checked; return render(); }
       if (t.id === "cc-xl-file") {

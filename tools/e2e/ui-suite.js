@@ -684,5 +684,49 @@ async function suite() {
     if (old === null) localStorage.removeItem(key); else localStorage.setItem(key, old);
   }
 
+  // كشف تعهد استلام الحقيبة: الطلاب من النظام ← أوراق مرقّمة (5-1) (5-2) ← Word وطباعة
+  {
+    const oldRun = agent.run;
+    const names = ["ياسمين خالد", "أحمد علي", "الجوهرة محمد", "إسراء حسن", "بشرى سعد", "سمر فريد", "ليلى حسن", "نورة خالد", "هدى سالم", "منى يوسف", "رنا عادل", "دانة ماجد", "ريم فهد", "جود سامر", "لجين ناصر", "تالا بسام", "غدير نايف", "سارة مازن", "عبير وليد", "فرح زياد"];
+    agent.run = async (cmds) => ({ results: cmds.map((cm) => ({ type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية"], rows: names.map((n, k) => ({ cells: [n, String(300 + k), "G1", "10" + String(10000000 + k)] })) })) });
+    c.state.mode = "pledge"; c.state.groups = []; c.state.pledge = Object.assign(c.state.pledge, { tracks: ["1"], stages: [], status: "7", students: null, opts: null }); c.state.wideLimit = 100000; c.state.wide = null; c.render();
+    ok("تبويب كشف التعهد: الحقول والأزرار", !!b.querySelector('[data-pl="preamble"]') && !!b.querySelector('[data-cc="run-pledge"]') && b.querySelector('[data-cc="pledge-print"]').disabled, "view");
+    b.querySelector('[data-cc="run-pledge"]').click();
+    for (let i = 0; i < 40 && !c.state.pledge.students && !c.state.resultError; i++) await wait(100); await wait(200);
+    ok("جُلب 20 طالباً من النظام", !!c.state.pledge.students && c.state.pledge.students.length === 20, JSON.stringify({ n: c.state.pledge.students && c.state.pledge.students.length, err: c.state.resultError }));
+    // الافتراضي: ترقيم حسب عدد الأوراق. 20 طالباً بـ15 صفاً في الورقة ← ورقتان (2-1) و(2-2)
+    c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { perPage: 15 }); c.render();
+    ok("المعاينة النصية: 20 طالباً ← ورقتان", /20 طالباً/.test(b.querySelector("#cc-pledge").textContent) && /2 ورقة/.test(b.querySelector("#cc-pledge").textContent), b.querySelector("#cc-pledge .cc-alert") && b.querySelector("#cc-pledge .cc-alert").textContent);
+    const built = App.pledgeSheet.build(c.state.pledge.students, c.state.pledge.opts);
+    const mt = built.blocks.filter((x) => x.kind === "meta").map((x) => x.text).join();
+    ok("ترقيم الورقتين (2-1) و(2-2) حسب عدد الأوراق", mt === "(2-1),(2-2)", mt);
+    const tb = built.blocks.filter((x) => x.kind === "table");
+    ok("الترتيب الأبجدي والمرحلة من الدورة/المجموعة", tb[0].rows[0][1] === "أحمد علي" && tb[0].rows.length === 15 && tb[1].rows.length === 5, tb[0].rows[0]);
+    // الطباعة على الترويسة: لا تفيض الورقة (ورقتان مطبوعتان بالضبط)
+    const host = document.createElement("div"); host.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(host);
+    const pc = App.docRender.paginate(host, built.blocks); host.remove();
+    // معايرة: أكبر عدد صفوف يتّسع في الورقة الواحدة مع الديباجة المكررة (يُعرض للمراجعة)
+    const fit = {};
+    for (const k of [8, 9, 10, 11, 12, 13, 14, 15]) {
+      const h = document.createElement("div"); h.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(h);
+      fit[k] = App.docRender.paginate(h, App.pledgeSheet.build(c.state.pledge.students.slice(0, k), { perPage: k, byGroup: false }).blocks); h.remove();
+    }
+    ok("معايرة الصفوف في الورقة المطبوعة (صفحات لكل عدد)", true, JSON.stringify(fit));
+    const dk = App.pledgeSheet.DEFAULTS.perPage, h2 = document.createElement("div"); h2.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(h2);
+    const pcd = App.docRender.paginate(h2, App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, byGroup: true }).blocks); h2.remove();
+    ok("الصفوف الافتراضية في الورقة تتّسع بلا فيض (كل ورقة تطبع صفحة واحدة)", pcd === App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, byGroup: true }).pages, { pcd, dk });
+    // Word على الترويسة: الملف يحوي الرقمين والأسماء
+    await App.docx.load();
+    const blob = App.docx.build(built.blocks); const bytes = new Uint8Array(await blob.arrayBuffer());
+    const txt = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    ok("ملف Word: فيه (2-1) و(2-2) وفاصل الصفحة واسم طالب", /\(2-1\)/.test(txt) && /\(2-2\)/.test(txt) && /w:br w:type="page"/.test(txt) && /أحمد علي/.test(txt), { len: bytes.length });
+    ok("ملف Word: ارتفاع صف التوقيع مضبوط", /w:trHeight/.test(txt), "trHeight");
+    // حفظ الخيارات
+    const ta = b.querySelector('[data-pl="preamble"]'); ta.value = "ديباجة اختبار"; ta.dispatchEvent(new Event("change", { bubbles: true })); await wait(100);
+    ok("الديباجة المعدّلة تُحفظ للمرة القادمة", /ديباجة اختبار/.test(localStorage.getItem("tamkeen:pledge-opts") || ""), localStorage.getItem("tamkeen:pledge-opts"));
+    localStorage.removeItem("tamkeen:pledge-opts");
+    agent.run = oldRun; c.state.mode = "report"; c.state.pledge.students = null; c.state.pledge.opts = null; c.state.wideLimit = 0; c.render();
+  }
+
   return R;
 }
