@@ -13,4 +13,14 @@ const r = S.normRow({ name: "  أحمد   علي ", signed: "true", confidence: 
 ok("تطبيع الصف", r.name === "أحمد علي" && r.signed === true && r.conf === 1);
 ok("صف بلا اسم يُهمَل", S.normRow({ name: " " }, "f", 1) === null);
 ok("signed مجهول", S.normRow({ name: "س" }, "f", 2).signed === null);
-console.log(bad ? bad + " فشل" : "كل الاختبارات نجحت (" + n + ")"); process.exit(bad ? 1 : 0);
+
+(async () => {
+  const fake = { vision: async () => '```json\n{"title":"كشف","heads":["الاسم","الهوية"],"rows":[["أحمد علي","1012345678"],["ليلى","1099999999","زائد"],[],["",""]]}\n```' };
+  const t = await S.readTable({ name: "a.jpg", mime: "image/jpeg", data: "x" }, { ai: fake });
+  ok("جدول من صورة: رؤوس وصفوف موحّدة العرض", t.heads.length === 3 && t.rows.length === 2 && t.rows.every((r) => r.length === 3) && t.title === "كشف", t);
+  const fk = { n: 0, vision: async () => { if (fk.n++ === 1) throw new Error("boom"); return '{"heads":["أ"],"rows":[["1"]]}'; } };
+  const m = await S.readTables([{ name: "1" }, { name: "2" }, { name: "3" }], { ai: fk });
+  ok("قراءة عدة صور: إخفاق صورة لا يوقف البقية", m.tables.length === 2 && m.failed.length === 1, m);
+  console.log(bad ? bad + " فشل" : "كل اختبارات الجداول نجحت"); process.exit(bad ? 1 : 0);
+})();
+
