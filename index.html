@@ -1192,7 +1192,7 @@
       </label>
       <div id="ai-gemini-fields">
         <p class="vars-hint">أنشئ مفتاحاً مجانياً من <b dir="ltr">aistudio.google.com/apikey</b> بحساب Google (زر «Create API key»). الاستخدام المجاني له حد يومي يكفي مراسلات المكتب. تنبيه: في الخطة المجانية قد تستخدم Google ما يُرسل إليها لتحسين خدماتها، فلا تكتب بيانات شخصية حساسة في الطلب.</p>
-        <label class="field"><span>مفتاح Gemini</span><input type="password" id="ai-gemini-key" autocomplete="off" spellcheck="false" dir="ltr" placeholder="AIza..."></label>
+        <label class="field"><span>مفاتيح Gemini (مفتاح في كل سطر)</span><textarea id="ai-gemini-key" rows="2" autocomplete="off" spellcheck="false" dir="ltr" placeholder="AIza...&#10;AIza... (اختياري: مفتاح ثانٍ يُستعمل عند بلوغ حد الأول)" style="-webkit-text-security:disc"></textarea><small class="vars-hint">إن بلغ مفتاح حده المجاني انتقل التطبيق إلى التالي تلقائياً. استعمل مفاتيح تخصّك أو تخصّ المركز؛ وقد تمنع شروط Google الالتفاف على الحد المجاني بحسابات متعددة، والأسلم تفعيل الفوترة.</small></label>
       </div>
       <div id="ai-claude-fields" hidden>
         <p class="vars-hint">أنشئ المفتاح من <b dir="ltr">console.anthropic.com</b> (الاستخدام مدفوع حسب الاستهلاك).</p>
@@ -1602,7 +1602,7 @@
   <script src="src/tasks.js?v=340"></script>
   <script src="src/dashboard.js?v=410"></script>
   <script src="src/docx.js?v=343"></script>
-  <script src="src/ai.js?v=344"></script>
+  <script src="src/ai.js?v=345"></script>
   <script src="src/doc-render.js?v=343"></script>
   <script src="src/files-store.js?v=340"></script>
   <script src="src/shared.js?v=405"></script>
