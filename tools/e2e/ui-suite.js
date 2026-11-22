@@ -686,16 +686,17 @@ async function suite() {
 
   // كشف تعهد استلام الحقيبة: الطلاب من النظام ← أوراق مرقّمة (5-1) (5-2) ← Word وطباعة
   {
-    const oldRun = agent.run;
+    const oldRun = agent.run; let plSentStatus = "";
     const names = ["ياسمين خالد", "أحمد علي", "الجوهرة محمد", "إسراء حسن", "بشرى سعد", "سمر فريد", "ليلى حسن", "نورة خالد", "هدى سالم", "منى يوسف", "رنا عادل", "دانة ماجد", "ريم فهد", "جود سامر", "لجين ناصر", "تالا بسام", "غدير نايف", "سارة مازن", "عبير وليد", "فرح زياد"];
-    agent.run = async (cmds) => ({ results: cmds.map((cm) => ({ type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية"], rows: names.map((n, k) => ({ cells: [n, String(300 + k), "G1", "10" + String(10000000 + k)] })) })) });
-    c.state.mode = "pledge"; c.state.groups = []; c.state.pledge = Object.assign(c.state.pledge, { tracks: ["1"], stages: [], status: "7", students: null, opts: null }); c.state.wideLimit = 100000; c.state.wide = null; c.render();
+    agent.run = async (cmds) => { plSentStatus = (cmds[0].params || {}).status; return { results: cmds.map((cm) => ({ type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية"], rows: names.map((n, k) => ({ cells: [n, String(300 + k), "G1", "10" + String(10000000 + k)] })) })) }; };
+    c.state.mode = "pledge"; c.state.groups = []; c.state.pledge = Object.assign(c.state.pledge, { tracks: ["1"], stages: [], status: "graduated", students: null, opts: null }); c.state.wideLimit = 100000; c.state.wide = null; c.render();
     ok("تبويب كشف التعهد: الحقول والأزرار", !!b.querySelector('[data-pl="preamble"]') && !!b.querySelector('[data-cc="run-pledge"]') && b.querySelector('[data-cc="pledge-print"]').disabled, "view");
     b.querySelector('[data-cc="run-pledge"]').click();
     for (let i = 0; i < 40 && !c.state.pledge.students && !c.state.resultError; i++) await wait(100); await wait(200);
+    ok("الطلبة المتخرجون فقط: يُرسَل status=graduated", plSentStatus === "graduated" && !!b.querySelector('[data-pledge="status"]') && b.querySelector('[data-pledge="status"]').value === "graduated", plSentStatus);
     ok("جُلب 20 طالباً من النظام", !!c.state.pledge.students && c.state.pledge.students.length === 20, JSON.stringify({ n: c.state.pledge.students && c.state.pledge.students.length, err: c.state.resultError }));
     // الافتراضي: ترقيم حسب عدد الأوراق. 20 طالباً بـ15 صفاً في الورقة ← ورقتان (2-1) و(2-2)
-    c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { perPage: 15 }); c.render();
+    c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { perPage: 15, autoFit: false }); c.render();
     ok("المعاينة النصية: 20 طالباً ← ورقتان", /20 طالباً/.test(b.querySelector("#cc-pledge").textContent) && /2 ورقة/.test(b.querySelector("#cc-pledge").textContent), b.querySelector("#cc-pledge .cc-alert") && b.querySelector("#cc-pledge .cc-alert").textContent);
     const built = App.pledgeSheet.build(c.state.pledge.students, c.state.pledge.opts);
     const mt = built.blocks.filter((x) => x.kind === "meta").map((x) => x.text).join();
@@ -715,6 +716,17 @@ async function suite() {
     const dk = App.pledgeSheet.DEFAULTS.perPage, h2 = document.createElement("div"); h2.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(h2);
     const pcd = App.docRender.paginate(h2, App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, byGroup: true }).blocks); h2.remove();
     ok("الصفوف الافتراضية في الورقة تتّسع بلا فيض (كل ورقة تطبع صفحة واحدة)", pcd === App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, byGroup: true }).pages, { pcd, dk });
+    // عدد الصفوف يلائم الصفحة تلقائياً: كل ورقة تُطبع صفحة واحدة بلا فيض، ويتغيّر مع طول الديباجة
+    c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { autoFit: true }); c.render();
+    const fit1 = c.state.pledge.fit;
+    const hostA = document.createElement("div"); hostA.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(hostA);
+    const bl = App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students, c.state.pledge.students), Object.assign({}, c.state.pledge.opts, { perPage: fit1, byGroup: false }));
+    const pcA = App.docRender.paginate(hostA, bl.blocks); hostA.remove();
+    ok("الملاءمة التلقائية: صفوف الورقة تتّسع بلا فيض (كل ورقة صفحة)", fit1 >= 8 && pcA === bl.pages, { fit1, pcA, pages: bl.pages });
+    ok("الخانة تعرض العدد المحسوب وتُعطَّل", b.querySelector('[data-pl="perPage"]').disabled && Number(b.querySelector('[data-pl="perPage"]').value) === fit1, b.querySelector('[data-pl="perPage"]').value);
+    c.state.pledge.opts.preamble = App.pledgeSheet.DEFAULTS.preamble + " " + App.pledgeSheet.DEFAULTS.preamble + " " + App.pledgeSheet.DEFAULTS.preamble; c.render();
+    ok("ديباجة أطول ← صفوف أقل في الورقة", c.state.pledge.fit < fit1, { before: fit1, after: c.state.pledge.fit });
+    c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { perPage: 15, autoFit: false }); c.render();
     // Word على الترويسة: الملف يحوي الرقمين والأسماء
     await App.docx.load();
     const blob = App.docx.build(built.blocks); const bytes = new Uint8Array(await blob.arrayBuffer());
