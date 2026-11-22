@@ -48,8 +48,7 @@
       const chunks = []; for (let i = 0; i < rows.length; i += perPage) chunks.push(rows.slice(i, i + perPage));
       chunks.forEach((chunk, ci) => {
         if (sheets.length > 0) blocks.push({ kind: "pagebreak" });
-        const meta = { kind: "meta", text: "" };
-        blocks.push(meta);
+        const meta = { kind: "pagenum", text: "" };   // رقم الورقة: أسفل الصفحة في الوسط، يُضاف بعد الجدول
         sheets.push({ meta, k: ci + 1, gTotal: chunks.length });
         blocks.push({ kind: "title", text: clean(ann ? o.announcerTitle : o.title) });
         // اسم المسار في الوسط تحت العنوان؛ وعند التقسيم بالمجموعة يُذكر اسمها (بلا اسم المدرب) تحته
@@ -64,6 +63,7 @@
           kind: "table", headers: HEADERS, widths: WIDTHS, align: ALIGN, rowHeightTw: 480,
           rows: chunk.map((s, i) => [String(ci * perPage + i + 1), clean(s.name), clean(s.id), clean(s.stage), ""]),
         });
+        blocks.push(meta);
       });
     });
 

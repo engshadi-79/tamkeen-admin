@@ -157,6 +157,7 @@
 
   function paragraph(block, media) {
     if (block.kind === "table") return table(block);
+    if (block.kind === "pagenum") return block.text ? `<w:p><w:pPr><w:framePr w:w="2400" w:h="320" w:hRule="exact" w:hSpace="0" w:wrap="around" w:vAnchor="page" w:hAnchor="page" w:xAlign="center" w:y="14000"/><w:bidi/><w:spacing w:before="0" w:after="0"/><w:jc w:val="center"/><w:rPr><w:rtl/><w:b/><w:bCs/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="${FONT}" w:hAnsi="${FONT}" w:eastAsia="${FONT}" w:cs="${FONT}"/><w:b/><w:bCs/><w:sz w:val="24"/><w:szCs w:val="24"/><w:rtl/></w:rPr><w:t xml:space="preserve">${xmlEsc(block.text)}</w:t></w:r></w:p>` : "";
     if (block.kind === "pagebreak") return `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:br w:type="page"/></w:r></w:p>`;
     if (block.kind === "image") return image(block, media);
     if (block.kind === "addressee") return addressee(block);
