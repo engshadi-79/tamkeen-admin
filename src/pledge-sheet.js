@@ -5,6 +5,7 @@
   const DEFAULTS = {
     title: "تعهد استلام الحقيبة التدريبية",
     announcerTitle: "كشف أسماء الخريجين",   // عنوان نسخة المذيع
+    announcerSizePt: 14,                    // خط جدول نسخة المذيع (يصغَّر تلقائياً إن لزم ليتّسع نفس عدد صفوف كشف التوقيع)
     preamble: "أقرّ أنا المتدرب/ـة الموقِّع/ـة أدناه بأنني استلمتُ الحقيبة التدريبية الخاصة بي كاملةً وبحالة سليمة، وأتعهّد باستعمالها في مشروعي الخاص، وبعدم بيعها أو التنازل عنها أو التصرف فيها بأي صورة لأي جهة أو شخص، وأتحمّل كامل المسؤولية عن مخالفة ذلك.",
     prefixMode: "count",     // count: (عدد أوراق المجموعة-الرقم) | all: (عدد كل الأوراق-الرقم) | fixed: رقم يكتبه المستخدم | none: (الرقم) فقط
     prefix: "1",
@@ -57,7 +58,7 @@
         if (o.split === "group" && gk && gk !== "—") blocks.push({ kind: "title", text: "المجموعة: " + gk, sizePt: 12 });
         if (!ann && (ci === 0 || o.repeatPreamble)) blocks.push({ kind: "para", text: clean(o.preamble) });
         blocks.push(ann ? {
-          kind: "table", headers: A_HEADERS, widths: A_WIDTHS, align: A_ALIGN, rowHeightTw: 420, sizePt: 14,
+          kind: "table", headers: A_HEADERS, widths: A_WIDTHS, align: A_ALIGN, rowHeightTw: Math.round((Number(o.announcerSizePt) || 14) * 30), sizePt: Number(o.announcerSizePt) || 14,
           rows: chunk.map((s, i) => [String(ci * perPage + i + 1), clean(s.name), clean(s.stage)]),
         } : {
           kind: "table", headers: HEADERS, widths: WIDTHS, align: ALIGN, rowHeightTw: 480,

@@ -736,6 +736,17 @@ async function suite() {
     const pnTop = hostN.querySelector(".lh-body") && hostN.querySelector(".lh-body").getBoundingClientRect();
     ok("الرقم لا يتداخل مع نص الصفحة (تحت حافة النص السفلية)", !!pnTop && rN.top >= pnTop.bottom - 1, pnTop && { numTop: rN.top, bodyBottom: pnTop.bottom });
     hostN.remove();
+    // النسختان: الصفوف والأسماء والترقيم نفسها في كل صفحة
+    c.state.pledge.students = [...c.state.pledge.students, ...Array.from({ length: 30 }, (_, k) => ({ name: "إضافي " + String(k + 1).padStart(2, "0"), id: "2000" + k, group: "G1", course: "مسار الحلاقة", track: "مسار الحلاقة", stage: "المرحلة الثانية" }))];
+    c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { autoFit: true }); c.render();
+    const sg = App.centerCmd.pledgeBlocks(), an = App.centerCmd.pledgeBlocks("announcer");
+    const rowsOf = (r) => r.blocks.filter((x) => x.kind === "table").map((tb) => tb.rows.map((rw) => rw[0] + ":" + rw[1] + ":" + (rw[3] !== undefined && rw.length === 5 ? rw[3] : rw[2])));
+    ok("النسختان: عدد الصفحات نفسه (توقيع = مذيع)", sg.pages === an.pages && sg.pages >= 3, { sign: sg.pages, ann: an.pages });
+    ok("النسختان: الأسماء والمراحل ورقم م نفسها في كل صفحة", JSON.stringify(rowsOf(sg)) === JSON.stringify(rowsOf(an)), { s: rowsOf(sg).map((x) => x.length), a: rowsOf(an).map((x) => x.length) });
+    ok("النسختان: ترقيم الصفحات نفسه", sg.blocks.filter((x) => x.kind === "pagenum").map((x) => x.text).join() === an.blocks.filter((x) => x.kind === "pagenum").map((x) => x.text).join(), "pagenum");
+    const hostM = document.createElement("div"); hostM.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(hostM);
+    const pcM = App.docRender.paginate(hostM, an.blocks); hostM.remove();
+    ok("نسخة المذيع تُطبع صفحة واحدة لكل ورقة بلا فيض", pcM === an.pages, { pcM, pages: an.pages });
     // نسخة المذيع: لا فيض في الطباعة، وWord بجدول (م، الاسم، المرحلة) بلا توقيع
     c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { autoFit: true }); c.render();
     const annB = App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), Object.assign({}, c.state.pledge.opts, { perPage: 9, split: "none" }), "announcer");

@@ -2318,9 +2318,21 @@
     const st = pledgeStudents(); if (!st.length) return null;
     if (!state.pledge.opts) state.pledge.opts = pledgeOpts();
     const o = Object.assign({}, state.pledge.opts);
-    if (o.autoFit) { const f = pledgeFitRows(o, mode); if (!mode) state.pledge.fit = f; o.perPage = f; }
-    else if (mode === "announcer") o.perPage = Math.min(Number(o.perPage) || 12, 14);
-    return App.pledgeSheet.build(st, o, mode);
+    // عدد الصفوف في الورقة واحد للنسختين، فتتطابق الأسماء في كل صفحة وعدد الصفحات والترقيم
+    if (o.autoFit) { state.pledge.fit = pledgeFitRows(o); o.perPage = state.pledge.fit; }
+    if (mode !== "announcer") return App.pledgeSheet.build(st, o);
+    // نسخة المذيع: نصغّر خط الجدول إن لزم حتى تتّسع الصفوف نفسها في صفحة واحدة لكل ورقة
+    const host = document.createElement("div");
+    host.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size";
+    document.body.appendChild(host);
+    let res = null;
+    try {
+      for (const size of [Number(o.announcerSizePt) || 14, 13, 12, 11, 10]) {
+        res = App.pledgeSheet.build(st, Object.assign({}, o, { announcerSizePt: size }), "announcer");
+        if (App.docRender.paginate(host, res.blocks) === res.pages) break;
+      }
+    } finally { host.remove(); }
+    return res;
   }
   function pledgeView() {
     const c = state.pledge; if (!c.opts) c.opts = pledgeOpts();
@@ -3875,7 +3887,7 @@
 
   /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
-  App.centerCmd = { allowed: centerAllowed, renderDash, missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+  App.centerCmd = { allowed: centerAllowed, renderDash, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
