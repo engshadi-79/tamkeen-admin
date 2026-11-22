@@ -246,6 +246,8 @@ td input[type=number] { max-width: 100px; }
 .lb-addressee .addr-line { position: relative; height: 1.45em; }
 .lb-addressee .addr-line > span { position: absolute; top: 0; white-space: nowrap; }
 .lb-meta { text-align: left; }
+/* رقم الورقة: أسفل الصفحة في الوسط، في الفراغ بين نهاية النص وشريط التذييل (المسافة من أسفل الصفحة 76–92pt) */
+.lh-pagenum { position: absolute; left: 0; right: 0; bottom: 12.4cqw; text-align: center; font-weight: 700; font-size: 1.96cqw; line-height: 1.4; color: #111; font-family: "Sakkal Majalla", "Traditional Arabic", "Cairo", serif; }
 .preview-bar { max-width: 760px; margin-inline: auto; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
 #print-root { display: none; }
 /* أثناء تجهيز الطباعة: يُرسم خارج الشاشة بالمقاس الفعلي ليتم تقسيم الصفحات */

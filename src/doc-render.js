@@ -110,6 +110,10 @@
     let body = newPage(container);
     list.forEach((b) => {
       if (b.kind === "pagebreak") { if (body.children.length) body = newPage(container); return; }
+      if (b.kind === "pagenum") {   // رقم الصفحة: أسفل الصفحة في الوسط فوق شريط التذييل، لا يدخل في تدفّق النص
+        if (b.text) { const el = document.createElement("div"); el.className = "lh-pagenum"; el.textContent = b.text; body.parentElement.appendChild(el); }
+        return;
+      }
       if (b.kind === "table") {
         let table = tableEl(b);
         body.appendChild(table);

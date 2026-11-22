@@ -699,7 +699,7 @@ async function suite() {
     c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { perPage: 15, autoFit: false }); c.render();
     ok("المعاينة النصية: 20 طالباً ← ورقتان", /20 طالباً/.test(b.querySelector("#cc-pledge").textContent) && /2 ورقة/.test(b.querySelector("#cc-pledge").textContent), b.querySelector("#cc-pledge .cc-alert") && b.querySelector("#cc-pledge .cc-alert").textContent);
     const built = App.pledgeSheet.build(c.state.pledge.students, c.state.pledge.opts);
-    const mt = built.blocks.filter((x) => x.kind === "meta").map((x) => x.text).join();
+    const mt = built.blocks.filter((x) => x.kind === "pagenum").map((x) => x.text).join();
     ok("ترقيم الورقتين (2-1) و(2-2) حسب عدد الأوراق", mt === "(2-1),(2-2)", mt);
     const tb = built.blocks.filter((x) => x.kind === "table");
     ok("الترتيب الأبجدي والمرحلة من الدورة/المجموعة", tb[0].rows[0][1] === "أحمد علي" && tb[0].rows.length === 15 && tb[1].rows.length === 5, tb[0].rows[0]);
@@ -727,6 +727,15 @@ async function suite() {
     c.state.pledge.opts.preamble = App.pledgeSheet.DEFAULTS.preamble + " " + App.pledgeSheet.DEFAULTS.preamble + " " + App.pledgeSheet.DEFAULTS.preamble; c.render();
     ok("ديباجة أطول ← صفوف أقل في الورقة", c.state.pledge.fit < fit1, { before: fit1, after: c.state.pledge.fit });
     c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { perPage: 15, autoFit: false }); c.render();
+    // رقم الورقة: أسفل الصفحة في الوسط (طباعة) وإطار مثبّت في Word
+    const hostN = document.createElement("div"); hostN.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(hostN);
+    App.docRender.paginate(hostN, built.blocks);
+    const pnEl = hostN.querySelector(".lh-pagenum"), pgEl = hostN.querySelector(".lh-page");
+    const rN = pnEl && pnEl.getBoundingClientRect(), rP = pgEl && pgEl.getBoundingClientRect();
+    ok("رقم الورقة (2-1) يظهر أسفل الصفحة في الوسط", !!pnEl && /\(2-1\)/.test(pnEl.textContent) && Math.abs((rN.left + rN.width / 2) - (rP.left + rP.width / 2)) < 3 && rN.top > rP.top + rP.height * 0.82, pnEl && { n: pnEl.textContent, top: rN.top - rP.top, h: rP.height });
+    const pnTop = hostN.querySelector(".lh-body") && hostN.querySelector(".lh-body").getBoundingClientRect();
+    ok("الرقم لا يتداخل مع نص الصفحة (تحت حافة النص السفلية)", !!pnTop && rN.top >= pnTop.bottom - 1, pnTop && { numTop: rN.top, bodyBottom: pnTop.bottom });
+    hostN.remove();
     // نسخة المذيع: لا فيض في الطباعة، وWord بجدول (م، الاسم، المرحلة) بلا توقيع
     c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { autoFit: true }); c.render();
     const annB = App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), Object.assign({}, c.state.pledge.opts, { perPage: 9, split: "none" }), "announcer");
@@ -742,6 +751,7 @@ async function suite() {
     const blob = App.docx.build(built.blocks); const bytes = new Uint8Array(await blob.arrayBuffer());
     const txt = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
     ok("ملف Word: فيه (2-1) و(2-2) وفاصل الصفحة واسم طالب", /\(2-1\)/.test(txt) && /\(2-2\)/.test(txt) && /w:br w:type="page"/.test(txt) && /أحمد علي/.test(txt), { len: bytes.length });
+    ok("ملف Word: رقم الورقة إطار مثبّت أسفل الصفحة في الوسط", /w:framePr[^>]*w:xAlign="center"[^>]*w:y="14000"/.test(txt) && /\(2-1\)/.test(txt), "framePr");
     ok("ملف Word: ارتفاع صف التوقيع مضبوط", /w:trHeight/.test(txt), "trHeight");
     // حفظ الخيارات
     const ta = b.querySelector('[data-pl="preamble"]'); ta.value = "ديباجة اختبار"; ta.dispatchEvent(new Event("change", { bubbles: true })); await wait(100);

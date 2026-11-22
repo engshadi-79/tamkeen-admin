@@ -5,7 +5,7 @@ const P = globalThis.App.pledgeSheet;
 let n = 0, bad = 0;
 const ok = (name, c, x) => { n++; if (!c) { bad++; console.log("FAIL", name, x === undefined ? "" : JSON.stringify(x)); } };
 const mk = (k, g) => Array.from({ length: k }, (_, i) => ({ name: "طالب " + String(i + 1).padStart(2, "0"), id: "10" + String(i).padStart(8, "0"), stage: "المرحلة الأولى", group: g || "S3G1", course: "مسار الحلاقة" }));
-const metas = (r) => r.blocks.filter((b) => b.kind === "meta").map((b) => b.text).join();
+const metas = (r) => r.blocks.filter((b) => b.kind === "pagenum").map((b) => b.text).join();
 
 // الافتراضي «حسب عدد الأوراق»: 5 أوراق ← (5-1) … (5-5)
 let r = P.build(mk(50), { perPage: 10 });
@@ -66,5 +66,10 @@ ok("المذيع: الأسماء والمراحل بالترتيب نفسه وب
 ok("المذيع: اسم المسار في الوسط وعنوان النسخة", ann.blocks.filter((b) => b.kind === "title").map((b) => b.text).join("|").includes("كشف أسماء الخريجين") && ann.blocks.some((b) => b.kind === "title" && b.text === "مسار الحلاقة"));
 ok("المذيع: خط أكبر في الجدول", at[0].sizePt >= 14);
 const ann2 = P.build(mk(30), { perPage: 10 }, "announcer");
-ok("المذيع: ترقيم الأوراق نفسه (3-1) (3-2) (3-3)", ann2.blocks.filter((b) => b.kind === "meta").map((b) => b.text).join() === "(3-1),(3-2),(3-3)", ann2.blocks.filter((b) => b.kind === "meta").map((b) => b.text));
+ok("المذيع: ترقيم الأوراق نفسه (3-1) (3-2) (3-3)", ann2.blocks.filter((b) => b.kind === "pagenum").map((b) => b.text).join() === "(3-1),(3-2),(3-3)", ann2.blocks.filter((b) => b.kind === "pagenum").map((b) => b.text));
+// رقم الورقة أسفل الصفحة: كتلة pagenum بعد الجدول، لا في أعلاها
+const pn = P.build(mk(20), { perPage: 10 }).blocks;
+const kinds = pn.map((b) => b.kind);
+ok("رقم الورقة بعد الجدول لا قبله", kinds.indexOf("pagenum") > kinds.indexOf("table") && !kinds.includes("meta"), kinds);
+ok("كل ورقة لها كتلة رقم واحدة (2)", kinds.filter((k) => k === "pagenum").length === 2, kinds);
 console.log(bad ? bad + " فشل" : "كل الاختبارات نجحت (" + n + ")"); process.exit(bad ? 1 : 0);
