@@ -970,5 +970,49 @@ async function suite() {
     location.hash = "#dashboard";
   }
 
+  // شريط النطاق الثابت + حفظ النطاق + الأكثر استعمالاً (المفضلة وآخر الأدوات)
+  {
+    location.hash = "#center"; await wait(400);
+    ["tamkeen:cc-scope", "tamkeen:cc-recent", "tamkeen:cc-fav"].forEach((k) => localStorage.removeItem(k));
+    c.state._noted = ""; c.state.mode = "report"; c.state.gopen = ""; c.state.groups = [];
+    [c.state.sel, c.state.mis, c.state.cmp, c.state.sib, c.state.dq, c.state.grp, c.state.imp, c.state.att, c.state.sig, c.state.xl, c.state.pledge].forEach((x) => { x.tracks = []; if ("stages" in x) x.stages = []; });
+    c.render();
+    // ثبات الشريط عند التمرير
+    const gb = b.querySelector(".cc-gbar");
+    ok("شريط النطاق ثابت (position: sticky) تحت الشريط العلوي", !!gb && getComputedStyle(gb).position === "sticky", gb && getComputedStyle(gb).position);
+    const sp = document.createElement("div"); sp.id = "tk-spacer"; sp.style.height = "3000px"; (b.querySelector(".cc-app") || b).appendChild(sp);   // داخل حاوية الشريط ليثبت عند التمرير
+    window.scrollTo(0, 2200); await wait(250);   // أبعد من موضع الشريط الأصلي ليبلغ حدّ الثبات
+    const gr = b.querySelector(".cc-gbar").getBoundingClientRect(), tb = document.querySelector(".topbar"), tbh = tb ? tb.getBoundingClientRect().height : 0;
+    ok("بعد التمرير يبقى الشريط ظاهراً أعلى الصفحة", gr.top >= 0 && gr.top <= tbh + 40 && window.scrollY > 300, JSON.stringify({ top: gr.top, tbh, y: window.scrollY }));
+    sp.remove(); window.scrollTo(0, 0);
+    // حفظ النطاق واستعادته
+    b.querySelector('.cc-pill[data-gk="stages"]').click(); await wait(100);
+    [...b.querySelectorAll('[data-sc="stages"]')].find((x) => x.value === "المرحلة الثالثة").click(); await wait(150);
+    const saved = JSON.parse(localStorage.getItem("tamkeen:cc-scope") || "null");
+    ok("اختيار المرحلة يُحفظ على الجهاز", !!saved && saved.s.includes("المرحلة الثالثة"), JSON.stringify(saved));
+    [c.state.sel, c.state.mis, c.state.cmp, c.state.sib, c.state.dq, c.state.grp, c.state.imp, c.state.att, c.state.sig, c.state.xl, c.state.pledge].forEach((x) => { x.tracks = []; if ("stages" in x) x.stages = []; }); c.state.groups = [];
+    App.centerCmd._scope.load(); c.render();
+    ok("يعود النطاق المحفوظ عند فتح الصفحة (المرحلة الثالثة في الشريط وفي إعدادات الأدوات)", /الثالثة/.test(b.querySelector('.cc-pill[data-gk="stages"]').textContent) && c.state.att.stages.includes("المرحلة الثالثة") && c.state.sel.stages.includes("الثالث"), JSON.stringify([c.state.att.stages, c.state.sel.stages]));
+    b.querySelector('[data-cc="gclear"]').click(); await wait(150);
+    ok("«مسح الكل» يمسح النطاق المحفوظ أيضاً", (JSON.parse(localStorage.getItem("tamkeen:cc-scope") || "{}").s || []).length === 0, localStorage.getItem("tamkeen:cc-scope"));
+    // الأكثر استعمالاً
+    const go = async (m) => { b.querySelector('.cc-modes button[data-m="' + m + '"]').click(); await wait(150); };
+    await go("dq"); await go("sign"); await go("morning");
+    let chips = [...b.querySelectorAll(".cc-quick .cc-chip")].map((x) => x.dataset.m);
+    ok("آخر الأدوات (الأحدث أولاً، بلا الحالية): sign ثم dq ثم report", chips.join() === "sign,dq,report", chips);
+    b.querySelector('[data-cc="fav-toggle"]').click(); await wait(150);
+    ok("تثبيت الأداة الحالية في المفضلة يحفظها", JSON.parse(localStorage.getItem("tamkeen:cc-fav") || "[]").join() === "morning" && /في المفضلة/.test(b.querySelector(".cc-fav").textContent), localStorage.getItem("tamkeen:cc-fav"));
+    await go("attend");
+    chips = [...b.querySelectorAll(".cc-quick .cc-chip")].map((x) => (x.classList.contains("fav") ? "★" : "") + x.dataset.m);
+    ok("المفضلة تظهر أولاً بنجمة ثم آخر الأدوات (ثلاث)", chips.join() === "★morning,morning,sign,dq" || chips.join() === "★morning,sign,dq,morning" || (chips[0] === "★morning" && chips.length === 4), chips);
+    ok("المفضلة لا تتكرر بين الأخيرة", chips.filter((x) => /morning/.test(x)).length === 1, chips);
+    b.querySelector('.cc-quick .cc-chip.fav').click(); await wait(150);
+    ok("النقر على مفضّلة يفتحها", c.state.mode === "morning", c.state.mode);
+    b.querySelector('[data-cc="fav-toggle"]').click(); await wait(150);
+    ok("إزالة النجمة تحذفها من المفضلة", JSON.parse(localStorage.getItem("tamkeen:cc-fav") || "[]").length === 0, localStorage.getItem("tamkeen:cc-fav"));
+    ["tamkeen:cc-scope", "tamkeen:cc-recent", "tamkeen:cc-fav"].forEach((k) => localStorage.removeItem(k));
+    c.state.mode = "report"; c.render(); location.hash = "#dashboard";
+  }
+
   return R;
 }

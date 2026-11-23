@@ -3271,6 +3271,7 @@
     if (!centerAllowed()) { box.innerHTML = '<p class="cc-alert warn">هذا التبويب مخصّص لمدير النظام. اطلب من المدير إتاحته لك.</p>'; return; }
     if (state.cache && Date.now() - state.cache.at.getTime() > CACHE_TTL) { state.cache = null; ui.toast("مُسحت الذاكرة المحمّلة لمرور ساعتين؛ حمّلها من جديد عند الحاجة"); }
     const mode = state.adding || state.proposal ? "ask" : state.mode;
+    noteMode(state.mode);
     if (mode === "sign") sigSaveSoon();
     const info = statusInfo();
     const viaExt = App.centerAgent && App.centerAgent.isReady();
@@ -3286,6 +3287,7 @@
       ${weeklyBanner()}
       ${wideBanner()}
       ${newsCard()}
+      ${quickBar()}
       ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
@@ -3391,6 +3393,21 @@
     "ask": "اكتب طلبك بجملة عادية (مثلاً: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار التسويق»)، أو سجّل طلاباً من ملف Excel."
   };
   const MODE_ICO = { pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  /* ===== الأكثر استعمالاً: أدواتك المفضلة (نجمة) وآخر ما فتحتَه، لتصل إليها بنقرة ===== */
+  const RECENT_KEY = "tamkeen:cc-recent", FAV_KEY = "tamkeen:cc-fav";
+  function noteMode(m) {
+    if (!m || !MODE_FLAT[m] || state._noted === m) return;
+    state._noted = m;
+    lsSet(RECENT_KEY, [m, ...lsGet(RECENT_KEY, []).filter((x) => x !== m)].slice(0, 8));
+  }
+  function quickBar() {
+    const cur = state.mode, fav = lsGet(FAV_KEY, []).filter((k) => MODE_FLAT[k]);
+    const rec = lsGet(RECENT_KEY, []).filter((k) => k !== cur && !fav.includes(k) && MODE_FLAT[k]).slice(0, 3);
+    const chip = (k, isFav) => `<button type="button" class="cc-chip${isFav ? " fav" : ""}" data-cc="mode" data-m="${k}" data-tip-t="${esc(MODE_FLAT[k][1])}" data-tip="${esc(MODE_TIPS[k] || MODE_FLAT[k][2])}">${isFav ? "★ " : ""}${esc(MODE_FLAT[k][1])}</button>`;
+    const items = fav.filter((k) => k !== cur).map((k) => chip(k, true)).join("") + rec.map((k) => chip(k, false)).join("");
+    const isFav = fav.includes(cur);
+    return `<div class="cc-quick"><span class="cc-q-t">الأكثر استعمالاً</span>${items || '<span class="cc-note">تظهر هنا آخر أدواتك ومفضلتك.</span>'}<button type="button" class="cc-link cc-fav" data-cc="fav-toggle" data-m="${esc(cur)}" aria-pressed="${isFav}">${isFav ? "★ في المفضلة (إزالة)" : "☆ ثبّت هذه الأداة في المفضلة"}</button></div>`;
+  }
   /* الأدوات مجمّعة بحسب المهمة (بدل صف واحد من 16 تبويباً): لكل مجموعة عنوان، وتحتها أدواتها */
   const MODE_SECTIONS = [
     ["الطلاب والتقارير", ["report", "student", "ask", "groups"]],
@@ -3452,10 +3469,26 @@
       [state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => upd(c, "stages", value));
     }
     pruneScope();
+    scopeSave();
   }
   function scopeClear() {
     [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
     state.groups = [];
+    scopeSave();
+  }
+  /* آخر نطاق (مراحل/مسارات/مجموعات) يُحفظ على هذا الجهاز ويعود عند فتح الصفحة؛ «مسح الكل» يمسحه */
+  const SCOPE_KEY = "tamkeen:cc-scope";
+  function scopeSave() {
+    try { const sc = scopeNow(); lsSet(SCOPE_KEY, { t: sc.tracks, s: sc.stages, g: (state.groups || []).slice() }); } catch (e) { /* لا يضرّ */ }
+  }
+  function scopeLoad() {
+    const d = lsGet(SCOPE_KEY, null); if (!d || typeof d !== "object") return;
+    try {
+      (Array.isArray(d.t) ? d.t : []).forEach((v) => scopeSet("tracks", v, true));
+      (Array.isArray(d.s) ? d.s : []).forEach((v) => scopeSet("stages", v, true));
+      state.groups = Array.isArray(d.g) ? d.g.slice() : [];
+      scopeSave();
+    } catch (e) { /* نطاق محفوظ تالف: يُتجاهل */ }
   }
   /* القوائم المكررة داخل التبويبات (المسارات/المراحل) تُخفى لأن الشريط يتولاها */
   function hideScopeDupes(box) {
@@ -3622,6 +3655,7 @@
   function init() {
     const box = $("cc-body");
     if (!box) return;
+    scopeLoad();
     try { const m = localStorage.getItem("tamkeen-admin:cc-msg"); if (m) state.mis.msg = m; } catch (e) { /* خاص */ }
     state.saved = lsGet(SV_KEY, []); state.runLog = lsGet(LOG_KEY, []); state.errors = lsGet(ERR_KEY, []); state.contacts = lsGet(CONTACT_KEY, []);
     try { const cc = localStorage.getItem(CC_KEY); if (cc) state.wa.cc = cc; } catch (e) { /* خاص */ }
@@ -3733,6 +3767,7 @@
             render(); return;
           }
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
+        } else if (act === "fav-toggle") { const k = b.dataset.m, f = lsGet(FAV_KEY, []); lsSet(FAV_KEY, f.includes(k) ? f.filter((x) => x !== k) : [...f, k]); return render();
         } else if (act === "mode") {
           state.mode = b.dataset.m; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
         } else if (act === "run-stu") { return runStudent();
@@ -4039,7 +4074,7 @@
       if (t.dataset.sigAssign !== undefined) { const k = t.value, fid = t.dataset.sigAssign; if (k) state.sig.manual[(t.dataset.form || "") + "|" + k] = fid; return render(); }
       if (t.dataset.att) { const k = t.dataset.att; state.att[k] = t.type === "checkbox" ? !!t.checked : (k === "thr" || k === "max" ? Number(t.value) || 0 : t.value); if (t.type === "checkbox" || k === "thr") render(); return; }
       if (t.dataset.sc) { scopeSet(t.dataset.sc, t.value, t.checked); render(); return; }
-      if (t.hasAttribute("data-gf")) { const v = String(t.value), at = state.groups.indexOf(v); if (t.checked && at < 0) state.groups.push(v); else if (!t.checked && at >= 0) state.groups.splice(at, 1); render(); return; }
+      if (t.hasAttribute("data-gf")) { const v = String(t.value), at = state.groups.indexOf(v); if (t.checked && at < 0) state.groups.push(v); else if (!t.checked && at >= 0) state.groups.splice(at, 1); scopeSave(); render(); return; }
       if (t.dataset.imp === "respThr") { state.imp.respThr = Math.max(0, Math.min(100, Number(t.value) || 0)); render(); return; }
       if (t.dataset.imp === "hideZero") { state.imp.hideZero = !!t.checked; render(); return; }
       if (t.dataset.imp === "tracks" || t.dataset.imp === "stages") { const c = state.imp, k = t.dataset.imp, v = String(t.value), at = c[k].indexOf(v); if (t.checked && at < 0) c[k].push(v); else if (!t.checked && at >= 0) c[k].splice(at, 1); render(); return; }
@@ -4152,7 +4187,7 @@
   /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
   sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
-  App.centerCmd = { allowed: centerAllowed, renderDash, _sig: { save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+  App.centerCmd = { allowed: centerAllowed, renderDash, _scope: { save: scopeSave, load: scopeLoad }, _sig: { save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
