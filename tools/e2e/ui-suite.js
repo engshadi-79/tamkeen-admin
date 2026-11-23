@@ -915,7 +915,7 @@ async function suite() {
   // فقاعات الشرح عند مرور المؤشر على تبويبات «تحويل ملف حسب قالب»
   {
     const tabs = [...document.querySelectorAll(".cv-tab")];
-    ok("للتبويبات الخمسة شرح (عنوان ونص مفصّل)", tabs.length === 5 && tabs.every((t) => (t.dataset.tip || "").length > 60 && !!t.dataset.tipT), tabs.map((t) => (t.dataset.tip || "").length));
+    ok("للتبويبات الأربعة شرح (عنوان ونص مفصّل)", tabs.length === 4 && tabs.every((t) => (t.dataset.tip || "").length > 60 && !!t.dataset.tipT), tabs.map((t) => (t.dataset.tip || "").length));
     const hover = async (el) => { el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); await wait(350); };
     const tip = () => document.getElementById("tk-tip");
     location.hash = "#converter"; await wait(300);
@@ -926,7 +926,7 @@ async function suite() {
     ok("الفقاعة داخل حدود الشاشة", rt.left >= 0 && rt.right <= window.innerWidth && rt.top >= 0 && rt.bottom <= window.innerHeight, JSON.stringify([rt.left, rt.right, rt.top, rt.bottom, window.innerWidth, window.innerHeight]));
     t1.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })); await wait(50);
     ok("تختفي الفقاعة بخروج المؤشر", tip().hidden, "hidden");
-    for (const k of ["fill", "exam", "quick", "center"]) {
+    for (const k of ["fill", "exam", "quick"]) {
       const t = document.querySelector('.cv-tab[data-cv-tab="' + k + '"]'); await hover(t);
       ok("فقاعة تبويب «" + t.dataset.tipT + "»", !tip().hidden && tip().textContent.includes(t.dataset.tipT) && tip().textContent.length > 80, tip().textContent.slice(0, 60));
       t.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })); await wait(30);
@@ -943,6 +943,30 @@ async function suite() {
     ok("التركيز بلوحة المفاتيح يُظهر الفقاعة", !tip().hidden, "focus");
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await wait(30);
     ok("Esc يُخفي الفقاعة", tip().hidden, "esc");
+    location.hash = "#dashboard";
+  }
+
+  // أوامر المركز صفحة مستقلة، وأدواتها مجمّعة في أربع مجموعات بعناوين
+  {
+    const nb = document.querySelector('.sidebar [data-view="center"]');
+    ok("زر «أوامر نظام المركز» في القائمة الجانبية", !!nb && /أوامر نظام المركز/.test(nb.textContent), nb && nb.textContent);
+    ok("لا تبويب «أوامر المركز» في صفحة التحويل", !document.querySelector('#view-converter [data-cv-tab="center"]') && !document.querySelector('#view-converter #cc-body'), "no-tab");
+    ok("المحتوى في صفحة مستقلة view-center", !!document.querySelector("#view-center #cc-body") && !!document.querySelector("#view-center .cv-intro h2"), "view");
+    location.hash = "#center"; await wait(400);
+    ok("المسار #center يعرض الصفحة المستقلة", document.getElementById("view-center").classList.contains("active") && !document.getElementById("view-converter").classList.contains("active"), [...document.querySelectorAll(".view.active")].map((x) => x.id));
+    c.state.mode = "report"; c.render();
+    const groupsEl = [...b.querySelectorAll(".cc-modes .cc-mgroup")];
+    ok("أربع مجموعات بعناوينها", groupsEl.length === 4 && groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent).join("|") === "الطلاب والتقارير|المتابعة اليومية|التوقيعات والكشوف|فحص وجودة", groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent));
+    ok("كل الأدوات الـ16 موزّعة بلا تكرار ولا نقص", groupsEl.reduce((n, g) => n + g.querySelectorAll("button[data-m]").length, 0) === 16 && new Set([...b.querySelectorAll(".cc-modes button[data-m]")].map((x) => x.dataset.m)).size === 16, groupsEl.map((g) => g.querySelectorAll("button").length));
+    ok("المطابقة والتعهد والصورة والمقارنة في مجموعة «التوقيعات والكشوف»", [...groupsEl[2].querySelectorAll("button[data-m]")].map((x) => x.dataset.m).join() === "sign,pledge,img,xl", [...groupsEl[2].querySelectorAll("button")].map((x) => x.dataset.m));
+    groupsEl[2].querySelector('button[data-m="pledge"]').click(); await wait(200);
+    ok("النقر على أداة داخل مجموعتها يفتحها", c.state.mode === "pledge" && !!b.querySelector("#cc-pledge"), c.state.mode);
+    c.state.mode = "report"; c.render();
+    const ou2 = App.cloud.user, oReady = App.cloud.ready; App.cloud.ready = () => true; App.cloud.user = () => ({ name: "موظف", views: ["converter"] });
+    ok("صلاحية «تحويل ملف» تشمل «أوامر المركز» (حسابات قائمة لا تفقدها)", App.profile.canView("center") === true && App.profile.canView("converter") === true && App.profile.canView("forms") === false, "perm");
+    App.cloud.user = () => ({ name: "موظف", views: ["letters"] });
+    ok("من لا يملكها لا يرى الصفحة", App.profile.canView("center") === false, "perm2");
+    App.cloud.user = ou2; App.cloud.ready = oReady;
     location.hash = "#dashboard";
   }
 

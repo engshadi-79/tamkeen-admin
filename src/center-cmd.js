@@ -1420,8 +1420,8 @@
   }
   /* يفتح تبويب «أوامر المركز» في المحوّل ثم ينفّذ */
   function openCenterThen(fn) {
-    location.hash = "#converter";
-    window.setTimeout(() => { const tab = document.querySelector('[data-cv-tab="center"]'); if (tab) tab.click(); window.setTimeout(fn, 200); }, 250);
+    location.hash = "#center";
+    window.setTimeout(fn, 250);
   }
 
   /* ===== فحص البيانات: ملاحظات الجودة + مقارنة بلقطة سابقة ===== */
@@ -3391,7 +3391,16 @@
     "ask": "اكتب طلبك بجملة عادية (مثلاً: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار التسويق»)، أو سجّل طلاباً من ملف Excel."
   };
   const MODE_ICO = { pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
-  const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_GROUPS.map((g) => g.map(([k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" data-tip-t="${esc(t)}" data-tip="${esc(MODE_TIPS[k] || h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`).join("")).join('<span class="cc-sep" aria-hidden="true"></span>')}</nav>`;
+  /* الأدوات مجمّعة بحسب المهمة (بدل صف واحد من 16 تبويباً): لكل مجموعة عنوان، وتحتها أدواتها */
+  const MODE_SECTIONS = [
+    ["الطلاب والتقارير", ["report", "student", "ask", "groups"]],
+    ["المتابعة اليومية", ["morning", "attend", "missing", "impact", "grad"]],
+    ["التوقيعات والكشوف", ["sign", "pledge", "img", "xl"]],
+    ["فحص وجودة", ["dq", "compare", "siblings"]],
+  ];
+  const MODE_FLAT = Object.fromEntries(MODE_GROUPS.flat().map(([k, t, h]) => [k, [k, t, h]]));
+  const modeBtn = (mode, [k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" data-tip-t="${esc(t)}" data-tip="${esc(MODE_TIPS[k] || h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`;
+  const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_SECTIONS.map(([title, keys]) => `<div class="cc-mgroup" role="presentation"><span class="cc-mg-t" aria-hidden="true">${esc(title)}</span><div class="cc-mg-b" role="presentation">${keys.filter((k) => MODE_FLAT[k]).map((k) => modeBtn(mode, MODE_FLAT[k])).join("")}</div></div>`).join("")}</nav>`;
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
   const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att, grad: state.att, pledge: state.pledge }[mode] || state.sel);
@@ -3883,7 +3892,7 @@
           const { headers, rows } = feedData();
           if (!rows.length) return ui.toast("لا صفوف");
           await App.examSheet.useData(headers, rows);
-          const tab = document.querySelector('[data-cv-tab="exam"]'); if (tab) tab.click();
+          location.hash = "#converter"; window.setTimeout(() => { const tab = document.querySelector('[data-cv-tab="exam"]'); if (tab) tab.click(); }, 250);
           return;
         } else if (act === "to-forms") {
           const { headers, rows } = feedData();

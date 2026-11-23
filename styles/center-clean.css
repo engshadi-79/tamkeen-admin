@@ -102,3 +102,10 @@ body.nav-editing #btn-nav-order{background:#0f766e!important;color:#fff!importan
 #view-forms[data-sec="forms"] .frm-adddet,#view-forms[data-sec="forms"] .fx-minecloud,#view-forms[data-sec="forms"] .fx-watchbar,#view-forms[data-sec="forms"] .fx-tools,#view-forms[data-sec="forms"] #frm-drop{display:none}
 #view-forms[data-sec="mine"] .frm-ctxbox,#view-forms[data-sec="mine"] .fx-watchbar,#view-forms[data-sec="mine"] .fx-tools,#view-forms[data-sec="mine"] #frm-drop,#view-forms[data-sec="mine"] #frm-zip{display:none}
 #view-forms[data-sec="people"] .frm-ctxbox,#view-forms[data-sec="people"] .frm-adddet,#view-forms[data-sec="people"] .fx-minecloud,#view-forms[data-sec="people"] #frm-zip{display:none}
+
+/* تجميع أدوات «أوامر المركز» في مجموعات بعناوين */
+html:root:root .cc-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 14px; padding: 10px 12px; }
+.cc-mgroup { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 6px 8px 8px; border: 1px solid var(--line); border-radius: 12px; background: rgba(15, 118, 110, .03); }
+.cc-mg-t { font-size: .74rem; font-weight: 800; letter-spacing: .02em; color: var(--muted); }
+.cc-mg-b { display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 640px) { html:root:root .cc-modes { grid-template-columns: 1fr; } }
