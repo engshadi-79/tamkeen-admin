@@ -63,6 +63,7 @@
         group: "كشف الضيافة", view: "hospitality", icon: "☕", title: r.name, sub: "صف في كشف الضيافة", text: r.name,
       }));
     }
+    if (canSee("center") && App.centerCmd && App.centerCmd.searchIndex) { try { out.push(...App.centerCmd.searchIndex()); } catch (e) { /* لا يُسقط البحث */ } }
     return out;
   }
 
