@@ -36,6 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
+    monthly: { tracks: [], stages: [], status: "", month: (new Date().toISOString().slice(0, 7)), mis: true, sig: false, out: null },
     pledge: { tracks: [], stages: [], status: "graduated", students: null, source: "", opts: null, fit: 0 },
     img: { files: [], fast: false, tables: null, reading: false, prog: "", failed: [], took: "" },
     grad: { from: "", to: "", maxAbs: 3, minRate: 75, countExcused: false, requireEval: false, out: null },
@@ -1250,7 +1251,7 @@
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
   const CFG = { attend: "att", impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
   const MODE_NAME = { attend: "الحضور والغياب", impact: "قياس الأثر", report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
-  const RUN_BTN = { sign: "run-sig", xl: "run-xl", morning: "run-morning", grad: "run-grad", pledge: "run-pledge", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
+  const RUN_BTN = { sign: "run-sig", xl: "run-xl", morning: "run-morning", grad: "run-grad", pledge: "run-pledge", monthly: "run-monthly", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
   /* نسخة من إعدادات التبويب بلا نتائجه ولا بياناته */
   const cfgOf = (mode) => JSON.parse(JSON.stringify(state[CFG[mode]], (key, v) => (key === "out" || key === "rows" || key === "msg" || key === "diff" ? undefined : v)));
   function applyCfg(mode, cfg) {
@@ -1334,7 +1335,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-pledge", "run-grad", "run-morning", "run-xl", "run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-monthly", "run-pledge", "run-grad", "run-morning", "run-xl", "run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1346,6 +1347,7 @@
       }
       if (act === "load-groups") return 1;
       if (act === "run-sig") return Math.max(1, sigCommands(true).length);
+      if (act === "run-monthly") { const r = monthlyRange(state.monthly.month), d = r ? Math.max(1, Math.round((Date.parse(r.to) - Date.parse(r.from)) / 86400000) + 1) : 1; return 1 + Math.min(Number(state.att.max) || 80, d * 2) + (state.monthly.mis ? (estimateReads("run-mis") || 0) : 0); }
       if (act === "run-pledge") return Math.max(1, sigCommands(true, state.pledge).length);
       if (act === "run-grad") { const c = state.grad, d = Math.max(1, Math.round((Date.parse(c.to || ui.todayISO()) - Date.parse(c.from || ui.todayISO())) / 86400000) + 1); return 1 + Math.min(Number(state.att.max) || 80, d * 2) + (c.requireEval ? (estimateReads("run-mis") || 0) : 0); }
       if (act === "run-morning") return (estimateReads("att-today") || 0) + (state.morning.mis ? (estimateReads("run-mis") || 0) : 0);
@@ -2665,6 +2667,74 @@
     const forms = sigForms(), multi = forms.length > 1;
     return sigMatrixBlock() + (!multi && state.sig.reg && state.sig.rows ? `<section class="cc-results">${sigWaBlock()}</section>` : "") + (multi ? `<section class="cc-results"><p class="cc-alert ok">في الصور ${ui.fmt(forms.length)} نماذج: ${forms.map((f) => "<b>" + esc(f) + "</b>").join("، ")}. لكل نموذج مقارنته وتقريره أدناه، ويضمّها ملف Excel في ورقات منفصلة.</p></section>` : "") + forms.map((f, i) => sigResultFor(f, i, multi)).join("");
   }
+  /* ===== التقرير الشهري الموحّد: حضور وتقييمات وتوقيعات لكل مسار في مستند واحد على الترويسة ===== */
+  const MON_KEY = "tamkeen:cc-monthly";
+  function monthlyRange(ym) {
+    const m = /^(\d{4})-(\d{2})$/.exec(ym || ""); if (!m) return null;
+    const y = Number(m[1]), mo = Number(m[2]), last = new Date(y, mo, 0).getDate(), pad = (n) => String(n).padStart(2, "0"), today = ui.todayISO();
+    const to = y + "-" + pad(mo) + "-" + pad(last);
+    return { from: y + "-" + pad(mo) + "-01", to: to > today ? today : to };
+  }
+  function monthlyCompose() {
+    const c = state.monthly, ao = state.att.out; if (!ao) return null;
+    const mo = c.mis ? state.mis.out : null, hasSig = !!(c.sig && state.sig.reg && state.sig.rows);
+    const ntr = (t) => String(t || "").replace(/\s*[-–]?\s*المرحلة.*$/, "").replace(/^مسار\s*/, "").trim() || "بلا مسار";
+    const tracks = new Map(), thr = Number(state.att.thr || 3);
+    const T = (n) => tracks.get(n) || (tracks.set(n, { name: n, att: { students: 0, sessions: 0, absent: 0, excused: 0, late: 0, flagged: [] }, mis: null, sig: null }), tracks.get(n));
+    (ao.students || []).forEach((s) => { const t = T(ntr(s.track)); t.att.students++; t.att.absent += s.absent; t.att.excused += s.excused; t.att.late += s.late; if (s.absent > thr) t.att.flagged.push({ name: s.name, group: grpCode(s.group) || s.group || "", absent: s.absent, streak: s.maxStreak || 0 }); });
+    (ao.raw || []).forEach((se) => { T(ntr(se.track)).att.sessions++; });
+    tracks.forEach((t) => t.att.flagged.sort((a, b) => b.absent - a.absent || a.name.localeCompare(b.name, "ar")));
+    if (mo) mo.rows.forEach((x) => {
+      const items = itemsOf(x, "all"); if (!items) return;
+      const t = T(ntr(x.track)); t.mis = t.mis || { count: 0, by: {}, rows: [] };
+      t.mis.count++; Object.keys(x.flags || {}).filter((k) => KIND_ITEM[k]).forEach((k) => { t.mis.by[KIND_SHORT[k]] = (t.mis.by[KIND_SHORT[k]] || 0) + 1; });
+      t.mis.rows.push({ name: x.name, group: grpCode(x.group) || x.group || "", items });
+    });
+    if (hasSig) { const m = sigMatrix(); if (m) m.rows.forEach((r) => { const t = T(ntr(pledgeTrackOf(r.reg.course))); t.sig = t.sig || { total: 0, lacking: [] }; t.sig.total++; if (r.miss.length) t.sig.lacking.push({ name: r.reg.name, group: grpCode(r.reg.group) || r.reg.group || "", forms: r.miss.join("، ") }); }); }
+    return { month: c.month, from: ao.from, to: ao.to, scope: scopeSummaryText(), thr, generated: ui.todayISO(), forms: sigForms().length, sources: { att: true, mis: !!mo, sig: hasSig }, tracks: [...tracks.values()] };
+  }
+  function monthlyView() {
+    const c = state.monthly, r = monthlyRange(c.month), sigOk = !!(state.sig.reg && state.sig.rows);
+    return `<section class="cc-card" id="cc-monthly">
+      <header class="cc-card-h"><h3>تقرير الشهر</h3><p>يجمع في مستند واحد على الترويسة، لكل مسار: الحضور والغياب (والمنذَرون)، ومن لم يكمل الاستبيانات والتعهد، ومن لم يوقّع. تطبعه أو تنزّله Word أو Excel.</p></header>
+      <div class="cc-card-b"><div class="cc-grid">
+        <label class="cc-field"><span>الشهر</span><input type="month" data-mon="month" value="${esc(c.month)}"></label>
+        <label class="cc-field"><span>يُنذَر الطالب إن زاد غيابه عن</span><input type="number" min="1" max="30" data-mon="thr" value="${esc(state.att.thr)}"></label>
+        <label class="cc-chk"><input type="checkbox" data-mon="mis" ${c.mis ? "checked" : ""}> <span>أضف الناقصين في الاستبيانات والتعهد (قراءات أكثر)</span></label>
+        <label class="cc-chk"><input type="checkbox" data-mon="sig" ${c.sig ? "checked" : ""} ${sigOk ? "" : "disabled"}> <span>أضف ناقصي التوقيع ${sigOk ? "(من جلسة التوقيعات المحفوظة)" : "(تتوفر بعد مطابقة التوقيعات)"}</span></label>
+      </div><p class="cc-note">الفترة: ${esc(r ? r.from + " ← " + r.to : "—")}. اختر المرحلة والمسار من شريط «النطاق» (بلا اختيار تُقرأ كل المسارات)، والقراءة جلسة لكل جلسة تدريب في الشهر.</p></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-monthly"))} أمر قراءة (تقدير أقصى)</b><span>${esc(scopeSummaryText())}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-monthly" ${state.busy || !r ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "أعدّ تقرير الشهر"}</button></div></footer>
+    </section>`;
+  }
+  async function runMonthly() {
+    const c = state.monthly, r = monthlyRange(c.month);
+    if (!r) { state.resultError = "اختر الشهر."; return render(); }
+    c.out = null; state.att.from = r.from; state.att.to = r.to; state.att.excused = false;
+    await runAttend();
+    if (state.resultError || !state.att.out) return render();
+    if (c.mis) { state.mis.kind = "all"; await runMissing(); if (state.resultError) return render(); }
+    const d = monthlyCompose(); if (!d) return render();
+    c.out = { at: new Date(), d, doc: App.monthlyReport.build(d) };
+    render();
+  }
+  function monthlyResult() {
+    const o = state.monthly.out; if (!o) return "";
+    const d = o.d, sum = o.doc.blocks.find((b) => b.kind === "table");
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> تقرير ${esc(App.monthlyReport.monthLabel(d.month))} <small>(${ui.fmt(o.doc.tracks)} ${o.doc.tracks === 1 ? "مسار" : "مسارات"})</small></h3>
+      <div class="cc-stats"><button type="button" class="btn navy small" data-cc="mon-print">طباعة على الترويسة</button><button type="button" class="btn secondary small" data-cc="mon-word">تنزيل Word</button><button type="button" class="btn secondary small" data-cc="mon-xlsx">تنزيل Excel</button><button type="button" class="btn secondary small" data-cc="mon-copy">نسخ الملخص</button></div>
+      <p class="cc-note">مصادر التقرير: الحضور${d.sources.mis ? "، الاستبيانات والتعهد" : ""}${d.sources.sig ? "، التوقيعات" : ""}. التفاصيل (المنذَرون والناقصون بأسمائهم) في صفحة لكل مسار داخل المستند وفي ملف Excel.</p>
+      ${dataTable("mon-sum", sum.headers, sum.rows)}</section>`;
+  }
+  async function monthlyOutput(kind) {
+    const o = state.monthly.out; if (!o) return;
+    const title = "التقرير الشهري " + App.monthlyReport.monthLabel(o.d.month);
+    if (kind === "print") return App.docRender.print(o.doc.blocks, title, false);
+    if (kind === "word") { try { if (App.docx && App.docx.load) await App.docx.load(); } catch (e) { /* */ } return App.docRender.exportWord(o.doc.blocks, App.docRender.cleanFileName(title)); }
+    if (kind === "xlsx") { const sh = App.monthlyReport.sheets(o.d); if (!sh.length) return; const wb = new ExcelJS.Workbook(); sh.forEach((x) => fmtSheet(wb.addWorksheet(x.name.slice(0, 31)), x.heads, x.rows)); return ui.download(title + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })); }
+    if (kind === "copy") { const sum = o.doc.blocks.find((b) => b.kind === "table"); const t = "*" + title + "*\n" + sum.rows.map((r) => r.map((x, i) => (i === 0 ? "• " + x : sum.headers[i] + " " + x)).join(" · ")).join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخ الملخص")); }
+  }
+
   function attView() {
     const c = state.att, today = ui.todayISO();
     return `<section class="cc-card" id="cc-att">
@@ -3333,11 +3403,11 @@
       ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "pledge" ? pledgeView() : mode === "img" ? imgView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "pledge" ? pledgeView() : mode === "monthly" ? monthlyView() : mode === "img" ? imgView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${freshBar()}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "grad" ? gradResult() : mode === "img" ? imgResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "grad" ? gradResult() : mode === "monthly" ? monthlyResult() : mode === "img" ? imgResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
       ${settingsCard()}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
@@ -3412,13 +3482,14 @@
   }
   /* شريط التبويبات الأفقي: عناوين قصيرة في صف واحد مجمّعة، والشرح في التلميح */
   const MODE_GROUPS = [
-    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["morning", "تقرير الصباح", "حضور اليوم والناقصون في صفحة واحدة"], ["grad", "جاهزية التخرج", "من يستوفي شروط الحضور والتقييمات"], ["img", "صورة إلى جدول", "حوّل صورة كشف أو درجات إلى Excel"], ["pledge", "كشف تعهد الحقيبة", "كشف توقيع على الترويسة بترقيم الأوراق"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
+    [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["monthly", "تقرير الشهر", "حضور وتقييمات وتوقيعات لكل مسار في مستند واحد"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["morning", "تقرير الصباح", "حضور اليوم والناقصون في صفحة واحدة"], ["grad", "جاهزية التخرج", "من يستوفي شروط الحضور والتقييمات"], ["img", "صورة إلى جدول", "حوّل صورة كشف أو درجات إلى Excel"], ["pledge", "كشف تعهد الحقيبة", "كشف توقيع على الترويسة بترقيم الأوراق"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
     [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
     [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
   ];
   /* شرح كل تبويب: يظهر في فقاعة عند مرور المؤشر (src/tips.js) */
   const MODE_TIPS = {
-    "report": "تقارير جاهزة من قوائم الطلاب: اختر المسار والمرحلة (والمجموعة وحالة الطالب) ثم نفّذ، فيُجلب الجدول من نظام المركز لتراجعه وتنزّله Excel أو تطبعه.",
+    "monthly": "مستند شهري واحد على الترويسة لكل مسار: الحضور والغياب والمنذَرون، ومن لم يكمل الاستبيانات والتعهد، ومن لم يوقّع (من جلسة التوقيعات). تطبعه أو تنزّله Word أو Excel.",
+  "report": "تقارير جاهزة من قوائم الطلاب: اختر المسار والمرحلة (والمجموعة وحالة الطالب) ثم نفّذ، فيُجلب الجدول من نظام المركز لتراجعه وتنزّله Excel أو تطبعه.",
     "sign": "ارفع صور أوراق التوقيع فيقرؤها الذكاء الاصطناعي (الأسماء والهوية والجوال ووجود التوقيع) وتُقارَن بالمسجلين: من لم يوقّع، وما ينقص كل طالب من نماذج، مع رسالة واتساب بالنواقص لكل مسار. الصور لا تُحفظ، وجلسة العمل تُحفظ على جهازك.",
     "xl": "ارفع كشفاً من جهة أخرى (Excel) وقارنه بمسجلي المرحلة: من ينقص النظام، ومن ليس في الكشف، ومن اختلفت بياناته. المطابقة بالهوية ثم الجوال ثم الاسم.",
     "morning": "بضغطة واحدة: غائبو اليوم بحسب المجموعة، والناقصون في تقييماتهم، في ملخص واحد مع نص واتساب جاهز.",
@@ -3435,7 +3506,7 @@
     "student": "ابحث عن طالب واحد (باسمه أو هويته أو جواله) فترى كل بياناته: الاستبيانات والتعهد والإرسالات والإخوة وجودة بياناته.",
     "ask": "اكتب طلبك بجملة عادية (مثلاً: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار التسويق»)، أو سجّل طلاباً من ملف Excel."
   };
-  const MODE_ICO = { pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const MODE_ICO = { monthly: "🗂️", pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
   /* ===== متى جُلبت البيانات؟ وتحديث الأداة الحالية فقط (بقراءة جديدة لا من الذاكرة) ===== */
   const FRESH_AT = {
     report: () => state.results && state.results.at, attend: () => state.att.out && state.att.out.at, morning: () => state.att.out && state.att.out.at,
@@ -3502,7 +3573,7 @@
   }
   /* الأدوات مجمّعة بحسب المهمة (بدل صف واحد من 16 تبويباً): لكل مجموعة عنوان، وتحتها أدواتها */
   const MODE_SECTIONS = [
-    ["الطلاب والتقارير", ["report", "student", "ask", "groups"]],
+    ["الطلاب والتقارير", ["report", "monthly", "student", "ask", "groups"]],
     ["المتابعة اليومية", ["morning", "attend", "missing", "impact", "grad"]],
     ["التوقيعات والكشوف", ["sign", "pledge", "img", "xl"]],
     ["فحص وجودة", ["dq", "compare", "siblings"]],
@@ -3512,7 +3583,7 @@
   const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_SECTIONS.map(([title, keys]) => `<div class="cc-mgroup" role="presentation"><span class="cc-mg-t" aria-hidden="true">${esc(title)}</span><div class="cc-mg-b" role="presentation">${keys.filter((k) => MODE_FLAT[k]).map((k) => modeBtn(mode, MODE_FLAT[k])).join("")}</div></div>`).join("")}</nav>`;
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
-  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att, grad: state.att, pledge: state.pledge }[mode] || state.sel);
+  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att, grad: state.att, pledge: state.pledge, monthly: state.monthly }[mode] || state.sel);
   function scopeNow() {
     const c = scopeCfg(state.adding || state.proposal ? "ask" : state.mode);
     const byK = c === state.sel || c === state.mis;
@@ -3550,21 +3621,21 @@
   /* بعد تغيير المرحلة أو المسار: يُسقَط من الاختيار ما لم يعد مرتبطاً */
   function pruneScope() {
     const av = scopeAvail(), okT = new Set(av.tracks.map((o) => String(o.v))), okG = new Set(av.groups);
-    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => { if (c.tracks && c.tracks.length) c.tracks = c.tracks.filter((t) => okT.has(String(t))); });
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly].forEach((c) => { if (c.tracks && c.tracks.length) c.tracks = c.tracks.filter((t) => okT.has(String(t))); });
     if ((state.groups || []).length) state.groups = state.groups.filter((g) => okG.has(g));
   }
   function scopeSet(kind, value, on) {
     const upd = (c, key, v) => { const arr = (c[key] = c[key] || []); const at = arr.indexOf(v); if (on && at < 0) arr.push(v); else if (!on && at >= 0) arr.splice(at, 1); };
-    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => upd(c, "tracks", String(value)));
+    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly].forEach((c) => upd(c, "tracks", String(value)));
     else {
       [state.sel, state.mis].forEach((c) => upd(c, "stages", stageK(value)));
-      [state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => upd(c, "stages", value));
+      [state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly].forEach((c) => upd(c, "stages", value));
     }
     pruneScope();
     scopeSave();
   }
   function scopeClear() {
-    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
     state.groups = [];
     scopeSave();
   }
@@ -3880,6 +3951,11 @@
         } else if (act === "run-sig") { return runSign();
         } else if (act === "run-xl") { return runXl();
         } else if (act === "run-morning") { return runMorning();
+        } else if (act === "run-monthly") { return runMonthly();
+        } else if (act === "mon-print") { return monthlyOutput("print");
+        } else if (act === "mon-word") { return monthlyOutput("word");
+        } else if (act === "mon-xlsx") { return monthlyOutput("xlsx");
+        } else if (act === "mon-copy") { return monthlyOutput("copy");
         } else if (act === "run-grad") { return runGrad();
         } else if (act === "run-pledge") { return runPledge();
         } else if (act === "pledge-print") { return pledgeOutput("print");
@@ -4120,6 +4196,7 @@
         try { await pledgeFromFile(f); state.resultError = ""; } catch (e) { state.resultError = "تعذّرت قراءة الملف: " + (e.message || e); }
         t.value = ""; return render();
       }
+      if (t.dataset.mon) { const k = t.dataset.mon; if (k === "thr") state.att.thr = Number(t.value) || 3; else if (k === "month") { state.monthly.month = t.value; state.monthly.out = null; } else state.monthly[k] = !!t.checked; return render(); }
       if (t.dataset.pledge === "status") { state.pledge.status = t.value; state.pledge.students = null; return render(); }
       if (t.dataset.pl) {
         const k = t.dataset.pl, o = state.pledge.opts;
@@ -4281,7 +4358,8 @@
   /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
   sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
-  App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _sig: { learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+  App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
+    _sig: { learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
