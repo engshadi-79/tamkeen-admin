@@ -1070,5 +1070,36 @@ async function suite() {
     c.state.cache = null; c.state.wideLimit = 0; c.state.mode = "report"; c.render(); location.hash = "#dashboard";
   }
 
+  // ذاكرة تصحيحات المطابقة: ما ربطتَه يدوياً يُعرَف تلقائياً في الأوراق التالية، و«ليس هو» يُحظر
+  {
+    const oldRun = agent.run, oldConfirm = window.confirm; window.confirm = () => true;
+    agent.run = async (cmds) => ({ results: cmds.map((cm) => ({ type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية", "الجوال"], rows: [
+      { cells: ["ريم سالم", "7002", "G1", "9000000001", ""] }, { cells: ["سلمى ياسر", "7003", "G1", "9000000003", ""] } ] })) });
+    App.centerCmd._sig.clear(); App.centerCmd._sig.learn.clear();
+    const mk = (id, name) => ({ id, file: "f", name, nid: "", phone: "", signed: true, conf: 0.9, keep: true });
+    c.state.mode = "sign"; c.state.groups = []; c.state.wideLimit = 100000; c.state.wide = null;
+    c.state.sig = Object.assign(c.state.sig, { tracks: ["1"], stages: [], status: "3", files: [], failed: [], manual: {}, lookups: {}, reg: null, rows: [mk("a1", "نجود ابو العلا")] }); c.render();
+    b.querySelector('[data-cc="run-sig"]').click();
+    for (let i = 0; i < 60 && !c.state.sig.reg && !c.state.resultError; i++) await wait(100); await wait(400);
+    const sel = b.querySelector('[data-sig-assign="a1"]');
+    ok("الاسم المقروء الخاطئ يظهر غير مطابق (يمكن ربطه يدوياً)", !!sel && /ريم سالم/.test(b.querySelector('[data-tblbox="sig-miss"]').textContent), "orphan");
+    sel.value = c.state.sig.reg.find((r) => r.name === "ريم سالم").key; sel.dispatchEvent(new Event("change", { bubbles: true })); await wait(250);
+    const lr = App.centerCmd._sig.learn.get();
+    ok("الربط اليدوي يُحفظ في ذاكرة التصحيحات", Object.values(lr).some((x) => x.n === "ريم سالم"), JSON.stringify(lr));
+    // ورقة جديدة بالاسم المقروء نفسه: تُربط تلقائياً بلا تدخل
+    c.state.sig.manual = {}; c.state.sig.rows = [mk("b1", "نجود ابو العلا")]; c.render(); await wait(150);
+    const missTxt = (b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent || "";
+    ok("الاسم نفسه في ورقة لاحقة يُعرَف تلقائياً (ريم وقّعت، وسلمى فقط لم توقّع)", !/ريم سالم/.test(missTxt) && /سلمى ياسر/.test(missTxt) && /من تصحيح سابق لك/.test(b.querySelector('[data-tblbox="sig-all"]').textContent), missTxt.slice(0, 100));
+    // حظر «ليس هو»
+    const reg1 = c.state.sig.reg.find((r) => r.name === "ريم سالم");
+    App.centerCmd._sig.learn.block("نجود ابو العلا", reg1); c.render(); await wait(150);
+    ok("بعد «ليس هو» لا يُربط الاسم بها ثانية", /ريم سالم/.test((b.querySelector('[data-tblbox="sig-miss"]') || {}).textContent || ""), "blocked");
+    ok("الحظر يلغي التعلّم السابق لذلك الربط", !Object.values(App.centerCmd._sig.learn.get()).some((x) => x.r === reg1.key), JSON.stringify(App.centerCmd._sig.learn.get()));
+    // مسح الذاكرة
+    b.querySelector('[data-cc="sig-learn-clear"]').click(); await wait(200);
+    ok("زر «امسح الذاكرة» يفرّغها", Object.keys(App.centerCmd._sig.learn.get()).length === 0, "cleared");
+    App.centerCmd._sig.clear(); agent.run = oldRun; window.confirm = oldConfirm; c.state.mode = "report"; c.state.wideLimit = 0; c.render();
+  }
+
   return R;
 }
