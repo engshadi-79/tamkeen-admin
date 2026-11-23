@@ -109,3 +109,31 @@ html:root:root .cc-modes { display: grid; grid-template-columns: repeat(auto-fit
 .cc-mg-t { font-size: .74rem; font-weight: 800; letter-spacing: .02em; color: var(--muted); }
 .cc-mg-b { display: flex; flex-wrap: wrap; gap: 4px; }
 @media (max-width: 640px) { html:root:root .cc-modes { grid-template-columns: 1fr; } }
+
+/* شريط «النطاق» ثابت أعلى الصفحة عند التمرير (تحت الشريط العلوي) */
+html:root:root .cc-gbar { position: sticky; top: calc(var(--topbar-h, 64px) + 6px); z-index: 15; box-shadow: 0 8px 14px -12px rgba(11, 31, 58, .45); }
+html:root:root .cc-gbar .cc-gpanel { max-height: 45vh; overflow: auto; }
+/* الأكثر استعمالاً: المفضلة وآخر الأدوات */
+.cc-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0 4px; font-size: .85rem; }
+.cc-q-t { font-size: .74rem; font-weight: 800; color: var(--muted); }
+.cc-chip { padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink); font: inherit; font-size: .84rem; cursor: pointer; }
+.cc-chip:hover { border-color: #0f766e; }
+.cc-chip.fav { border-color: #c9962d; background: rgba(201, 150, 45, .1); }
+.cc-fav { margin-inline-start: auto; }
+
+/* ترويسة صفحة «أوامر نظام المركز»: صف واحد مضغوط بدل الترويسة الكبيرة */
+html:root:root #view-center .cv-intro { display: flex; align-items: center; gap: 12px; padding: 8px 14px; margin: 0 0 8px; border: 1px solid var(--border, var(--line)); border-radius: 14px; background: linear-gradient(115deg, var(--surface, var(--card)), var(--teal-100, rgba(15, 118, 110, .08))); }
+html:root:root:not([data-theme="light"]) #view-center .cv-intro { background: linear-gradient(115deg, rgba(17, 24, 39, .9), rgba(212, 175, 55, .10)); }
+html:root:root[data-theme="light"] #view-center .cv-intro { background: linear-gradient(115deg, #ffffff, rgba(184, 151, 46, .14)); }
+html:root:root #view-center .cv-intro-mark { flex: 0 0 34px; width: 34px; height: 34px; border-radius: 10px; font-size: 18px; }
+html:root:root #view-center .cv-intro-copy { min-width: 0; }
+html:root:root #view-center .cv-intro-copy h2 { margin: 0; font-size: 17px; line-height: 1.3; }
+html:root:root #view-center .cv-intro-copy p { margin: 1px 0 0; font-size: 12px; line-height: 1.5; }
+html:root:root #view-center .crumb { margin: 0 0 1px; font-size: 11px; }
+html:root:root #view-center > .card { padding: 10px 14px 14px; }
+html:root:root #view-center .cc-top { padding: 5px 12px; }
+@media (max-width: 640px) { html:root:root #view-center .cv-intro-copy p { display: none; } }
+/* أزرار الأدوات داخل المجموعات أصغر ارتفاعاً */
+html:root:root .cc-mg-b button { padding: 5px 11px; }
+html:root:root .cc-modes { gap: 8px 10px; padding: 8px 10px; }
+.cc-mgroup { padding: 4px 8px 6px; gap: 3px; }

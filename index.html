@@ -24,7 +24,7 @@
   <!-- هوية «نظام جرد مركز التدريب»: كحلي وفيروزي، منقولة من الملف الذي أرسلته -->
   <link rel="stylesheet" href="styles/center.css?v=414">
   <link rel="stylesheet" href="styles/clear.css?v=411">
-  <link rel="stylesheet" href="styles/center-clean.css?v=436">
+  <link rel="stylesheet" href="styles/center-clean.css?v=439">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -884,14 +884,11 @@
 
       <!-- ===== أوامر نظام المركز (صفحة مستقلة) ===== -->
       <section class="view" id="view-center">
-        <div class="cv-intro">
+        <div class="cv-intro cc-intro">
           <div class="cv-intro-mark" aria-hidden="true">⌘</div>
-          <div class="cv-intro-copy"><span class="cv-eyebrow">نظام المركز</span><h2>أوامر نظام المركز</h2><p>أدوات مجمّعة بحسب المهمة: التقارير والطلاب، والمتابعة اليومية، والتوقيعات والكشوف، وفحص الجودة. اختر المسار والمرحلة ثم الأداة.</p></div>
-          <div class="cv-trust"><span>🔒 لا قراءة من النظام إلا بضغطتك</span></div>
+          <div class="cv-intro-copy"><h2>أوامر نظام المركز</h2><p>اختر أداة من المجموعات أو اكتب طلبك؛ ينفّذه الوكيل في جلستك داخل نظام المركز (إضافة Chrome أو الوكيل المحلي) ويعيد النتيجة هنا. 🔒 لا قراءة من النظام إلا بضغطتك.</p></div>
         </div>
-        <div class="card">
-          <div class="cv-card-heading"><div><span class="cv-step-tag">نظام المركز</span><h3>أوامر نظام المركز</h3>
-            <p>اكتب طلبك مرة واحدة؛ ينفذه الوكيل في جلستك داخل نظام المركز (إضافة Chrome أو الوكيل المحلي) ويعيد النتيجة هنا. يدعم حالياً البحث، واستخراج قوائم الطلاب، وتسجيلهم من Excel.</p></div></div>
+        <div class="card cc-main-card">
           <div id="cc-body"></div>
         </div>
       </section>
@@ -1645,7 +1642,7 @@
   <script src="src/tips.js?v=2"></script>
   <script src="src/center-xl.js?v=2"></script>
   <script src="src/pledge-sheet.js?v=9"></script>
-  <script src="src/center-cmd.js?v=471"></script>
+  <script src="src/center-cmd.js?v=472"></script>
   <script src="vendor/supabase.min.js"></script>
   <script src="src/hospitality.js?v=456"></script>
   <script src="src/forms.js?v=458"></script>
