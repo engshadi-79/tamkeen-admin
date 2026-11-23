@@ -957,7 +957,7 @@ async function suite() {
     c.state.mode = "report"; c.render();
     const groupsEl = [...b.querySelectorAll(".cc-modes .cc-mgroup")];
     ok("أربع مجموعات بعناوينها", groupsEl.length === 4 && groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent).join("|") === "الطلاب والتقارير|المتابعة اليومية|التوقيعات والكشوف|فحص وجودة", groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent));
-    ok("كل الأدوات الـ16 موزّعة بلا تكرار ولا نقص", groupsEl.reduce((n, g) => n + g.querySelectorAll("button[data-m]").length, 0) === 16 && new Set([...b.querySelectorAll(".cc-modes button[data-m]")].map((x) => x.dataset.m)).size === 16, groupsEl.map((g) => g.querySelectorAll("button").length));
+    ok("كل الأدوات الـ17 موزّعة بلا تكرار ولا نقص", groupsEl.reduce((n, g) => n + g.querySelectorAll("button[data-m]").length, 0) === 17 && new Set([...b.querySelectorAll(".cc-modes button[data-m]")].map((x) => x.dataset.m)).size === 17, groupsEl.map((g) => g.querySelectorAll("button").length));
     ok("المطابقة والتعهد والصورة والمقارنة في مجموعة «التوقيعات والكشوف»", [...groupsEl[2].querySelectorAll("button[data-m]")].map((x) => x.dataset.m).join() === "sign,pledge,img,xl", [...groupsEl[2].querySelectorAll("button")].map((x) => x.dataset.m));
     groupsEl[2].querySelector('button[data-m="pledge"]').click(); await wait(200);
     ok("النقر على أداة داخل مجموعتها يفتحها", c.state.mode === "pledge" && !!b.querySelector("#cc-pledge"), c.state.mode);
@@ -1046,7 +1046,8 @@ async function suite() {
     await typeQ("تقرير الصباح");
     const tool = [...document.querySelectorAll("#gs-results .gs-item")].find((x) => /تقرير الصباح/.test(x.textContent));
     ok("Ctrl+K يجد أداة «تقرير الصباح» ضمن «أدوات المركز»", !!tool && /أدوات المركز/.test(document.getElementById("gs-results").textContent), document.getElementById("gs-results").textContent.slice(0, 120));
-    tool.click(); await wait(400);
+    if (!tool) ok("تشخيص: نتائج البحث الفعلية", false, { html: document.getElementById("gs-results").textContent.slice(0, 300), idx: App.search.index().filter((x) => /أدوات/.test(x.group)).length, mode: c.state.mode, allowed: App.centerCmd.allowed() });
+    else tool.click(); await wait(400);
     ok("اختيار الأداة يفتح صفحة المركز على أداتها", location.hash === "#center" && c.state.mode === "morning", JSON.stringify([location.hash, c.state.mode]));
     await typeQ("") ; document.getElementById("gs-modal").classList.remove("open");
     // بحث بمعنى الأداة لا باسمها فقط
@@ -1099,6 +1100,42 @@ async function suite() {
     b.querySelector('[data-cc="sig-learn-clear"]').click(); await wait(200);
     ok("زر «امسح الذاكرة» يفرّغها", Object.keys(App.centerCmd._sig.learn.get()).length === 0, "cleared");
     App.centerCmd._sig.clear(); agent.run = oldRun; window.confirm = oldConfirm; c.state.mode = "report"; c.state.wideLimit = 0; c.render();
+  }
+
+  // تقرير الشهر الموحّد: حضور + استبيانات (+ توقيعات) لكل مسار في مستند واحد
+  {
+    location.hash = "#center"; await wait(300);
+    c.state.groups = []; c.state.wideLimit = 100000; c.state.wide = null; c.state.mode = "monthly";
+    c.state.monthly = Object.assign(c.state.monthly, { tracks: [], stages: [], month: "2026-11", mis: true, sig: false, out: null });
+    c.state.att = Object.assign(c.state.att, { tracks: [], stages: [], out: null, thr: 3 }); c.state.mis.out = null; c.state.sig.reg = null; c.state.sig.rows = null; c.render();
+    const mbtn = b.querySelector('.cc-mgroup button[data-m="monthly"]');
+    ok("تبويب «تقرير الشهر» في مجموعة «الطلاب والتقارير» مع الشرح", !!mbtn && /مستند شهري/.test(mbtn.dataset.tip || "") && !!b.querySelector('[data-mon="month"]') && !!b.querySelector('[data-cc="run-monthly"]'), JSON.stringify({ btn: !!mbtn, tip: mbtn && (mbtn.dataset.tip || "").slice(0, 40), month: !!b.querySelector('[data-mon="month"]'), run: !!b.querySelector('[data-cc="run-monthly"]'), mode: c.state.mode }));
+    const rg = App.centerCmd._monthly.range("2026-11");
+    ok("فترة الشهر: من أوله إلى آخره (أو اليوم إن لم ينتهِ)", rg.from === "2026-11-01" && (rg.to === "2026-11-30" || rg.to <= App.ui.todayISO()), JSON.stringify(rg));
+    calls.length = 0; b.querySelector('[data-cc="run-monthly"]').click();
+    for (let i = 0; i < 120 && !c.state.monthly.out && !c.state.resultError; i++) await wait(200); await wait(400);
+    const mo = c.state.monthly.out;
+    ok("التقرير يُعدّ من الحضور والاستبيانات بلا خطأ", !!mo && mo.doc.tracks >= 1 && mo.d.sources.att && mo.d.sources.mis && !mo.d.sources.sig, JSON.stringify({ err: c.state.resultError, tracks: mo && mo.doc.tracks }));
+    ok("جدول الملخص والأزرار تظهر", !!b.querySelector('[data-tblbox="mon-sum"]') && ["mon-print", "mon-word", "mon-xlsx", "mon-copy"].every((a) => !!b.querySelector('[data-cc="' + a + '"]')), "result");
+    const sumRows = b.querySelectorAll('[data-tblbox="mon-sum"] tbody tr').length;
+    ok("صف لكل مسار وصف الإجمالي", sumRows === mo.doc.tracks + 1, [sumRows, mo.doc.tracks]);
+    ok("المستند: عنوان بالشهر العربي وفاصل صفحة لكل مسار", mo.doc.blocks[0].text === "التقرير الشهري — نوفمبر 2026" && mo.doc.blocks.filter((x) => x.kind === "pagebreak").length === mo.doc.tracks, mo.doc.blocks[0].text);
+    // Word على الترويسة + الطباعة بلا خلل
+    await App.docx.load();
+    const bytes = new Uint8Array(await App.docx.build(mo.doc.blocks).arrayBuffer()), txt = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    ok("ملف Word يحوي العنوان والملخص", /التقرير الشهري/.test(txt) && /نوفمبر 2026/.test(txt) && /الإجمالي/.test(txt), { len: bytes.length });
+    const hostM = document.createElement("div"); hostM.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(hostM);
+    const pcM = App.docRender.paginate(hostM, mo.doc.blocks); hostM.remove();
+    ok("التقسيم إلى صفحات: لا أقل من صفحة لكل مسار وملخص", pcM >= mo.doc.tracks + 1, pcM);
+    // نسخ الملخص
+    let cpS = ""; const ocS = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { cpS = x; } }, configurable: true });
+    b.querySelector('[data-cc="mon-copy"]').click(); await wait(200);
+    ok("نسخ الملخص: عنوان وسطر لكل مسار", /^\*التقرير الشهري نوفمبر 2026\*/.test(cpS) && /• /.test(cpS), cpS.slice(0, 120));
+    try { Object.defineProperty(navigator, "clipboard", { value: ocS, configurable: true }); } catch (e) { /* */ }
+    // تغيير الشهر يمسح النتيجة
+    const mi = b.querySelector('[data-mon="month"]'); mi.value = "2026-10"; mi.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);
+    ok("تغيير الشهر يمسح التقرير السابق", !c.state.monthly.out && !b.querySelector('[data-tblbox="mon-sum"]'), c.state.monthly.month);
+    c.state.wideLimit = 0; c.state.mode = "report"; c.render(); location.hash = "#dashboard";
   }
 
   return R;
