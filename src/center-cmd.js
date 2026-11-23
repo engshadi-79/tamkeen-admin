@@ -768,7 +768,7 @@
       const tracks = trackOpts().filter((o) => !c.tracks.length || c.tracks.includes(String(o.v)));
       // الذاكرة المحمّلة تغني عن الجلب؛ إلا مع تصفية بالحالة فنجلب (لا عمود حالة في الجدول)
       let lists;
-      if (state.cache && !c.status) { lists = state.cache.items.filter((it) => tracks.some((o) => String(o.v) === it.trackId)).map((it) => Object.assign({}, it, { rows: grpRows(it.heads, it.rows) })); runStats.cached += lists.length; }
+      if (state.cache && !c.status && !state.forceFresh) { lists = state.cache.items.filter((it) => tracks.some((o) => String(o.v) === it.trackId)).map((it) => Object.assign({}, it, { rows: grpRows(it.heads, it.rows) })); runStats.cached += lists.length; }
       else lists = (await runCommands(tracks.map((o) => ({ type: "list", label: o.t, params: Object.assign({ track_id: String(o.v) }, c.status ? { status: c.status } : {}) })))).filter((r) => r && r.type === "list");
       const people = new Map();
       lists.forEach((r) => {
@@ -1437,7 +1437,7 @@
     try {
       const trackIds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id));
       let lists;
-      if (state.cache && !c.status) { lists = state.cache.items.filter((it) => trackIds.includes(it.trackId)).map((it) => ({ heads: it.heads, rows: grpRows(it.heads, it.rows), tid: it.trackId })); runStats.cached += lists.length; }
+      if (state.cache && !c.status && !state.forceFresh) { lists = state.cache.items.filter((it) => trackIds.includes(it.trackId)).map((it) => ({ heads: it.heads, rows: grpRows(it.heads, it.rows), tid: it.trackId })); runStats.cached += lists.length; }
       else {
         const res = await runCommands(trackIds.map((id) => ({ type: "list", label: optLabel("track_id", id), params: Object.assign({ track_id: id }, c.status ? { status: c.status } : {}) })));
         lists = res.map((r, i) => (r && r.type === "list" ? { heads: r.heads, rows: r.rows, tid: trackIds[i] } : null)).filter(Boolean);
@@ -2260,7 +2260,7 @@
       c.reg = sigRegistered(results);
       if (!c.reg.length) throw new Error("لم أجد مسجلين في المرحلة المختارة. تحقق من المرحلة والمسار وحالة الطالب.");
       const map = {}; XL_COLS.forEach(([k]) => { map[k] = Number(c.map[k]); if (isNaN(map[k])) map[k] = -1; });
-      c.out = App.centerXl.compare(c.reg, sh, map);
+      c.out = App.centerXl.compare(c.reg, sh, map); c.out.at = new Date();
       ui.toast("قورن " + ui.fmt(c.out.total.file) + " في الكشف بـ " + ui.fmt(c.out.total.system) + " مسجّلاً");
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
@@ -2355,7 +2355,7 @@
     if (state.resultError || !state.att.out) return render();
     if (c.requireEval) { state.mis.kind = "all"; await runMissing(); if (state.resultError) return render(); }
     const missing = c.requireEval && state.mis.out ? state.mis.out.rows.map((x) => ({ stu: x.stu || "", id: x.id || "", name: x.name, items: itemsOf(x, "all") })) : [];
-    c.out = { rows: App.centerXl.gradEval(state.att.out.students, missing, c), sessions: state.att.out.sessions, from: state.att.from, to: state.att.to, evalRead: !!(c.requireEval && state.mis.out) };
+    c.out = { at: new Date(), rows: App.centerXl.gradEval(state.att.out.students, missing, c), sessions: state.att.out.sessions, from: state.att.from, to: state.att.to, evalRead: !!(c.requireEval && state.mis.out) };
     render();
   }
   const GRAD_HEADS = ["الطالب", "الرقم", "المسار", "المجموعة", "غياب", "نسبة الحضور", "الحالة", "السبب"];
@@ -3276,7 +3276,7 @@
     const info = statusInfo();
     const viaExt = App.centerAgent && App.centerAgent.isReady();
     if (state.busy && !state._wasBusy) { state._runStart = Date.now(); state._runMode = mode; state.stopping = false; runStats = { sent: 0, cached: 0 }; }
-    if (!state.busy && state._wasBusy) { const ms = Date.now() - state._runStart; logRun(state._runMode, ms); notifyDone(state._runMode, ms); }
+    if (!state.busy && state._wasBusy) { state.forceFresh = false; const ms = Date.now() - state._runStart; logRun(state._runMode, ms); notifyDone(state._runMode, ms); }
     state._wasBusy = !!state.busy;
     if (state.busy && !state.progStart) { state.progStart = Date.now(); Object.keys(tblState).forEach((k) => delete tblState[k]); }
     if (!state.busy) state.progStart = 0;
@@ -3293,6 +3293,7 @@
       ${groupBar()}
       ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "pledge" ? pledgeView() : mode === "img" ? imgView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
+      ${freshBar()}
       ${planView()}
       ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "grad" ? gradResult() : mode === "img" ? imgResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
@@ -3393,6 +3394,55 @@
     "ask": "اكتب طلبك بجملة عادية (مثلاً: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار التسويق»)، أو سجّل طلاباً من ملف Excel."
   };
   const MODE_ICO = { pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  /* ===== متى جُلبت البيانات؟ وتحديث الأداة الحالية فقط (بقراءة جديدة لا من الذاكرة) ===== */
+  const FRESH_AT = {
+    report: () => state.results && state.results.at, attend: () => state.att.out && state.att.out.at, morning: () => state.att.out && state.att.out.at,
+    missing: () => state.mis.out && state.mis.out.at, compare: () => state.cmp.out && state.cmp.out.at, siblings: () => state.sib.out && state.sib.out.at,
+    dq: () => state.dq.out && state.dq.out.at, groups: () => state.grp.out && state.grp.out.at, impact: () => state.imp.out && state.imp.out.at,
+    grad: () => state.grad.out && state.grad.out.at, xl: () => state.xl.out && state.xl.out.at, sign: () => state.sig.reg && state.sig.regAt,
+  };
+  function agoText(d) {
+    const ms = Date.now() - new Date(d).getTime(); if (isNaN(ms)) return "";
+    const m = Math.round(ms / 60000);
+    if (m < 1) return "الآن"; if (m < 60) return "قبل " + ui.fmt(m) + " دقيقة";
+    const h = Math.round(m / 60); if (h < 24) return "قبل " + ui.fmt(h) + " ساعة";
+    return "قبل " + ui.fmt(Math.round(h / 24)) + " يوماً";
+  }
+  function freshBar() {
+    const f = FRESH_AT[state.mode], at = f && f(); if (!at || !RUN_BTN[state.mode]) return "";
+    const stale = Date.now() - new Date(at).getTime() > 60 * 60000;
+    return `<div class="cc-fresh${stale ? " stale" : ""}" role="status"><span>🕒 جُلبت البيانات <b>${esc(agoText(at))}</b>${stale ? " — قد تكون قديمة" : ""}</span><button type="button" class="cc-link" data-cc="refresh-mode" ${state.busy ? "disabled" : ""} title="يعيد قراءة هذه الأداة وحدها من نظام المركز بقراءة جديدة">↻ حدّث هذه الأداة فقط</button></div>`;
+  }
+  /* ===== البحث الشامل (Ctrl+K): أدوات المركز، وطلاب الذاكرة المحمّلة ===== */
+  function openMode(k) {
+    if (!MODE_FLAT[k]) return;
+    state.mode = k; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
+    render();
+  }
+  function centerSearchIndex() {
+    if (!centerAllowed()) return [];
+    const out = MODE_SECTIONS.flatMap(([grp, keys]) => keys.filter((k) => MODE_FLAT[k]).map((k) => ({
+      group: "أدوات المركز", view: "center", icon: MODE_ICO[k] || "🧰", title: MODE_FLAT[k][1], sub: grp + " — " + MODE_FLAT[k][2],
+      text: [MODE_FLAT[k][1], MODE_FLAT[k][2], MODE_TIPS[k] || "", grp].join(" "), open: () => openMode(k),
+    })));
+    // طلاب الذاكرة المحمّلة فقط (لا قراءة جديدة): الاسم والهوية والجوال للبحث، ويُعرض المسار والمجموعة
+    if (state.cache) {
+      const seen = new Set();
+      state.cache.items.forEach((it) => {
+        const at = (rx) => it.heads.findIndex((h) => rx.test(clean(h)));
+        const iN = at(/^الاسم$/), iS = at(/^الطالب$/), iI = at(/^رقم الهوية$/), iP = at(/^الجوال$/), iG = at(/^المجموعة/), iT = at(/^المسار$/);
+        it.rows.forEach((x) => {
+          const sp = iN < 0 && iS >= 0 ? splitStudentCell(x.cells[iS]) : null;
+          const name = clean(iN >= 0 ? x.cells[iN] : sp ? sp[0] : ""); if (!name) return;
+          const id = digits(iI >= 0 ? x.cells[iI] : sp ? sp[3] : ""), phone = iP >= 0 ? digits(x.cells[iP]) : sp ? digits(sp[4]) : "";
+          const key = id || name; if (seen.has(key) || seen.size > 4000) return; seen.add(key);
+          out.push({ group: "طلاب (الذاكرة المحمّلة)", view: "center", icon: "🧑", title: name, sub: [iT >= 0 ? clean(x.cells[iT]) : "", iG >= 0 ? (grpCode(x.cells[iG]) || "") : ""].filter(Boolean).join(" · ") || "اضغط لفتح «ملف الطالب»",
+            text: [name, id, phone].join(" "), open: () => { state.stu.q = name; openMode("student"); } });
+        });
+      });
+    }
+    return out;
+  }
   /* ===== الأكثر استعمالاً: أدواتك المفضلة (نجمة) وآخر ما فتحتَه، لتصل إليها بنقرة ===== */
   const RECENT_KEY = "tamkeen:cc-recent", FAV_KEY = "tamkeen:cc-fav";
   function noteMode(m) {
@@ -3524,7 +3574,7 @@
   };
   async function runCommands(commands, hooks) {
     hooks = hooks || {};
-    const local = commands.map((c) => (hooks.noCache ? null : cachedResult(c)));
+    const local = commands.map((c) => (hooks.noCache || state.forceFresh ? null : cachedResult(c)));
     const idx = [], todo = [];
     commands.forEach((c, i) => { if (!local[i]) { idx.push(i); todo.push(c); } });
     runStats.sent += todo.length; runStats.cached += commands.length - todo.length;
@@ -3644,7 +3694,7 @@
       const results = await runCommands(commands, { onPartial: (i, r) => { partial[i] = r; state.results = { results: partial.map((x) => x || { type: "pending" }) }; render(); } });
       if (!results.length) throw new Error("لم تصل نتيجة من الوكيل.");
       if (commands.length === 1 && results[0] && results[0].error) throw new Error(results[0].error);
-      state.results = { results: useExtras ? results.map(applyExtras) : results };
+      state.results = { at: new Date(), results: useExtras ? results.map(applyExtras) : results };
       state.requestText = "";
       state.reg = null;
     } catch (err) { state.resultError = err.message || String(err); }
@@ -3767,6 +3817,7 @@
             render(); return;
           }
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
+        } else if (act === "refresh-mode") { const rb = box.querySelector('[data-cc="' + RUN_BTN[state.mode] + '"]'); if (!rb || rb.disabled) return; state.forceFresh = true; return rb.click();
         } else if (act === "fav-toggle") { const k = b.dataset.m, f = lsGet(FAV_KEY, []); lsSet(FAV_KEY, f.includes(k) ? f.filter((x) => x !== k) : [...f, k]); return render();
         } else if (act === "mode") {
           state.mode = b.dataset.m; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
@@ -4187,7 +4238,7 @@
   /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
   sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
-  App.centerCmd = { allowed: centerAllowed, renderDash, _scope: { save: scopeSave, load: scopeLoad }, _sig: { save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+  App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _sig: { save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});

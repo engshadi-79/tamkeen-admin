@@ -1014,5 +1014,61 @@ async function suite() {
     c.state.mode = "report"; c.render(); location.hash = "#dashboard";
   }
 
+  // متى جُلبت البيانات + «حدّث هذه الأداة فقط» بقراءة جديدة لا من الذاكرة
+  {
+    location.hash = "#center"; await wait(300);
+    c.state.wideLimit = 100000; c.state.wide = null; c.state.groups = [];
+    c.state.mode = "dq"; c.state.dq = Object.assign(c.state.dq, { tracks: ["1"], stages: [], status: "", out: null, rows: null, diff: null }); c.render();
+    c.state.mode = "report"; c.render(); b.querySelector('[data-cc="preload"]').click();
+    for (let i = 0; i < 100 && !c.state.cache && !c.state.resultError; i++) await wait(200);
+    c.state.mode = "dq"; c.render();
+    b.querySelector('[data-cc="run-dq"]').click();
+    for (let i = 0; i < 50 && !c.state.dq.out; i++) await wait(200); await wait(300);
+    const fb = b.querySelector(".cc-fresh");
+    ok("شريط «جُلبت البيانات قبل…» يظهر بعد التنفيذ", !!fb && /جُلبت البيانات/.test(fb.textContent) && /الآن|قبل/.test(fb.textContent) && !fb.classList.contains("stale"), fb && fb.textContent);
+    const lgA = c.state.runLog[0] || {};
+    ok("التنفيذ الأول خدمته الذاكرة المحمّلة (لا قراءة جديدة)", lgA.mode === "dq" && lgA.sent === 0, JSON.stringify(lgA));
+    c.state.dq.out.at = new Date(Date.now() - 3 * 3600e3); c.render();
+    ok("بيانات عمرها 3 ساعات: «قبل 3 ساعة» وتنبيه قد تكون قديمة", /قبل 3 ساعة/.test(b.querySelector(".cc-fresh").textContent) && b.querySelector(".cc-fresh").classList.contains("stale") && /قد تكون قديمة/.test(b.querySelector(".cc-fresh").textContent), b.querySelector(".cc-fresh").textContent);
+    const before = c.state.dq.out;
+    b.querySelector('[data-cc="refresh-mode"]').click();
+    for (let i = 0; i < 50 && (c.state.dq.out === before || c.state.busy); i++) await wait(200); await wait(400);
+    const lgB = c.state.runLog[0] || {};
+    ok("«حدّث هذه الأداة فقط» يقرأ من النظام (sent ≥ 1) لا من الذاكرة", lgB.mode === "dq" && lgB.sent >= 1 && c.state.dq.out !== before, JSON.stringify(lgB));
+    ok("بعد التحديث يعود الشريط «الآن» وتُصفَّر علامة القراءة الجديدة", /الآن/.test(b.querySelector(".cc-fresh").textContent) && c.state.forceFresh === false, [b.querySelector(".cc-fresh").textContent, c.state.forceFresh]);
+    c.state.cache = null; c.state.wideLimit = 0; c.state.mode = "report"; c.render(); location.hash = "#dashboard";
+  }
+
+  // البحث الشامل (Ctrl+K) يشمل أدوات المركز وطلاب الذاكرة المحمّلة
+  {
+    const gsInput = document.getElementById("gs-input"), typeQ = async (q) => { gsInput.value = q; gsInput.dispatchEvent(new Event("input", { bubbles: true })); await wait(150); };
+    App.search.open(); await wait(100);
+    await typeQ("تقرير الصباح");
+    const tool = [...document.querySelectorAll("#gs-results .gs-item")].find((x) => /تقرير الصباح/.test(x.textContent));
+    ok("Ctrl+K يجد أداة «تقرير الصباح» ضمن «أدوات المركز»", !!tool && /أدوات المركز/.test(document.getElementById("gs-results").textContent), document.getElementById("gs-results").textContent.slice(0, 120));
+    tool.click(); await wait(400);
+    ok("اختيار الأداة يفتح صفحة المركز على أداتها", location.hash === "#center" && c.state.mode === "morning", JSON.stringify([location.hash, c.state.mode]));
+    await typeQ("") ; document.getElementById("gs-modal").classList.remove("open");
+    // بحث بمعنى الأداة لا باسمها فقط
+    App.search.open(); await wait(100); await typeQ("مطابقة التوقيعات");
+    ok("البحث بوصف الأداة (نماذج الناقصين) يجد مطابقة التوقيعات", [...document.querySelectorAll("#gs-results .gs-item")].some((x) => /مطابقة التوقيعات/.test(x.textContent)), "tip-search");
+    document.getElementById("gs-modal").classList.remove("open");
+    // طلاب الذاكرة المحمّلة
+    c.state.wideLimit = 100000; c.state.wide = null; c.state.mode = "report"; c.render();
+    b.querySelector('[data-cc="preload"]').click();
+    for (let i = 0; i < 100 && !c.state.cache && !c.state.resultError; i++) await wait(200);
+    const first = c.state.cache && c.state.cache.items[0] && c.state.cache.items[0].rows[0];
+    const idx = c.state.cache ? App.centerCmd.searchIndex().filter((x) => /طلاب/.test(x.group)) : [];
+    ok("طلاب الذاكرة المحمّلة يظهرون في فهرس البحث بلا قراءة جديدة", idx.length > 0, idx.length);
+    if (idx.length) {
+      App.search.open(); await wait(100); await typeQ(idx[0].title.split(" ")[0] + " " + (idx[0].title.split(" ")[1] || ""));
+      const st = [...document.querySelectorAll("#gs-results .gs-item")].find((x) => /طلاب \(الذاكرة/.test(x.closest(".gs-group").textContent));
+      ok("بحث باسم طالب في الذاكرة يجده", !!st, document.getElementById("gs-results").textContent.slice(0, 120));
+      if (st) { st.click(); await wait(400); ok("اختيار الطالب يفتح «ملف الطالب» مع اسمه في خانة البحث (بلا قراءة تلقائية)", c.state.mode === "student" && !!c.state.stu.q && c.state.stu.q.includes(idx[0].title.split(" ")[0]) && !c.state.stu.out, JSON.stringify([c.state.mode, c.state.stu.q, !!c.state.stu.out])); }
+      document.getElementById("gs-modal").classList.remove("open");
+    }
+    c.state.cache = null; c.state.wideLimit = 0; c.state.mode = "report"; c.render(); location.hash = "#dashboard";
+  }
+
   return R;
 }

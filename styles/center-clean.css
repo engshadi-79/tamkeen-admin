@@ -137,3 +137,8 @@ html:root:root #view-center .cc-top { padding: 5px 12px; }
 html:root:root .cc-mg-b button { padding: 5px 11px; }
 html:root:root .cc-modes { gap: 8px 10px; padding: 8px 10px; }
 .cc-mgroup { padding: 4px 8px 6px; gap: 3px; }
+
+/* متى جُلبت البيانات */
+.cc-fresh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0; padding: 5px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: .82rem; color: var(--muted); }
+.cc-fresh.stale { border-color: #c9962d; background: rgba(201, 150, 45, .09); color: var(--ink); }
+.cc-fresh .cc-link { margin-inline-start: auto; }
