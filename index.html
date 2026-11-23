@@ -24,7 +24,7 @@
   <!-- هوية «نظام جرد مركز التدريب»: كحلي وفيروزي، منقولة من الملف الذي أرسلته -->
   <link rel="stylesheet" href="styles/center.css?v=414">
   <link rel="stylesheet" href="styles/clear.css?v=411">
-  <link rel="stylesheet" href="styles/center-clean.css?v=435">
+  <link rel="stylesheet" href="styles/center-clean.css?v=436">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -83,6 +83,7 @@
           <button type="button" class="nav-head">١. أدوات الملفات</button>
           <ul>
             <li><button data-view="converter"><span class="ico material-symbols-outlined">transform</span><span class="nav-text">تحويل ملف حسب قالب</span></button></li>
+            <li><button data-view="center"><span class="ico material-symbols-outlined">hub</span><span class="nav-text">أوامر نظام المركز</span></button></li>
             <li><button data-view="rtl"><span class="ico material-symbols-outlined">flip</span><span class="nav-text">تصحيح اتجاه Word و PPT</span></button></li>
             <li><button data-view="sheets"><span class="ico material-symbols-outlined">table_chart</span><span class="nav-text">جداول البيانات</span></button></li>
             <li><button data-view="hospitality"><span class="ico material-symbols-outlined">room_service</span><span class="nav-text">كشف توزيع الضيافة</span></button></li>
@@ -768,7 +769,6 @@
           <button type="button" class="cv-tab" role="tab" data-cv-tab="exam" data-tip-t="جدول الاختبارات" data-tip="يصنع جداول الاختبارات من ملف الطلبة بتصميم نموذج Word الرسمي: جدول لكل مجموعة ومسار.&#10;تحدّد موعد النظري ومواعيد العملي لكل مسار، ويمكنك إضافة كشوف الحضور والدرجات ونماذج التقييم (اختيارية)."><b>جدول الاختبارات</b><small>جداول الامتحان وكشوف التوقيع</small></button>
           <button type="button" class="cv-tab" role="tab" data-cv-tab="quick" data-tip-t="استخراج سريع" data-tip="بلا قالب: ارفع أي ملف Excel، وأشّر على الحقول التي تريدها، وصفِّ الصفوف إن شئت.&#10;ثم اطبعها على الترويسة الرسمية أو صدّرها Excel أو Word."><b>استخراج سريع</b><small>اختر حقولاً من Excel واطبعها</small></button>
           <button type="button" class="cv-tab" role="tab" data-cv-tab="tpl" data-tip-t="تحويل حسب قالب" data-tip="يملأ قالب Word أو Excel ببيانات ملف Excel.&#10;١) اختر القالب (محفوظاً أو جديداً) وملف البيانات.&#10;٢) اربط أعمدة القالب بأعمدة البيانات.&#10;٣) راجع ونزّل ملفاً لكل مسار أو مجموعة، مع ترقيم تلقائي وترتيب أبجدي وتواريخ حضور."><b>تحويل حسب قالب</b><small>املأ قالب Word أو Excel ببياناتك</small></button>
-          <button type="button" class="cv-tab" role="tab" data-cv-tab="center" data-tip-t="أوامر المركز" data-tip="يتصل بنظام المركز عبر إضافة المتصفح: بحث وتقارير الطلاب، الحضور والغياب، مطابقة التوقيعات، المقارنات، كشوف التعهد، وغيرها.&#10;لا يُقرأ شيء من النظام إلا بضغطتك أنت، ولا يُكتب فيه شيء بلا موافقتك."><b>أوامر المركز</b><small>سجّل واستعلم واستخرج من نظام المركز</small></button>
         </div>
         <div class="cv-pane" data-cv-pane="fill" role="tabpanel" hidden>
         <div class="card fx-fill-card">
@@ -880,12 +880,19 @@
         </details>
         <div class="card" id="conv-result" hidden></div>
         </div>
-        <div class="cv-pane" data-cv-pane="center" role="tabpanel" hidden>
+      </section>
+
+      <!-- ===== أوامر نظام المركز (صفحة مستقلة) ===== -->
+      <section class="view" id="view-center">
+        <div class="cv-intro">
+          <div class="cv-intro-mark" aria-hidden="true">⌘</div>
+          <div class="cv-intro-copy"><span class="cv-eyebrow">نظام المركز</span><h2>أوامر نظام المركز</h2><p>أدوات مجمّعة بحسب المهمة: التقارير والطلاب، والمتابعة اليومية، والتوقيعات والكشوف، وفحص الجودة. اختر المسار والمرحلة ثم الأداة.</p></div>
+          <div class="cv-trust"><span>🔒 لا قراءة من النظام إلا بضغطتك</span></div>
+        </div>
         <div class="card">
           <div class="cv-card-heading"><div><span class="cv-step-tag">نظام المركز</span><h3>أوامر نظام المركز</h3>
             <p>اكتب طلبك مرة واحدة؛ ينفذه الوكيل في جلستك داخل نظام المركز (إضافة Chrome أو الوكيل المحلي) ويعيد النتيجة هنا. يدعم حالياً البحث، واستخراج قوائم الطلاب، وتسجيلهم من Excel.</p></div></div>
           <div id="cc-body"></div>
-        </div>
         </div>
       </section>
 
@@ -1611,7 +1618,7 @@
   <script src="src/drive-ui.js?v=340"></script>
   <script src="src/rtl-fixer.js?v=340"></script>
   <script src="src/rtl-page.js?v=340"></script>
-  <script src="src/profile.js?v=340"></script>
+  <script src="src/profile.js?v=341"></script>
   <script src="src/admin.js?v=340"></script>
   <script src="src/roster.js?v=340"></script>
   <script src="src/inventory.js?v=340"></script>
@@ -1638,7 +1645,7 @@
   <script src="src/tips.js?v=2"></script>
   <script src="src/center-xl.js?v=2"></script>
   <script src="src/pledge-sheet.js?v=9"></script>
-  <script src="src/center-cmd.js?v=470"></script>
+  <script src="src/center-cmd.js?v=471"></script>
   <script src="vendor/supabase.min.js"></script>
   <script src="src/hospitality.js?v=456"></script>
   <script src="src/forms.js?v=458"></script>
@@ -1650,6 +1657,6 @@
   <script src="src/whatsapp.js?v=403"></script>
   <script src="src/realtime.js?v=340"></script>
   <script src="src/nav-order.js?v=450"></script>
-  <script src="src/app.js?v=452"></script>
+  <script src="src/app.js?v=453"></script>
 </body>
 </html>

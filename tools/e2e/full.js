@@ -201,8 +201,7 @@ http.createServer((req, res) => {
     const app = await open(browser, "http://localhost:4180/");
     await waitFor(() => app.c.eval("typeof App !== 'undefined' && !!App.centerCmd && !!App.centerAgent"), 30000, "تحميل تمكين");
     await app.c.eval(`(()=>{const ls=document.getElementById('login-screen'); if(ls) ls.remove(); document.body.classList.remove('locked');
-      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); const v=document.getElementById('view-converter'); v.classList.add('active'); v.style.display='block';
-      document.querySelector('[data-cv-tab="center"]').click(); return 1})()`);
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); const v=document.getElementById('view-center'); v.classList.add('active'); v.style.display='block'; return 1})()`);
     await waitFor(() => app.c.eval("App.centerAgent.isReady()"), 12000, "الإضافة في صفحة تمكين الحقيقية");
     await app.c.eval("App.centerAgent.allowSynthetic = true; 1");   // ضغطات الاختبار برمجية لا حقيقية
     // الحالة تتحدّث بعد وصول إعلان الإضافة (وفي الاستعمال الحقيقي خلال لحظة)؛ ننتظرها

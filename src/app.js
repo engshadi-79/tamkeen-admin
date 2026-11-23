@@ -1,7 +1,7 @@
 /* نقطة التشغيل: التنقل بين الأقسام، النسخ الاحتياطي، وربط الوحدات */
 (function (App) {
   const { store, ui } = App;
-  const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "hospitality", "forms", "sheets", "screen", "reports", "tasks", "history", "admin", "inventory"];
+  const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "center", "hospitality", "forms", "sheets", "screen", "reports", "tasks", "history", "admin", "inventory"];
 
   /* مسار التنقّل: يُشتق من القائمة الجانبية، فيكفي بناؤه مرة واحدة لكل صفحة */
   function paintCrumb(view) {
@@ -54,6 +54,7 @@
     if (view === "inventory" && App.inventory) App.inventory.render();
     if (view === "rtl") App.rtlPage.render();
     if (view === "converter") App.converter.render();
+    if (view === "center" && App.centerCmd && App.centerCmd.render) App.centerCmd.render();
     if (view === "hospitality") App.hospitality.render();
     if (view === "forms" && App.forms) App.forms.render();
     if (view === "tasks") App.tasks.render();

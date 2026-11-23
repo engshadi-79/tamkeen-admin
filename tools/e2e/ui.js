@@ -80,8 +80,7 @@ http.createServer((req, res) => {
     await waitFor(() => app.eval("typeof App !== 'undefined' && !!App.centerCmd && !!App.centerAgent && !!App.converterStore"), 30000, "تحميل تمكين");
     // نعرض تبويب أوامر المركز بدل شاشة الدخول
     await app.eval(`(()=>{const ls=document.getElementById('login-screen'); if(ls) ls.remove(); document.body.classList.remove('locked');
-      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); const v=document.getElementById('view-converter'); v.classList.add('active'); v.style.display='block';
-      document.querySelector('[data-cv-tab="center"]').click(); return 1})()`);
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); const v=document.getElementById('view-center'); v.classList.add('active'); v.style.display='block'; return 1})()`);
     await sleep(800);
     const suiteSrc = fs.readFileSync(path.join(__dirname, "ui-suite.js"), "utf8");
     const results = await app.eval("(" + suiteSrc + ")()");

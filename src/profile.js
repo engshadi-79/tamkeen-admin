@@ -17,7 +17,8 @@
     if (view === "admin") return !!u.admin;
     if (u.admin) return true;
     const list = u.views || [];
-    return !list.length || list.includes(view);
+    // «أوامر نظام المركز» كانت تبويباً في صفحة التحويل؛ فصلاحيتها صلاحية صفحة التحويل نفسها (حسابات قائمة لا تفقدها)
+    return !list.length || list.includes(view === "center" ? "converter" : view);
   };
   const firstView = () => {
     const order = ["dashboard", "registry", "roster", "letters", "report", "meetings", "tasks", "tracks", "rtl", "converter", "hospitality", "sheets", "screen", "history"];
