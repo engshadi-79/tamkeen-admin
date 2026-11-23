@@ -802,6 +802,34 @@ async function suite() {
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.wideLimit = 0; c.render();
   }
 
+  // أسماء بلا هوية ولا جوال لم تطابق: البحث بالاسم في كل النظام (خارج المرحلة) بصيغ متعددة
+  {
+    const oldRun = agent.run; const qs = [];
+    agent.run = async (cmds) => ({ results: cmds.map((cm) => {
+      if (cm.type === "lookup") return { type: "lookup", label: cm.label, items: (cm.items || []).map((it) => { qs.push(it.q);
+        const hit = it.q === "احمد نادر" || it.q === "أحمد نادر";
+        return hit ? { q: it.q, count: 2, heads: ["الاسم", "رقم الطالب", "المرحلة", "المجموعة", "المسار"], rows: [{ cells: ["أحمد نادر محمد الطويل", "8001", "المرحلة الأولى", "S1G2", "مسار الحلاقة"] }, { cells: ["سامر نادر العلي", "8002", "المرحلة الأولى", "S1G1", "مسار الحلاقة"] }] } : { q: it.q, count: 0, heads: [], rows: [] }; }) };
+      return { type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية", "الجوال"], rows: [{ cells: ["ريم سالم", "7002", "S3G1", "9000000001", ""] }] };
+    }) });
+    c.state.mode = "sign"; c.state.groups = [];
+    c.state.sig = Object.assign(c.state.sig, { tracks: ["1"], stages: [], status: "5", files: [], manual: {}, lookups: {}, nameHits: {}, reg: null,
+      rows: [{ id: "n:0", file: "n", name: "أحمد نادر الطويل", nid: "", phone: "", signed: true, conf: 0.9, keep: true }, { id: "n:1", file: "n", name: "زيد القاسم الغريب", nid: "", phone: "", signed: true, conf: 0.9, keep: true }] });
+    c.state.wideLimit = 100000; c.state.wide = null; c.render();
+    b.querySelector('[data-cc="run-sig"]').click();
+    for (let i = 0; i < 60 && !c.state.sig.reg && !c.state.resultError; i++) await wait(100); await wait(500);
+    const nb = b.querySelector('[data-cc="sig-namesearch"]');
+    ok("زر «ابحث بالاسم في كل النظام» يظهر لأسماء بلا رقم", !!nb && /\(2\)/.test(nb.textContent), nb && nb.textContent);
+    qs.length = 0; nb.click();
+    for (let i = 0; i < 60 && !Object.keys(c.state.sig.nameHits || {}).length && !c.state.resultError; i++) await wait(100); await wait(400);
+    ok("يُبحث بصيغ الاسم: كاملاً وأول اسمين وآخر اسمين", qs.includes("أحمد نادر الطويل") && qs.includes("أحمد نادر") && qs.includes("نادر الطويل"), qs);
+    const hits = c.state.sig.nameHits || {}, h0 = hits["n:0"], h1 = hits["n:1"];
+    ok("المرشح الصحيح يظهر أولاً بتشابه مرتفع، والبعيد لا يُقترح", !!h0 && h0.list.length >= 1 && h0.list[0].s.name === "أحمد نادر محمد الطويل" && h0.list[0].score >= 0.8 && !h0.list.some((x) => /سامر/.test(x.s.name)), JSON.stringify(h0 && h0.list.map((x) => [x.s.name, x.score])));
+    ok("من لا شبيه له يُكتب أنه بُحث عنه ولم يوجد", !!h1 && h1.list.length === 0 && /فلم أجد شبيهاً/.test(b.textContent), h1);
+    ok("النتيجة تُعرض في صف الاسم بمرحلته ومجموعته", /بالاسم في النظام: أحمد نادر محمد الطويل · المرحلة الأولى · مجموعة S1G2/.test(b.textContent), "view");
+    ok("لا زر بعد البحث (لا تكرار للقراءة)", !b.querySelector('[data-cc="sig-namesearch"]'), "btn");
+    agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.sig.nameHits = {}; c.state.wideLimit = 0; c.render();
+  }
+
   // إعدادات الذكاء الاصطناعي: عدة مفاتيح Gemini في حقل متعدد الأسطر
   {
     const gk = document.getElementById("ai-gemini-key");

@@ -1985,18 +1985,18 @@
   function sigLoad() {
     try {
       const d = JSON.parse(localStorage.getItem(SIG_SES) || "null"); if (!d || d.v !== 1) return;
-      const c = state.sig; ["rows", "reg", "regScope", "regAt", "manual", "lookups", "fileKeys", "done", "titles", "savedAt"].forEach((k) => { if (d[k] !== undefined && d[k] !== null) c[k] = d[k]; });
+      const c = state.sig; ["rows", "reg", "regScope", "regAt", "manual", "lookups", "nameHits", "fileKeys", "done", "titles", "savedAt"].forEach((k) => { if (d[k] !== undefined && d[k] !== null) c[k] = d[k]; });
     } catch (e) { /* لا جلسة */ }
   }
   function sigSaveNow() {
     const c = state.sig; if (!c.rows && !c.reg) return;
-    try { c.savedAt = new Date().toISOString(); localStorage.setItem(SIG_SES, JSON.stringify({ v: 1, savedAt: c.savedAt, rows: c.rows, reg: c.reg, regScope: c.regScope, regAt: c.regAt, manual: c.manual, lookups: c.lookups, fileKeys: c.fileKeys, done: c.done, titles: c.titles })); } catch (e) { /* التخزين ممتلئ أو غير متاح */ }
+    try { c.savedAt = new Date().toISOString(); localStorage.setItem(SIG_SES, JSON.stringify({ v: 1, savedAt: c.savedAt, rows: c.rows, reg: c.reg, regScope: c.regScope, regAt: c.regAt, manual: c.manual, lookups: c.lookups, nameHits: c.nameHits, fileKeys: c.fileKeys, done: c.done, titles: c.titles })); } catch (e) { /* التخزين ممتلئ أو غير متاح */ }
   }
   let sigTimer = 0;
   const sigSaveSoon = () => { clearTimeout(sigTimer); sigTimer = setTimeout(sigSaveNow, 400); };
   function sigClear() {
     try { localStorage.removeItem(SIG_SES); } catch (e) { /* */ }
-    Object.assign(state.sig, { rows: null, reg: null, regScope: null, regAt: "", manual: {}, lookups: {}, fileKeys: [], done: [], titles: [], files: [], failed: [], savedAt: "" });
+    Object.assign(state.sig, { rows: null, reg: null, regScope: null, regAt: "", manual: {}, lookups: {}, nameHits: {}, fileKeys: [], done: [], titles: [], files: [], failed: [], savedAt: "" });
   }
   const sigFileKey = (f) => { const d = f.data || ""; let h = 0; const st = Math.max(1, Math.floor(d.length / 4000)); for (let i = 0; i < d.length; i += st) h = (h * 31 + d.charCodeAt(i)) | 0; return d.length + ":" + (h >>> 0).toString(36); };
   const sigScopeNow = () => { const sc = scopeNow(); return JSON.stringify({ t: sc.tracks.slice().sort(), s: sc.stages.slice().sort(), g: (state.groups || []).slice().sort(), st: state.sig.status || "" }); };
@@ -2016,7 +2016,8 @@
   const sigFoundHeads = () => ["الاسم في النظام", "الاسم المقروء من الورقة", "رقم الهوية", "الجوال", "المرحلة", "المجموعة", "المسار", "الحكم"];
   const sigFoundRow = (x) => [x.s.name, x.f.name, x.s.id || x.f.nid || "", x.s.phone || x.f.phone || "", x.s.stage, x.s.group, x.s.track, x.f.signed === true ? "موقّع" : "غير محسوم"];
   const sigLookupText = (f) => {
-    const lk = (state.sig.lookups || {})[f.id]; if (!lk) return "";
+    const lk = (state.sig.lookups || {})[f.id];
+    if (!lk || (lk.none && ((state.sig.nameHits || {})[f.id] || {}).list)) { const nh = (state.sig.nameHits || {})[f.id]; if (!nh) return ""; if (!nh.list.length) return "بحثتُ عن اسمه في كل النظام فلم أجد شبيهاً"; return "بالاسم في النظام: " + nh.list.map((x) => x.s.name + [x.s.stage, x.s.group ? "مجموعة " + x.s.group : "", x.s.track].filter(Boolean).map((y) => " · " + y).join("") + " (" + Math.round(x.score * 100) + "%)").join(" ‖ "); }
     if (lk.none) return "بحثتُ عنه بـ" + (digits(f.nid).length >= 9 ? "الهوية" : "الجوال") + " في النظام فلم أجد طالباً";
     if (lk.list.length > 1) return "وُجد " + lk.list.length + " طلاب بهذا الرقم في النظام: " + lk.list.slice(0, 3).map((s) => s.name).join("، ");
     const s = lk.list[0];
@@ -2181,6 +2182,50 @@
     const st = App.ai && App.ai.keyStats ? Object.values(App.ai.keyStats()) : [], n = App.ai && App.ai.keyCount ? App.ai.keyCount() : 1;
     return n > 1 && st.length ? " · " + n + " مفاتيح (" + st.sort((a, b) => b - a).join("/") + " طلبات)" : "";
   }
+  /* ===== بحث بالاسم في كل النظام عمّن لا هوية ولا جوال له ولم يُطابَق =====
+     القراءة بالهوية/الجوال لا تنفع مع اسم بلا رقم، فيُبحث بالاسم في النظام كله (لا في المرحلة المختارة وحدها) بصيغ متعددة
+     لأن البحث نصٌّ متصل: الاسم كاملاً، ثم أول اسمين، ثم آخر اسمين (يلتقط خطأً في الوسط). المرشحون يُقيَّمون بتشابه الأسماء. قراءة فقط. */
+  const NAME_Q_MAX = 120;
+  function sigNameQueries(name) {
+    const t = clean(name).split(" ").filter((x) => x.length > 1), out = [];
+    if (t.length < 2) return t.length ? [t[0]] : [];
+    out.push(t.join(" "));
+    if (t.length > 2) { out.push(t.slice(0, 2).join(" ")); out.push(t.slice(-2).join(" ")); }
+    if (t.length > 3) out.push(t.slice(0, 3).join(" "));
+    return out.filter((q, i) => out.indexOf(q) === i);
+  }
+  function sigPendingNameSearch() {
+    const c = state.sig; if (!c.reg || !c.rows) return [];
+    const seen = new Set(), out = [];
+    sigForms().forEach((fm) => { const o = sigCompute(fm); if (o) o.orphans.forEach((f) => { if (seen.has(f.id) || (c.nameHits || {})[f.id]) return; const lk = (c.lookups || {})[f.id]; if (lk && lk.list && lk.list.length) return; seen.add(f.id); out.push(f); }); });
+    return out;
+  }
+  async function sigNameSearch() {
+    const c = state.sig; c.nameHits = c.nameHits || {};
+    const targets = sigPendingNameSearch().slice(0, 40);
+    if (!targets.length) return 0;
+    const qs = new Map();   // الاستعلام ← من يحتاجه
+    targets.forEach((f) => sigNameQueries(f.name).forEach((q) => { if (!qs.has(q) && qs.size < NAME_Q_MAX) qs.set(q, []); if (qs.has(q)) qs.get(q).push(f); }));
+    const list = [...qs.keys()];
+    const r = (await runCommands([{ type: "lookup", label: "بحث بالاسم في كل النظام", items: list.map((q) => ({ q })) }], { noCache: true }))[0];
+    const cand = new Map(targets.map((f) => [f.id, new Map()]));
+    ((r && r.items) || []).forEach((it, i) => {
+      if (!it || !it.count) return;
+      const people = it.rows.map((x) => stuFrom(it, x));
+      (qs.get(list[i]) || []).forEach((f) => people.forEach((s) => { const sc = App.ccUtil.nameScore(f.name, s.name); if (sc >= 0.62) { const k = s.stu || s.id || s.name, m = cand.get(f.id); if (!m.has(k) || m.get(k).score < sc) m.set(k, { s, score: sc }); } }));
+    });
+    targets.forEach((f) => { c.nameHits[f.id] = { list: [...cand.get(f.id).values()].sort((a, b) => b.score - a.score).slice(0, 4), at: Date.now() }; });
+    return targets.length;
+  }
+  async function runSigNameSearch() {
+    state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
+    try {
+      requireAgent15();
+      const n = await sigNameSearch(), found = Object.values(state.sig.nameHits || {}).filter((h) => h.list.length).length;
+      ui.toast(n ? "بحثتُ عن " + ui.fmt(n) + " اسماً في النظام، وجدتُ مرشحين لـ" + ui.fmt(found) : "لا أسماء تحتاج بحثاً");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
   async function runSigLookup() {
     const c = state.sig;
     state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
@@ -2242,7 +2287,7 @@
         <p class="cc-note">٣. اختر <b>المرحلة</b> (والمسار والمجموعة إن شئت) من شريط «النطاق» أعلاه، ثم اضغط «${c.reg ? "حدّث المسجلين من النظام" : "اجلب المسجلين وقارن"}». ${c.reg ? "المسجلون محفوظون فلا حاجة لجلبهم في كل مرة: أضف صوراً جديدة واقرأها فتُحدَّث النتيجة فوراً." : ""}</p>
       </div>
       <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-sig"))} أمر قراءة</b><span>${esc(scopeSummaryText())}</span></div>
-        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-sig" ${state.busy || !(c.rows && c.rows.length) ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : c.reg ? "حدّث المسجلين من النظام" : "اجلب المسجلين وقارن"}</button>${c.reg && sigPendingLookups().length ? `<button type="button" class="btn secondary" data-cc="sig-lookup" ${state.busy ? "disabled" : ""} title="قراءة من النظام بالهوية أو الجوال فقط، لمن لم يُطابَق">ابحث في النظام عمّن لم يُطابَق (${ui.fmt(sigPendingLookups().length)})</button>` : ""}</div></footer></section>`;
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-sig" ${state.busy || !(c.rows && c.rows.length) ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : c.reg ? "حدّث المسجلين من النظام" : "اجلب المسجلين وقارن"}</button>${c.reg && sigPendingNameSearch().length ? `<button type="button" class="btn secondary" data-cc="sig-namesearch" ${state.busy ? "disabled" : ""} title="قراءة من نظام المركز بالاسم في كل المراحل، لمن لا هوية ولا جوال له ولم يُطابَق">ابحث بالاسم في كل النظام (${ui.fmt(sigPendingNameSearch().length)})</button>` : ""}${c.reg && sigPendingLookups().length ? `<button type="button" class="btn secondary" data-cc="sig-lookup" ${state.busy ? "disabled" : ""} title="قراءة من النظام بالهوية أو الجوال فقط، لمن لم يُطابَق">ابحث في النظام عمّن لم يُطابَق (${ui.fmt(sigPendingLookups().length)})</button>` : ""}</div></footer></section>`;
   }
   const scopeSummaryText = () => { const sc = scopeNow(); return [sc.stages.length ? "المراحل: " + sc.stages.join("، ") : "", sc.tracks.length ? "مسارات: " + trackNamesOf(sc.tracks).join("، ") : "", (state.groups || []).length ? "مجموعات: " + state.groups.join("، ") : ""].filter(Boolean).join(" · ") || "اختر النطاق"; };
   function sigRowsEditor() {
@@ -3977,6 +4022,7 @@
         } else if (act === "sig-copy-miss") { const m = sigMatrix(); if (!m) return; const lack = m.rows.filter((x) => x.miss.length); const t = "*ناقصو التوقيع (" + lack.length + " من " + m.rows.length + ")*\n" + lack.map((x, i) => (i + 1) + ". " + x.reg.name + " — ينقصه: " + x.miss.join("، ")).join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت قائمة الناقصين"));
         } else if (act === "sig-clear") { if (!window.confirm("تُمسح الجلسة المحفوظة (المقروء من الصور والمسجلون المجلوبون ونتائج البحث) ولا يمكن التراجع. متابعة؟")) return; sigClear(); return render();
         } else if (act === "sig-learn-clear") { if (!window.confirm("تُمسح ذاكرة التصحيحات (ما ربطتَه وما حظرتَه) ولا يمكن التراجع. متابعة؟")) return; sigLearnClear(); return render();
+        } else if (act === "sig-namesearch") { return runSigNameSearch();
         } else if (act === "sig-lookup") { return runSigLookup();
         } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
         } else if (act === "sig-del") { const r = state.sig.rows[Number(b.dataset.i)]; if (r) r.keep = false; return render();
