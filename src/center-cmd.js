@@ -2283,6 +2283,41 @@
       ${sigForms().length > 1 || sigForms()[0] !== SIG_DEF_FORM ? `<details class="cc-help"><summary>النماذج (${ui.fmt(sigForms().length)}) — غيّر الاسم لتوحيد نموذجين أو تصحيحه</summary><div class="cc-grid">${sigForms().map((f) => `<label class="cc-field"><span>${ui.fmt((c.rows || []).filter((r) => r.keep !== false && sigFormOf(r) === f).length)} اسماً</span><input type="text" data-sig-fname="${esc(f)}" value="${esc(f)}"></label>`).join("")}</div></details>` : ""}
       ${nImg ? `<details class="cc-help"><summary>الصور التي قُرئت (${ui.fmt(nImg)})</summary><div class="cc-note">${c.done.map((d) => esc(sigShort(d.name)) + " — " + ui.fmt(d.rows) + " اسم").join("<br>")}</div></details>` : ""}`;
   }
+
+  /* ===== مصدر ثانٍ لمطابقة التوقيعات: ملف Excel بأسماء (بدل الصور أو معها) ===== */
+  const SIG_NO_RX = /^(لا|لم|غير|بدون|no|false|0|-|—|×|✗|x)$/i;
+  function sigXlView() {
+    const x = state.sig.xl, opt = (i, cur, txt) => `<option value="${i}" ${Number(cur) === i ? "selected" : ""}>${esc(txt)}</option>`;
+    const head = `<details class="cc-help cc-sigxl" ${x ? "open" : ""}><summary><b>أو ملف Excel بأسماء</b> — مصدر ثانٍ يُضاف إلى المقارنة نفسها (بدل الصور أو معها)</summary>
+      <label class="cc-field cc-wide"><span>ملف Excel (.xlsx) فيه أسماء من وقّعوا أو حضروا</span><input type="file" id="cc-sig-xl" accept=".xlsx"></label>`;
+    if (!x) return head + `<p class="cc-note">يُقرأ الملف على جهازك فقط. تختار بعدها عمود الاسم (والهوية والجوال إن وُجدا) وكيف يُعدّ التوقيع.</p></details>`;
+    const sh = x.sheets[x.sheet] || x.sheets[0], hs = sh.heads, m = x.map;
+    const colSel = (k, none) => `<label class="cc-field"><span>${{ name: "عمود الاسم", id: "عمود الهوية", phone: "عمود الجوال", sign: "عمود التوقيع" }[k]}</span><select data-sigxl="${k}">${k === "sign" ? opt(-1, m.sign, "لا عمود: كل من في الملف موقّع") : opt(-1, m[k], none)}${hs.map((h, i) => opt(i, m[k], h)).join("")}</select></label>`;
+    const n = sh.rows.filter((r) => clean(r[m.name])).length;
+    return head + `<p class="cc-note">الملف: <b>${esc(x.name)}</b> · ${ui.fmt(n)} اسماً في الورقة المختارة. <button type="button" class="cc-link" data-cc="sig-xl-clear">إزالة الملف</button></p>
+      <div class="cc-grid">${x.sheets.length > 1 ? `<label class="cc-field"><span>الورقة</span><select data-sigxl="sheet">${x.sheets.map((s, i) => opt(i, x.sheet, s.name)).join("")}</select></label>` : ""}${colSel("name", "— اختر —")}${colSel("id", "— بلا —")}${colSel("phone", "— بلا —")}${colSel("sign", "")}</div>
+      <p class="cc-note">عمود التوقيع (إن اخترتَه): الخلية الفارغة أو «لا / غير / ×» تعني <b>لم يوقّع</b>، وغير ذلك <b>وقّع</b>.</p>
+      <div class="cc-row"><button type="button" class="btn navy" data-cc="sig-xl-add" ${m.name >= 0 && n ? "" : "disabled"}>أضف أسماء الملف إلى المقارنة</button></div></details>`;
+  }
+  function sigXlAdd() {
+    const c = state.sig, x = c.xl; if (!x) return;
+    const sh = x.sheets[x.sheet] || x.sheets[0], m = x.map; if (m.name < 0) return ui.toast("اختر عمود الاسم");
+    const key = "xl:" + x.name + ":" + x.size + ":" + sh.name + ":" + m.name + ":" + m.sign;
+    c.fileKeys = c.fileKeys || []; c.done = c.done || [];
+    if (c.fileKeys.includes(key)) { state.resultError = "هذا الملف بهذه الأعمدة سبقت إضافته في الجلسة."; return render(); }
+    const tag = String(key.length) + sh.rows.length, add = [];
+    sh.rows.forEach((r, i) => {
+      const name = clean(r[m.name]); if (!name) return;
+      const sv = m.sign >= 0 ? clean(r[m.sign]) : "";
+      const signed = m.sign < 0 ? true : !!sv && !SIG_NO_RX.test(sv);
+      const row = { id: "xl" + tag + "|" + x.name + ":" + i, file: x.name, name, nid: m.id >= 0 ? digits(r[m.id]) : "", phone: m.phone >= 0 ? phoneNorm(r[m.phone]) : "", signed, conf: 1, keep: true, formAuto: "" };
+      row.form = sigAssignForm(row, c.formName); add.push(row);
+    });
+    if (!add.length) { state.resultError = "لا أسماء في العمود المختار."; return render(); }
+    c.rows = (c.rows || []).concat(add); c.fileKeys.push(key); c.done.push({ name: x.name, key, rows: add.length, at: new Date().toISOString() });
+    c.xl = null; state.resultError = ""; try { sigLearnAuto(); } catch (e) { /* */ }
+    sigSaveSoon(); ui.toast("أُضيف " + ui.fmt(add.length) + " اسماً من الملف"); render();
+  }
   function sigView() {
     const c = state.sig, ai = App.ai && App.ai.settings ? App.ai.settings() : {};
     const hasKey = App.ai && App.ai.hasKey && App.ai.hasKey();
@@ -2296,6 +2331,7 @@
         <label class="cc-field cc-wide"><span>اسم النموذج لهذه الدفعة (اختياري)</span><input type="text" list="cc-sig-forms" data-sig="form" value="${esc(c.formName || "")}" placeholder="اتركه فارغاً ليُستخرج من عنوان كل ورقة"></label>
         <label class="cc-field cc-wide"><span>١. صور الأوراق (JPG أو PNG، أضف دفعة بعد دفعة؛ تُضاف إلى ما قُرئ سابقاً)</span><input type="file" id="cc-sig-files" accept="image/*" multiple></label>
         ${c.files.length ? `<div class="cc-sig-thumbs">${c.files.map((f, i) => `<figure><img src="${f.thumb}" alt="${esc(f.name)}"><figcaption>${esc(f.name)}</figcaption><button type="button" class="cc-link" data-cc="sig-rm" data-i="${i}">إزالة</button></figure>`).join("")}</div>` : ""}
+        ${sigXlView()}
         <p class="cc-note">🔒 تُرسَل الصور إلى <b>${provider}</b> بمفتاحك لقراءتها فقط، ولا تُحفظ في تمكين ولا تُرفع إلى أي مكان آخر. وفيها أسماء متدربين.${hasKey ? "" : ' <b class="cc-bad">لا يوجد مفتاح ذكاء اصطناعي: أضفه من صفحة «المراسلات والتقارير» ← إعدادات الذكاء الاصطناعي.</b>'}</p>
         <div class="cc-row"><button type="button" class="btn navy" data-cc="sig-read" ${c.files.length && !c.reading ? "" : "disabled"}>${c.reading ? "جارٍ القراءة…" : "٢. اقرأ الصور"}</button><label class="cc-field" style="min-width:0"><span>السرعة</span><select data-sig="speed"><option value="" ${c.fast ? "" : "selected"}>دقيق (افتراضي)</option><option value="fast" ${c.fast ? "selected" : ""}>سريع (نموذج أخف)</option></select></label><label class="cc-field" style="min-width:0" title="إرسال عدة صور في طلب واحد يوفّر الحصة المجانية اليومية"><span>صور في الطلب</span><select data-sig="batch">${[1, 2, 3, 5].map((n) => `<option value="${n}" ${Number(c.batch) === n ? "selected" : ""}>${n}</option>`).join("")}</select></label><span class="cc-note" id="cc-sig-prog">${esc(c.prog || (c.took ? "آخر قراءة: " + c.took : ""))}</span></div>
         ${c.failed.length ? `<p class="cc-alert warn">تعذّرت قراءة ${ui.fmt(c.failed.length)} صورة: ${c.failed.map((x) => esc(x.name + " (" + x.error + ")")).join("، ")}</p>` : ""}
@@ -4062,6 +4098,8 @@
           return;
         } else if (act === "sig-namesearch") { return runSigNameSearch();
         } else if (act === "sig-lookup") { return runSigLookup();
+        } else if (act === "sig-xl-add") { return sigXlAdd();
+        } else if (act === "sig-xl-clear") { state.sig.xl = null; return render();
         } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
         } else if (act === "sig-del") { const r = state.sig.rows[Number(b.dataset.i)]; if (r) r.keep = false; return render();
         } else if (act === "sig-add") { state.sig.rows = state.sig.rows || []; state.sig.rows.push({ id: "m:" + Date.now(), file: "(أضفتَه)", name: "", nid: "", phone: "", signed: false, conf: 1, keep: true }); return render();
@@ -4304,6 +4342,21 @@
         if (k === "sheet") { c.sheet = Number(t.value) || 0; const sh = xlSheet(); c.map = App.centerXl.detect(sh.heads, sh.rows); c.out = null; }
         else if (k === "status") c.status = t.value;
         else if (k.startsWith("map-")) c.map[k.slice(4)] = Number(t.value);
+        return render();
+      }
+      if (t.id === "cc-sig-xl") {
+        const f = (t.files || [])[0]; if (!f) return;
+        try {
+          const wb = await App.centerXl.readWorkbook(f); if (!wb.sheets.length) throw new Error("الملف فارغ.");
+          const s0 = wb.sheets[0], d = App.centerXl.detect(s0.heads, s0.rows);
+          state.sig.xl = { name: f.name, size: f.size, sheets: wb.sheets, sheet: 0, map: { name: d.name, id: d.id, phone: d.phone, sign: -1 } }; state.resultError = "";
+        } catch (e) { state.resultError = "تعذّرت قراءة الملف: " + (e.message || e); }
+        t.value = ""; return render();
+      }
+      if (t.dataset.sigxl) {
+        const x = state.sig.xl, k = t.dataset.sigxl; if (!x) return;
+        if (k === "sheet") { x.sheet = Number(t.value) || 0; const s = x.sheets[x.sheet], d = App.centerXl.detect(s.heads, s.rows); x.map = { name: d.name, id: d.id, phone: d.phone, sign: -1 }; }
+        else x.map[k] = Number(t.value);
         return render();
       }
       if (t.id === "cc-sig-files") {

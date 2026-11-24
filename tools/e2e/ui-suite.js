@@ -802,6 +802,22 @@ async function suite() {
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.wideLimit = 0; c.render();
   }
 
+  // مصدر ثانٍ لمطابقة التوقيعات: ملف Excel بأسماء (بجانب الصور)
+  {
+    c.state.mode = "sign"; c.state.groups = [];
+    c.state.sig = Object.assign(c.state.sig, { tracks: ["1"], stages: [], status: "5", files: [], manual: {}, lookups: {}, nameHits: {}, reg: null, rows: null, fileKeys: [], done: [], xl: null });
+    c.render();
+    ok("خيار «أو ملف Excel بأسماء» يظهر بجانب رفع الصور", !!b.querySelector("#cc-sig-xl") && !!b.querySelector("#cc-sig-files") && /أو ملف Excel بأسماء/.test(b.querySelector(".cc-sigxl").textContent), "view");
+    c.state.sig.xl = { name: "كشف.xlsx", size: 10, sheets: [{ name: "ورقة1", heads: ["الاسم", "الهوية", "التوقيع"], rows: [["سعيد علي", "١٠٠٠٠٠٠٠٠١", "وقّع"], ["ريم سالم", "1000000002", "لا"], ["خالد", "", "✓"], ["", "", ""]] }], sheet: 0, map: { name: 0, id: 1, phone: -1, sign: 2 } };
+    c.render();
+    ok("بعد الاختيار: أعمدة الاسم والهوية والجوال والتوقيع وزر الإضافة", ["name", "id", "phone", "sign"].every((k) => !!b.querySelector('[data-sigxl="' + k + '"]')) && !!b.querySelector('[data-cc="sig-xl-add"]:not([disabled])') && /3 اسماً/.test(b.querySelector(".cc-sigxl").textContent), b.querySelector(".cc-sigxl").textContent.slice(0, 160));
+    b.querySelector('[data-cc="sig-xl-add"]').click(); await wait(300);
+    const xr = c.state.sig.rows || [];
+    ok("أسماء الملف تُضاف كصفوف مقروءة: الهوية العربية تُوحَّد وعمود التوقيع يُفهم", xr.length === 3 && xr[0].nid === "1000000001" && xr[0].signed === true && xr[1].signed === false && xr[2].signed === true, JSON.stringify(xr.map((x) => [x.name, x.nid, x.signed])));
+    ok("لا يُضاف الملف نفسه مرتين", (() => { c.state.sig.xl = { name: "كشف.xlsx", size: 10, sheets: [{ name: "ورقة1", heads: ["الاسم", "الهوية", "التوقيع"], rows: [["سعيد علي", "1", "وقّع"]] }], sheet: 0, map: { name: 0, id: 1, phone: -1, sign: 2 } }; return true; })() && (c.render(), b.querySelector('[data-cc="sig-xl-add"]').click(), await wait(200), (c.state.sig.rows || []).length === 3), (c.state.sig.rows || []).length);
+    c.state.sig.xl = null; c.state.sig.rows = null; c.state.sig.fileKeys = []; c.state.sig.done = []; c.state.mode = "report"; c.render();
+  }
+
   // أسماء بلا هوية ولا جوال لم تطابق: البحث بالاسم في كل النظام (خارج المرحلة) بصيغ متعددة
   {
     const oldRun = agent.run; const qs = [];
