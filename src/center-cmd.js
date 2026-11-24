@@ -2185,14 +2185,19 @@
   /* ===== بحث بالاسم في كل النظام عمّن لا هوية ولا جوال له ولم يُطابَق =====
      القراءة بالهوية/الجوال لا تنفع مع اسم بلا رقم، فيُبحث بالاسم في النظام كله (لا في المرحلة المختارة وحدها) بصيغ متعددة
      لأن البحث نصٌّ متصل: الاسم كاملاً، ثم أول اسمين، ثم آخر اسمين (يلتقط خطأً في الوسط). المرشحون يُقيَّمون بتشابه الأسماء. قراءة فقط. */
-  const NAME_Q_MAX = 120;
-  function sigNameQueries(name) {
-    const t = clean(name).split(" ").filter((x) => x.length > 1), out = [];
-    if (t.length < 2) return t.length ? [t[0]] : [];
-    out.push(t.join(" "));
-    if (t.length > 2) { out.push(t.slice(0, 2).join(" ")); out.push(t.slice(-2).join(" ")); }
-    if (t.length > 3) out.push(t.slice(0, 3).join(" "));
-    return out.filter((q, i) => out.indexOf(q) === i);
+  const NAME_Q_MAX = 260;
+  /* البحث في النظام حرفي: «أحمد» لا تجد «احمد»، و«نادر الطويل» لا تجد «نادر صابر الطويل». فتُجرَّب صيغ الاسم بهمزاته وبتوحيدها،
+     وإن لم يظهر مرشح قوي بعد المرحلة الأولى فتُجرَّب كلماته منفردة (يُقيَّم المرشحون بالتشابه فلا يضرّ اتساع النتائج) */
+  const sigNorm = (t) => String(t || "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
+  const sigToks = (name) => clean(name).split(" ").filter((x) => x.length > 1);
+  const uniq = (a) => a.filter((q, i) => q && a.indexOf(q) === i);
+  function sigNameQueries(name, wide) {
+    const t = sigToks(name); if (!t.length) return [];
+    if (wide) return uniq(t.filter((x) => x.length >= 3).flatMap((x) => [x, sigNorm(x)]));
+    const forms = [t.join(" ")];
+    if (t.length > 2) forms.push(t.slice(0, 2).join(" "), t.slice(-2).join(" "));
+    if (t.length > 3) forms.push(t.slice(0, 3).join(" "));
+    return uniq(forms.flatMap((q) => [q, sigNorm(q)]));
   }
   function sigPendingNameSearch() {
     const c = state.sig; if (!c.reg || !c.rows) return [];
@@ -2204,16 +2209,21 @@
     const c = state.sig; c.nameHits = c.nameHits || {};
     const targets = sigPendingNameSearch().slice(0, 40);
     if (!targets.length) return 0;
-    const qs = new Map();   // الاستعلام ← من يحتاجه
-    targets.forEach((f) => sigNameQueries(f.name).forEach((q) => { if (!qs.has(q) && qs.size < NAME_Q_MAX) qs.set(q, []); if (qs.has(q)) qs.get(q).push(f); }));
-    const list = [...qs.keys()];
-    const r = (await runCommands([{ type: "lookup", label: "بحث بالاسم في كل النظام", items: list.map((q) => ({ q })) }], { noCache: true }))[0];
     const cand = new Map(targets.map((f) => [f.id, new Map()]));
-    ((r && r.items) || []).forEach((it, i) => {
-      if (!it || !it.count) return;
-      const people = it.rows.map((x) => stuFrom(it, x));
-      (qs.get(list[i]) || []).forEach((f) => people.forEach((s) => { const sc = App.ccUtil.nameScore(f.name, s.name); if (sc >= 0.62) { const k = s.stu || s.id || s.name, m = cand.get(f.id); if (!m.has(k) || m.get(k).score < sc) m.set(k, { s, score: sc }); } }));
-    });
+    const pass = async (people, wide) => {
+      const qs = new Map();   // الاستعلام ← من يحتاجه
+      people.forEach((f) => sigNameQueries(f.name, wide).forEach((q) => { if (!qs.has(q) && qs.size < NAME_Q_MAX) qs.set(q, []); if (qs.has(q)) qs.get(q).push(f); }));
+      const list = [...qs.keys()]; if (!list.length) return;
+      const r = (await runCommands([{ type: "lookup", label: "بحث بالاسم في كل النظام", items: list.map((q) => ({ q })) }], { noCache: true }))[0];
+      ((r && r.items) || []).forEach((it, i) => {
+        if (!it || !it.count) return;
+        const ppl = it.rows.map((x) => stuFrom(it, x));
+        (qs.get(list[i]) || []).forEach((f) => ppl.forEach((s) => { const sc = App.ccUtil.nameScore(f.name, s.name); if (sc >= 0.62) { const k = s.stu || s.id || s.name, m = cand.get(f.id); if (!m.has(k) || m.get(k).score < sc) m.set(k, { s, score: sc }); } }));
+      });
+    };
+    await pass(targets, false);
+    const weak = (f) => { let b = 0; cand.get(f.id).forEach((x) => { if (x.score > b) b = x.score; }); return b < 0.8; };
+    await pass(targets.filter(weak), true);
     targets.forEach((f) => {
       const list = [...cand.get(f.id).values()].sort((a, b) => b.score - a.score).slice(0, 4);
       c.nameHits[f.id] = { list, at: Date.now() };

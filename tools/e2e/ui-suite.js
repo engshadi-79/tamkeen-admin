@@ -807,26 +807,31 @@ async function suite() {
     const oldRun = agent.run; const qs = [];
     agent.run = async (cmds) => ({ results: cmds.map((cm) => {
       if (cm.type === "lookup") return { type: "lookup", label: cm.label, items: (cm.items || []).map((it) => { qs.push(it.q);
-        const hit = it.q === "احمد نادر" || it.q === "أحمد نادر";
-        return hit ? { q: it.q, count: 2, heads: ["الاسم", "رقم الطالب", "المرحلة", "المجموعة", "المسار"], rows: [{ cells: ["أحمد نادر محمد الطويل", "8001", "المرحلة الأولى", "S1G2", "مسار الحلاقة"] }, { cells: ["سامر نادر العلي", "8002", "المرحلة الأولى", "S1G1", "مسار الحلاقة"] }] } : { q: it.q, count: 0, heads: [], rows: [] }; }) };
+        /* بحث حرفي كالنظام الحقيقي: «احمد» بلا همزة لا تجدها «أحمد»، و«العمري» وحدها تجد «ليث حسن العمري» */
+        const H = ["الاسم", "رقم الطالب", "المرحلة", "المجموعة", "المسار"];
+        if (it.q === "احمد نادر") return { q: it.q, count: 2, heads: H, rows: [{ cells: ["احمد نادر صابر الطويل", "8001", "المرحلة الثالثة", "S3G2", "مسار الحلاقة"] }, { cells: ["سامر نادر العلي", "8002", "المرحلة الأولى", "S1G1", "مسار الحلاقة"] }] };
+        if (it.q === "العمري") return { q: it.q, count: 1, heads: H, rows: [{ cells: ["ليث حسن العمري", "8003", "المرحلة الثالثة", "S3G1", "مسار الحلاقة"] }] };
+        return { q: it.q, count: 0, heads: [], rows: [] }; }) };
       return { type: "list", label: cm.label, params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية", "الجوال"], rows: [{ cells: ["ريم سالم", "7002", "S3G1", "9000000001", ""] }] };
     }) });
     c.state.mode = "sign"; c.state.groups = [];
     c.state.sig = Object.assign(c.state.sig, { tracks: ["1"], stages: [], status: "5", files: [], manual: {}, lookups: {}, nameHits: {}, reg: null,
-      rows: [{ id: "n:0", file: "n", name: "أحمد نادر الطويل", nid: "", phone: "", signed: true, conf: 0.9, keep: true }, { id: "n:1", file: "n", name: "زيد القاسم الغريب", nid: "", phone: "", signed: true, conf: 0.9, keep: true }] });
+      rows: [{ id: "n:0", file: "n", name: "أحمد نادر الطويل", nid: "", phone: "", signed: true, conf: 0.9, keep: true }, { id: "n:1", file: "n", name: "زيد القاسم الغريب", nid: "", phone: "", signed: true, conf: 0.9, keep: true }, { id: "n:2", file: "n", name: "ليث العمري", nid: "", phone: "", signed: true, conf: 0.9, keep: true }] });
     c.state.wideLimit = 100000; c.state.wide = null; c.render();
     b.querySelector('[data-cc="run-sig"]').click();
     for (let i = 0; i < 60 && !c.state.sig.reg && !c.state.resultError; i++) await wait(100); await wait(500);
     const nb = b.querySelector('[data-cc="sig-namesearch"]');
-    ok("زر «ابحث بالاسم في كل النظام» يظهر لأسماء بلا رقم", !!nb && /\(2\)/.test(nb.textContent), nb && nb.textContent);
+    ok("زر «ابحث بالاسم في كل النظام» يظهر لأسماء بلا رقم", !!nb && /\(3\)/.test(nb.textContent), nb && nb.textContent);
     qs.length = 0; nb.click();
     for (let i = 0; i < 60 && !Object.keys(c.state.sig.nameHits || {}).length && !c.state.resultError; i++) await wait(100); await wait(400);
     ok("يُبحث بصيغ الاسم: كاملاً وأول اسمين وآخر اسمين", qs.includes("أحمد نادر الطويل") && qs.includes("أحمد نادر") && qs.includes("نادر الطويل"), qs);
     const hits = c.state.sig.nameHits || {}, h0 = hits["n:0"], h1 = hits["n:1"];
-    ok("المرشح الصحيح يظهر أولاً بتشابه مرتفع، والبعيد لا يُقترح", !!h0 && h0.list.length >= 1 && h0.list[0].s.name === "أحمد نادر محمد الطويل" && h0.list[0].score >= 0.8 && !h0.list.some((x) => /سامر/.test(x.s.name)), JSON.stringify(h0 && h0.list.map((x) => [x.s.name, x.score])));
+    ok("المرشح الصحيح يظهر أولاً بتشابه مرتفع، والبعيد لا يُقترح", !!h0 && h0.list.length >= 1 && h0.list[0].s.name === "احمد نادر صابر الطويل" && h0.list[0].score >= 0.8 && !h0.list.some((x) => /سامر/.test(x.s.name)), JSON.stringify(h0 && h0.list.map((x) => [x.s.name, x.score])));
     ok("من لا شبيه له يُكتب أنه بُحث عنه ولم يوجد", !!h1 && h1.list.length === 0 && /فلم أجد شبيهاً/.test(b.textContent), h1);
     const fn2 = b.querySelector('[data-tblbox="sig-found"]');
-    ok("المرشح الواحد القوي يُعتمد بالاسم: يظهر في «عُرفوا» باسمه في النظام ومرحلته وطريقة التعرّف", !!fn2 && /أحمد نادر محمد الطويل/.test(fn2.textContent) && /المرحلة الأولى/.test(fn2.textContent) && /بالاسم/.test(fn2.textContent), fn2 && fn2.textContent.slice(0, 200));
+    ok("المرشح الواحد القوي يُعتمد بالاسم: يظهر في «عُرفوا» باسمه في النظام ومرحلته وطريقة التعرّف", !!fn2 && /احمد نادر صابر الطويل/.test(fn2.textContent) && /المرحلة الثالثة/.test(fn2.textContent) && /بالاسم/.test(fn2.textContent), fn2 && fn2.textContent.slice(0, 200));
+    const h2 = hits["n:2"];
+    ok("اسم لا يوجد إلا بكلمة منفردة (المرحلة الثانية من البحث) يُقترح ولا يُعتمد تلقائياً (80%)", !!h2 && h2.list.length === 1 && h2.list[0].s.name === "ليث حسن العمري" && !(c.state.sig.lookups || {})["n:2"], JSON.stringify(h2 && h2.list.map((x) => [x.s.name, x.score])));
     ok("ولا يبقى بين «أسماء لا تطابق أحداً»", ![...b.querySelectorAll(".cc-sig-r")].some((x) => /أحمد نادر الطويل/.test(x.textContent)), "orph");
     ok("لا زر بعد البحث (لا تكرار للقراءة)", !b.querySelector('[data-cc="sig-namesearch"]'), "btn");
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.sig.nameHits = {}; c.state.wideLimit = 0; c.render();
