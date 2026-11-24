@@ -2286,6 +2286,7 @@
 
   /* ===== مصدر ثانٍ لمطابقة التوقيعات: ملف Excel بأسماء (بدل الصور أو معها) ===== */
   const SIG_NO_RX = /^(لا|لم|غير|بدون|no|false|0|-|—|×|✗|x)$/i;
+  const sigXlFormCol = (heads) => heads.findIndex((h) => /نوع النموذج|اسم النموذج|^النموذج|^نموذج/.test(h));
   function sigXlView() {
     const x = state.sig.xl, opt = (i, cur, txt) => `<option value="${i}" ${Number(cur) === i ? "selected" : ""}>${esc(txt)}</option>`;
     const head = `<details class="cc-help cc-sigxl" ${x || state.sig.xlErr ? "open" : ""}><summary><b>أو ملف Excel بأسماء</b> — مصدر ثانٍ يُضاف إلى المقارنة نفسها (بدل الصور أو معها)</summary>
@@ -2293,26 +2294,28 @@
     const err = state.sig.xlErr ? `<p class="cc-alert err" role="alert">⚠ ${esc(state.sig.xlErr)}</p>` : "";
     if (!x) return head + err + `<p class="cc-note">يُقرأ الملف على جهازك فقط. تختار بعدها عمود الاسم (والهوية والجوال إن وُجدا) وكيف يُعدّ التوقيع.</p></details>`;
     const sh = x.sheets[x.sheet] || x.sheets[0], hs = sh.heads, m = x.map;
-    const colSel = (k, none) => `<label class="cc-field"><span>${{ name: "عمود الاسم", id: "عمود الهوية", phone: "عمود الجوال", sign: "عمود التوقيع" }[k]}</span><select data-sigxl="${k}">${k === "sign" ? opt(-1, m.sign, "لا عمود: كل من في الملف موقّع") : opt(-1, m[k], none)}${hs.map((h, i) => opt(i, m[k], h)).join("")}</select></label>`;
-    const n = sh.rows.filter((r) => clean(r[m.name])).length;
+    const colSel = (k, none) => `<label class="cc-field"><span>${{ name: "عمود الاسم", id: "عمود الهوية", phone: "عمود الجوال", sign: "عمود التوقيع", form: "عمود النموذج (اختياري)" }[k]}</span><select data-sigxl="${k}">${k === "sign" ? opt(-1, m.sign, "لا عمود: كل من في الملف موقّع") : opt(-1, m[k], none)}${hs.map((h, i) => opt(i, m[k], h)).join("")}</select></label>`;
+    const n = sh.rows.filter((r) => clean(r[m.name]) || digits(r[m.id]).length >= 8 || phoneNorm(r[m.phone]).length >= 9).length;
     return head + `<p class="cc-note">الملف: <b>${esc(x.name)}</b> · ${ui.fmt(n)} اسماً في الورقة المختارة. <button type="button" class="cc-link" data-cc="sig-xl-clear">إزالة الملف</button></p>
-      <div class="cc-grid">${x.sheets.length > 1 ? `<label class="cc-field"><span>الورقة</span><select data-sigxl="sheet">${x.sheets.map((s, i) => opt(i, x.sheet, s.name)).join("")}</select></label>` : ""}${colSel("name", "— اختر —")}${colSel("id", "— بلا —")}${colSel("phone", "— بلا —")}${colSel("sign", "")}</div>
+      <div class="cc-grid">${x.sheets.length > 1 ? `<label class="cc-field"><span>الورقة</span><select data-sigxl="sheet">${x.sheets.map((s, i) => opt(i, x.sheet, s.name)).join("")}</select></label>` : ""}${colSel("name", "— اختر —")}${colSel("id", "— بلا —")}${colSel("phone", "— بلا —")}${colSel("form", "— بلا: نموذج واحد —")}${colSel("sign", "")}</div>
       <p class="cc-note">عمود التوقيع (إن اخترتَه): الخلية الفارغة أو «لا / غير / ×» تعني <b>لم يوقّع</b>، وغير ذلك <b>وقّع</b>.</p>
       <div class="cc-row"><button type="button" class="btn navy" data-cc="sig-xl-add" ${m.name >= 0 && n ? "" : "disabled"}>أضف أسماء الملف إلى المقارنة</button></div></details>`;
   }
   function sigXlAdd() {
     const c = state.sig, x = c.xl; if (!x) return;
     const sh = x.sheets[x.sheet] || x.sheets[0], m = x.map; if (m.name < 0) return ui.toast("اختر عمود الاسم");
-    const key = "xl:" + x.name + ":" + x.size + ":" + sh.name + ":" + m.name + ":" + m.sign;
+    const key = "xl:" + x.name + ":" + x.size + ":" + sh.name + ":" + m.name + ":" + m.sign + ":" + m.form;
     c.fileKeys = c.fileKeys || []; c.done = c.done || [];
     if (c.fileKeys.includes(key)) { state.resultError = "هذا الملف بهذه الأعمدة سبقت إضافته في الجلسة."; return render(); }
     const tag = String(key.length) + sh.rows.length, add = [];
     sh.rows.forEach((r, i) => {
-      const name = clean(r[m.name]); if (!name) return;
+      const nid0 = m.id >= 0 ? digits(r[m.id]) : "", ph0 = m.phone >= 0 ? phoneNorm(r[m.phone]) : "";
+      let name = clean(r[m.name]);
+      if (!name) { if (nid0.length >= 8 || ph0.length >= 9) name = "(بلا اسم" + (nid0 ? " — هوية " + nid0 : " — جوال " + ph0) + ")"; else return; }   // يُطابَق بالهوية/الجوال
       const sv = m.sign >= 0 ? clean(r[m.sign]) : "";
       const signed = m.sign < 0 ? true : !!sv && !SIG_NO_RX.test(sv);
-      const row = { id: "xl" + tag + "|" + x.name + ":" + i, file: x.name, name, nid: m.id >= 0 ? digits(r[m.id]) : "", phone: m.phone >= 0 ? phoneNorm(r[m.phone]) : "", signed, conf: 1, keep: true, formAuto: "" };
-      row.form = sigAssignForm(row, c.formName); add.push(row);
+      const row = { id: "xl" + tag + "|" + x.name + ":" + i, file: x.name, name, nid: nid0, phone: ph0, signed, conf: 1, keep: true, formAuto: m.form >= 0 ? clean(r[m.form]) : "" };
+      row.form = sigAssignForm(row, m.form >= 0 ? "" : c.formName); add.push(row);
     });
     if (!add.length) { state.resultError = "لا أسماء في العمود المختار."; return render(); }
     c.rows = (c.rows || []).concat(add); c.fileKeys.push(key); c.done.push({ name: x.name, key, rows: add.length, at: new Date().toISOString() });
@@ -4354,13 +4357,13 @@
           if (typeof ExcelJS === "undefined") throw new Error("مكتبة قراءة Excel لم تُحمَّل بعد. حدّث الصفحة (Ctrl+F5) وأعد المحاولة.");
           const wb = await App.centerXl.readWorkbook(f); if (!wb.sheets.length) throw new Error("الملف لا يحوي أي ورقة فيها بيانات.");
           const s0 = wb.sheets[0], d = App.centerXl.detect(s0.heads, s0.rows);
-          state.sig.xl = { name: f.name, size: f.size, sheets: wb.sheets, sheet: 0, map: { name: d.name, id: d.id, phone: d.phone, sign: -1 } };
+          state.sig.xl = { name: f.name, size: f.size, sheets: wb.sheets, sheet: 0, map: { name: d.name, id: d.id, phone: d.phone, sign: -1, form: sigXlFormCol(s0.heads) } };
         } catch (e) { state.sig.xl = null; state.sig.xlErr = "تعذّرت قراءة الملف «" + f.name + "»: " + (e.message || e); ui.toast("تعذّرت قراءة ملف Excel"); }
         t.value = ""; return render();
       }
       if (t.dataset.sigxl) {
         const x = state.sig.xl, k = t.dataset.sigxl; if (!x) return;
-        if (k === "sheet") { x.sheet = Number(t.value) || 0; const s = x.sheets[x.sheet], d = App.centerXl.detect(s.heads, s.rows); x.map = { name: d.name, id: d.id, phone: d.phone, sign: -1 }; }
+        if (k === "sheet") { x.sheet = Number(t.value) || 0; const s = x.sheets[x.sheet], d = App.centerXl.detect(s.heads, s.rows); x.map = { name: d.name, id: d.id, phone: d.phone, sign: -1, form: sigXlFormCol(s.heads) }; }
         else x.map[k] = Number(t.value);
         return render();
       }

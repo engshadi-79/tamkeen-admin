@@ -68,14 +68,16 @@
     const txt = async (path) => { const f = zip.file(path) || zip.file(path.replace(/^\//, "")); return f ? f.async("string") : ""; };
     const xml = (t) => new DOMParser().parseFromString(t, "application/xml");
     const attr = (el, n) => el.getAttribute(n) || el.getAttribute("r:" + n) || "";
-    const byTag = (doc, tag) => [...doc.getElementsByTagName(tag)];
+    /* بحث بالاسم المحلي (يتجاهل سابقة النطاق: <x:sheet> مثل <sheet>) */
+    const byTag = (doc, tag) => [...doc.getElementsByTagNameNS("*", tag)];
+    const kids = (el, tag) => [...el.children].filter((c) => c.localName === tag);
     const rels = await txt("_rels/.rels"); let wbPath = "xl/workbook.xml";
     if (rels) { const rel = byTag(xml(rels), "Relationship").find((r) => /officeDocument/.test(r.getAttribute("Type") || "")); if (rel) wbPath = (rel.getAttribute("Target") || wbPath).replace(/^\//, ""); }
     const wbTxt = await txt(wbPath); if (!wbTxt) throw new Error("بنية الملف غير معروفة (لا workbook).");
     const dir = wbPath.replace(/[^/]+$/, ""), relsTxt = await txt(dir + "_rels/" + wbPath.split("/").pop() + ".rels");
     const relTarget = {}; byTag(xml(relsTxt), "Relationship").forEach((r) => { relTarget[r.getAttribute("Id")] = r.getAttribute("Target") || ""; });
     const shared = []; const ssTxt = await txt(dir + "sharedStrings.xml");
-    if (ssTxt) byTag(xml(ssTxt), "si").forEach((si) => { shared.push(byTag(si, "t").filter((t) => !t.closest || !t.closest("rPh")).map((t) => t.textContent).join("")); });
+    if (ssTxt) byTag(xml(ssTxt), "si").forEach((si) => { shared.push(byTag(si, "t").filter((t) => !t.parentNode || t.parentNode.localName !== "rPh").map((t) => t.textContent).join("")); });
     const colIdx = (ref) => { const m = /^([A-Z]+)/i.exec(ref || ""); if (!m) return -1; let n = 0; for (const ch of m[1].toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; };
     const sheets = [];
     for (const sh of byTag(xml(wbTxt), "sheet")) {
@@ -85,8 +87,8 @@
       const grid = [];
       byTag(xml(sx), "row").forEach((row) => {
         const cells = [];
-        [...row.children].filter((c) => c.tagName === "c").forEach((c, k) => {
-          const i = colIdx(c.getAttribute("r")), at = i >= 0 ? i : k, t = c.getAttribute("t"), v = c.getElementsByTagName("v")[0], is = c.getElementsByTagName("is")[0];
+        kids(row, "c").forEach((c, k) => {
+          const i = colIdx(c.getAttribute("r")), at = i >= 0 ? i : k, t = c.getAttribute("t"), v = byTag(c, "v")[0], is = byTag(c, "is")[0];
           let val = "";
           if (t === "s" && v) val = shared[Number(v.textContent)] || "";
           else if (t === "inlineStr" && is) val = byTag(is, "t").map((x) => x.textContent).join("");
