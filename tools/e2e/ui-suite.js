@@ -840,6 +840,46 @@ async function suite() {
     agent.run = oldRun; c.state.results = null; c.state.gaps.out = null; c.state.gaps.fields = null; c.state.wideLimit = 0; c.state.mode = "report"; c.render();
   }
 
+  // إكمال الفراغ من ملف «تصدير Excel» (الحالة الاجتماعية محفوظة عند المتقدم لا الطالب)
+  {
+    const mkFile = async () => {
+      const wbE = new ExcelJS.Workbook(), wsE = wbE.addWorksheet("الطلاب");
+      wsE.addRow(["بيانات الطلاب الكاملة مع بيانات طلب التقديم"]);
+      wsE.addRow(["رقم الطالب", "اسم الطالب", "رقم الهوية", "الجوال 1", "الجنس", "الحالة الاجتماعية", "المحافظة", "المجموعة الحالية", "الدورة الحالية", "هوية المتقدم", "الحالة الاجتماعية للمتقدم", "محافظة المتقدم"]);
+      wsE.addRow(["STU-1", "أحمد علي", "400000001", "0591111111", "ذكر", "-", "الوسطى", "S3G1", "المرحلة الثالثة", "400000001", "أعزب", "الوسطى"]);
+      wsE.addRow(["STU-2", "خالد سعيد", "400000002", "0592222222", "ذكر", "-", "", "S3G1", "المرحلة الثالثة", "400000002", "متزوج", "خانيونس"]);
+      wsE.addRow(["STU-3", "سامي عمر", "400000003", "0593333333", "ذكر", "أرمل", "الوسطى", "S3G2", "المرحلة الثالثة", "400000003", "", "الوسطى"]);
+      wsE.addRow(["STU-4", "ريم ناصر", "400000004", "0594444444", "أنثى", "-", "الوسطى", "S3G2", "المرحلة الثالثة", "400000004", "-", "الوسطى"]);
+      return new File([await wbE.xlsx.writeBuffer()], "students-basic-data.xlsx");
+    };
+    c.state.mode = "report"; c.state.enrich = null; c.state.enrichErr = ""; c.state.gaps.out = null; c.state.gaps.fields = null;
+    const HR = ["الاسم", "رقم الطالب", "رقم الهوية", "الحالة الاجتماعية", "الجنس"];
+    c.state.results = { at: new Date(), results: [{ type: "list", label: "كل", heads: HR, rows: [{ cells: ["أحمد علي", "STU-1", "400000001", "", "ذكر"] }, { cells: ["خالد سعيد", "STU-2", "400000002", "-", "ذكر"] }, { cells: ["سامي عمر", "STU-3", "400000003", "أرمل", "ذكر"] }, { cells: ["ريم ناصر", "STU-4", "400000004", "", "أنثى"] }] }] };
+    c.render();
+    ok("«تقرير جاهز»: بطاقة «إكمال الفراغ من ملف تصدير Excel» وفيها حقل الملف", !!b.querySelector("#cc-enrich-file") && /المتقدم/.test(b.querySelector(".cc-enrich").textContent), "card");
+    const inpEn = b.querySelector("#cc-enrich-file"), dtEn = new DataTransfer(); dtEn.items.add(await mkFile()); inpEn.files = dtEn.files; inpEn.dispatchEvent(new Event("change", { bubbles: true }));
+    for (let i = 0; i < 50 && !c.state.enrich && !c.state.enrichErr; i++) await wait(100); await wait(300);
+    ok("الملف يُقرأ (صف العنوان الأول يُتجاوز) ويُستخرج 4 طلاب وحقول المتقدم", !!c.state.enrich && c.state.enrich.n === 4 && c.state.enrich.fields.includes("marital_status") && c.state.enrich.fields.includes("governorate_id"), JSON.stringify({ err: c.state.enrichErr, n: c.state.enrich && c.state.enrich.n, f: c.state.enrich && c.state.enrich.fields }));
+    const cellsE = c.state.results.results[0].rows.map((x) => x.cells[3]);
+    ok("الخلايا الفارغة تُكمَّل من المتقدم بالهوية، وما فيه قيمة لا يُمسّ", cellsE[0] === "أعزب" && cellsE[1] === "متزوج" && cellsE[2] === "أرمل" && cellsE[3] === "", JSON.stringify(cellsE));
+    ok("شريط يذكر عدد الخلايا المكمَّلة (2) من الملف", /أُكملت 2 خلية فارغة من بيانات المتقدم/.test(b.textContent), (b.querySelector(".cc-alert.ok") || {}).textContent);
+    // أداة «بيانات ناقصة» من الملف مباشرة
+    c.state.mode = "gaps"; c.state.gaps.fields = ["marital_status", "governorate_id"]; c.render();
+    ok("في «بيانات ناقصة» زر تحليل الملف مباشرة بلا قراءة", !!b.querySelector('[data-cc="gaps-file"]'), "btn");
+    b.querySelector('[data-cc="gaps-file"]').click(); await wait(300);
+    const sumE = (b.querySelector('[data-tblbox="gap-sum"]') || {}).textContent.replace(/\s+/g, " ") || "";
+    const listE = (b.querySelector('[data-tblbox="gap-list"]') || {}).textContent || "";
+    ok("الحالة الاجتماعية: مُدخَل 3 (منها 2 من المتقدم) وفارغ 1 فقط (ريم)", /الحالة الاجتماعية 3 2 1/.test(sumE) || (/الحالة الاجتماعية/.test(sumE) && /25%/.test(sumE)), sumE.slice(0, 200));
+    ok("من ينقصه: ريم فقط (الحالة الاجتماعية)؛ خالد محافظته من المتقدم فلا ينقصه شيء", /ريم ناصر/.test(listE) && !/خالد سعيد/.test(listE) && !/أحمد علي/.test(listE) && !/سامي عمر/.test(listE), listE.replace(/\s+/g, " ").slice(0, 200));
+    ok("عدّاد «خلية أُكملت من بيانات المتقدم» يظهر", /خلية أُكملت من بيانات المتقدم/.test(b.textContent), "stat");
+    // ملف غير مناسب يُشرح
+    c.state.enrich = null; c.state.mode = "report"; c.render();
+    const wbBad = new ExcelJS.Workbook(); wbBad.addWorksheet("x").addRow(["الاسم", "الجوال"]);
+    const inpB = b.querySelector("#cc-enrich-file"), dtB = new DataTransfer(); dtB.items.add(new File([await wbBad.xlsx.writeBuffer()], "x.xlsx")); inpB.files = dtB.files; inpB.dispatchEvent(new Event("change", { bubbles: true })); await wait(500);
+    ok("ملف بلا «رقم الهوية» يُشرح خطؤه تحت الخانة", !c.state.enrich && /رقم الهوية/.test((b.querySelector(".cc-enrich .cc-alert") || {}).textContent || ""), c.state.enrichErr);
+    c.state.enrich = null; c.state.enrichErr = ""; c.state.results = null; c.state.gaps.out = null; c.state.gaps.fields = null; c.state.mode = "report"; c.render();
+  }
+
   // مصدر ثانٍ لمطابقة التوقيعات: ملف Excel بأسماء (بجانب الصور)
   {
     c.state.mode = "sign"; c.state.groups = [];
