@@ -832,6 +832,10 @@ async function suite() {
     ok("المرشح الواحد القوي يُعتمد بالاسم: يظهر في «عُرفوا» باسمه في النظام ومرحلته وطريقة التعرّف", !!fn2 && /احمد نادر صابر الطويل/.test(fn2.textContent) && /المرحلة الثالثة/.test(fn2.textContent) && /بالاسم/.test(fn2.textContent), fn2 && fn2.textContent.slice(0, 200));
     const h2 = hits["n:2"];
     ok("اسم لا يوجد إلا بكلمة منفردة (المرحلة الثانية من البحث) يُقترح ولا يُعتمد تلقائياً (80%)", !!h2 && h2.list.length === 1 && h2.list[0].s.name === "ليث حسن العمري" && !(c.state.sig.lookups || {})["n:2"], JSON.stringify(h2 && h2.list.map((x) => [x.s.name, x.score])));
+    const pk = b.querySelector('[data-cc="sig-pick"]');
+    ok("زر «هو: …» يظهر للمرشح غير المحسوم", !!pk && /ليث حسن العمري/.test(pk.textContent), pk && pk.textContent);
+    if (pk) { pk.click(); await wait(300); }
+    ok("اعتماد المرشح بالزر ينقله إلى «عُرفوا»", /ليث حسن العمري/.test((b.querySelector('[data-tblbox="sig-found"]') || {}).textContent || "") && !b.querySelector('[data-cc="sig-pick"]'), (b.querySelector('[data-tblbox="sig-found"]') || {}).textContent);
     ok("ولا يبقى بين «أسماء لا تطابق أحداً»", ![...b.querySelectorAll(".cc-sig-r")].some((x) => /أحمد نادر الطويل/.test(x.textContent)), "orph");
     ok("لا زر بعد البحث (لا تكرار للقراءة)", !b.querySelector('[data-cc="sig-namesearch"]'), "btn");
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.sig.nameHits = {}; c.state.wideLimit = 0; c.render();
