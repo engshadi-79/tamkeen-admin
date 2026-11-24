@@ -852,6 +852,16 @@ async function suite() {
     const xr = c.state.sig.rows || [];
     ok("أسماء الملف تُضاف كصفوف مقروءة: الهوية العربية تُوحَّد وعمود التوقيع يُفهم", xr.length === 3 && xr[0].nid === "1000000001" && xr[0].signed === true && xr[1].signed === false && xr[2].signed === true, JSON.stringify(xr.map((x) => [x.name, x.nid, x.signed])));
     ok("لا يُضاف الملف نفسه مرتين", (() => { c.state.sig.xl = { name: "كشف.xlsx", size: 10, sheets: [{ name: "ورقة1", heads: ["الاسم", "الهوية", "التوقيع"], rows: [["سعيد علي", "1", "وقّع"]] }], sheet: 0, map: { name: 0, id: 1, phone: -1, sign: 2 } }; return true; })() && (c.render(), b.querySelector('[data-cc="sig-xl-add"]').click(), await wait(200), (c.state.sig.rows || []).length === 3), (c.state.sig.rows || []).length);
+    {   // عمود النموذج + صف بلا اسم له هوية/جوال (كشف تفريغ نماذج)
+      c.state.sig.rows = null; c.state.sig.fileKeys = []; c.state.sig.done = [];
+      c.state.sig.xl = { name: "نماذج.xlsx", size: 7, sheets: [{ name: "بيانات", heads: ["مرجع", "نوع النموذج", "الاسم", "رقم الهوية", "الجوال"], rows: [["1", "إخلاء مسؤولية", "تسنيم أحمد", "406037630", "0594541899"], ["2", "إخلاء مسؤولية", "", "404137440", "0592130478"], ["3", "موافقة تصوير", "تسنيم أحمد", "406037630", ""], ["4", "موافقة تصوير", "", "", ""]] }], sheet: 0, map: { name: 2, id: 3, phone: 4, sign: -1, form: 1 } };
+      c.render();
+      ok("لوحة الأعمدة فيها «عمود النموذج» ويُعدّ الصف بلا اسم (له هوية) دون الفارغ كلياً", !!b.querySelector('[data-sigxl="form"]') && /3 اسماً/.test(b.querySelector(".cc-sigxl").textContent), b.querySelector(".cc-sigxl").textContent.slice(0, 200));
+      b.querySelector('[data-cc="sig-xl-add"]').click(); await wait(300);
+      const fr = c.state.sig.rows || [];
+      ok("كل صف يذهب إلى نموذجه، والصف بلا اسم يُضاف باسم بديل وهويته", fr.length === 3 && fr.filter((x) => x.form === "إخلاء مسؤولية").length === 2 && fr.filter((x) => x.form === "موافقة تصوير").length === 1 && /^\(بلا اسم/.test(fr[1].name) && fr[1].nid === "404137440" && fr[1].phone === "0592130478", JSON.stringify(fr.map((x) => [x.name, x.nid, x.form])));
+      c.state.sig.rows = null; c.state.sig.fileKeys = []; c.state.sig.done = [];
+    }
     c.state.sig.xl = null; c.state.sig.rows = null; c.state.sig.fileKeys = []; c.state.sig.done = []; c.state.mode = "report"; c.render();
   }
 
