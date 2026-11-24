@@ -2124,7 +2124,9 @@
       const lk = (c.lookups || {})[f.id];
       if (lk && lk.list && lk.list.length === 1) resolved.push({ f, s: lk.list[0] }); else orphans.push(f);   // عُرف بالهوية/الجوال في النظام: يُعرض باسمه في النظام
     });
-    return { items, orphans, resolved, found };
+    /* مقروء لا يطابق أحداً وبلا توقيع: لا يُعرض للربط (لا قيمة لتوقيعه) لكنه يُذكر في قائمة «غير المعروفة» ولا يضيع */
+    const lost = found.filter((f) => !usedFound.has(f.id) && f.signed === false && !((c.lookups || {})[f.id] && ((c.lookups || {})[f.id].list || []).length === 1));
+    return { items, orphans, resolved, found, lost };
   }
   const SIG_ST = { signed: "وقّع", blank: "اسمه في الورقة بلا توقيع", absent: "لا يظهر اسمه في الأوراق", review: "يحتاج مراجعة" };
   function sigUnsignedRows(form) { const o = sigCompute(form); return o ? o.items.filter((x) => x.st === "absent" || x.st === "blank") : []; }
@@ -2320,14 +2322,14 @@
     const miss = o.items.filter((x) => x.st === "absent" || x.st === "blank"), review = o.items.filter((x) => x.st === "review");
     const tbl = (k, items) => dataTable(k, sigHeads(), items.map(sigRowCells));
     /* الخلاصة البسيطة: أربع قوائم واضحة بأعدادها، قائمة واحدة تُعرض في كل مرة */
-    const TABS = [["absent", "لا يظهر اسمهم في الأوراق", o.items.filter((x) => x.st === "absent").length], ["blank", "اسمهم في الورقة بلا توقيع", o.items.filter((x) => x.st === "blank").length], ["signed", "وقّعوا", cnt("signed")], ["orph", "أسماء في الأوراق غير معروفة", o.orphans.length]];
+    const TABS = [["absent", "لا يظهر اسمهم في الأوراق", o.items.filter((x) => x.st === "absent").length], ["blank", "اسمهم في الورقة بلا توقيع", o.items.filter((x) => x.st === "blank").length], ["signed", "وقّعوا", cnt("signed")], ["orph", "أسماء في الأوراق غير معروفة", o.orphans.length + o.lost.length]];
     c.view = c.view || {}; const vk = String(idx || 0);
     let cur = c.view[vk]; if (!TABS.some((t) => t[0] === cur)) cur = (TABS.find((t) => t[2] > 0) || TABS[0])[0];
-    const tabBody = cur === "orph" ? dataTable(K("sv-orph"), ["الاسم المقروء", "الحكم", "الورقة", "نتيجة البحث في النظام"], o.orphans.map((f) => [f.name, f.signed === true ? "موقّع" : "غير محسوم", sigShort(f.file), sigLookupText(f)]))
+    const tabBody = cur === "orph" ? dataTable(K("sv-orph"), ["الاسم المقروء", "الحكم", "الورقة", "نتيجة البحث في النظام"], o.orphans.concat(o.lost).map((f) => [f.name, f.signed === true ? "موقّع" : f.signed === false ? "بلا توقيع" : "غير محسوم", sigShort(f.file), sigLookupText(f)]))
       : tbl(K("sv-" + cur), o.items.filter((x) => x.st === cur));
     /* تدقيق: كل اسم مقروء يجب أن يكون في موضع واحد معروف؛ غير المحسوب (بلا توقيع ولا يطابق أحداً) يُذكر صراحةً */
-    const nMatched = o.items.filter((x) => x.found).length, nLost = o.found.length - nMatched - o.resolved.length - o.orphans.length;
-    const audit = `تدقيق: قُرئ <b>${ui.fmt(o.found.length)}</b> اسماً في الأوراق ← طابق مسجّلين <b>${ui.fmt(nMatched)}</b>، وعُرف بالبحث من خارج القائمة <b>${ui.fmt(o.resolved.length)}</b>، وغير معروف <b>${ui.fmt(o.orphans.length)}</b>${nLost > 0 ? `، وغير معروف <u>وبلا توقيع</u> <b>${ui.fmt(nLost)}</b> (لا يظهرون في القوائم: راجعهم في «الأسماء المقروءة» أعلاه)` : ""}. ${nLost > 0 ? "⚠ لم تُعرف كل الأسماء." : o.orphans.length ? "بقي أسماء غير معروفة." : "✓ كل الأسماء المقروءة معروفة."}`;
+    const nMatched = o.items.filter((x) => x.found).length, nUnk = o.orphans.length + o.lost.length, nLost = o.found.length - nMatched - o.resolved.length - nUnk;
+    const audit = `تدقيق: قُرئ <b>${ui.fmt(o.found.length)}</b> اسماً في الأوراق ← طابق مسجّلين <b>${ui.fmt(nMatched)}</b>، وعُرف بالبحث من خارج القائمة <b>${ui.fmt(o.resolved.length)}</b>، وغير معروف <b>${ui.fmt(nUnk)}</b>${o.lost.length ? ` (منهم <b>${ui.fmt(o.lost.length)}</b> بلا توقيع)` : ""}${nLost > 0 ? `، و<b>${ui.fmt(nLost)}</b> غير محسوب (راجع «الأسماء المقروءة»)` : ""}. ${nUnk ? "بقي أسماء غير معروفة: في زر «أسماء في الأوراق غير معروفة» أعلاه." : "✓ كل الأسماء المقروءة معروفة."}`;
     const summary = `<div class="cc-sigsum"><div class="cc-sigsum-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" aria-selected="${t[0] === cur}" class="cc-sigsum-tab${t[0] === cur ? " on" : ""}${t[0] === "signed" ? " ok" : t[0] === "orph" ? "" : " bad"}" data-cc="sig-view" data-v="${t[0]}" data-idx="${idx || 0}"><b>${ui.fmt(t[2])}</b> ${t[1]}</button>`).join("")}</div>
       ${TABS.find((t) => t[0] === cur)[2] ? tabBody : '<p class="cc-note">لا أحد في هذه القائمة.</p>'}
       ${review.length ? `<p class="cc-note">و<b>${ui.fmt(review.length)}</b> يحتاجون مراجعتك: افتح «التفاصيل والمراجعة» أدناه.</p>` : ""}
