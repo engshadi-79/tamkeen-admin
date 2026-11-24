@@ -2325,9 +2325,13 @@
     let cur = c.view[vk]; if (!TABS.some((t) => t[0] === cur)) cur = (TABS.find((t) => t[2] > 0) || TABS[0])[0];
     const tabBody = cur === "orph" ? dataTable(K("sv-orph"), ["الاسم المقروء", "الحكم", "الورقة", "نتيجة البحث في النظام"], o.orphans.map((f) => [f.name, f.signed === true ? "موقّع" : "غير محسوم", sigShort(f.file), sigLookupText(f)]))
       : tbl(K("sv-" + cur), o.items.filter((x) => x.st === cur));
+    /* تدقيق: كل اسم مقروء يجب أن يكون في موضع واحد معروف؛ غير المحسوب (بلا توقيع ولا يطابق أحداً) يُذكر صراحةً */
+    const nMatched = o.items.filter((x) => x.found).length, nLost = o.found.length - nMatched - o.resolved.length - o.orphans.length;
+    const audit = `تدقيق: قُرئ <b>${ui.fmt(o.found.length)}</b> اسماً في الأوراق ← طابق مسجّلين <b>${ui.fmt(nMatched)}</b>، وعُرف بالبحث من خارج القائمة <b>${ui.fmt(o.resolved.length)}</b>، وغير معروف <b>${ui.fmt(o.orphans.length)}</b>${nLost > 0 ? `، وغير معروف <u>وبلا توقيع</u> <b>${ui.fmt(nLost)}</b> (لا يظهرون في القوائم: راجعهم في «الأسماء المقروءة» أعلاه)` : ""}. ${nLost > 0 ? "⚠ لم تُعرف كل الأسماء." : o.orphans.length ? "بقي أسماء غير معروفة." : "✓ كل الأسماء المقروءة معروفة."}`;
     const summary = `<div class="cc-sigsum"><div class="cc-sigsum-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" aria-selected="${t[0] === cur}" class="cc-sigsum-tab${t[0] === cur ? " on" : ""}${t[0] === "signed" ? " ok" : t[0] === "orph" ? "" : " bad"}" data-cc="sig-view" data-v="${t[0]}" data-idx="${idx || 0}"><b>${ui.fmt(t[2])}</b> ${t[1]}</button>`).join("")}</div>
       ${TABS.find((t) => t[0] === cur)[2] ? tabBody : '<p class="cc-note">لا أحد في هذه القائمة.</p>'}
-      ${review.length ? `<p class="cc-note">و<b>${ui.fmt(review.length)}</b> يحتاجون مراجعتك: افتح «التفاصيل والمراجعة» أدناه.</p>` : ""}</div>`;
+      ${review.length ? `<p class="cc-note">و<b>${ui.fmt(review.length)}</b> يحتاجون مراجعتك: افتح «التفاصيل والمراجعة» أدناه.</p>` : ""}
+      <p class="cc-note cc-sigaudit">${audit}</p></div>`;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> ${multi ? "النموذج: " + FM + " <small>(" + ui.fmt(o.found.length) + " اسماً مقروءاً)</small>" : "نتيجة المطابقة"}</h3>
       ${summary}
       <details class="cc-help cc-sigall"><summary><b>التفاصيل والمراجعة</b> — كل المسجلين، ما يحتاج مراجعتك (${ui.fmt(review.length)})، وربط الأسماء غير المعروفة</summary>
