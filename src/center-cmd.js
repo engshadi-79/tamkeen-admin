@@ -2834,12 +2834,12 @@
     if (iId < 0) throw new Error("لا عمود «رقم الهوية» في الملف. استعمل ملف «تصدير Excel» من صفحة «الطلاب المعتمدون» في نظام المركز.");
     const fields = Object.keys(EXPORT_MAP).map((name) => ({ name, s: ix(EXPORT_MAP[name][0]), a: ix(EXPORT_MAP[name][1]) })).filter((f) => f.s >= 0 || f.a >= 0);
     if (!fields.some((f) => f.a >= 0)) throw new Error("الملف بلا أعمدة «المتقدم» (مثل «الحالة الاجتماعية للمتقدم»)، فلا يُكمل شيئاً. صدّر الملف من صفحة الطلاب بالزر «تصدير Excel» نفسه.");
-    const iN = ix("اسم الطالب"), iS = ix("رقم الطالب"), iP = ix("الجوال 1"), iG = ix("المجموعة الحالية"), iC = ix("الدورة الحالية"), iSex = ix("الجنس"), iH = ix("هوية المتقدم");
+    const iN = ix("اسم الطالب"), iS = ix("رقم الطالب"), iP = ix("الجوال 1"), iG = ix("المجموعة الحالية"), iC = ix("الدورة الحالية"), iT = ix("المسار الحالي"), iSex = ix("الجنس"), iH = ix("هوية المتقدم");
     const byId = new Map(), byStu = new Map(), list = [];
     sh.rows.forEach((r) => {
       const id = digits(r[iId]) || (iH >= 0 ? digits(r[iH]) : ""), stu = iS >= 0 ? clean(r[iS]) : "";
       if (!id && !stu) return;
-      const e = { name: iN >= 0 ? clean(r[iN]) : "", id, stu, phone: iP >= 0 ? phoneNorm(r[iP]) : "", group: iG >= 0 ? clean(r[iG]) : "", course: iC >= 0 ? clean(r[iC]) : "", sex: iSex >= 0 ? clean(r[iSex]) : "", v: {} };
+      const e = { name: iN >= 0 ? clean(r[iN]) : "", id, stu, phone: iP >= 0 ? phoneNorm(r[iP]) : "", group: iG >= 0 ? clean(r[iG]) : "", course: iC >= 0 ? clean(r[iC]) : "", track: iT >= 0 ? clean(r[iT]) : "", sex: iSex >= 0 ? clean(r[iSex]) : "", v: {} };
       fields.forEach((f) => { e.v[f.name] = { s: f.s >= 0 ? clean(r[f.s]) : "", a: f.a >= 0 ? clean(r[f.a]) : "" }; });
       list.push(e); if (id) byId.set(id, e); if (stu) byStu.set(stu, e);
     });
@@ -2927,8 +2927,8 @@
   }
   function gapsListsFrom(e) {
     const fs = gapFieldList().filter((f) => e.fields.includes(f.name)), lab = fs.map((f) => f.label);
-    const heads = ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "الجنس"].concat(lab);
-    return [{ heads, label: "ملف التصدير", rows: e.list.map((x) => ({ cells: [x.name, x.stu, x.id, x.phone, x.group, x.course, x.sex || "(غير محدد)"].concat(fs.map((f) => (x.v[f.name] || {}).s || "")) })) }];
+    const heads = ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "المسار", "الجنس"].concat(lab);
+    return [{ heads, label: "", rows: e.list.map((x) => ({ cells: [x.name, x.stu, x.id, x.phone, x.group, x.course, x.track || "", x.sex || "(غير محدد)"].concat(fs.map((f) => (x.v[f.name] || {}).s || "")) })) }];
   }
   async function enrichNow() {
     state.busy = true; state.resultError = ""; state.enrichErr = ""; state.progress = ""; render(); refreshStatus();
@@ -2946,7 +2946,7 @@
     let total = 0, unread = 0;
     lists.forEach((l) => {
       const heads = l.heads || [], cols = fields.map((f) => gapCol(heads, f)), gi = heads.findIndex((h) => norm(h) === norm("الجنس"));
-      const at = (h) => heads.indexOf(h), iN = at("الاسم"), iI = at("رقم الهوية"), iP = at("الجوال"), iG = at("المجموعة"), iS = at("رقم الطالب"), iC = at("الدورة");
+      const at = (h) => heads.indexOf(h), iN = at("الاسم"), iI = at("رقم الهوية"), iP = at("الجوال"), iG = at("المجموعة"), iS = at("رقم الطالب"), iC = at("الدورة"), iT = at("المسار");
       cols.forEach((c, k) => { if (c >= 0) per[k].found = true; });
       (l.rows || []).forEach((x) => {
         const cells = x.cells || x, key = (iS >= 0 && clean(cells[iS])) || (iI >= 0 && digits(cells[iI])) + "|" + (iN >= 0 ? clean(cells[iN]) : "");
@@ -2954,14 +2954,15 @@
         total++;
         const read = gi >= 0 ? !isBlankCell(cells[gi]) : cols.some((c) => c >= 0 && !isBlankCell(cells[c]));
         if (!read) { unread++; rows.set(key, null); return; }
-        const miss = [], en = enrichOf(iI >= 0 ? digits(cells[iI]) : "", iS >= 0 ? clean(cells[iS]) : "");
+        const miss = [], vals = fields.map(() => ""), en = enrichOf(iI >= 0 ? digits(cells[iI]) : "", iS >= 0 ? clean(cells[iS]) : "");
         cols.forEach((c, k) => {
           if (c < 0 && !per[k].found) return;
           let blank = c < 0 ? true : isBlankCell(cells[c]);
-          if (blank && en && enrichVal(en, fields[k].name)) { blank = false; per[k].viaApp++; }
+          if (!blank) vals[k] = clean(cells[c]);
+          else if (en && enrichVal(en, fields[k].name)) { blank = false; vals[k] = enrichVal(en, fields[k].name); per[k].viaApp++; }
           if (blank) { per[k].blank++; miss.push(fields[k].label); } else per[k].filled++;
         });
-        rows.set(key, { name: iN >= 0 ? clean(cells[iN]) : "", id: iI >= 0 ? digits(cells[iI]) : "", phone: iP >= 0 ? phoneNorm(cells[iP]) : "", stu: iS >= 0 ? clean(cells[iS]) : "", group: iG >= 0 ? clean(cells[iG]) : "", course: (iC >= 0 ? clean(cells[iC]) : "") || l.label || "", missing: miss });
+        rows.set(key, { name: iN >= 0 ? clean(cells[iN]) : "", id: iI >= 0 ? digits(cells[iI]) : "", phone: iP >= 0 ? phoneNorm(cells[iP]) : "", stu: iS >= 0 ? clean(cells[iS]) : "", group: iG >= 0 ? clean(cells[iG]) : "", course: (iC >= 0 ? clean(cells[iC]) : "") || l.label || "", track: iT >= 0 ? clean(cells[iT]) : "", vals, missing: miss });
       });
     });
     const list = [...rows.values()].filter(Boolean);
@@ -3043,7 +3044,15 @@
     }
     const wb = new ExcelJS.Workbook();
     fmtSheet(wb.addWorksheet("ملخص الحقول"), ["الحقل", "مُدخَل", "منه من المتقدم", "فارغ"], st.per.filter((p) => p.found).map((p) => [p.f.label, p.filled, p.viaApp, p.blank]));
-    fmtSheet(wb.addWorksheet("من ينقصه"), ["الاسم", "رقم الهوية", "الجوال", "المسار / الدورة", "المجموعة", "ينقصه", "عدد الناقص"], gapRowsOut(st));
+    /* ورقة للتعبئة: بيانات الطالب ثم عمود لكل حقل مختار؛ الموجود يظهر، والناقص خلية فارغة مظلّلة تملؤها أنت */
+    const fl = st.per.filter((p) => p.found).map((p) => p.f), fk = fl.map((f) => fs.indexOf(f));
+    const base = ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المسار", "الدورة", "المجموعة"];
+    const list = st.withGaps.slice().sort((a, b) => (a.track || a.course).localeCompare(b.track || b.course, "ar") || (a.group || "").localeCompare(b.group || "", "ar") || a.name.localeCompare(b.name, "ar"));
+    const ws = wb.addWorksheet("من ينقصه (للتعبئة)");
+    fmtSheet(ws, base.concat(fl.map((f) => f.label), ["عدد الناقص"]), list.map((x) => [x.name, x.stu, x.id, x.phone, x.track || "", x.course, x.group].concat(fk.map((k) => x.vals[k] || ""), [x.missing.length])));
+    const edge = { style: "thin", color: { argb: "FFE0B000" } };
+    list.forEach((x, i) => fk.forEach((k, j) => { if (!x.vals[k]) { const cell = ws.getRow(i + 2).getCell(base.length + j + 1); cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } }; cell.border = { top: edge, bottom: edge, left: edge, right: edge }; } }));
+    fl.forEach((f, j) => { const col = ws.getColumn(base.length + j + 1); col.width = Math.max(col.width || 0, 16); });
     return ui.download("بيانات ناقصة " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
 
