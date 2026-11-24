@@ -907,6 +907,14 @@ async function suite() {
     const tAbs = [...b.querySelectorAll('[data-cc="sig-view"]')].find((x) => x.dataset.v === "absent"); if (tAbs) { tAbs.click(); await wait(200); }
     ok("التبديل بين القوائم يعرض جدول المسجلين الغائبين", !!b.querySelector('[data-tblbox="sv-absent"]') || /لا أحد في هذه القائمة/.test(b.textContent), "abs");
     ok("سطر التدقيق يحصي الأسماء المقروءة ويذكر غير المعروف", /تدقيق: قُرئ 3 اسماً/.test(b.querySelector(".cc-sigaudit").textContent) && /بقي أسماء غير معروفة|لم تُعرف/.test(b.querySelector(".cc-sigaudit").textContent), b.querySelector(".cc-sigaudit").textContent);
+    {   // نتيجة ضخمة (مئات الأسماء ومرشحون بأسماء طويلة) لا توسّع الصفحة أفقياً
+      const Sg = c.state.sig; Sg.nameHits = Sg.nameHits || {};
+      for (let i = 0; i < 60; i++) { Sg.rows.push({ id: "w|" + i, file: "WhatsApp Image 2026-11-24 at 10.18.54 AM (" + i + ").jpeg", name: "اسم مجهول طويل جداً جداً لا يطابق أحداً أبداً " + i, nid: "", phone: "", signed: true, conf: 0.9, keep: true, form: "" }); Sg.nameHits["w|" + i] = { list: [{ s: { name: "منصور جمال منصور غبن الطويل جداً جداً جداً", stage: "المرحلة الثالثة", group: "S3G2", track: "الحلاقة الرجالية" }, score: 0.7 }], at: 1 }; }
+      c.render(); await wait(300);
+      const outside = [...b.querySelectorAll("*")].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > innerWidth + 4 || r.left < -4) && !e.closest(".cc-scroll"); });
+      ok("نتيجة كبيرة لا يخرج منها عنصر مرئي عن عرض الشاشة (خارج صناديق التمرير)", outside.length === 0, JSON.stringify({ n: outside.length, iw: innerWidth, s: outside.slice(0, 5).map((e) => e.tagName + "." + String(e.className).slice(0, 30) + " L" + Math.round(e.getBoundingClientRect().left) + " R" + Math.round(e.getBoundingClientRect().right)) }));
+      ok("حاوية النتيجة لا تتجاوز عرض الصفحة", [...b.querySelectorAll(".cc-results")].every((x) => x.getBoundingClientRect().width <= b.getBoundingClientRect().width + 2), "res");
+    }
     ok("لا زر بعد البحث (لا تكرار للقراءة)", !b.querySelector('[data-cc="sig-namesearch"]'), "btn");
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.sig.nameHits = {}; c.state.wideLimit = 0; c.render();
   }
