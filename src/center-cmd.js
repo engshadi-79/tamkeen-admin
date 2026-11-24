@@ -37,7 +37,7 @@
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     gaps: { tracks: [], stages: [], status: "active", fields: null, out: null },
-    enrich: null, enrichErr: "",
+    enrich: null, enrichErr: "", enrichAuto: (() => { try { return localStorage.getItem("tamkeen:cc-enrich-auto") !== "0"; } catch (e) { return true; } })(),
     monthly: { tracks: [], stages: [], status: "", month: (new Date().toISOString().slice(0, 7)), mis: true, sig: false, out: null },
     pledge: { tracks: [], stages: [], status: "graduated", students: null, source: "", opts: null, fit: 0 },
     img: { files: [], fast: false, tables: null, reading: false, prog: "", failed: [], took: "" },
@@ -175,6 +175,7 @@
             ? `<span class="cc-badge ok">⚡ محمّل</span><span class="cc-note">${ui.fmt(cacheRows)} طالباً${state.cache.details ? " ببياناتهم الكاملة" : ""} · ${esc(state.cache.at.toLocaleTimeString("ar"))} — التقارير فورية</span><button type="button" class="cc-link" data-cc="preload" ${state.busy ? "disabled" : ""}>تحديث</button><button type="button" class="cc-link" data-cc="drop-cache">مسح</button>`
             : `<button type="button" class="btn secondary small" data-cc="preload" ${state.busy ? "disabled" : ""}>⚡ حمّل كل البيانات مرة واحدة</button><span class="cc-note">اختياري — تُحفظ في هذه الصفحة فقط فتصير التقارير فورية.</span>`}</div>
         </div>
+        ${enrichCard()}
         ${err ? `<p class="cc-alert warn" role="status">${esc(err)}</p>` : ""}
         ${state.extraNote ? `<p class="cc-alert warn" role="status">${esc(state.extraNote)}</p>` : ""}
         ${state.fallbackNote ? `<p class="cc-alert warn" role="status">نُفِّذ من الموقع لا من الذاكرة — ${esc(state.fallbackNote)}</p>${state.fallbackNote.includes("بدون") ? '<button type="button" class="btn secondary small" data-cc="preload-details">⚡ أعد التحميل ببيانات كاملة الآن</button>' : ""}` : ""}
@@ -636,7 +637,7 @@
     const lists = res.results.filter((r) => r.type === "list");
     const total = lists.reduce((a, r) => a + visibleRows(r).length, 0);
     const head = lists.length ? `<div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(total)}</b> صفاً</span><span class="cc-stat"><b>${ui.fmt(lists.length)}</b> ${lists.length === 1 ? "جدول" : "جداول"}</span>${lists.length > 1 ? '<button type="button" class="btn secondary small" data-cc="export-all" title="ملف Excel لكل مسار، مجمّعة في ملف مضغوط واحد">تنزيل الكل (ملف Excel لكل مسار في ملف مضغوط)</button>' : ""}</div>` : "";
-    const tools = colsBar() + formsCard() + enrichCard();
+    const tools = colsBar() + formsCard();
     const body = res.results.map((r, i) => {
       if (r.type === "pending") return `<article class="cc-res"><p class="cc-note">⏳ قيد التنفيذ… ${esc(state.labels[i] || "أمر " + (i + 1))}</p></article>`;
       if (r.error) return `<article class="cc-res"><header class="cc-res-h"><h4>أمر ${i + 1}</h4></header><p class="cc-alert warn">${esc(r.error)}</p></article>`;
@@ -1372,6 +1373,7 @@
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
       if (act === "run-dq") return hasCache ? 0 : T(state.dq.tracks);
+      if (act === "run-gaps" && canExport()) { try { return gapsExportPlan().length; } catch (e) { return 1; } }
       if (act === "run-gaps") { const c = state.gaps; if (hasCache && state.cache.details && !c.status) return 0; const sk = (c.stages || []).length; return sk ? courseOpts().filter((x) => (c.stages || []).map((t) => stageK(t) || t).includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track))).length * 41 : T(c.tracks) * 201; }
       if (act === "run-grp") return hasCache ? 0 : T(state.grp.tracks);
       if (act === "run-mis" || act === "grp-compliance") {
@@ -2865,9 +2867,78 @@
     const e = state.enrich;
     return `<details class="cc-adv cc-enrich" data-open="enrich" ${state.open.enrich || e || state.enrichErr ? "open" : ""}><summary><span>إكمال الفراغ من ملف «تصدير Excel»</span>${e ? `<span class="cc-badge on">${ui.fmt(e.n)}</span>` : ""}<small>الحالة الاجتماعية وغيرها من بيانات المتقدم</small></summary>
       <p class="cc-note">حقول مثل «الحالة الاجتماعية» محفوظة في سجل <b>المتقدم</b> لا في سجل الطالب، فتظهر فارغة في صفحة الطالب وفي هذه التقارير. زر «تصدير Excel» في صفحة الطلاب بنظام المركز يضمها كلها. ارفع ملفه هنا فتُكمَّل به الخلايا الفارغة (بالهوية أو رقم الطالب). يُقرأ على جهازك فقط ويُمسح بإغلاق الصفحة.</p>
-      <label class="cc-field cc-wide"><span>ملف التصدير (.xlsx)</span><input type="file" id="cc-enrich-file" accept=".xlsx"></label>
+      <div class="cc-row"><label class="cc-chk"><input type="checkbox" data-enr="auto" ${state.enrichAuto ? "checked" : ""}> <span>أكمل تلقائياً من النظام عند تنفيذ التقرير (طلب واحد لكل دورة أو مسار)</span></label>
+        <button type="button" class="btn secondary small" data-cc="enrich-now" ${canExport() && !state.busy ? "" : "disabled"} title="يجلب ملف التصدير من نظام المركز الآن بالمرشحات المختارة">اجلب الآن من النظام</button></div>
+      <p class="cc-note">${canExport() ? "✓ إضافة «وكيل تمكين» عندك تدعم الجلب التلقائي (" + esc(App.centerAgent.version()) + ")." : (App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version() ? "⚠ إضافتك (" + esc(App.centerAgent.version()) + ") قديمة: حدّثها إلى 1.5.8 لتفعيل الجلب التلقائي، أو ارفع الملف يدوياً أدناه." : "الجلب التلقائي يعمل عبر إضافة «وكيل تمكين» (1.5.8 فأحدث)؛ ويمكنك رفع الملف يدوياً أدناه.")}</p>
+      <label class="cc-field cc-wide"><span>أو ارفع ملف التصدير يدوياً (.xlsx)</span><input type="file" id="cc-enrich-file" accept=".xlsx"></label>
       ${state.enrichErr ? `<p class="cc-alert err" role="alert">⚠ ${esc(state.enrichErr)}</p>` : ""}
       ${e ? `<p class="cc-note">الملف: <b>${esc(e.name)}</b> · ${ui.fmt(e.n)} طالباً · تُكمَّل: ${esc(e.fields.map(fieldLabelOf).join("، "))} <button type="button" class="cc-link" data-cc="enrich-clear">إزالة الملف</button></p>` : ""}</details>`;
+  }
+  /* ===== جلب ملف التصدير تلقائياً من نظام المركز (إضافة 1.5.8 فأحدث): طلب واحد لكل دورة/مسار بدل صفحة لكل طالب ===== */
+  const agentHas = (min) => {
+    const v = String((App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || ""), n = v.split(".").map(Number);
+    return n.length >= 3 && (n[0] > 1 || (n[0] === 1 && (n[1] > 5 || (n[1] === 5 && n[2] >= min))));
+  };
+  const canExport = () => agentHas(8);
+  function enrichMerge(a, b) {
+    if (!a) return b; if (!b) return a;
+    const m = new Map(); [a.list, b.list].forEach((arr) => arr.forEach((e) => m.set(e.id || "S:" + e.stu, e)));
+    const list = [...m.values()], byId = new Map(), byStu = new Map();
+    list.forEach((e) => { if (e.id) byId.set(e.id, e); if (e.stu) byStu.set(e.stu, e); });
+    return { name: b.name, at: new Date(), list, byId, byStu, fields: [...new Set(a.fields.concat(b.fields))], n: list.length };
+  }
+  const b64File = (b64, name) => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new File([u], name || "students-export.xlsx"); };
+  /* plan = [{params, label}] ← أوامر تصدير؛ يضمّ الناتج إلى state.enrich ويعيد { all, fresh } (fresh = ما جُلب الآن فقط) */
+  async function enrichFromSystem(plan) {
+    if (!canExport()) {
+      const v = (App.centerAgent && App.centerAgent.isReady() && App.centerAgent.version()) || "";
+      throw new Error(v ? "جلب ملف التصدير تلقائياً يحتاج إضافة «وكيل تمكين» بالإصدار 1.5.8 فأحدث (عندك " + v + "). حدّثها من تنبيه التحديث، أو ارفع ملف التصدير يدوياً." : "جلب ملف التصدير تلقائياً يعمل عبر إضافة «وكيل تمكين» (1.5.8 فأحدث)؛ أو ارفع الملف يدوياً.");
+    }
+    const res = await runCommands(plan.map((p) => ({ type: "export", label: p.label, params: p.params })), { noCache: true, noGroup: true });
+    let fresh = null;
+    for (const r of res) {
+      if (!r) continue;
+      if (r.error) throw new Error(r.error);
+      if (r.type !== "export" || !r.b64) throw new Error("لم يرجع الوكيل ملف تصدير. إن كانت إضافتك قديمة فحدّثها إلى 1.5.8.");
+      fresh = enrichMerge(fresh, await enrichLoad(b64File(r.b64, r.name)));
+    }
+    if (!fresh) throw new Error("لم يرجع النظام ملف تصدير.");
+    fresh.name = "نظام المركز (جُلب تلقائياً)";
+    state.enrich = enrichMerge(state.enrich, fresh); state.enrich.name = "نظام المركز (جُلب تلقائياً)";
+    return { all: state.enrich, fresh };
+  }
+  /* هل يكفي ما في الذاكرة لهذه النتائج؟ (≥98% من طلابها موجودون) */
+  function enrichCovers(results) {
+    if (!state.enrich) return false;
+    let n = 0, hit = 0;
+    (results || []).filter((r) => r && r.type === "list").forEach((r) => { const iI = (r.heads || []).indexOf("رقم الهوية"); if (iI < 0) return; r.rows.forEach((x) => { n++; if (state.enrich.byId.has(digits(x.cells[iI]))) hit++; }); });
+    return n > 0 && hit / n >= 0.98;
+  }
+  const needsEnrich = (results) => (results || []).some((r) => r && r.type === "list" && gapFieldList().some((f) => gapCol(r.heads || [], f) >= 0));
+  function gapsExportPlan() {
+    const c = state.gaps, common = c.status ? { status: c.status } : {}, stageKeys = (c.stages || []).map((t) => stageK(t) || t);
+    if (stageKeys.length) {
+      const courses = courseOpts().filter((x) => stageKeys.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track)));
+      if (!courses.length) throw new Error("لا توجد دورة تجمع المسار والمرحلة المختارين.");
+      return courses.map((x) => ({ params: Object.assign({}, common, { training_course_id: x.v }), label: x.t }));
+    }
+    if (!c.tracks.length) return [{ params: Object.assign({}, common), label: "كل الطلاب" }];
+    return trackOpts().map((o) => String(o.v)).filter((id) => c.tracks.includes(id)).map((id) => ({ params: Object.assign({}, common, { track_id: id }), label: optLabel("track_id", id) }));
+  }
+  function gapsListsFrom(e) {
+    const fs = gapFieldList().filter((f) => e.fields.includes(f.name)), lab = fs.map((f) => f.label);
+    const heads = ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "الجنس"].concat(lab);
+    return [{ heads, label: "ملف التصدير", rows: e.list.map((x) => ({ cells: [x.name, x.stu, x.id, x.phone, x.group, x.course, x.sex || "(غير محدد)"].concat(fs.map((f) => (x.v[f.name] || {}).s || "")) })) }];
+  }
+  async function enrichNow() {
+    state.busy = true; state.resultError = ""; state.enrichErr = ""; state.progress = ""; render(); refreshStatus();
+    try {
+      const plan = state.mode === "gaps" ? gapsExportPlan() : buildSelection().map((x) => ({ params: x.command.params, label: x.label }));
+      await enrichFromSystem(plan);
+      if (state.results) state.results = Object.assign({}, state.results, { results: state.results.results.map(enrichResult) });
+      ui.toast("أُكمل الفراغ من بيانات المتقدم (" + ui.fmt(state.enrich.n) + " طالباً في الذاكرة)");
+    } catch (err) { state.enrichErr = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
   }
   /* من قوائم نتائج (heads/rows) ← إحصاء الحقول الفارغة. المقروء = من له «الجنس» (حقل مطلوب فلا يُترك فارغاً) فمن لم تُقرأ بياناته لا يُعدّ ناقصاً */
   function gapStats(lists, fields) {
@@ -2918,13 +2989,18 @@
         <label class="cc-field"><span>حالة الطالب</span><select data-gaps="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>
         <p class="cc-note">اختر المسار والمرحلة من شريط «النطاق» أعلاه (بلا اختيار تُقرأ كل المسارات). تُقرأ صفحة لكل طالب، بحد أقصى 400 طالب في كل مسار أو دورة، فاختر المرحلة لتضييق القراءة. بعد القراءة تغيير الحقول المحددة يُحدّث النتيجة فوراً بلا قراءة جديدة.</p>
       </div>
-      <footer class="cc-actions"><div class="cc-sum"><b>${state.cache && state.cache.details && !c.status ? "⚡ من الذاكرة المحمّلة" : "تقدير القراءة: حتى " + ui.fmt(n) + " أمر"}</b><span>${esc(scopeSummaryText())}</span></div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${canExport() ? ui.fmt(n) + (n === 1 ? " طلب تصدير واحد" : " طلبات تصدير") : state.cache && state.cache.details && !c.status ? "⚡ من الذاكرة المحمّلة" : "تقدير القراءة: حتى " + ui.fmt(n) + " أمر"}</b><span>${esc(scopeSummaryText())}</span></div>
         <div class="cc-act">${state.enrich ? `<button type="button" class="btn secondary" data-cc="gaps-file" ${sel.size ? "" : "disabled"} title="يحلّل ملف التصدير نفسه بلا أي قراءة من نظام المركز">حلّل ملف التصدير مباشرة (بلا قراءة)</button>` : ""}<button type="button" class="btn navy" data-cc="run-gaps" ${state.busy || !sel.size ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اقرأ وابحث عن الناقص"}</button></div></footer>
     </section>`;
   }
   async function runGaps() {
     const c = state.gaps; c.out = null; state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
     try {
+      if (canExport()) {   // الأسرع والأدق: ملف «تصدير Excel» نفسه (طلب لكل دورة/مسار) بدل صفحة لكل طالب
+        const { fresh } = await enrichFromSystem(gapsExportPlan());
+        c.out = { at: new Date(), file: true, src: "system", lists: gapsListsFrom(fresh) };
+        return;
+      }
       requireAgent15();
       const common = c.status ? { status: c.status } : {}, mk = (params, label) => ({ type: "list", label, params: Object.assign({}, params, common), details: true });
       let cmds;
@@ -2951,7 +3027,7 @@
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> بيانات ناقصة <small>(${ui.fmt(st.read)} طالباً مقروءاً)</small></h3>
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(st.read)}</b> طالباً ${o.file ? "في الملف" : "قُرئت بياناته"}</span>${st.per.some((p) => p.viaApp) ? `<span class="cc-stat ok"><b>${ui.fmt(st.per.reduce((a, p) => a + p.viaApp, 0))}</b> خلية أُكملت من بيانات المتقدم</span>` : ""}<span class="cc-stat ${st.withGaps.length ? "bad" : "ok"}"><b>${ui.fmt(st.withGaps.length)}</b> ينقصهم حقل أو أكثر</span>${st.unread ? `<span class="cc-stat"><b>${ui.fmt(st.unread)}</b> لم تُقرأ بياناتهم</span>` : ""}
         <button type="button" class="btn secondary small" data-cc="gaps-xlsx">تنزيل Excel</button><button type="button" class="btn secondary small" data-cc="gaps-copy">نسخ الملخص</button></div>
-      ${o.file ? '<p class="cc-note">المصدر: ملف التصدير نفسه (بلا قراءة من نظام المركز). الخلية الفارغة في سجل الطالب تُكمَّل من سجل المتقدم قبل أن تُحسب ناقصة.</p>' : ""}
+      ${o.file ? `<p class="cc-note">المصدر: ${o.src === "system" ? "ملف «تصدير Excel» جُلب من نظام المركز بطلب واحد لكل دورة أو مسار" : "ملف التصدير الذي رفعتَه (بلا قراءة من النظام)"}. الخلية الفارغة في سجل الطالب تُكمَّل من سجل المتقدم قبل أن تُحسب ناقصة.</p>` : ""}
       ${miss.length ? `<p class="cc-alert warn">لم أجد عمود: ${esc(miss.join("، "))} في بيانات النظام، فلم تُحسب.</p>` : ""}
       ${st.unread || capped ? `<p class="cc-alert warn">قُرئت بيانات بعض الطلاب فقط (الحد الأقصى ٤٠٠ في كل مسار أو دورة، أو تعذّرت قراءة صفحاتهم): من لم تُقرأ بياناته لا يُعدّ ناقصاً. ضيّق النطاق بالمرحلة لتشمل القراءة الجميع.</p>` : ""}
       <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الحقول: كم فارغ في النظام؟</h4></div></header>${dataTable("gap-sum", ["الحقل", "مُدخَل", "منه من المتقدم", "فارغ", "نسبة الفارغ"], sumRows)}</article>
@@ -3467,7 +3543,7 @@
 
   /* ===== حزمة التقارير: عدة تقارير محفوظة تُشغَّل معاً في ملف Excel واحد، ورقة لكل تقرير ===== */
   async function runForMode(mode) {
-    if (mode === "report") { const plan = buildSelection(); return executeBatch(plan.map((x) => x.command), plan.map((x) => x.label), true); }
+    if (mode === "report") { const plan = buildSelection(); return executeBatch(plan.map((x) => x.command), plan.map((x) => x.label), true, plan.map((x) => ({ params: x.command.params, label: x.label }))); }
     if (mode === "compare") return runCompare();
     if (mode === "siblings") { state.sib.stageMode = false; return runSiblings(); }
     if (mode === "missing") return runMissing();
@@ -4102,7 +4178,7 @@
   const executeCommand = (command) => executeBatch([command], []);
 
   /* ينفّذ أمراً أو عدة أوامر بالتتابع. labels: عنوان كل نتيجة (اختياري) */
-  async function executeBatch(commands, labels, useExtras) {
+  async function executeBatch(commands, labels, useExtras, exportPlan) {
     state.busy = true; state.autoRunRegister = false; state.resultError = ""; state.results = null; state.adding = ""; state.proposal = null;
     state.progress = ""; state.plan = null; state.planResolve = null; state.labels = labels || []; state.groupFilter = "";
     render(); refreshStatus();
@@ -4113,6 +4189,14 @@
       if (!results.length) throw new Error("لم تصل نتيجة من الوكيل.");
       if (commands.length === 1 && results[0] && results[0].error) throw new Error(results[0].error);
       state.results = { at: new Date(), results: (useExtras ? results.map(applyExtras) : results).map(enrichResult) };
+      /* إكمال تلقائي من بيانات المتقدم: يلي تنفيذ التقرير بالضغطة نفسها، فقط إن كان في الجداول أعمدة تستفيد، ولم تكفِ الذاكرة */
+      if (exportPlan && state.enrichAuto && canExport() && needsEnrich(state.results.results) && !enrichCovers(state.results.results)) {
+        try {
+          state.progress = "إكمال الفراغ من بيانات المتقدم…"; render();
+          await enrichFromSystem(exportPlan);
+          state.results = Object.assign({}, state.results, { results: state.results.results.map(enrichResult) }); state.enrichErr = "";
+        } catch (e) { state.enrichErr = "تعذّر الإكمال التلقائي من النظام: " + (e.message || e); }
+      }
       state.requestText = "";
       state.reg = null;
     } catch (err) { state.resultError = err.message || String(err); }
@@ -4234,7 +4318,7 @@
             state.results = { results: local.map(applyExtras).map(enrichResult) };
             render(); return;
           }
-          return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
+          return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true, plan.map((p) => ({ params: p.command.params, label: p.label })));
         } else if (act === "refresh-mode") { const rb = box.querySelector('[data-cc="' + RUN_BTN[state.mode] + '"]'); if (!rb || rb.disabled) return; state.forceFresh = true; return rb.click();
         } else if (act === "fav-toggle") { const k = b.dataset.m, f = lsGet(FAV_KEY, []); lsSet(FAV_KEY, f.includes(k) ? f.filter((x) => x !== k) : [...f, k]); return render();
         } else if (act === "mode") {
@@ -4259,10 +4343,9 @@
         } else if (act === "run-gaps") { return runGaps();
         } else if (act === "gaps-file") {
           const e = state.enrich; if (!e) return;
-          const fs = gapFieldList().filter((f) => e.fields.includes(f.name)), lab = fs.map((f) => f.label);
-          const heads = ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "الجنس"].concat(lab);
-          state.gaps.out = { at: new Date(), file: true, lists: [{ heads, label: "ملف التصدير", rows: e.list.map((x) => ({ cells: [x.name, x.stu, x.id, x.phone, x.group, x.course, x.sex || "(غير محدد)"].concat(fs.map((f) => (x.v[f.name] || {}).s || "")) })) }] };
+          state.gaps.out = { at: new Date(), file: true, lists: gapsListsFrom(e) };
           return render();
+        } else if (act === "enrich-now") { return enrichNow();
         } else if (act === "enrich-clear") { state.enrich = null; state.enrichErr = ""; if (state.results) state.results = Object.assign({}, state.results); return render();
         } else if (act === "gaps-xlsx") { return gapsOutput("xlsx");
         } else if (act === "gaps-copy") { return gapsOutput("copy");
@@ -4554,6 +4637,7 @@
         else if (k.startsWith("map-")) c.map[k.slice(4)] = Number(t.value);
         return render();
       }
+      if (t.dataset.enr === "auto") { state.enrichAuto = !!t.checked; try { localStorage.setItem("tamkeen:cc-enrich-auto", t.checked ? "1" : "0"); } catch (e) { /* خاص */ } return render(); }
       if (t.id === "cc-enrich-file") {
         const f = (t.files || [])[0]; if (!f) return;
         state.enrichErr = "";

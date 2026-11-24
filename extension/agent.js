@@ -27,6 +27,7 @@ window.__kxStart = async () => {
     ["GET", /^\/admin\/evaluation-impact-reports\/(summary|pre-post|impact|questions|responses)(\?[^#]*)?$/],  // إحصاءات قياس الأثر (قراءة فقط)
     ["GET", /^\/admin\/training-attendances(\?[^#]*)?$/],          // قائمة جلسات الحضور (قراءة فقط)
     ["GET", /^\/admin\/training-attendances\/\d+\/edit$/],       // حضور جلسة واحدة — قراءة فقط، لا يُحفَظ منه شيء
+    ["GET", /^\/admin\/students\/export-excel(\?[^#]*)?$/],     // ملف «تصدير Excel» نفسه (بيانات الطالب والمتقدم) — قراءة فقط، طلب واحد بدل صفحة لكل طالب
   ];
   const guard = (method, path) => {
     const u = new URL(path, location.origin);
@@ -235,6 +236,30 @@ window.__kxStart = async () => {
     out.details = { read, of: out.rows.length, capped: out.rows.length > max };
     if (!read && targets.length) out.details.error = "تعذّرت قراءة صفحات بيانات الطلاب (تحقق من صلاحياتك).";
     log("بيانات كاملة لـ" + read + " طالباً.");
+  }
+
+  /* ملف «تصدير Excel» من صفحة الطلاب كما ينزله زرّها، بالمرشحات نفسها (track_id/training_course_id/status/group_status).
+     طلب GET واحد، يعيد الملف base64 لتمكين ليقرأه على جهازك. يُرفض ما ليس ملف xlsx. لا شيء يُكتب في النظام. */
+  const MAX_EXPORT = 20 * 1024 * 1024;
+  async function cmdExport(cmd, index) {
+    const out = { index, type: "export", label: cmd.label || "", name: "students-export.xlsx", bytes: 0, b64: "" };
+    say("جلب ملف التصدير…");
+    await sleep(GET_GAP);
+    const params = cmd.params || {}, path = "/admin/students/export-excel" + (Object.keys(params).length ? "?" + qs(params) : "");
+    guard("GET", path);
+    const res = await fetch(path, { credentials: "same-origin", redirect: "follow" });
+    if (/\/login/i.test(new URL(res.url).pathname)) throw new Error("انتهت الجلسة — سجّل الدخول ثم أعد التشغيل");
+    if (res.status === 404) throw new Error("الصفحة غير موجودة (404)");
+    if (res.status === 403) throw new Error("ليست لديك صلاحية لتصدير الطلاب (403)");
+    if (res.status >= 500) throw new Error("خطأ من الخادم HTTP " + res.status);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.length < 100 || buf[0] !== 0x50 || buf[1] !== 0x4b) throw new Error("لم يرجع النظام ملف Excel (قد يكون المرشح غير مدعوم أو انتهت الجلسة).");
+    if (buf.length > MAX_EXPORT) throw new Error("ملف التصدير كبير جداً (" + Math.round(buf.length / 1048576) + " ميغابايت): ضيّق المرشح بالمسار أو الدورة.");
+    let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    out.b64 = btoa(bin); out.bytes = buf.length;
+    const cd = res.headers.get("content-disposition") || "", m = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(cd); if (m) { try { out.name = decodeURIComponent(m[1]); } catch (e) { out.name = m[1]; } }
+    log("ملف التصدير: " + buf.length + " بايت");
+    return out;
   }
 
   async function cmdLookup(cmd, index) {
@@ -657,7 +682,7 @@ window.__kxStart = async () => {
     const cmd = pack.commands[i];
     window.__kxCmd = { i: i + 1, n: pack.commands.length };
     try {
-      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister, page: cmdPage, attendance: cmdAttendance }[cmd.type];
+      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister, page: cmdPage, attendance: cmdAttendance, export: cmdExport }[cmd.type];
       if (!fn) { results.push({ index: i, type: cmd.type, error: "نوع أمر غير معروف" }); continue; }
       results.push(await fn(cmd, i));
     } catch (e) {

@@ -195,6 +195,16 @@ http.createServer((req, res) => {
     const q2 = JSON.parse(await stub.c.eval("JSON.stringify(window.__out || {err: window.__err})"));
     const it = q2.results && q2.results[0].items[0];
     step("الاستعلام عن شخص يعيد كل بياناته", it && it.count === 1 && it.heads.includes("تاريخ الميلاد") && it.rows[0].cells.length === it.heads.length, it && it.heads.length + " عموداً");
+    // أمر «تصدير Excel»: طلب GET واحد يعيد الملف نفسه (بيانات الطالب والمتقدم)
+    const hitsBefore = JSON.parse(await (await fetch("http://localhost:4197/__hits")).text()).length;
+    await stub.c.eval(`window.__out = null; window.__err = null;
+      App.centerAgent.run([{type:'export',label:'تصدير',params:{status:'active'}}], {}).then((d) => { window.__out = d; }).catch((e) => { window.__err = e.message; }); 1`);
+    await waitFor(() => stub.c.eval("!!window.__out || !!window.__err"), 60000, "أمر التصدير");
+    const q3 = JSON.parse(await stub.c.eval("JSON.stringify(window.__out || {err: window.__err})"));
+    const E = q3.results && q3.results[0];
+    step("أمر التصدير عبر الإضافة يعيد ملف xlsx حقيقياً (PK) بحجمه واسمه", !!E && E.type === "export" && E.bytes > 200 && Buffer.from(E.b64 || "", "base64").slice(0, 2).toString() === "PK" && /\.xlsx$/i.test(E.name || ""), E ? E.bytes + " بايت · " + E.name : JSON.stringify(q3).slice(0, 160));
+    const hx = JSON.parse(await (await fetch("http://localhost:4197/__hits")).text()).slice(hitsBefore).filter((x) => !/__hits|favicon/.test(x));
+    step("الإضافة طلبت التصدير مرة واحدة فقط وبـ GET فقط (لا قراءة صفحات ولا كتابة)", hx.filter((x) => /export-excel/.test(x)).length === 1 && hx.every((x) => /^GET /.test(x)), hx.join(" | ").slice(0, 160));
     stub.c.close();
 
     // ===== ب) واجهة تمكين الحقيقية من القرص =====
