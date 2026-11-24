@@ -843,6 +843,7 @@ async function suite() {
     ok("قائمة «غير معروفة» تعرض الاسم المقروء ونتيجة البحث", !!b.querySelector('[data-tblbox="sv-orph"]') && /زيد القاسم الغريب/.test(b.querySelector('[data-tblbox="sv-orph"]').textContent), "orph");
     const tAbs = [...b.querySelectorAll('[data-cc="sig-view"]')].find((x) => x.dataset.v === "absent"); if (tAbs) { tAbs.click(); await wait(200); }
     ok("التبديل بين القوائم يعرض جدول المسجلين الغائبين", !!b.querySelector('[data-tblbox="sv-absent"]') || /لا أحد في هذه القائمة/.test(b.textContent), "abs");
+    ok("سطر التدقيق يحصي الأسماء المقروءة ويذكر غير المعروف", /تدقيق: قُرئ 3 اسماً/.test(b.querySelector(".cc-sigaudit").textContent) && /بقي أسماء غير معروفة|لم تُعرف/.test(b.querySelector(".cc-sigaudit").textContent), b.querySelector(".cc-sigaudit").textContent);
     ok("لا زر بعد البحث (لا تكرار للقراءة)", !b.querySelector('[data-cc="sig-namesearch"]'), "btn");
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.sig.nameHits = {}; c.state.wideLimit = 0; c.render();
   }
