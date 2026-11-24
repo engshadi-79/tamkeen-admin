@@ -915,6 +915,21 @@ async function suite() {
       ok("نتيجة كبيرة لا يخرج منها عنصر مرئي عن عرض الشاشة (خارج صناديق التمرير)", outside.length === 0, JSON.stringify({ n: outside.length, iw: innerWidth, s: outside.slice(0, 5).map((e) => e.tagName + "." + String(e.className).slice(0, 30) + " L" + Math.round(e.getBoundingClientRect().left) + " R" + Math.round(e.getBoundingClientRect().right)) }));
       ok("حاوية النتيجة لا تتجاوز عرض الصفحة", [...b.querySelectorAll(".cc-results")].every((x) => x.getBoundingClientRect().width <= b.getBoundingClientRect().width + 2), "res");
     }
+    {   // التصفية المتقدمة: قيمة موجودة في بيانات الطلاب وناقصة من لقطة نموذج النظام (الحالة الاجتماعية)
+      const keepCache = c.state.cache, keepSel = c.state.sel.extra, keepMode = c.state.mode;
+      c.state.cache = { at: new Date(), details: true, items: [{ trackId: "1", heads: ["الاسم", "الحالة الاجتماعية"], rows: [{ cells: ["أ", "أعزب"] }, { cells: ["ب", "منفصلة"] }, { cells: ["ج", "منفصلة"] }, { cells: ["د", "الزوج"] }] }] };
+      c.state.mode = "report"; c.state.sel.extra = {}; c.render();
+      const optsM = [...b.querySelectorAll('select[data-sel="x:marital_status"] option')].map((o) => o.textContent.trim());
+      ok("«الحالة الاجتماعية»: القيمة الفعلية الناقصة من النموذج تظهر في التصفية «(من البيانات)»", optsM.some((t) => /منفصلة \(من البيانات\)/.test(t)) && optsM.includes("أعزب") && !optsM.some((t) => /أعزب \(من/.test(t)), JSON.stringify(optsM));
+      const rr = c.state.cache.items[0], applied = App.centerCmd._extras.apply({ type: "list", heads: rr.heads, rows: rr.rows }) ;
+      c.state.sel.extra = { marital_status: "~منفصلة" };
+      const filt = App.centerCmd._extras.apply({ type: "list", heads: rr.heads, rows: rr.rows });
+      ok("التصفية بالقيمة الفعلية تُبقي أصحابها فقط", filt.rows.length === 2 && filt.rows.every((x) => x.cells[1] === "منفصلة"), JSON.stringify(filt.rows.map((x) => x.cells)));
+      c.state.sel.extra = { marital_status: "single" };
+      const filt2 = App.centerCmd._extras.apply({ type: "list", heads: rr.heads, rows: rr.rows });
+      ok("وقيم النموذج المعتادة تعمل كما كانت", filt2.rows.length === 1 && filt2.rows[0].cells[1] === "أعزب", JSON.stringify(filt2.rows.map((x) => x.cells)));
+      c.state.cache = keepCache; c.state.sel.extra = keepSel || {}; c.state.mode = keepMode; c.render();
+    }
     ok("لا زر بعد البحث (لا تكرار للقراءة)", !b.querySelector('[data-cc="sig-namesearch"]'), "btn");
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.sig.nameHits = {}; c.state.wideLimit = 0; c.render();
   }

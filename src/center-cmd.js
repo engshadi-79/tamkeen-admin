@@ -80,14 +80,25 @@
   const EXTRA_SKIP = new Set(["track_id", "status"]);
   const extraFields = () => (SCHEMA().createStudent.fields || []).filter((f) => f.type === "select" && !EXTRA_SKIP.has(f.name) && (f.options || []).filter((o) => o.v !== "").length);
   const extraActive = () => Object.entries(state.sel.extra || {}).filter(([, v]) => v);
+  /* قوائم التصفية المتقدمة مأخوذة من لقطة نموذج «إضافة طالب» وقد تنقصها قيم موجودة فعلاً في بيانات الطلاب (نظام المركز يتغيّر).
+     فتُضاف إليها القيم الفعلية التي وُجدت في البيانات المحمّلة أو في النتيجة الحالية، بقيمة «~النص». */
+  function extraSeen(f) {
+    const have = new Set((f.options || []).map((o) => norm(o.t))), seen = new Map(), key = norm(f.label);
+    const take = (heads, rows) => { const i = (heads || []).findIndex((h) => norm(h) === key); if (i < 0) return; (rows || []).forEach((r) => { const t = clean(r.cells ? r.cells[i] : r[i]); if (t && !have.has(norm(t)) && !seen.has(norm(t))) seen.set(norm(t), t); }); };
+    ((state.cache && state.cache.items) || []).forEach((it) => take(it.heads, it.rows));
+    ((state.results && state.results.results) || []).filter((r) => r && r.type === "list").forEach((r) => take(r.heads, r.rows));
+    return [...seen.values()].sort((a, b) => a.localeCompare(b, "ar"));
+  }
+  const extraOptText = (f, v) => { const s = String(v); if (s.startsWith("~")) return s.slice(1); const o = (f.options || []).find((x) => String(x.v) === s); return o ? o.t : ""; };
   function applyExtras(r) {
     const act = extraActive();
     if (!act.length || !r || r.type !== "list") return r;
     let rows = r.rows;
     for (const [name, v] of act) {
       const f = extraFields().find((x) => x.name === name);
-      const o = f && f.options.find((x) => String(x.v) === String(v));
-      if (!f || !o) continue;
+      const oT = f ? extraOptText(f, v) : "";
+      if (!f || !oT) continue;
+      const o = { t: oT };
       const i = r.heads.findIndex((h) => norm(h) === norm(f.label));
       if (i < 0) { state.extraNote = `لم أجد عمود «${f.label}» في النتيجة فلم تُطبَّق هذه التصفية. تأكد أن «كل بيانات الطالب» محمّلة.`; continue; }
       rows = rows.filter((x) => norm(x.cells[i]) === norm(o.t));
@@ -102,7 +113,7 @@
     if (s.status) common.status = s.status;
     if (s.group_status) common.group_status = s.group_status;
     const extra = [s.status && optLabel("status", s.status), s.group_status && optLabel("group_status", s.group_status)].filter(Boolean).join(" · ");
-    const ex = extraActive().map(([k, v]) => { const f = extraFields().find((x) => x.name === k); const o = f && f.options.find((x) => String(x.v) === String(v)); return f && o ? f.label + ": " + o.t : ""; }).filter(Boolean).join(" · ");
+    const ex = extraActive().map(([k, v]) => { const f = extraFields().find((x) => x.name === k), t = f ? extraOptText(f, v) : ""; return f && t ? f.label + ": " + t : ""; }).filter(Boolean).join(" · ");
     const needDetails = s.details || extraActive().length > 0;
     const mk = (params, label) => ({
       command: Object.assign({ type: "list", label, params: Object.assign({}, params, common) }, needDetails ? { details: true } : {}),
@@ -153,7 +164,8 @@
         <details class="cc-adv" data-open="adv" ${state.open.adv || exN ? "open" : ""}>
           <summary><span>تصفية متقدمة بحقول الطالب</span>${exN ? `<span class="cc-badge on">${ui.fmt(exN)}</span>` : ""}<small>الجنس، الوضع الصحي، المحافظة…</small></summary>
           <p class="cc-note">اختيار أي حقل هنا يفعّل «كل بيانات الطالب» تلقائياً.</p>
-          <div class="cc-three">${extraFields().map((f) => `<label class="cc-field"><span>${esc(f.label)}</span><select data-sel="x:${esc(f.name)}"><option value="">الكل</option>${f.options.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String((s.extra || {})[f.name]) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>`).join("")}</div>
+          <div class="cc-three">${extraFields().map((f) => `<label class="cc-field"><span>${esc(f.label)}</span><select data-sel="x:${esc(f.name)}"><option value="">الكل</option>${f.options.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String((s.extra || {})[f.name]) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}${extraSeen(f).map((t) => `<option value="${esc("~" + t)}" ${String((s.extra || {})[f.name]) === "~" + t ? "selected" : ""}>${esc(t)} (من البيانات)</option>`).join("")}</select></label>`).join("")}</div>
+          ${extraFields().some((f) => extraSeen(f).length) ? `<p class="cc-note">القيم المكتوب بجانبها «(من البيانات)» ليست في قائمة نموذج النظام المحفوظة لدينا لكنها موجودة فعلاً عند طلابك، فأُضيفت للتصفية.</p>` : ""}
         </details>
         <div class="cc-opts">
           <div class="cc-opt">${chk("details", "1", "كل بيانات الطالب (الميلاد، العنوان…) — أبطأ، حتى 400 طالب لكل أمر", s.details)}</div>
@@ -4504,6 +4516,7 @@
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
   sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
   App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
+    _extras: { apply: applyExtras, seen: extraSeen },
     _sig: { learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
