@@ -3,7 +3,7 @@
    (node tools/test-center-util.js). لا تقرأ DOM ولا ui ولا state. */
 (function (App) {
   const clean = (v) => String(v == null ? "" : v).replace(/\s+/g, " ").trim();
-  const digits = (v) => String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, "");
+  const digits = (v) => String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0)).replace(/\D/g, "");
   const cellStr = (c) => String(c == null ? "" : c);
   const phoneNorm = (v) => { const d = digits(v); return /^5\d{8}$/.test(d) ? "0" + d : d; };
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
