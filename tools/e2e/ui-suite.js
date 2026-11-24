@@ -825,7 +825,9 @@ async function suite() {
     const hits = c.state.sig.nameHits || {}, h0 = hits["n:0"], h1 = hits["n:1"];
     ok("المرشح الصحيح يظهر أولاً بتشابه مرتفع، والبعيد لا يُقترح", !!h0 && h0.list.length >= 1 && h0.list[0].s.name === "أحمد نادر محمد الطويل" && h0.list[0].score >= 0.8 && !h0.list.some((x) => /سامر/.test(x.s.name)), JSON.stringify(h0 && h0.list.map((x) => [x.s.name, x.score])));
     ok("من لا شبيه له يُكتب أنه بُحث عنه ولم يوجد", !!h1 && h1.list.length === 0 && /فلم أجد شبيهاً/.test(b.textContent), h1);
-    ok("النتيجة تُعرض في صف الاسم بمرحلته ومجموعته", /بالاسم في النظام: أحمد نادر محمد الطويل · المرحلة الأولى · مجموعة S1G2/.test(b.textContent), "view");
+    const fn2 = b.querySelector('[data-tblbox="sig-found"]');
+    ok("المرشح الواحد القوي يُعتمد بالاسم: يظهر في «عُرفوا» باسمه في النظام ومرحلته وطريقة التعرّف", !!fn2 && /أحمد نادر محمد الطويل/.test(fn2.textContent) && /المرحلة الأولى/.test(fn2.textContent) && /بالاسم/.test(fn2.textContent), fn2 && fn2.textContent.slice(0, 200));
+    ok("ولا يبقى بين «أسماء لا تطابق أحداً»", ![...b.querySelectorAll(".cc-sig-r")].some((x) => /أحمد نادر الطويل/.test(x.textContent)), "orph");
     ok("لا زر بعد البحث (لا تكرار للقراءة)", !b.querySelector('[data-cc="sig-namesearch"]'), "btn");
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.sig.nameHits = {}; c.state.wideLimit = 0; c.render();
   }

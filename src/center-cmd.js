@@ -2013,8 +2013,8 @@
   const sigAllHeads = () => ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "الحالة", "الاسم المقروء من الورقة", "الورقة", "المطابقة"];
   const sigAllRow = (x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, x.reg.course, SIG_ST[x.st], x.found ? x.found.name : "", x.found ? sigShort(x.found.file) : "", x.how];
   const sigShort = (t) => { t = String(t || ""); return t.length > 22 ? t.slice(0, 10) + "…" + t.slice(-8) : t; };
-  const sigFoundHeads = () => ["الاسم في النظام", "الاسم المقروء من الورقة", "رقم الهوية", "الجوال", "المرحلة", "المجموعة", "المسار", "الحكم"];
-  const sigFoundRow = (x) => [x.s.name, x.f.name, x.s.id || x.f.nid || "", x.s.phone || x.f.phone || "", x.s.stage, x.s.group, x.s.track, x.f.signed === true ? "موقّع" : "غير محسوم"];
+  const sigFoundHeads = () => ["الاسم في النظام", "الاسم المقروء من الورقة", "رقم الهوية", "الجوال", "المرحلة", "المجموعة", "المسار", "الحكم", "طريقة التعرّف"];
+  const sigFoundRow = (x) => [x.s.name, x.f.name, x.s.id || x.f.nid || "", x.s.phone || x.f.phone || "", x.s.stage, x.s.group, x.s.track, x.f.signed === true ? "موقّع" : "غير محسوم", ((state.sig.lookups || {})[x.f.id] || {}).by === "name" ? "بالاسم" : "بالهوية/الجوال"];
   const sigLookupText = (f) => {
     const lk = (state.sig.lookups || {})[f.id];
     if (!lk || (lk.none && ((state.sig.nameHits || {})[f.id] || {}).list)) { const nh = (state.sig.nameHits || {})[f.id]; if (!nh) return ""; if (!nh.list.length) return "بحثتُ عن اسمه في كل النظام فلم أجد شبيهاً"; return "بالاسم في النظام: " + nh.list.map((x) => x.s.name + [x.s.stage, x.s.group ? "مجموعة " + x.s.group : "", x.s.track].filter(Boolean).map((y) => " · " + y).join("") + " (" + Math.round(x.score * 100) + "%)").join(" ‖ "); }
@@ -2090,7 +2090,7 @@
       if (j === undefined || !lk || !lk.list || lk.list.length !== 1) return;
       const ri = regOf(lk.list[0]); if (ri < 0 || usedReg.has(ri)) return;
       const at = m.pairs.findIndex((p) => p.found === j || p.reg === ri);
-      const np = { reg: ri, found: j, score: 1, sure: true, by: "lookup", mismatch: false };
+      const np = { reg: ri, found: j, score: lk.by === "name" ? lk.score : 1, sure: true, by: lk.by === "name" ? "lookupname" : "lookup", mismatch: false };
       if (at >= 0) m.pairs[at] = np; else m.pairs.push(np);
       usedReg.add(ri); usedFoundIdx.add(j);
     });
@@ -2110,7 +2110,7 @@
       let f = null, how = "", score = 0, state1, rev = false;
       if (man && man !== "none") { f = found.find((x) => x.id === man) || null; how = f ? "مراجعتك" : ""; score = 1; }
       else if (man === "none") { how = "رفضتَ المطابقة"; }
-      else { const p = byReg.get(i); if (p) { f = found[p.found]; score = p.score; rev = !p.sure; how = p.by === "learned" ? "من تصحيح سابق لك" : p.by === "lookup" ? "عُثر عليه بالهوية/الجوال في النظام" : p.by === "id" ? "طابقت الهوية" : p.by === "phone" ? "طابق الجوال" : p.mismatch ? "الاسم يتفق لكن رقم الهوية/الجوال يختلف" : p.sure ? "" : "تحتاج مراجعة"; } }
+      else { const p = byReg.get(i); if (p) { f = found[p.found]; score = p.score; rev = !p.sure; how = p.by === "learned" ? "من تصحيح سابق لك" : p.by === "lookupname" ? "عُثر عليه بالاسم في النظام" : p.by === "lookup" ? "عُثر عليه بالهوية/الجوال في النظام" : p.by === "id" ? "طابقت الهوية" : p.by === "phone" ? "طابق الجوال" : p.mismatch ? "الاسم يتفق لكن رقم الهوية/الجوال يختلف" : p.sure ? "" : "تحتاج مراجعة"; } }
       if (f) usedFound.add(f.id);
       if (!f) state1 = "absent";
       else if (rev) state1 = "review";
@@ -2214,7 +2214,12 @@
       const people = it.rows.map((x) => stuFrom(it, x));
       (qs.get(list[i]) || []).forEach((f) => people.forEach((s) => { const sc = App.ccUtil.nameScore(f.name, s.name); if (sc >= 0.62) { const k = s.stu || s.id || s.name, m = cand.get(f.id); if (!m.has(k) || m.get(k).score < sc) m.set(k, { s, score: sc }); } }));
     });
-    targets.forEach((f) => { c.nameHits[f.id] = { list: [...cand.get(f.id).values()].sort((a, b) => b.score - a.score).slice(0, 4), at: Date.now() }; });
+    targets.forEach((f) => {
+      const list = [...cand.get(f.id).values()].sort((a, b) => b.score - a.score).slice(0, 4);
+      c.nameHits[f.id] = { list, at: Date.now() };
+      /* مرشح واحد قوي وبعيد عن الثاني: يُعتمد (بالاسم) فيظهر باسمه في النظام أو يُربط بمسجّل إن كان في القائمة */
+      if (list.length && list[0].score >= 0.85 && (list.length === 1 || list[0].score - list[1].score >= 0.1)) { c.lookups = c.lookups || {}; c.lookups[f.id] = { q: f.name, list: [list[0].s], by: "name", score: list[0].score }; }
+    });
     return targets.length;
   }
   async function runSigNameSearch() {
@@ -2312,7 +2317,7 @@
       ${review.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>تحتاج مراجعتك</h4><span class="cc-badge">${ui.fmt(review.length)}</span></div></header><p class="cc-note">تشابه جزئي بين اسم مسجّل واسم مقروء. أكّد أو ارفض.</p>
         <div class="cc-sig-rev">${review.map((x) => `<div class="cc-sig-r"><span><b>${esc(x.reg.name)}</b> ↔ ${x.found ? esc(x.found.name) : "—"} <small>${x.found ? Math.round(x.score * 100) + "%" + (x.found.signed === true ? " · موقّع" : x.found.signed === false ? " · بلا توقيع" : " · توقيع غير محسوم") + (x.how ? " · " + esc(x.how) : "") + (x.found.nid ? " · هوية " + esc(x.found.nid) : "") + (x.found.phone ? " · جوال " + esc(x.found.phone) : "") + (sigLookupText(x.found) ? " · <b>" + esc(sigLookupText(x.found)) + "</b>" : "") : ""}</small></span><span><button type="button" class="btn secondary small" data-cc="sig-ok" data-form="${FM}" data-k="${esc(x.reg.key)}" data-f="${x.found ? esc(x.found.id) : ""}">نعم هو</button> <button type="button" class="btn secondary small" data-cc="sig-no" data-form="${FM}" data-k="${esc(x.reg.key)}" data-f="${x.found ? esc(x.found.id) : ""}">ليس هو</button></span></div>`).join("")}</div></article>` : ""}
       ${miss.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>لم يوقّعوا</h4><span class="cc-badge bad">${ui.fmt(miss.length)}</span></div></header>${tbl(K("sig-miss"), miss)}</article>` : ""}
-      ${o.resolved.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>عُرفوا بالهوية أو الجوال من نظام المركز</h4><span class="cc-badge">${ui.fmt(o.resolved.length)}</span></div></header><p class="cc-note">رقم الهوية أو الجوال المقروء دلّ على طالب في النظام ليس ضمن قائمة المرحلة/الحالة المختارة، فعُرض باسمه في النظام ولو كان اسمه في الورقة مكتوباً خطأً.</p>${dataTable(K("sig-found"), sigFoundHeads(), o.resolved.map(sigFoundRow))}</article>` : ""}
+      ${o.resolved.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>عُرفوا بالهوية أو الجوال أو الاسم من نظام المركز</h4><span class="cc-badge">${ui.fmt(o.resolved.length)}</span></div></header><p class="cc-note">رقم الهوية أو الجوال المقروء (أو الاسم إن لم يكن له رقم وتشابه تشابهاً قوياً واضحاً) دلّ على طالب في النظام ليس ضمن قائمة المرحلة/الحالة المختارة، فعُرض باسمه في النظام ولو كان اسمه في الورقة مكتوباً خطأً.</p>${dataTable(K("sig-found"), sigFoundHeads(), o.resolved.map(sigFoundRow))}</article>` : ""}
       ${o.orphans.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>أسماء في الأوراق لا تطابق مسجّلاً في هذه المرحلة</h4><span class="cc-badge">${ui.fmt(o.orphans.length)}</span></div></header><p class="cc-note">قد تكون قراءة خاطئة أو متدرباً من مرحلة أخرى. إن كان أحدها لمسجّل فاختره:</p>
         <div class="cc-sig-rev">${o.orphans.map((f) => `<div class="cc-sig-r"><span><b>${esc(f.name)}</b> <small>${f.signed === true ? "موقّع" : "غير محسوم"} · ${esc(sigShort(f.file))}${sigLookupText(f) ? " · <b>" + esc(sigLookupText(f)) + "</b>" : ""}</small></span><select data-sig-assign="${esc(f.id)}" data-form="${FM}"><option value="">— ليس من المسجلين —</option>${miss.map((x) => `<option value="${esc(x.reg.key)}">${esc(x.reg.name)}</option>`).join("")}</select></div>`).join("")}</div></article>` : ""}
       <details class="cc-help"><summary>الذين وقّعوا (${ui.fmt(cnt("signed"))})</summary>${cnt("signed") ? tbl(K("sig-ok"), o.items.filter((x) => x.st === "signed")) : '<p class="cc-note">لا أحد.</p>'}</details>
