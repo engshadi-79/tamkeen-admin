@@ -81,14 +81,40 @@
     });
   }
 
-  /* يستخرج JSON من رد النموذج حتى لو أحاطه بنص أو بسياج ``` */
+  /* يستخرج JSON من رد النموذج حتى لو أحاطه بنص أو بسياج ```، أو أتبعه بنص/بكائن ثانٍ.
+     تُستخرج الكائنات العليا كاملةً بعدّ الأقواس (مع تجاهل ما داخل النصوص)، ويُدمج المتعدد منها: المصفوفات المتشابهة المفتاح تُضاف بعضها إلى بعض. */
+  function jsonObjects(t) {
+    const out = [];
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] !== "{") continue;
+      let depth = 0, inStr = false, esc = false, end = -1;
+      for (let k = i; k < t.length; k++) {
+        const ch = t[k];
+        if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+        if (ch === '"') inStr = true; else if (ch === "{") depth++; else if (ch === "}") { depth--; if (!depth) { end = k; break; } }
+      }
+      if (end < 0) break;
+      const raw = t.slice(i, end + 1); let v = null;
+      try { v = JSON.parse(raw); } catch (e) { try { v = JSON.parse(raw.replace(/,\s*([}\]])/g, "$1")); } catch (e2) { v = null; } }
+      if (v && typeof v === "object") { out.push(v); i = end; }
+    }
+    return out;
+  }
   function parseJson(text) {
-    let t = String(text || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    const a = t.indexOf("{"), b = t.lastIndexOf("}");
-    if (a < 0 || b < a) throw new Error("لم يرجع النموذج بيانات مفهومة.");
-    t = t.slice(a, b + 1);
-    try { return JSON.parse(t); } catch (e) { /* محاولة إصلاح الفواصل الزائدة */ }
-    return JSON.parse(t.replace(/,\s*([}\]])/g, "$1"));
+    const t = String(text || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    if (t.indexOf("{") < 0) throw new Error("لم يرجع النموذج بيانات مفهومة.");
+    const objs = jsonObjects(t);
+    if (!objs.length) {   // آخر محاولة: القصّ القديم (قد يصلح مع فواصل زائدة)
+      const a = t.indexOf("{"), b = t.lastIndexOf("}");
+      if (b < a) throw new Error("لم يرجع النموذج بيانات مفهومة.");
+      return JSON.parse(t.slice(a, b + 1).replace(/,\s*([}\]])/g, "$1"));
+    }
+    if (objs.length === 1) return objs[0];
+    const bySheet = objs.filter((o) => o && o.image !== undefined && !o.sheets);
+    if (bySheet.length === objs.length) return { sheets: objs };   // كائن لكل صورة بلا غلاف
+    const merged = Object.assign({}, objs[0]);
+    objs.slice(1).forEach((o) => Object.keys(o).forEach((k) => { if (Array.isArray(o[k]) && Array.isArray(merged[k])) merged[k] = merged[k].concat(o[k]); else if (merged[k] === undefined) merged[k] = o[k]; }));
+    return merged;
   }
 
   /* صف مقروء ← شكل موحّد */
