@@ -5,8 +5,39 @@
   const clean = (v) => String(v == null ? "" : typeof v === "object" ? (v.text || v.result || (v.richText ? v.richText.map((x) => x.text).join("") : "") || "") : v).replace(/\s+/g, " ").trim();
 
   /* ملف .xlsx ← { sheets: [{ name, heads, rows }] } (الصف الأول ذو الرؤوس يُخمَّن) */
+  /* نوع الملف الحقيقي من أول بايتاته (الأنظمة تسمّي أحياناً جدول HTML أو ملفاً قديماً «.xlsx») */
+  function sniff(buf) {
+    const u = new Uint8Array(buf.slice(0, 600));
+    if (u[0] === 0x50 && u[1] === 0x4b) return "zip";
+    if (u[0] === 0xd0 && u[1] === 0xcf && u[2] === 0x11 && u[3] === 0xe0) return "ole";
+    const head = new TextDecoder("utf-8", { fatal: false }).decode(u).replace(/^﻿/, "").trim();
+    if (/^<(\?xml|!doctype|html|table|meta|head|body)/i.test(head)) return "html";
+    return "other";
+  }
+  /* جداول HTML ← أوراق (ورقة لكل جدول فيه صفوف) */
+  function readHtmlTables(buf) {
+    let t = new TextDecoder("utf-8", { fatal: false }).decode(buf);
+    if (/�/.test(t)) { try { t = new TextDecoder("windows-1256").decode(buf); } catch (e) { /* */ } }
+    const doc = new DOMParser().parseFromString(t, "text/html"), sheets = [];
+    [...doc.querySelectorAll("table")].forEach((tb, k) => {
+      const grid = [...tb.querySelectorAll("tr")].map((tr) => [...tr.children].filter((c) => /^(td|th)$/i.test(c.tagName)).map((c) => clean(c.textContent))).filter((r) => r.some(Boolean));
+      if (grid.length) sheets.push(Object.assign({ name: "جدول " + (k + 1) }, splitHeader(grid)));
+    });
+    if (!sheets.length && /<Worksheet/i.test(t)) {   // Excel XML 2003 (SpreadsheetML)
+      const xd = new DOMParser().parseFromString(t, "application/xml");
+      [...xd.getElementsByTagName("Worksheet")].forEach((ws, k) => {
+        const grid = [...ws.getElementsByTagName("Row")].map((row) => { const cells = []; let at = 0; [...row.getElementsByTagName("Cell")].forEach((c) => { const ix = Number(c.getAttribute("ss:Index") || c.getAttribute("Index")); if (ix) at = ix - 1; while (cells.length < at) cells.push(""); const d = c.getElementsByTagName("Data")[0]; cells[at++] = clean(d ? d.textContent : ""); }); return cells; }).filter((x) => x.some(Boolean));
+        if (grid.length) sheets.push(Object.assign({ name: ws.getAttribute("ss:Name") || ws.getAttribute("Name") || "ورقة " + (k + 1) }, splitHeader(grid)));
+      });
+    }
+    return { sheets };
+  }
   async function readWorkbook(file) {
     const buf = await file.arrayBuffer();
+    const kind = sniff(buf);
+    if (kind === "html") { const r = readHtmlTables(buf); if (r.sheets.length) return r; throw new Error("الملف نصٌّ (HTML/XML) وليس فيه جدول بيانات. افتحه في Excel واحفظه بصيغة .xlsx."); }
+    if (kind === "ole") throw new Error("الملف بصيغة Excel القديمة (.xls) أو محمي بكلمة سر وإن كان امتداده .xlsx. افتحه في Excel وأدخل كلمة السر إن طُلبت، ثم احفظه باسم جديد بصيغة .xlsx (Excel Workbook).");
+    if (kind === "other") throw new Error("المحتوى ليس ملف xlsx (قد يكون CSV أو نصاً). افتحه في Excel واحفظه بصيغة .xlsx.");
     let first = null;
     try {
       const wb = new ExcelJS.Workbook();
@@ -25,8 +56,9 @@
       if (sheets.length) return { sheets };
     } catch (e) { first = e; }
     /* ExcelJS يتعثّر ببعض الملفات (مولَّدة من برامج أخرى): قراءة مباشرة لبنية xlsx بدلاً منه */
-    try { const r = await readWorkbookRaw(buf); if (r.sheets.length) return r; } catch (e2) { if (first) throw first; throw e2; }
-    if (first) throw first;
+    let second = null;
+    try { const r = await readWorkbookRaw(buf); if (r.sheets.length) return r; } catch (e2) { second = e2; }
+    if (first || second) throw new Error("تعذّر فتح بنية الملف (" + [first && "المكتبة: " + first.message, second && "القراءة المباشرة: " + second.message].filter(Boolean).join(" · ") + "). افتحه في Excel واحفظه باسم جديد بصيغة .xlsx.");
     return { sheets: [] };
   }
 
@@ -136,5 +168,5 @@
     }).sort((a, b) => Number(a.ok) - Number(b.ok) || b.reasons.length - a.reasons.length || a.s.name.localeCompare(b.s.name, "ar"));
   }
 
-  App.centerXl = { readWorkbook, readWorkbookRaw, splitHeader, detect, compare, gradEval, clean };
+  App.centerXl = { readWorkbook, readWorkbookRaw, sniff, splitHeader, detect, compare, gradEval, clean };
 })(window.App = window.App || {});

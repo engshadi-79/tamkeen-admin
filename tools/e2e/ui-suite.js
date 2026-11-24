@@ -827,6 +827,17 @@ async function suite() {
         let rr = null, rerr = ""; try { rr = await App.centerXl.readWorkbook(fR); } catch (e) { rerr = e.message; }
         ok("ملف غير قياسي لا تقرؤه ExcelJS يُقرأ بالقارئ المباشر: الأوراق والنصوص المشتركة والأعمدة المتباعدة", !!rr && rr.sheets.length === 1 && rr.sheets[0].name === "النماذج" && rr.sheets[0].heads.join("|") === "الاسم|عمود 2|الهوية" && rr.sheets[0].rows.length === 2 && rr.sheets[0].rows[0][0] === "سعيد علي" && rr.sheets[0].rows[1][2] === "1000000002", JSON.stringify({ rerr, rr }));
       }
+      {   // ملفات تُسمّى .xlsx وهي ليست xlsx: جدول HTML (تصدير نظام) / Excel XML 2003 / قديم OLE / نص
+        const rd = async (parts, name) => { try { return { r: await App.centerXl.readWorkbook(new File(parts, name)) }; } catch (e) { return { e: e.message }; } };
+        const h = await rd(['﻿<html><body><table><tr><th>الاسم</th><th>الهوية</th></tr><tr><td>سعيد علي</td><td>١٠٠٠٠٠٠٠٠١</td></tr><tr><td>ريم سالم</td><td>1000000002</td></tr></table></body></html>'], "تصدير.xlsx");
+        ok("جدول HTML بامتداد xlsx يُقرأ (تصدير الأنظمة)", !!h.r && h.r.sheets.length === 1 && h.r.sheets[0].heads.join("|") === "الاسم|الهوية" && h.r.sheets[0].rows.length === 2 && h.r.sheets[0].rows[0][0] === "سعيد علي", JSON.stringify(h));
+        const x2 = await rd(['<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="كشف"><Table><Row><Cell><Data ss:Type="String">الاسم</Data></Cell><Cell><Data ss:Type="String">الجوال</Data></Cell></Row><Row><Cell><Data ss:Type="String">خالد عمر</Data></Cell><Cell><Data ss:Type="String">0501234567</Data></Cell></Row></Table></Worksheet></Workbook>'], "قديم.xlsx");
+        ok("Excel XML 2003 بامتداد xlsx يُقرأ", !!x2.r && x2.r.sheets[0].name === "كشف" && x2.r.sheets[0].rows[0][1] === "0501234567", JSON.stringify(x2));
+        const ole = await rd([new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0])], "محمي.xlsx");
+        ok("ملف OLE (xls قديم أو محمي بكلمة سر) يُشرح سببه", /\.xls/.test(ole.e || "") && /كلمة سر/.test(ole.e || ""), JSON.stringify(ole));
+        const tx = await rd(["name,id; أ,1"], "csv.xlsx");
+        ok("نص CSV بامتداد xlsx يُشرح أنه ليس xlsx", /ليس ملف xlsx/.test(tx.e || ""), JSON.stringify(tx));
+      }
       const inpE = b.querySelector("#cc-sig-xl"), dtE = new DataTransfer(); dtE.items.add(new File(["x"], "قديم.xls")); inpE.files = dtE.files; inpE.dispatchEvent(new Event("change", { bubbles: true })); await wait(300);
       ok("ملف بصيغة .xls يُشرح سبب رفضه تحت خانة الملف نفسها", !c.state.sig.xl && /\.xlsx/.test((b.querySelector(".cc-sigxl .cc-alert") || {}).textContent || ""), (b.querySelector(".cc-sigxl") || {}).textContent);
       const inpB = b.querySelector("#cc-sig-xl"), dtB = new DataTransfer(); dtB.items.add(new File(["ليس xlsx حقيقياً"], "تالف.xlsx")); inpB.files = dtB.files; inpB.dispatchEvent(new Event("change", { bubbles: true })); await wait(500);
