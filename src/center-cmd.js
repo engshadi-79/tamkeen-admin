@@ -2147,7 +2147,7 @@
       { name: "لم يوقّعوا", heads: sigHeads(), rows: by(["absent", "blank"]).map(sigRowCells) },
       { name: "تحتاج مراجعة", heads: ["الاسم المسجّل", "الاسم المقروء", "الهوية المقروءة", "الجوال المقروء", "درجة التشابه", "ملاحظة", "الدورة"], rows: by(["review"]).map((x) => [x.reg.name, x.found ? x.found.name : "", x.found ? x.found.nid || "" : "", x.found ? x.found.phone || "" : "", x.found ? Math.round(x.score * 100) + "%" : "", x.how, x.reg.course]) },
       { name: "عُرفوا بالبحث", heads: sigFoundHeads(), rows: o.resolved.map(sigFoundRow) },
-      { name: "أسماء في الأوراق", heads: ["الاسم المقروء", "الهوية", "الجوال", "نتيجة البحث في النظام", "الورقة", "الحكم", "الثقة"], rows: o.orphans.map((f) => [f.name, f.nid || "", f.phone || "", sigLookupText(f), f.file, f.signed === true ? "موقّع" : "غير محسوم", Math.round(f.conf * 100) + "%"]) },
+      { name: "أسماء في الأوراق", heads: ["الاسم المقروء", "الهوية", "الجوال", "نتيجة البحث في النظام", "الورقة", "الحكم", "الثقة"], rows: o.orphans.concat(o.lost).map((f) => [f.name, f.nid || "", f.phone || "", sigLookupText(f), f.file, f.signed === true ? "موقّع" : "غير محسوم", Math.round(f.conf * 100) + "%"]) },
       { name: "وقّعوا", heads: sigHeads(), rows: by(["signed"]).map(sigRowCells) },
     ].filter((x) => x.rows.length);
   }
