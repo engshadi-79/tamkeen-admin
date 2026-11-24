@@ -2319,7 +2319,18 @@
     const cnt = (st) => o.items.filter((x) => x.st === st).length;
     const miss = o.items.filter((x) => x.st === "absent" || x.st === "blank"), review = o.items.filter((x) => x.st === "review");
     const tbl = (k, items) => dataTable(k, sigHeads(), items.map(sigRowCells));
+    /* الخلاصة البسيطة: أربع قوائم واضحة بأعدادها، قائمة واحدة تُعرض في كل مرة */
+    const TABS = [["absent", "لا يظهر اسمهم في الأوراق", o.items.filter((x) => x.st === "absent").length], ["blank", "اسمهم في الورقة بلا توقيع", o.items.filter((x) => x.st === "blank").length], ["signed", "وقّعوا", cnt("signed")], ["orph", "أسماء في الأوراق غير معروفة", o.orphans.length]];
+    c.view = c.view || {}; const vk = String(idx || 0);
+    let cur = c.view[vk]; if (!TABS.some((t) => t[0] === cur)) cur = (TABS.find((t) => t[2] > 0) || TABS[0])[0];
+    const tabBody = cur === "orph" ? dataTable(K("sv-orph"), ["الاسم المقروء", "الحكم", "الورقة", "نتيجة البحث في النظام"], o.orphans.map((f) => [f.name, f.signed === true ? "موقّع" : "غير محسوم", sigShort(f.file), sigLookupText(f)]))
+      : tbl(K("sv-" + cur), o.items.filter((x) => x.st === cur));
+    const summary = `<div class="cc-sigsum"><div class="cc-sigsum-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" aria-selected="${t[0] === cur}" class="cc-sigsum-tab${t[0] === cur ? " on" : ""}${t[0] === "signed" ? " ok" : t[0] === "orph" ? "" : " bad"}" data-cc="sig-view" data-v="${t[0]}" data-idx="${idx || 0}"><b>${ui.fmt(t[2])}</b> ${t[1]}</button>`).join("")}</div>
+      ${TABS.find((t) => t[0] === cur)[2] ? tabBody : '<p class="cc-note">لا أحد في هذه القائمة.</p>'}
+      ${review.length ? `<p class="cc-note">و<b>${ui.fmt(review.length)}</b> يحتاجون مراجعتك: افتح «التفاصيل والمراجعة» أدناه.</p>` : ""}</div>`;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> ${multi ? "النموذج: " + FM + " <small>(" + ui.fmt(o.found.length) + " اسماً مقروءاً)</small>" : "نتيجة المطابقة"}</h3>
+      ${summary}
+      <details class="cc-help cc-sigall"><summary><b>التفاصيل والمراجعة</b> — كل المسجلين، ما يحتاج مراجعتك (${ui.fmt(review.length)})، وربط الأسماء غير المعروفة</summary>
       <details class="cc-help" open><summary><b>جدول المتابعة</b> — كل المسجلين (${ui.fmt(o.items.length)}) بحالة توقيع كل منهم؛ يكتمل كلما أضفتَ صوراً</summary>${dataTable(K("sig-all"), sigAllHeads(), o.items.map(sigAllRow))}</details>
       ${miss.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(miss.length)}</b> من ${ui.fmt(o.items.length)} مسجّلاً لم يوقّعوا.</span><button type="button" class="btn secondary small" data-cc="sig-copy" data-form="${FM}">نسخ قائمة غير الموقّعين</button></div>` : '<p class="cc-alert ok">✓ كل المسجلين وقّعوا.</p>'}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.items.length)}</b> مسجّلاً</span><span class="cc-stat"><b>${ui.fmt(cnt("signed"))}</b> وقّعوا</span>${o.resolved.length ? `<span class="cc-stat"><b>${ui.fmt(o.resolved.length)}</b> عُرفوا بالهوية/الجوال (خارج القائمة)</span>` : ""}<span class="cc-stat"><b>${ui.fmt(cnt("absent"))}</b> لا يظهرون في الأوراق</span><span class="cc-stat"><b>${ui.fmt(cnt("blank"))}</b> بلا توقيع</span><span class="cc-stat"><b>${ui.fmt(review.length)}</b> تحتاج مراجعة</span><span class="cc-stat"><b>${ui.fmt(o.orphans.length)}</b> أسماء لا تطابق أحداً</span>
@@ -2331,6 +2342,7 @@
       ${o.orphans.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>أسماء في الأوراق لا تطابق مسجّلاً في هذه المرحلة</h4><span class="cc-badge">${ui.fmt(o.orphans.length)}</span></div></header><p class="cc-note">قد تكون قراءة خاطئة أو متدرباً من مرحلة أخرى. إن كان أحدها لمسجّل فاختره:</p>
         <div class="cc-sig-rev">${o.orphans.map((f) => `<div class="cc-sig-r"><span><b>${esc(f.name)}</b> <small>${f.signed === true ? "موقّع" : "غير محسوم"} · ${esc(sigShort(f.file))}${sigLookupText(f) ? " · <b>" + esc(sigLookupText(f)) + "</b>" : ""}</small></span><select data-sig-assign="${esc(f.id)}" data-form="${FM}"><option value="">— ليس من المسجلين —</option>${miss.map((x) => `<option value="${esc(x.reg.key)}">${esc(x.reg.name)}</option>`).join("")}</select>${(((state.sig.nameHits || {})[f.id] || {}).list || []).map((x, k) => `<button type="button" class="btn secondary small" data-cc="sig-pick" data-f="${esc(f.id)}" data-k="${k}" title="اعتمد هذا الطالب من النظام">هو: ${esc(x.s.name)}${x.s.stage ? " · " + esc(x.s.stage) : ""}</button>`).join(" ")}</div>`).join("")}</div></article>` : ""}
       <details class="cc-help"><summary>الذين وقّعوا (${ui.fmt(cnt("signed"))})</summary>${cnt("signed") ? tbl(K("sig-ok"), o.items.filter((x) => x.st === "signed")) : '<p class="cc-note">لا أحد.</p>'}</details>
+      </details>
       <p class="cc-note">القراءة بالذكاء الاصطناعي قد تخطئ في الأسماء المكتوبة بخط اليد أو الصور غير الواضحة، فراجع «تحتاج مراجعتك» قبل أن تعتمد القائمة. لا يُكتب شيء في نظام المركز.</p></section>`;
   }
 
@@ -4037,6 +4049,7 @@
         } else if (act === "sig-copy-miss") { const m = sigMatrix(); if (!m) return; const lack = m.rows.filter((x) => x.miss.length); const t = "*ناقصو التوقيع (" + lack.length + " من " + m.rows.length + ")*\n" + lack.map((x, i) => (i + 1) + ". " + x.reg.name + " — ينقصه: " + x.miss.join("، ")).join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت قائمة الناقصين"));
         } else if (act === "sig-clear") { if (!window.confirm("تُمسح الجلسة المحفوظة (المقروء من الصور والمسجلون المجلوبون ونتائج البحث) ولا يمكن التراجع. متابعة؟")) return; sigClear(); return render();
         } else if (act === "sig-learn-clear") { if (!window.confirm("تُمسح ذاكرة التصحيحات (ما ربطتَه وما حظرتَه) ولا يمكن التراجع. متابعة؟")) return; sigLearnClear(); return render();
+        } else if (act === "sig-view") { state.sig.view = state.sig.view || {}; state.sig.view[b.dataset.idx || "0"] = b.dataset.v; return render();
         } else if (act === "sig-pick") {
           const c = state.sig, fid = b.dataset.f, h = ((c.nameHits || {})[fid] || {}).list, x = h && h[Number(b.dataset.k)];
           if (x) { c.lookups = c.lookups || {}; c.lookups[fid] = { q: "", list: [x.s], by: "name", score: x.score }; sigLearnAuto(); sigSaveSoon(); render(); }
