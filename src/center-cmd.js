@@ -2288,9 +2288,10 @@
   const SIG_NO_RX = /^(لا|لم|غير|بدون|no|false|0|-|—|×|✗|x)$/i;
   function sigXlView() {
     const x = state.sig.xl, opt = (i, cur, txt) => `<option value="${i}" ${Number(cur) === i ? "selected" : ""}>${esc(txt)}</option>`;
-    const head = `<details class="cc-help cc-sigxl" ${x ? "open" : ""}><summary><b>أو ملف Excel بأسماء</b> — مصدر ثانٍ يُضاف إلى المقارنة نفسها (بدل الصور أو معها)</summary>
+    const head = `<details class="cc-help cc-sigxl" ${x || state.sig.xlErr ? "open" : ""}><summary><b>أو ملف Excel بأسماء</b> — مصدر ثانٍ يُضاف إلى المقارنة نفسها (بدل الصور أو معها)</summary>
       <label class="cc-field cc-wide"><span>ملف Excel (.xlsx) فيه أسماء من وقّعوا أو حضروا</span><input type="file" id="cc-sig-xl" accept=".xlsx"></label>`;
-    if (!x) return head + `<p class="cc-note">يُقرأ الملف على جهازك فقط. تختار بعدها عمود الاسم (والهوية والجوال إن وُجدا) وكيف يُعدّ التوقيع.</p></details>`;
+    const err = state.sig.xlErr ? `<p class="cc-alert err" role="alert">⚠ ${esc(state.sig.xlErr)}</p>` : "";
+    if (!x) return head + err + `<p class="cc-note">يُقرأ الملف على جهازك فقط. تختار بعدها عمود الاسم (والهوية والجوال إن وُجدا) وكيف يُعدّ التوقيع.</p></details>`;
     const sh = x.sheets[x.sheet] || x.sheets[0], hs = sh.heads, m = x.map;
     const colSel = (k, none) => `<label class="cc-field"><span>${{ name: "عمود الاسم", id: "عمود الهوية", phone: "عمود الجوال", sign: "عمود التوقيع" }[k]}</span><select data-sigxl="${k}">${k === "sign" ? opt(-1, m.sign, "لا عمود: كل من في الملف موقّع") : opt(-1, m[k], none)}${hs.map((h, i) => opt(i, m[k], h)).join("")}</select></label>`;
     const n = sh.rows.filter((r) => clean(r[m.name])).length;
@@ -2315,7 +2316,7 @@
     });
     if (!add.length) { state.resultError = "لا أسماء في العمود المختار."; return render(); }
     c.rows = (c.rows || []).concat(add); c.fileKeys.push(key); c.done.push({ name: x.name, key, rows: add.length, at: new Date().toISOString() });
-    c.xl = null; state.resultError = ""; try { sigLearnAuto(); } catch (e) { /* */ }
+    c.xl = null; c.xlErr = ""; state.resultError = ""; try { sigLearnAuto(); } catch (e) { /* */ }
     sigSaveSoon(); ui.toast("أُضيف " + ui.fmt(add.length) + " اسماً من الملف"); render();
   }
   function sigView() {
@@ -4099,7 +4100,7 @@
         } else if (act === "sig-namesearch") { return runSigNameSearch();
         } else if (act === "sig-lookup") { return runSigLookup();
         } else if (act === "sig-xl-add") { return sigXlAdd();
-        } else if (act === "sig-xl-clear") { state.sig.xl = null; return render();
+        } else if (act === "sig-xl-clear") { state.sig.xl = null; state.sig.xlErr = ""; return render();
         } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
         } else if (act === "sig-del") { const r = state.sig.rows[Number(b.dataset.i)]; if (r) r.keep = false; return render();
         } else if (act === "sig-add") { state.sig.rows = state.sig.rows || []; state.sig.rows.push({ id: "m:" + Date.now(), file: "(أضفتَه)", name: "", nid: "", phone: "", signed: false, conf: 1, keep: true }); return render();
@@ -4346,11 +4347,15 @@
       }
       if (t.id === "cc-sig-xl") {
         const f = (t.files || [])[0]; if (!f) return;
+        state.sig.xlErr = "";
         try {
-          const wb = await App.centerXl.readWorkbook(f); if (!wb.sheets.length) throw new Error("الملف فارغ.");
+          if (/\.xls$/i.test(f.name)) throw new Error("الملف بصيغة .xls القديمة. افتحه في Excel واحفظه باسم جديد بصيغة .xlsx (Excel Workbook) ثم ارفعه.");
+          if (!/\.xlsx$/i.test(f.name)) throw new Error("الملف ليس بصيغة .xlsx. المدعوم: ملف Excel بامتداد .xlsx فقط (للجداول: احفظه من Excel بهذه الصيغة).");
+          if (typeof ExcelJS === "undefined") throw new Error("مكتبة قراءة Excel لم تُحمَّل بعد. حدّث الصفحة (Ctrl+F5) وأعد المحاولة.");
+          const wb = await App.centerXl.readWorkbook(f); if (!wb.sheets.length) throw new Error("الملف لا يحوي أي ورقة فيها بيانات.");
           const s0 = wb.sheets[0], d = App.centerXl.detect(s0.heads, s0.rows);
-          state.sig.xl = { name: f.name, size: f.size, sheets: wb.sheets, sheet: 0, map: { name: d.name, id: d.id, phone: d.phone, sign: -1 } }; state.resultError = "";
-        } catch (e) { state.resultError = "تعذّرت قراءة الملف: " + (e.message || e); }
+          state.sig.xl = { name: f.name, size: f.size, sheets: wb.sheets, sheet: 0, map: { name: d.name, id: d.id, phone: d.phone, sign: -1 } };
+        } catch (e) { state.sig.xl = null; state.sig.xlErr = "تعذّرت قراءة الملف «" + f.name + "»: " + (e.message || e); ui.toast("تعذّرت قراءة ملف Excel"); }
         t.value = ""; return render();
       }
       if (t.dataset.sigxl) {

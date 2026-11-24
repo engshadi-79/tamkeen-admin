@@ -808,6 +808,20 @@ async function suite() {
     c.state.sig = Object.assign(c.state.sig, { tracks: ["1"], stages: [], status: "5", files: [], manual: {}, lookups: {}, nameHits: {}, reg: null, rows: null, fileKeys: [], done: [], xl: null });
     c.render();
     ok("خيار «أو ملف Excel بأسماء» يظهر بجانب رفع الصور", !!b.querySelector("#cc-sig-xl") && !!b.querySelector("#cc-sig-files") && /أو ملف Excel بأسماء/.test(b.querySelector(".cc-sigxl").textContent), "view");
+    {   // رفع ملف حقيقي عبر حدث الاختيار (لا ضبط الحالة مباشرة)
+      const wbT = new ExcelJS.Workbook(), wsT = wbT.addWorksheet("كشف");
+      wsT.addRow(["م", "الاسم", "رقم الهوية", "الجوال"]); wsT.addRow([1, "سعيد علي أحمد", "1000000001", "0501112222"]); wsT.addRow([2, "ريم سالم محمد", "1000000002", "0503334444"]); wsT.addRow([3, "خالد عمر", "1000000003", ""]);
+      const bufT = await wbT.xlsx.writeBuffer(), fT = new File([bufT], "كشف حقيقي.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const inpT = b.querySelector("#cc-sig-xl"), dtT = new DataTransfer(); dtT.items.add(fT); inpT.files = dtT.files; inpT.dispatchEvent(new Event("change", { bubbles: true }));
+      for (let i = 0; i < 40 && !c.state.sig.xl && !c.state.resultError; i++) await wait(100); await wait(200);
+      ok("رفع الملف عبر الاختيار يعرض لوحة الأعمدة (الاسم والهوية والجوال مخمَّنة)", !!c.state.sig.xl && !!b.querySelector('[data-sigxl="name"]') && c.state.sig.xl.map.name === 1 && c.state.sig.xl.map.id === 2 && c.state.sig.xl.map.phone === 3, JSON.stringify({ err: c.state.resultError, map: c.state.sig.xl && c.state.sig.xl.map }));
+      const inpE = b.querySelector("#cc-sig-xl"), dtE = new DataTransfer(); dtE.items.add(new File(["x"], "قديم.xls")); inpE.files = dtE.files; inpE.dispatchEvent(new Event("change", { bubbles: true })); await wait(300);
+      ok("ملف بصيغة .xls يُشرح سبب رفضه تحت خانة الملف نفسها", !c.state.sig.xl && /\.xlsx/.test((b.querySelector(".cc-sigxl .cc-alert") || {}).textContent || ""), (b.querySelector(".cc-sigxl") || {}).textContent);
+      const inpB = b.querySelector("#cc-sig-xl"), dtB = new DataTransfer(); dtB.items.add(new File(["ليس xlsx حقيقياً"], "تالف.xlsx")); inpB.files = dtB.files; inpB.dispatchEvent(new Event("change", { bubbles: true })); await wait(500);
+      ok("ملف .xlsx تالف يظهر خطأ قراءته تحت الخانة بدل الصمت", !c.state.sig.xl && /تعذّرت قراءة الملف/.test((b.querySelector(".cc-sigxl .cc-alert") || {}).textContent || ""), (b.querySelector(".cc-sigxl") || {}).textContent);
+      c.state.sig.xlErr = "";
+      c.state.sig.xl = null; c.state.resultError = ""; c.render();
+    }
     c.state.sig.xl = { name: "كشف.xlsx", size: 10, sheets: [{ name: "ورقة1", heads: ["الاسم", "الهوية", "التوقيع"], rows: [["سعيد علي", "١٠٠٠٠٠٠٠٠١", "وقّع"], ["ريم سالم", "1000000002", "لا"], ["خالد", "", "✓"], ["", "", ""]] }], sheet: 0, map: { name: 0, id: 1, phone: -1, sign: 2 } };
     c.render();
     ok("بعد الاختيار: أعمدة الاسم والهوية والجوال والتوقيع وزر الإضافة", ["name", "id", "phone", "sign"].every((k) => !!b.querySelector('[data-sigxl="' + k + '"]')) && !!b.querySelector('[data-cc="sig-xl-add"]:not([disabled])') && /3 اسماً/.test(b.querySelector(".cc-sigxl").textContent), b.querySelector(".cc-sigxl").textContent.slice(0, 160));
