@@ -922,6 +922,17 @@ async function suite() {
     ok("«بيانات ناقصة»: أمر export واحد فقط (لا list ولا details)", seen.length === 1 && seen[0].startsWith("export") && c.state.gaps.out && c.state.gaps.out.src === "system", JSON.stringify({ seen, err: c.state.resultError }));
     const gl = (b.querySelector('[data-tblbox="gap-list"]') || {}).textContent || "";
     ok("الناقص الحقيقي بعد الإكمال: ريم فقط", /ريم ناصر/.test(gl) && !/أحمد علي/.test(gl) && !/خالد سعيد/.test(gl), gl.replace(/\s+/g, " ").slice(0, 160));
+    {   // ملف Excel للتعبئة: عمود لكل حقل، والناقص فارغ مظلّل
+      const keepDl = App.ui.download; let got = null; App.ui.download = (name, blob) => { got = { name, blob }; };
+      c.state.gaps.fields = ["marital_status", "birth_date"]; c.render();
+      b.querySelector('[data-cc="gaps-xlsx"]').click(); for (let i = 0; i < 40 && !got; i++) await wait(100);
+      App.ui.download = keepDl;
+      const wbX = new ExcelJS.Workbook(); if (got) await wbX.xlsx.load(await got.blob.arrayBuffer());
+      const wsX = wbX.getWorksheet("من ينقصه (للتعبئة)"), hx = wsX ? wsX.getRow(1).values.slice(1).map(String) : [];
+      ok("ورقة «من ينقصه (للتعبئة)»: الاسم والمسار والمجموعة ثم عمود لكل حقل", !!wsX && ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المسار", "الدورة", "المجموعة"].every((h, i) => hx[i] === h) && hx.includes("الحالة الاجتماعية") && hx[hx.length - 1] === "عدد الناقص", JSON.stringify(hx));
+      const mi = hx.indexOf("الحالة الاجتماعية") + 1, r2 = wsX && wsX.getRow(2), cM = r2 && r2.getCell(mi);
+      ok("صف ريم: خلية الحالة الاجتماعية فارغة ومظلّلة للتعبئة", !!r2 && String(r2.getCell(1).value) === "ريم ناصر" && !cM.value && cM.fill && cM.fill.fgColor && cM.fill.fgColor.argb === "FFFFF2CC", JSON.stringify(r2 && r2.values));
+    }
     agent.version = keepV; agent.run = keepRun; c.state.enrich = null; c.state.results = null; c.state.gaps.out = null; c.state.gaps.fields = null; c.state.sel.details = false; c.state.wideLimit = 0; c.state.mode = "report"; c.render();
   }
 
