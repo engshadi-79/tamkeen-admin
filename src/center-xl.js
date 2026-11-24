@@ -6,19 +6,66 @@
 
   /* ملف .xlsx ← { sheets: [{ name, heads, rows }] } (الصف الأول ذو الرؤوس يُخمَّن) */
   async function readWorkbook(file) {
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(await file.arrayBuffer());
+    const buf = await file.arrayBuffer();
+    let first = null;
+    try {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buf);
+      const sheets = [];
+      wb.eachSheet((ws) => {
+        const grid = [];
+        ws.eachRow({ includeEmpty: false }, (row) => {
+          const cells = [];
+          for (let i = 1; i <= row.cellCount; i++) cells.push(clean(row.getCell(i).value));
+          if (cells.some(Boolean)) grid.push(cells);
+        });
+        if (!grid.length) return;
+        sheets.push(Object.assign({ name: ws.name }, splitHeader(grid)));
+      });
+      if (sheets.length) return { sheets };
+    } catch (e) { first = e; }
+    /* ExcelJS يتعثّر ببعض الملفات (مولَّدة من برامج أخرى): قراءة مباشرة لبنية xlsx بدلاً منه */
+    try { const r = await readWorkbookRaw(buf); if (r.sheets.length) return r; } catch (e2) { if (first) throw first; throw e2; }
+    if (first) throw first;
+    return { sheets: [] };
+  }
+
+  /* قارئ xlsx مباشر (JSZip + DOMParser): أوراق، نصوص مشتركة، خلايا نصية/رقمية/inline. لا يقرأ صيغ الخلايا ولا التنسيق. */
+  async function readWorkbookRaw(buf) {
+    const zip = await JSZip.loadAsync(buf);
+    const txt = async (path) => { const f = zip.file(path) || zip.file(path.replace(/^\//, "")); return f ? f.async("string") : ""; };
+    const xml = (t) => new DOMParser().parseFromString(t, "application/xml");
+    const attr = (el, n) => el.getAttribute(n) || el.getAttribute("r:" + n) || "";
+    const byTag = (doc, tag) => [...doc.getElementsByTagName(tag)];
+    const rels = await txt("_rels/.rels"); let wbPath = "xl/workbook.xml";
+    if (rels) { const rel = byTag(xml(rels), "Relationship").find((r) => /officeDocument/.test(r.getAttribute("Type") || "")); if (rel) wbPath = (rel.getAttribute("Target") || wbPath).replace(/^\//, ""); }
+    const wbTxt = await txt(wbPath); if (!wbTxt) throw new Error("بنية الملف غير معروفة (لا workbook).");
+    const dir = wbPath.replace(/[^/]+$/, ""), relsTxt = await txt(dir + "_rels/" + wbPath.split("/").pop() + ".rels");
+    const relTarget = {}; byTag(xml(relsTxt), "Relationship").forEach((r) => { relTarget[r.getAttribute("Id")] = r.getAttribute("Target") || ""; });
+    const shared = []; const ssTxt = await txt(dir + "sharedStrings.xml");
+    if (ssTxt) byTag(xml(ssTxt), "si").forEach((si) => { shared.push(byTag(si, "t").filter((t) => !t.closest || !t.closest("rPh")).map((t) => t.textContent).join("")); });
+    const colIdx = (ref) => { const m = /^([A-Z]+)/i.exec(ref || ""); if (!m) return -1; let n = 0; for (const ch of m[1].toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; };
     const sheets = [];
-    wb.eachSheet((ws) => {
+    for (const sh of byTag(xml(wbTxt), "sheet")) {
+      const rid = attr(sh, "id"), target = relTarget[rid]; if (!target) continue;
+      const path = target.startsWith("/") ? target.slice(1) : dir + target.replace(/^\.\//, "");
+      const sx = await txt(path); if (!sx) continue;
       const grid = [];
-      ws.eachRow({ includeEmpty: false }, (row) => {
+      byTag(xml(sx), "row").forEach((row) => {
         const cells = [];
-        for (let i = 1; i <= row.cellCount; i++) cells.push(clean(row.getCell(i).value));
+        [...row.children].filter((c) => c.tagName === "c").forEach((c, k) => {
+          const i = colIdx(c.getAttribute("r")), at = i >= 0 ? i : k, t = c.getAttribute("t"), v = c.getElementsByTagName("v")[0], is = c.getElementsByTagName("is")[0];
+          let val = "";
+          if (t === "s" && v) val = shared[Number(v.textContent)] || "";
+          else if (t === "inlineStr" && is) val = byTag(is, "t").map((x) => x.textContent).join("");
+          else if (v) val = v.textContent;
+          while (cells.length < at) cells.push("");
+          cells[at] = clean(val);
+        });
         if (cells.some(Boolean)) grid.push(cells);
       });
-      if (!grid.length) return;
-      sheets.push(Object.assign({ name: ws.name }, splitHeader(grid)));
-    });
+      if (grid.length) sheets.push(Object.assign({ name: attr(sh, "name") || "ورقة" + (sheets.length + 1) }, splitHeader(grid)));
+    }
     return { sheets };
   }
 
@@ -89,5 +136,5 @@
     }).sort((a, b) => Number(a.ok) - Number(b.ok) || b.reasons.length - a.reasons.length || a.s.name.localeCompare(b.s.name, "ar"));
   }
 
-  App.centerXl = { readWorkbook, splitHeader, detect, compare, gradEval, clean };
+  App.centerXl = { readWorkbook, readWorkbookRaw, splitHeader, detect, compare, gradEval, clean };
 })(window.App = window.App || {});
