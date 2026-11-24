@@ -36,6 +36,7 @@
     grp: { tracks: [], stages: [], status: "active", out: null, comp: null },
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
+    gaps: { tracks: [], stages: [], status: "active", fields: null, out: null },
     monthly: { tracks: [], stages: [], status: "", month: (new Date().toISOString().slice(0, 7)), mis: true, sig: false, out: null },
     pledge: { tracks: [], stages: [], status: "graduated", students: null, source: "", opts: null, fit: 0 },
     img: { files: [], fast: false, tables: null, reading: false, prog: "", failed: [], took: "" },
@@ -655,7 +656,7 @@
         ${dnote(r.details)}
         ${dataTable("list" + i, ...shown(r.heads, rows.map((x) => x.cells)))}</article>`;
     }).join("");
-    return head + (tools ? `<div class="cc-tools">${tools}</div>` : "") + body;
+    return head + (lists.length ? gapNote(lists) : "") + (tools ? `<div class="cc-tools">${tools}</div>` : "") + body;
   }
 
   /* عمود «المجموعة» إن وُجد في جدول النظام: يتيح تصفية العرض والتنزيل بمجموعة */
@@ -1261,9 +1262,9 @@
 
   /* ===== تخزين محلي (هذا المتصفح فقط): التقارير المحفوظة، سجل العمليات، الإشعار، لقطة البيانات ===== */
   const SV_KEY = "tamkeen-admin:cc-saved", LOG_KEY = "tamkeen-admin:cc-log", NOTIFY_KEY = "tamkeen-admin:cc-notify", SNAP_KEY = "tamkeen-admin:cc-snap";
-  const CFG = { attend: "att", impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", groups: "grp" };
+  const CFG = { attend: "att", impact: "imp", report: "sel", compare: "cmp", siblings: "sib", missing: "mis", dq: "dq", gaps: "gaps", groups: "grp" };
   const MODE_NAME = { attend: "الحضور والغياب", impact: "قياس الأثر", report: "تقرير جاهز", compare: "مقارنة المراحل", siblings: "مقارنة الإخوة", missing: "استبيانات وتعهدات", dq: "فحص البيانات", groups: "المجموعات والمدربون", student: "ملف الطالب", ask: "اكتب طلبك" };
-  const RUN_BTN = { sign: "run-sig", xl: "run-xl", morning: "run-morning", grad: "run-grad", pledge: "run-pledge", monthly: "run-monthly", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
+  const RUN_BTN = { sign: "run-sig", xl: "run-xl", morning: "run-morning", grad: "run-grad", pledge: "run-pledge", monthly: "run-monthly", gaps: "run-gaps", attend: "run-att", impact: "run-imp", report: "run-selection", compare: "run-compare", siblings: "run-sib", missing: "run-mis", dq: "run-dq", groups: "run-grp" };
   /* نسخة من إعدادات التبويب بلا نتائجه ولا بياناته */
   const cfgOf = (mode) => JSON.parse(JSON.stringify(state[CFG[mode]], (key, v) => (key === "out" || key === "rows" || key === "msg" || key === "diff" ? undefined : v)));
   function applyCfg(mode, cfg) {
@@ -1347,7 +1348,7 @@
   }
   /* ===== تنبيه قبل القراءة الواسعة: تقدير عدد أوامر القراءة قبل التنفيذ؛ فوق الحد يُطلب تأكيد (غير حاجب) ===== */
   const WIDE_LIMIT = 15;
-  const RUN_ACTS = ["run-monthly", "run-pledge", "run-grad", "run-morning", "run-xl", "run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
+  const RUN_ACTS = ["run-gaps", "run-monthly", "run-pledge", "run-grad", "run-morning", "run-xl", "run-sig", "run-att", "att-today", "load-groups", "run-imp", "imp-apply", "run-selection", "run-compare", "run-sib", "run-mis", "run-dq", "run-grp", "grp-compliance"];
   function estimateReads(act) {
     const T = (tracks) => (tracks && tracks.length ? tracks.length : trackOpts().length);
     const hasCache = !!state.cache;
@@ -1369,6 +1370,7 @@
       if (act === "run-compare") { if (hasCache) return 0; const c = state.cmp; return c.goal === "siblings" ? T(c.tracks) : courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length; }
       if (act === "run-sib") { if (hasCache) return 0; const c = state.sib; return c.stageMode ? courseOpts().filter((x) => !c.tracks.length || c.tracks.includes(x.track)).length : T(c.tracks); }
       if (act === "run-dq") return hasCache ? 0 : T(state.dq.tracks);
+      if (act === "run-gaps") { const c = state.gaps; if (hasCache && state.cache.details && !c.status) return 0; const sk = (c.stages || []).length; return sk ? courseOpts().filter((x) => (c.stages || []).map((t) => stageK(t) || t).includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track))).length * 41 : T(c.tracks) * 201; }
       if (act === "run-grp") return hasCache ? 0 : T(state.grp.tracks);
       if (act === "run-mis" || act === "grp-compliance") {
         const c = act === "run-mis" ? state.mis : { kind: "all", tracks: state.grp.tracks, stages: STAGES.filter((x) => state.grp.stages.includes(x.t)).map((x) => x.k), verify: true };
@@ -1552,9 +1554,9 @@
   const curUser = () => { try { return (App.cloud && App.cloud.user && App.cloud.user()) || null; } catch (e) { return null; } };
   /* حصر التبويب بمدير النظام (إعداد مشترك يحفظه المدير) */
   const centerAllowed = () => { const st = (App.store && App.store.get && App.store.get()) || {}; const u = curUser(); return !st.centerAdminOnly || !u || !!u.admin; };
-  const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.cache || state.grp.out || state.stu.out || state.att.out);
+  const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.gaps.out || state.cache || state.grp.out || state.stu.out || state.att.out);
   function wipeData(why) {
-    state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null;
+    state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null; state.gaps.out = null;
     state.cache = null; state.grp.out = null; state.imp.out = null; state.imp.outs = {}; state.att.out = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
     Object.keys(tblData).forEach((k) => delete tblData[k]); Object.keys(tblState).forEach((k) => delete tblState[k]);
     render();
@@ -2797,6 +2799,114 @@
     const forms = sigForms(), multi = forms.length > 1;
     return sigMatrixBlock() + (!multi && state.sig.reg && state.sig.rows ? `<section class="cc-results">${sigWaBlock()}</section>` : "") + (multi ? `<section class="cc-results"><p class="cc-alert ok">في الصور ${ui.fmt(forms.length)} نماذج: ${forms.map((f) => "<b>" + esc(f) + "</b>").join("، ")}. لكل نموذج مقارنته وتقريره أدناه، ويضمّها ملف Excel في ورقات منفصلة.</p></section>` : "") + forms.map((f, i) => sigResultFor(f, i, multi)).join("");
   }
+  /* ===== بيانات ناقصة في سجل الطالب بنظام المركز (حقول فارغة في صفحة تعديل الطالب) =====
+     الأداة تنقل صفحة تعديل كل طالب كما هي، فالفراغ هنا فراغ في النظام نفسه لا في الأداة. تتطلب «كل بيانات الطالب» (قراءة صفحة لكل طالب). */
+  const GAP_SKIP = new Set(["track_id", "student_number", "status", "full_name", "national_id", "gender", "phone_1", "notes"]);
+  const GAP_DEFAULT = ["marital_status", "birth_date", "current_address", "governorate_id", "education_level"];
+  const gapFieldList = () => (SCHEMA().createStudent.fields || []).filter((f) => !GAP_SKIP.has(f.name) && /^(text|select|date|textarea|number)$/.test(f.type));
+  const gapSelected = () => { const c = state.gaps, all = gapFieldList().map((f) => f.name); return (c.fields || GAP_DEFAULT).filter((n) => all.includes(n)); };
+  const isBlankCell = (v) => { const t = clean(v); return !t || t === "-" || t === "—"; };
+  /* عمود الحقل في جدول التفاصيل: تطابق التسمية ثم احتواؤها (تسميات نموذج التعديل قد تختلف قليلاً عن لقطة الإضافة) */
+  function gapCol(heads, f) {
+    const k = norm(f.label); let i = heads.findIndex((h) => norm(h) === k);
+    if (i < 0) i = heads.findIndex((h) => { const n = norm(h); return n.length >= 4 && (n.includes(k) || k.includes(n)); });
+    return i;
+  }
+  /* من قوائم نتائج (heads/rows) ← إحصاء الحقول الفارغة. المقروء = من له «الجنس» (حقل مطلوب فلا يُترك فارغاً) فمن لم تُقرأ بياناته لا يُعدّ ناقصاً */
+  function gapStats(lists, fields) {
+    const per = fields.map((f) => ({ f, blank: 0, filled: 0, found: false })), rows = new Map();
+    let total = 0, unread = 0;
+    lists.forEach((l) => {
+      const heads = l.heads || [], cols = fields.map((f) => gapCol(heads, f)), gi = heads.findIndex((h) => norm(h) === norm("الجنس"));
+      const at = (h) => heads.indexOf(h), iN = at("الاسم"), iI = at("رقم الهوية"), iP = at("الجوال"), iG = at("المجموعة"), iS = at("رقم الطالب");
+      cols.forEach((c, k) => { if (c >= 0) per[k].found = true; });
+      (l.rows || []).forEach((x) => {
+        const cells = x.cells || x, key = (iS >= 0 && clean(cells[iS])) || (iI >= 0 && digits(cells[iI])) + "|" + (iN >= 0 ? clean(cells[iN]) : "");
+        if (rows.has(key)) return;
+        total++;
+        const read = gi >= 0 ? !isBlankCell(cells[gi]) : cols.some((c) => c >= 0 && !isBlankCell(cells[c]));
+        if (!read) { unread++; rows.set(key, null); return; }
+        const miss = [];
+        cols.forEach((c, k) => { if (c < 0) return; if (isBlankCell(cells[c])) { per[k].blank++; miss.push(fields[k].label); } else per[k].filled++; });
+        rows.set(key, { name: iN >= 0 ? clean(cells[iN]) : "", id: iI >= 0 ? digits(cells[iI]) : "", phone: iP >= 0 ? phoneNorm(cells[iP]) : "", stu: iS >= 0 ? clean(cells[iS]) : "", group: iG >= 0 ? clean(cells[iG]) : "", course: l.label || "", missing: miss });
+      });
+    });
+    const list = [...rows.values()].filter(Boolean);
+    return { per, total, read: list.length, unread, list, withGaps: list.filter((r) => r.missing.length) };
+  }
+  /* تنبيه في «تقرير جاهز»: أي حقل فارغ في النظام نفسه (فلا يُظنّ عطلاً في الأداة) */
+  function gapNote(lists) {
+    const fs = gapFieldList(), st = gapStats(lists.map((r) => ({ heads: r.heads, rows: visibleRows(r), label: r.label })), fs);
+    if (!st.read) return "";
+    const hit = st.per.filter((p) => p.found && p.blank).sort((a, b) => b.blank - a.blank);
+    if (!hit.length) return "";
+    const pct = (p) => Math.round((p.blank / st.read) * 100);
+    return `<div class="cc-alert warn cc-gapnote" role="status"><span>ℹ️ <b>حقول فارغة في نظام المركز نفسه</b> (الأداة تنقل صفحة تعديل الطالب كما هي، فالفراغ ليس عطلاً فيها): ${hit.slice(0, 6).map((p) => `«${esc(p.f.label)}» عند <b>${ui.fmt(p.blank)}</b> من ${ui.fmt(st.read)} (${pct(p)}%)`).join(" · ")}${hit.length > 6 ? " …" : ""}.${st.unread ? ` لم تُقرأ بيانات ${ui.fmt(st.unread)} طالباً فلم يُحسبوا.` : ""}</span><button type="button" class="btn secondary small" data-cc="go-gaps">من هم الناقصون؟ ← أداة «بيانات ناقصة»</button></div>`;
+  }
+  function gapsView() {
+    const c = state.gaps, sel = new Set(gapSelected());
+    const n = estimateReads("run-gaps");
+    return `<section class="cc-card" id="cc-gaps">
+      <header class="cc-card-h"><h3>بيانات ناقصة في النظام</h3><p>يقرأ صفحة تعديل كل طالب ويعدّ الحقول الفارغة في <b>نظام المركز نفسه</b>، ثم يعرض من ينقصه أي حقل لتُكمل بياناته. للقراءة فقط — لا يُكتب شيء في النظام.</p></header>
+      <div class="cc-card-b">
+        <fieldset class="cc-fs cc-wide"><legend>الحقول المطلوب فحصها <em>${ui.fmt(sel.size)}</em></legend>
+          <div class="cc-chips">${gapFieldList().map((f) => `<label class="cc-chk"><input type="checkbox" data-gaps="f:${esc(f.name)}" ${sel.has(f.name) ? "checked" : ""}> <span>${esc(f.label)}</span></label>`).join("")}</div>
+          <div class="cc-row"><button type="button" class="cc-link" data-cc="gaps-all">تحديد الكل</button><button type="button" class="cc-link" data-cc="gaps-none">إلغاء الكل</button></div></fieldset>
+        <label class="cc-field"><span>حالة الطالب</span><select data-gaps="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>
+        <p class="cc-note">اختر المسار والمرحلة من شريط «النطاق» أعلاه (بلا اختيار تُقرأ كل المسارات). تُقرأ صفحة لكل طالب، بحد أقصى 400 طالب في كل مسار أو دورة، فاختر المرحلة لتضييق القراءة. بعد القراءة تغيير الحقول المحددة يُحدّث النتيجة فوراً بلا قراءة جديدة.</p>
+      </div>
+      <footer class="cc-actions"><div class="cc-sum"><b>${state.cache && state.cache.details && !c.status ? "⚡ من الذاكرة المحمّلة" : "تقدير القراءة: حتى " + ui.fmt(n) + " أمر"}</b><span>${esc(scopeSummaryText())}</span></div>
+        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-gaps" ${state.busy || !sel.size ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اقرأ وابحث عن الناقص"}</button></div></footer>
+    </section>`;
+  }
+  async function runGaps() {
+    const c = state.gaps; c.out = null; state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
+    try {
+      requireAgent15();
+      const common = c.status ? { status: c.status } : {}, mk = (params, label) => ({ type: "list", label, params: Object.assign({}, params, common), details: true });
+      let cmds;
+      const stageKeys = (c.stages || []).map((t) => stageK(t) || t);
+      if (stageKeys.length) {
+        const courses = courseOpts().filter((x) => stageKeys.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track)));
+        if (!courses.length) throw new Error("لا توجد دورة تجمع المسار والمرحلة المختارين.");
+        cmds = courses.map((x) => mk({ training_course_id: x.v }, x.t));
+      } else cmds = trackOpts().map((o) => String(o.v)).filter((id) => !c.tracks.length || c.tracks.includes(id)).map((id) => mk({ track_id: id }, optLabel("track_id", id)));
+      const res = await runCommands(cmds, { noGroup: true });
+      const lists = res.filter((r) => r && r.type === "list").map((r, i) => ({ heads: r.heads, rows: r.rows, label: r.label || cmds[i].label, details: r.details }));
+      if (!lists.length) throw new Error("لم تُرجع القراءة قوائم طلاب.");
+      c.out = { at: new Date(), lists };
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  const gapRowsOut = (st) => st.withGaps.slice().sort((a, b) => b.missing.length - a.missing.length || a.name.localeCompare(b.name, "ar")).map((r) => [r.name, r.id, r.phone, r.course, r.group, r.missing.join("، "), String(r.missing.length)]);
+  function gapsResult() {
+    const o = state.gaps.out; if (!o) return "";
+    const fs = gapFieldList().filter((f) => gapSelected().includes(f.name)), st = gapStats(o.lists, fs);
+    const miss = st.per.filter((p) => !p.found).map((p) => p.f.label), capped = o.lists.some((l) => l.details && l.details.capped);
+    const sumRows = st.per.filter((p) => p.found).map((p) => [p.f.label, ui.fmt(p.filled), ui.fmt(p.blank), st.read ? Math.round((p.blank / st.read) * 100) + "%" : "—"]);
+    const GH = ["الاسم", "رقم الهوية", "الجوال", "المسار / الدورة", "المجموعة", "ينقصه", "عدد الناقص"];
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> بيانات ناقصة <small>(${ui.fmt(st.read)} طالباً مقروءاً)</small></h3>
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(st.read)}</b> طالباً قُرئت بياناته</span><span class="cc-stat ${st.withGaps.length ? "bad" : "ok"}"><b>${ui.fmt(st.withGaps.length)}</b> ينقصهم حقل أو أكثر</span>${st.unread ? `<span class="cc-stat"><b>${ui.fmt(st.unread)}</b> لم تُقرأ بياناتهم</span>` : ""}
+        <button type="button" class="btn secondary small" data-cc="gaps-xlsx">تنزيل Excel</button><button type="button" class="btn secondary small" data-cc="gaps-copy">نسخ الملخص</button></div>
+      ${miss.length ? `<p class="cc-alert warn">لم أجد عمود: ${esc(miss.join("، "))} في بيانات النظام، فلم تُحسب.</p>` : ""}
+      ${st.unread || capped ? `<p class="cc-alert warn">قُرئت بيانات بعض الطلاب فقط (الحد الأقصى ٤٠٠ في كل مسار أو دورة، أو تعذّرت قراءة صفحاتهم): من لم تُقرأ بياناته لا يُعدّ ناقصاً. ضيّق النطاق بالمرحلة لتشمل القراءة الجميع.</p>` : ""}
+      <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الحقول: كم فارغ في النظام؟</h4></div></header>${dataTable("gap-sum", ["الحقل", "مُدخَل", "فارغ", "نسبة الفارغ"], sumRows)}</article>
+      ${st.withGaps.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>من ينقصه؟</h4><span class="cc-badge bad">${ui.fmt(st.withGaps.length)}</span></div></header>${dataTable("gap-list", GH, gapRowsOut(st))}</article>` : '<p class="cc-alert ok">✓ لا ينقص أحداً شيء في الحقول المختارة.</p>'}
+      <p class="cc-note">الفراغ هو فراغ في نظام المركز نفسه، وتكمله من صفحة «تعديل» الطالب هناك.</p></section>`;
+  }
+  async function gapsOutput(kind) {
+    const o = state.gaps.out; if (!o) return;
+    const fs = gapFieldList().filter((f) => gapSelected().includes(f.name)), st = gapStats(o.lists, fs);
+    if (kind === "copy") {
+      const lines = st.per.filter((p) => p.found).map((p) => "• " + p.f.label + ": فارغ عند " + p.blank + " من " + st.read);
+      return ui.copyText("*بيانات ناقصة في نظام المركز*\n" + lines.join("\n") + "\nينقصهم شيء: " + st.withGaps.length + " طالباً").then(() => ui.toast("نُسخ الملخص"));
+    }
+    const wb = new ExcelJS.Workbook();
+    fmtSheet(wb.addWorksheet("ملخص الحقول"), ["الحقل", "مُدخَل", "فارغ"], st.per.filter((p) => p.found).map((p) => [p.f.label, p.filled, p.blank]));
+    fmtSheet(wb.addWorksheet("من ينقصه"), ["الاسم", "رقم الهوية", "الجوال", "المسار / الدورة", "المجموعة", "ينقصه", "عدد الناقص"], gapRowsOut(st));
+    return ui.download("بيانات ناقصة " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  }
+
   /* ===== التقرير الشهري الموحّد: حضور وتقييمات وتوقيعات لكل مسار في مستند واحد على الترويسة ===== */
   const MON_KEY = "tamkeen:cc-monthly";
   function monthlyRange(ym) {
@@ -3533,11 +3643,11 @@
       ${modesNav(mode)}
       ${savedBar(mode)}
       ${groupBar()}
-      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "pledge" ? pledgeView() : mode === "monthly" ? monthlyView() : mode === "img" ? imgView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
+      ${mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "pledge" ? pledgeView() : mode === "monthly" ? monthlyView() : mode === "gaps" ? gapsView() : mode === "img" ? imgView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
       ${state.resultError ? `<p class="cc-alert err" role="alert">${esc(state.resultError)}</p>` : ""}
       ${freshBar()}
       ${planView()}
-      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "grad" ? gradResult() : mode === "monthly" ? monthlyResult() : mode === "img" ? imgResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
+      ${mode === "compare" ? compareResult() : mode === "siblings" ? siblingsResult() : mode === "missing" ? missingResult() : mode === "attend" ? attResult() : mode === "sign" ? sigResult() : mode === "xl" ? xlResult() : mode === "morning" ? morningResult() : mode === "grad" ? gradResult() : mode === "monthly" ? monthlyResult() : mode === "gaps" ? gapsResult() : mode === "img" ? imgResult() : mode === "impact" ? impResult() : mode === "dq" ? dqResult() : mode === "groups" ? grpResult() : mode === "student" ? stuResult() : state.results ? `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> النتيجة</h3>${resultsView()}</section>` : ""}
       ${logCard()}
       ${settingsCard()}
       <details class="cc-help"><summary>كيف تعمل الأوامر؟</summary><p>${viaExt
@@ -3613,12 +3723,13 @@
   /* شريط التبويبات الأفقي: عناوين قصيرة في صف واحد مجمّعة، والشرح في التلميح */
   const MODE_GROUPS = [
     [["report", "تقرير جاهز", "اختر المسار والمرحلة ثم نفّذ"], ["monthly", "تقرير الشهر", "حضور وتقييمات وتوقيعات لكل مسار في مستند واحد"], ["sign", "مطابقة التوقيعات", "من لم يوقّع في صور الأوراق"], ["xl", "مقارنة ملف Excel", "قارن كشفاً خارجياً بالمسجلين"], ["morning", "تقرير الصباح", "حضور اليوم والناقصون في صفحة واحدة"], ["grad", "جاهزية التخرج", "من يستوفي شروط الحضور والتقييمات"], ["img", "صورة إلى جدول", "حوّل صورة كشف أو درجات إلى Excel"], ["pledge", "كشف تعهد الحقيبة", "كشف توقيع على الترويسة بترقيم الأوراق"], ["attend", "الحضور والغياب", "غياب كل طالب وتنبيه عند تجاوز الحد"], ["impact", "قياس الأثر", "إحصاءات الاستبيان بتصفية المسار والمرحلة"], ["missing", "استبيانات وتعهدات", "من لم يعبّئ أو يوقّع"]],
-    [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
+    [["compare", "مقارنة المراحل", "من سجّل في أكثر من مرحلة"], ["siblings", "مقارنة الإخوة", "طلاب يجمعهم هاتف أو عائلة"], ["dq", "فحص البيانات", "أخطاء الجودة وتغيّر القوائم"], ["gaps", "بيانات ناقصة", "حقول فارغة في سجل الطالب بالنظام"], ["groups", "المجموعات والمدربون", "التوازن وحمل المدربين والتوزيع"]],
     [["student", "ملف الطالب", "كل شيء عن طالب واحد"], ["ask", "اكتب طلبك", "بحث، أو تسجيل طلاب من Excel"]],
   ];
   /* شرح كل تبويب: يظهر في فقاعة عند مرور المؤشر (src/tips.js) */
   const MODE_TIPS = {
-    "monthly": "مستند شهري واحد على الترويسة لكل مسار: الحضور والغياب والمنذَرون، ومن لم يكمل الاستبيانات والتعهد، ومن لم يوقّع (من جلسة التوقيعات). تطبعه أو تنزّله Word أو Excel.",
+    "gaps": "يقرأ صفحة تعديل كل طالب ويعدّ الحقول الفارغة في نظام المركز نفسه (الحالة الاجتماعية، تاريخ الميلاد، العنوان، المحافظة، التعليم…)، ثم يعرض من ينقصه شيء لتكمل بياناته هناك. تنزّل النتيجة Excel أو تنسخ ملخصها.",
+  "monthly": "مستند شهري واحد على الترويسة لكل مسار: الحضور والغياب والمنذَرون، ومن لم يكمل الاستبيانات والتعهد، ومن لم يوقّع (من جلسة التوقيعات). تطبعه أو تنزّله Word أو Excel.",
   "report": "تقارير جاهزة من قوائم الطلاب: اختر المسار والمرحلة (والمجموعة وحالة الطالب) ثم نفّذ، فيُجلب الجدول من نظام المركز لتراجعه وتنزّله Excel أو تطبعه.",
     "sign": "ارفع صور أوراق التوقيع فيقرؤها الذكاء الاصطناعي (الأسماء والهوية والجوال ووجود التوقيع) وتُقارَن بالمسجلين: من لم يوقّع، وما ينقص كل طالب من نماذج، مع رسالة واتساب بالنواقص لكل مسار. الصور لا تُحفظ، وجلسة العمل تُحفظ على جهازك.",
     "xl": "ارفع كشفاً من جهة أخرى (Excel) وقارنه بمسجلي المرحلة: من ينقص النظام، ومن ليس في الكشف، ومن اختلفت بياناته. المطابقة بالهوية ثم الجوال ثم الاسم.",
@@ -3636,12 +3747,12 @@
     "student": "ابحث عن طالب واحد (باسمه أو هويته أو جواله) فترى كل بياناته: الاستبيانات والتعهد والإرسالات والإخوة وجودة بياناته.",
     "ask": "اكتب طلبك بجملة عادية (مثلاً: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار التسويق»)، أو سجّل طلاباً من ملف Excel."
   };
-  const MODE_ICO = { monthly: "🗂️", pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const MODE_ICO = { gaps: "🕳️", monthly: "🗂️", pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
   /* ===== متى جُلبت البيانات؟ وتحديث الأداة الحالية فقط (بقراءة جديدة لا من الذاكرة) ===== */
   const FRESH_AT = {
     report: () => state.results && state.results.at, attend: () => state.att.out && state.att.out.at, morning: () => state.att.out && state.att.out.at,
     missing: () => state.mis.out && state.mis.out.at, compare: () => state.cmp.out && state.cmp.out.at, siblings: () => state.sib.out && state.sib.out.at,
-    dq: () => state.dq.out && state.dq.out.at, groups: () => state.grp.out && state.grp.out.at, impact: () => state.imp.out && state.imp.out.at,
+    dq: () => state.dq.out && state.dq.out.at, gaps: () => state.gaps.out && state.gaps.out.at, groups: () => state.grp.out && state.grp.out.at, impact: () => state.imp.out && state.imp.out.at,
     grad: () => state.grad.out && state.grad.out.at, xl: () => state.xl.out && state.xl.out.at, sign: () => state.sig.reg && state.sig.regAt,
   };
   function agoText(d) {
@@ -3706,14 +3817,14 @@
     ["الطلاب والتقارير", ["report", "monthly", "student", "ask", "groups"]],
     ["المتابعة اليومية", ["morning", "attend", "missing", "impact", "grad"]],
     ["التوقيعات والكشوف", ["sign", "pledge", "img", "xl"]],
-    ["فحص وجودة", ["dq", "compare", "siblings"]],
+    ["فحص وجودة", ["dq", "gaps", "compare", "siblings"]],
   ];
   const MODE_FLAT = Object.fromEntries(MODE_GROUPS.flat().map(([k, t, h]) => [k, [k, t, h]]));
   const modeBtn = (mode, [k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" data-tip-t="${esc(t)}" data-tip="${esc(MODE_TIPS[k] || h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`;
   const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_SECTIONS.map(([title, keys]) => `<div class="cc-mgroup" role="presentation"><span class="cc-mg-t" aria-hidden="true">${esc(title)}</span><div class="cc-mg-b" role="presentation">${keys.filter((k) => MODE_FLAT[k]).map((k) => modeBtn(mode, MODE_FLAT[k])).join("")}</div></div>`).join("")}</nav>`;
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
-  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att, grad: state.att, pledge: state.pledge, monthly: state.monthly }[mode] || state.sel);
+  const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att, grad: state.att, pledge: state.pledge, monthly: state.monthly, gaps: state.gaps }[mode] || state.sel);
   function scopeNow() {
     const c = scopeCfg(state.adding || state.proposal ? "ask" : state.mode);
     const byK = c === state.sel || c === state.mis;
@@ -3751,21 +3862,21 @@
   /* بعد تغيير المرحلة أو المسار: يُسقَط من الاختيار ما لم يعد مرتبطاً */
   function pruneScope() {
     const av = scopeAvail(), okT = new Set(av.tracks.map((o) => String(o.v))), okG = new Set(av.groups);
-    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly].forEach((c) => { if (c.tracks && c.tracks.length) c.tracks = c.tracks.filter((t) => okT.has(String(t))); });
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly, state.gaps].forEach((c) => { if (c.tracks && c.tracks.length) c.tracks = c.tracks.filter((t) => okT.has(String(t))); });
     if ((state.groups || []).length) state.groups = state.groups.filter((g) => okG.has(g));
   }
   function scopeSet(kind, value, on) {
     const upd = (c, key, v) => { const arr = (c[key] = c[key] || []); const at = arr.indexOf(v); if (on && at < 0) arr.push(v); else if (!on && at >= 0) arr.splice(at, 1); };
-    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly].forEach((c) => upd(c, "tracks", String(value)));
+    if (kind === "tracks") [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly, state.gaps].forEach((c) => upd(c, "tracks", String(value)));
     else {
       [state.sel, state.mis].forEach((c) => upd(c, "stages", stageK(value)));
-      [state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly].forEach((c) => upd(c, "stages", value));
+      [state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly, state.gaps].forEach((c) => upd(c, "stages", value));
     }
     pruneScope();
     scopeSave();
   }
   function scopeClear() {
-    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
+    [state.sel, state.mis, state.cmp, state.sib, state.dq, state.grp, state.imp, state.att, state.sig, state.xl, state.pledge, state.monthly, state.gaps].forEach((c) => { c.tracks = []; if ("stages" in c) c.stages = []; });
     state.groups = [];
     scopeSave();
   }
@@ -4081,6 +4192,12 @@
         } else if (act === "run-sig") { return runSign();
         } else if (act === "run-xl") { return runXl();
         } else if (act === "run-morning") { return runMorning();
+        } else if (act === "run-gaps") { return runGaps();
+        } else if (act === "gaps-xlsx") { return gapsOutput("xlsx");
+        } else if (act === "gaps-copy") { return gapsOutput("copy");
+        } else if (act === "gaps-all") { state.gaps.fields = gapFieldList().map((f) => f.name); return render();
+        } else if (act === "gaps-none") { state.gaps.fields = []; return render();
+        } else if (act === "go-gaps") { return openMode("gaps");
         } else if (act === "run-monthly") { return runMonthly();
         } else if (act === "mon-print") { return monthlyOutput("print");
         } else if (act === "mon-word") { return monthlyOutput("word");
@@ -4334,6 +4451,12 @@
         try { await pledgeFromFile(f); state.resultError = ""; } catch (e) { state.resultError = "تعذّرت قراءة الملف: " + (e.message || e); }
         t.value = ""; return render();
       }
+      if (t.dataset.gaps) {
+        const k = t.dataset.gaps, c = state.gaps;
+        if (k === "status") { c.status = t.value; c.out = null; }
+        else if (k.startsWith("f:")) { const set = new Set(gapSelected()); if (t.checked) set.add(k.slice(2)); else set.delete(k.slice(2)); c.fields = [...set]; }
+        return render();
+      }
       if (t.dataset.mon) { const k = t.dataset.mon; if (k === "thr") state.att.thr = Number(t.value) || 3; else if (k === "month") { state.monthly.month = t.value; state.monthly.out = null; } else state.monthly[k] = !!t.checked; return render(); }
       if (t.dataset.pledge === "status") { state.pledge.status = t.value; state.pledge.students = null; return render(); }
       if (t.dataset.pl) {
@@ -4516,6 +4639,7 @@
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
   sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
   App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
+    _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol },
     _extras: { apply: applyExtras, seen: extraSeen },
     _sig: { learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

@@ -802,6 +802,44 @@ async function suite() {
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.wideLimit = 0; c.render();
   }
 
+  // بيانات ناقصة في النظام: تنبيه في «تقرير جاهز» + أداة «بيانات ناقصة»
+  {
+    const H = ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المجموعة", "الجنس", "الحالة الاجتماعية", "تاريخ الميلاد", "المحافظة الحالية"];
+    const ROWS = [
+      { cells: ["أحمد علي", "S1", "400000001", "0591111111", "S3G1", "ذكر", "أعزب", "2000-01-01", "غزة"] },
+      { cells: ["خالد سعيد", "S2", "400000002", "0592222222", "S3G1", "ذكر", "", "", "غزة"] },
+      { cells: ["سامي عمر", "S3", "400000003", "0593333333", "S3G2", "ذكر", "", "1999-05-05", ""] },
+      { cells: ["ريم ناصر", "S4", "400000004", "0594444444", "S3G2", "", "", "", ""] },   // لم تُقرأ بياناته (بلا جنس) فلا يُعدّ ناقصاً
+    ];
+    const oldRun = agent.run; let gcalls = 0; agent.run = async (cmds) => (gcalls++, { results: cmds.map((cm) => ({ type: "list", label: cm.label, params: cm.params, heads: H, rows: ROWS, details: { read: 3, of: 4 } })) });
+    c.state.groups = []; c.state.wideLimit = 100000; c.state.wide = null; c.state.mode = "report";
+    // الخيار 2: تنبيه في نتيجة «تقرير جاهز»
+    c.state.results = { at: new Date(), results: [{ type: "list", label: "كل الطلاب", heads: H, rows: ROWS }] }; c.render();
+    const gn = b.querySelector(".cc-gapnote");
+    ok("«تقرير جاهز»: تنبيه أن الحقول الفارغة في النظام نفسه مع الأعداد (حالة اجتماعية 2 من 3)", !!gn && /«الحالة الاجتماعية» عند 2 من 3/.test(gn.textContent) && /نظام المركز نفسه/.test(gn.textContent) && /لم تُقرأ بيانات 1 طالباً/.test(gn.textContent), gn && gn.textContent.slice(0, 260));
+    ok("التنبيه فيه زر يفتح أداة «بيانات ناقصة»", !!b.querySelector('.cc-gapnote [data-cc="go-gaps"]'), "btn");
+    b.querySelector('.cc-gapnote [data-cc="go-gaps"]').click(); await wait(200);
+    ok("الزر يفتح الأداة", c.state.mode === "gaps" && !!b.querySelector("#cc-gaps"), c.state.mode);
+    // الخيار 3: الأداة
+    ok("«بيانات ناقصة» ضمن مجموعة «فحص وجودة» بشرحها", !!b.querySelector('.cc-mgroup button[data-m="gaps"]') && /صفحة تعديل كل طالب/.test(b.querySelector('.cc-mgroup button[data-m="gaps"]').dataset.tip), "tab");
+    ok("قائمة الحقول ومنها الحالة الاجتماعية محدَّدة افتراضياً", !!b.querySelector('[data-gaps="f:marital_status"]:checked') && !!b.querySelector('[data-gaps="f:birth_date"]:checked') && !b.querySelector('[data-gaps="f:specialization"]:checked'), "fields");
+    c.state.gaps.out = null; gcalls = 0; b.querySelector('[data-cc="run-gaps"]').click();
+    for (let i = 0; i < 80 && !c.state.gaps.out && !c.state.resultError; i++) await wait(100); await wait(300);
+    ok("القراءة تطلب «كل بيانات الطالب» (details)", c.state.gaps.out && c.state.gaps.out.lists.length >= 1 && !c.state.resultError, c.state.resultError);
+    const sumT = (b.querySelector('[data-tblbox="gap-sum"]') || {}).textContent || "";
+    ok("جدول الحقول: الحالة الاجتماعية فارغة عند 2 وتاريخ الميلاد عند 1 (من 3 مقروءين)", /الحالة الاجتماعية\s*1\s*2\s*67%/.test(sumT.replace(/\s+/g, " ").replace(/(\D)\s+(\d)/g, "$1 $2")) || (/الحالة الاجتماعية/.test(sumT) && /67%/.test(sumT) && /33%/.test(sumT)), sumT.replace(/\s+/g, " ").slice(0, 200));
+    const listT = (b.querySelector('[data-tblbox="gap-list"]') || {}).textContent || "";
+    ok("من ينقصه: خالد وسامي فقط، لا أحمد (مكتمل) ولا ريم (لم تُقرأ بياناتها)", /خالد سعيد/.test(listT) && /سامي عمر/.test(listT) && !/أحمد علي/.test(listT) && !/ريم ناصر/.test(listT), listT.replace(/\s+/g, " ").slice(0, 220));
+    ok("خالد ينقصه حقلان (الحالة الاجتماعية وتاريخ الميلاد)", /خالد سعيد[\s\S]*الحالة الاجتماعية، تاريخ الميلاد/.test(listT), listT.replace(/\s+/g, " ").slice(0, 200));
+    ok("تنبيه أن من لم تُقرأ بياناتهم لا يُعدّون ناقصين", /لا يُعدّ ناقصاً/.test(b.textContent), "unread");
+    ok("أزرار Excel ونسخ الملخص", !!b.querySelector('[data-cc="gaps-xlsx"]') && !!b.querySelector('[data-cc="gaps-copy"]'), "btns");
+    // تغيير الحقول يُعيد الحساب بلا قراءة جديدة
+    const n0 = gcalls; const gi = b.querySelector('[data-gaps="f:birth_date"]'); gi.checked = false; gi.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);
+    const listT2 = (b.querySelector('[data-tblbox="gap-list"]') || {}).textContent || "";
+    ok("إلغاء حقل يُحدّث النتيجة فوراً بلا قراءة جديدة (لم يعد «تاريخ الميلاد» ينقص أحداً في القائمة)", !/تاريخ الميلاد/.test(listT2) && /خالد سعيد/.test(listT2) && /سامي عمر/.test(listT2) && gcalls === n0 && n0 >= 1, [n0, gcalls]);
+    agent.run = oldRun; c.state.results = null; c.state.gaps.out = null; c.state.gaps.fields = null; c.state.wideLimit = 0; c.state.mode = "report"; c.render();
+  }
+
   // مصدر ثانٍ لمطابقة التوقيعات: ملف Excel بأسماء (بجانب الصور)
   {
     c.state.mode = "sign"; c.state.groups = [];
@@ -1089,7 +1127,7 @@ async function suite() {
     c.state.mode = "report"; c.render();
     const groupsEl = [...b.querySelectorAll(".cc-modes .cc-mgroup")];
     ok("أربع مجموعات بعناوينها", groupsEl.length === 4 && groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent).join("|") === "الطلاب والتقارير|المتابعة اليومية|التوقيعات والكشوف|فحص وجودة", groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent));
-    ok("كل الأدوات الـ17 موزّعة بلا تكرار ولا نقص", groupsEl.reduce((n, g) => n + g.querySelectorAll("button[data-m]").length, 0) === 17 && new Set([...b.querySelectorAll(".cc-modes button[data-m]")].map((x) => x.dataset.m)).size === 17, groupsEl.map((g) => g.querySelectorAll("button").length));
+    ok("كل الأدوات الـ18 موزّعة بلا تكرار ولا نقص", groupsEl.reduce((n, g) => n + g.querySelectorAll("button[data-m]").length, 0) === 18 && new Set([...b.querySelectorAll(".cc-modes button[data-m]")].map((x) => x.dataset.m)).size === 18, groupsEl.map((g) => g.querySelectorAll("button").length));
     ok("المطابقة والتعهد والصورة والمقارنة في مجموعة «التوقيعات والكشوف»", [...groupsEl[2].querySelectorAll("button[data-m]")].map((x) => x.dataset.m).join() === "sign,pledge,img,xl", [...groupsEl[2].querySelectorAll("button")].map((x) => x.dataset.m));
     groupsEl[2].querySelector('button[data-m="pledge"]').click(); await wait(200);
     ok("النقر على أداة داخل مجموعتها يفتحها", c.state.mode === "pledge" && !!b.querySelector("#cc-pledge"), c.state.mode);
