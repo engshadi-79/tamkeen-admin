@@ -880,6 +880,51 @@ async function suite() {
     c.state.enrich = null; c.state.enrichErr = ""; c.state.results = null; c.state.gaps.out = null; c.state.gaps.fields = null; c.state.mode = "report"; c.render();
   }
 
+  // الجلب التلقائي لملف «تصدير Excel» من النظام (إضافة 1.5.8): بعد التقرير، وفي «بيانات ناقصة» بطلب واحد
+  {
+    const keepV = agent.version, keepRun = agent.run, seen = [];
+    const wbA = new ExcelJS.Workbook(), wsA = wbA.addWorksheet("الطلاب");
+    wsA.addRow(["بيانات الطلاب الكاملة مع بيانات طلب التقديم"]);
+    wsA.addRow(["رقم الطالب", "اسم الطالب", "رقم الهوية", "الجوال 1", "الجنس", "الحالة الاجتماعية", "الحالة الاجتماعية للمتقدم"]);
+    wsA.addRow(["STU-1", "أحمد علي", "400000001", "0591111111", "ذكر", "-", "أعزب"]); wsA.addRow(["STU-2", "خالد سعيد", "400000002", "0592222222", "ذكر", "-", "متزوج"]); wsA.addRow(["STU-3", "ريم ناصر", "400000003", "0593333333", "أنثى", "-", "-"]);
+    const u8 = new Uint8Array(await wbA.xlsx.writeBuffer()); let bin = ""; u8.forEach((x) => { bin += String.fromCharCode(x); }); const B64 = btoa(bin);
+    const HL = ["الاسم", "رقم الطالب", "رقم الهوية", "الجنس", "الحالة الاجتماعية"];
+    const LROWS = [{ cells: ["أحمد علي", "STU-1", "400000001", "ذكر", ""] }, { cells: ["خالد سعيد", "STU-2", "400000002", "ذكر", "-"] }, { cells: ["ريم ناصر", "STU-3", "400000003", "أنثى", ""] }];
+    const mockRun = async (cmds) => ({ results: cmds.map((cm) => { seen.push(cm.type + (cm.params && Object.keys(cm.params).length ? ":" + JSON.stringify(cm.params) : "")); return cm.type === "export" ? { type: "export", label: cm.label, name: "students-basic-data.xlsx", bytes: u8.length, b64: B64 } : { type: "list", label: cm.label, params: cm.params, heads: HL, rows: LROWS }; }) });
+    c.state.groups = []; c.state.wideLimit = 100000; c.state.wide = null; c.state.enrichAuto = true; c.state.enrich = null; c.state.enrichErr = ""; c.state.results = null;
+    // إضافة قديمة (1.5.7): لا أمر تصدير ولا خطأ
+    agent.version = () => "1.5.7"; agent.run = mockRun; c.state.mode = "report"; c.state.sel.details = true; c.render();
+    ok("إضافة 1.5.7: تنبيه أنها قديمة وزر «اجلب الآن» معطّل", /قديمة/.test((b.querySelector(".cc-enrich") || {}).textContent || "") && !!b.querySelector('[data-cc="enrich-now"][disabled]'), (b.querySelector(".cc-enrich") || {}).textContent);
+    b.querySelector('[data-cc="run-selection"]').click(); for (let i = 0; i < 60 && (!c.state.results || c.state.busy); i++) await wait(100); await wait(300);
+    ok("إضافة 1.5.7: التقرير يعمل بلا أمر تصدير ولا خطأ", seen.length === 1 && seen[0].startsWith("list") && !c.state.resultError && !c.state.enrich, JSON.stringify(seen));
+    // إضافة 1.5.8: يلي التقرير جلب تلقائي لملف التصدير بالمرشحات نفسها
+    agent.version = () => "1.5.8"; seen.length = 0; c.state.results = null; c.state.enrich = null; c.render();
+    ok("إضافة 1.5.8: البطاقة تعلن دعم الجلب التلقائي وخيار «أكمل تلقائياً» مفعّل", /تدعم الجلب التلقائي/.test((b.querySelector(".cc-enrich") || {}).textContent || "") && !!b.querySelector('[data-enr="auto"]:checked'), "card");
+    b.querySelector('[data-cc="run-selection"]').click(); for (let i = 0; i < 80 && (!c.state.results || c.state.busy); i++) await wait(100); await wait(400);
+    ok("بعد التقرير: أمر list واحد ثم أمر export واحد (طلب واحد لكل أمر)", seen.length === 2 && seen[0].startsWith("list") && seen[1].startsWith("export"), JSON.stringify(seen));
+    const cellsA = (c.state.results && c.state.results.results[0].rows.map((x) => x.cells[4])) || [];
+    ok("الحالة الاجتماعية تُكمَّل تلقائياً من المتقدم (أعزب / متزوج) وتبقى فارغة لمن لا قيمة له", cellsA[0] === "أعزب" && cellsA[1] === "متزوج" && cellsA[2] === "", JSON.stringify(cellsA));
+    ok("شريط «أُكملت 2 خلية» يظهر", /أُكملت 2 خلية فارغة/.test(b.textContent), (b.querySelector(".cc-alert.ok") || {}).textContent);
+    seen.length = 0; b.querySelector('[data-cc="run-selection"]').click(); for (let i = 0; i < 80 && c.state.busy; i++) await wait(100); await wait(300);
+    ok("إعادة التنفيذ: الذاكرة تكفي فلا أمر تصدير ثانٍ", !seen.some((x) => x.startsWith("export")), JSON.stringify(seen));
+    // إيقاف الخيار
+    c.state.enrich = null; c.state.enrichAuto = false; c.state.results = null; seen.length = 0; c.render();
+    b.querySelector('[data-cc="run-selection"]').click(); for (let i = 0; i < 60 && (!c.state.results || c.state.busy); i++) await wait(100); await wait(300);
+    ok("إلغاء «أكمل تلقائياً»: لا أمر تصدير", seen.length === 1 && seen[0].startsWith("list"), JSON.stringify(seen));
+    // «اجلب الآن»
+    c.state.enrichAuto = true; c.state.enrich = null; seen.length = 0; c.render();
+    b.querySelector('[data-cc="enrich-now"]').click(); for (let i = 0; i < 60 && (!c.state.enrich || c.state.busy); i++) await wait(100); await wait(300);
+    ok("«اجلب الآن من النظام»: أمر تصدير واحد ويُملأ ما في الذاكرة (3 طلاب)", seen.length === 1 && seen[0].startsWith("export") && c.state.enrich && c.state.enrich.n === 3, JSON.stringify({ seen, n: c.state.enrich && c.state.enrich.n }));
+    // أداة «بيانات ناقصة»: طلبات تصدير فقط، بلا قراءة صفحة لكل طالب
+    c.state.enrich = null; c.state.mode = "gaps"; c.state.gaps.fields = ["marital_status"]; c.state.gaps.out = null; c.state.gaps.tracks = []; c.state.gaps.stages = []; seen.length = 0; c.render();
+    ok("«بيانات ناقصة»: التقدير «طلب تصدير واحد»", /طلب تصدير واحد/.test((b.querySelector("#cc-gaps .cc-sum") || {}).textContent || ""), (b.querySelector("#cc-gaps .cc-sum") || {}).textContent);
+    b.querySelector('[data-cc="run-gaps"]').click(); for (let i = 0; i < 80 && !c.state.gaps.out && !c.state.resultError; i++) await wait(100); await wait(300);
+    ok("«بيانات ناقصة»: أمر export واحد فقط (لا list ولا details)", seen.length === 1 && seen[0].startsWith("export") && c.state.gaps.out && c.state.gaps.out.src === "system", JSON.stringify({ seen, err: c.state.resultError }));
+    const gl = (b.querySelector('[data-tblbox="gap-list"]') || {}).textContent || "";
+    ok("الناقص الحقيقي بعد الإكمال: ريم فقط", /ريم ناصر/.test(gl) && !/أحمد علي/.test(gl) && !/خالد سعيد/.test(gl), gl.replace(/\s+/g, " ").slice(0, 160));
+    agent.version = keepV; agent.run = keepRun; c.state.enrich = null; c.state.results = null; c.state.gaps.out = null; c.state.gaps.fields = null; c.state.sel.details = false; c.state.wideLimit = 0; c.state.mode = "report"; c.render();
+  }
+
   // مصدر ثانٍ لمطابقة التوقيعات: ملف Excel بأسماء (بجانب الصور)
   {
     c.state.mode = "sign"; c.state.groups = [];

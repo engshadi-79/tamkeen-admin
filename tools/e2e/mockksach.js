@@ -75,6 +75,20 @@ http.createServer((req, res) => {
 
   if (url.pathname === "/__hits") return send(200, JSON.stringify(hits), "application/json");
   if (url.pathname === "/__students") return send(200, JSON.stringify(students), "application/json");
+  if (req.method === "GET" && url.pathname === "/admin/students/export-excel") {   // «تصدير Excel»: أعمدة الطالب والمتقدم (الحالة الاجتماعية عند المتقدم فقط)
+    const JSZip = require(path.join(__dirname, "..", "..", "vendor", "jszip.min.js"));
+    const H = ["رقم الطالب", "اسم الطالب", "رقم الهوية", "الجوال 1", "الجنس", "الحالة الاجتماعية", "الحالة الاجتماعية للمتقدم"];
+    const row = (cells, n) => `<row r="${n}">` + cells.map((v, i) => `<c r="${String.fromCharCode(65 + i)}${n}" t="inlineStr"><is><t>${esc(v)}</t></is></c>`).join("") + "</row>";
+    const rows = [row(["بيانات الطلاب الكاملة مع بيانات طلب التقديم"], 1), row(H, 2)].concat(students.filter((s) => !url.searchParams.get("status") || s.status === url.searchParams.get("status")).map((s, i) => row(["STU-" + s.id, s.name, s.nid, s.phone, "أنثى", "-", i % 2 ? "أعزب" : "متزوج"], i + 3)));
+    const z = new JSZip();
+    z.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+    z.file("_rels/.rels", '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+    z.file("xl/workbook.xml", '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="الطلاب" sheetId="1" r:id="rId1"/></sheets></workbook>');
+    z.file("xl/_rels/workbook.xml.rels", '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+    z.file("xl/worksheets/sheet1.xml", '<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' + rows.join("") + "</sheetData></worksheet>");
+    z.generateAsync({ type: "nodebuffer" }).then((buf) => send(200, buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", { "Content-Disposition": 'attachment; filename="students-basic-data-test.xlsx"' }));
+    return;
+  }
   if (url.pathname === "/__flaky") { global.flaky = url.searchParams.get("on") === "1"; return send(200, "ok", "text/plain"); }
   if (url.pathname.startsWith("/runner/")) {
     const f = path.join(ROOT, url.pathname.replace("/runner/", ""));
