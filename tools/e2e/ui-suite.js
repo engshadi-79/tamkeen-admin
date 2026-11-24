@@ -837,6 +837,12 @@ async function suite() {
     if (pk) { pk.click(); await wait(300); }
     ok("اعتماد المرشح بالزر ينقله إلى «عُرفوا»", /ليث حسن العمري/.test((b.querySelector('[data-tblbox="sig-found"]') || {}).textContent || "") && !b.querySelector('[data-cc="sig-pick"]'), (b.querySelector('[data-tblbox="sig-found"]') || {}).textContent);
     ok("ولا يبقى بين «أسماء لا تطابق أحداً»", ![...b.querySelectorAll(".cc-sig-r")].some((x) => /أحمد نادر الطويل/.test(x.textContent)), "orph");
+    const tabs = [...b.querySelectorAll('[data-cc="sig-view"]')];
+    ok("خلاصة بأربع قوائم بأعدادها (لا يظهر اسمهم/بلا توقيع/وقّعوا/غير معروفة)", tabs.length === 4 && /لا يظهر اسمهم/.test(tabs[0].textContent) && /بلا توقيع/.test(tabs[1].textContent) && /وقّعوا/.test(tabs[2].textContent) && /غير معروفة/.test(tabs[3].textContent), tabs.map((x) => x.textContent));
+    const tOrph = tabs.find((x) => x.dataset.v === "orph"); if (tOrph) { tOrph.click(); await wait(200); }
+    ok("قائمة «غير معروفة» تعرض الاسم المقروء ونتيجة البحث", !!b.querySelector('[data-tblbox="sv-orph"]') && /زيد القاسم الغريب/.test(b.querySelector('[data-tblbox="sv-orph"]').textContent), "orph");
+    const tAbs = [...b.querySelectorAll('[data-cc="sig-view"]')].find((x) => x.dataset.v === "absent"); if (tAbs) { tAbs.click(); await wait(200); }
+    ok("التبديل بين القوائم يعرض جدول المسجلين الغائبين", !!b.querySelector('[data-tblbox="sv-absent"]') || /لا أحد في هذه القائمة/.test(b.textContent), "abs");
     ok("لا زر بعد البحث (لا تكرار للقراءة)", !b.querySelector('[data-cc="sig-namesearch"]'), "btn");
     agent.run = oldRun; c.state.mode = "report"; c.state.sig.reg = null; c.state.sig.rows = null; c.state.sig.lookups = {}; c.state.sig.nameHits = {}; c.state.wideLimit = 0; c.render();
   }
