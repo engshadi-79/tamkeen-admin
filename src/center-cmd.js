@@ -37,6 +37,7 @@
     imp: { respThr: 50, from: "2026-09-01", to: "", extra: "", track: "", stage: "", tracks: [], stages: [], cmpWith: "", hideZero: true, known: [], page: "impact", pages: ["impact"], outs: {}, course: "", srv: {}, out: null },   // إحصاءات قياس الأثر
     stu: { q: "", out: null, pick: null },
     gaps: { tracks: [], stages: [], status: "active", fields: null, out: null },
+    enrich: null, enrichErr: "",
     monthly: { tracks: [], stages: [], status: "", month: (new Date().toISOString().slice(0, 7)), mis: true, sig: false, out: null },
     pledge: { tracks: [], stages: [], status: "graduated", students: null, source: "", opts: null, fit: 0 },
     img: { files: [], fast: false, tables: null, reading: false, prog: "", failed: [], took: "" },
@@ -635,7 +636,7 @@
     const lists = res.results.filter((r) => r.type === "list");
     const total = lists.reduce((a, r) => a + visibleRows(r).length, 0);
     const head = lists.length ? `<div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(total)}</b> صفاً</span><span class="cc-stat"><b>${ui.fmt(lists.length)}</b> ${lists.length === 1 ? "جدول" : "جداول"}</span>${lists.length > 1 ? '<button type="button" class="btn secondary small" data-cc="export-all" title="ملف Excel لكل مسار، مجمّعة في ملف مضغوط واحد">تنزيل الكل (ملف Excel لكل مسار في ملف مضغوط)</button>' : ""}</div>` : "";
-    const tools = colsBar() + formsCard();
+    const tools = colsBar() + formsCard() + enrichCard();
     const body = res.results.map((r, i) => {
       if (r.type === "pending") return `<article class="cc-res"><p class="cc-note">⏳ قيد التنفيذ… ${esc(state.labels[i] || "أمر " + (i + 1))}</p></article>`;
       if (r.error) return `<article class="cc-res"><header class="cc-res-h"><h4>أمر ${i + 1}</h4></header><p class="cc-alert warn">${esc(r.error)}</p></article>`;
@@ -656,7 +657,8 @@
         ${dnote(r.details)}
         ${dataTable("list" + i, ...shown(r.heads, rows.map((x) => x.cells)))}</article>`;
     }).join("");
-    return head + (lists.length ? gapNote(lists) : "") + (tools ? `<div class="cc-tools">${tools}</div>` : "") + body;
+    const enrN = lists.reduce((a, r) => a + (r.enriched || 0), 0);
+    return head + (enrN ? `<p class="cc-alert ok" role="status">✓ أُكملت <b>${ui.fmt(enrN)}</b> خلية فارغة من بيانات المتقدم (ملف التصدير: ${esc(state.enrich ? state.enrich.name : "")}).</p>` : "") + (lists.length ? gapNote(lists) : "") + (tools ? `<div class="cc-tools">${tools}</div>` : "") + body;
   }
 
   /* عمود «المجموعة» إن وُجد في جدول النظام: يتيح تصفية العرض والتنزيل بمجموعة */
@@ -1554,9 +1556,9 @@
   const curUser = () => { try { return (App.cloud && App.cloud.user && App.cloud.user()) || null; } catch (e) { return null; } };
   /* حصر التبويب بمدير النظام (إعداد مشترك يحفظه المدير) */
   const centerAllowed = () => { const st = (App.store && App.store.get && App.store.get()) || {}; const u = curUser(); return !st.centerAdminOnly || !u || !!u.admin; };
-  const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.gaps.out || state.cache || state.grp.out || state.stu.out || state.att.out);
+  const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.gaps.out || state.enrich || state.cache || state.grp.out || state.stu.out || state.att.out);
   function wipeData(why) {
-    state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null; state.gaps.out = null;
+    state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null; state.gaps.out = null; state.enrich = null;
     state.cache = null; state.grp.out = null; state.imp.out = null; state.imp.outs = {}; state.att.out = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
     Object.keys(tblData).forEach((k) => delete tblData[k]); Object.keys(tblState).forEach((k) => delete tblState[k]);
     render();
@@ -2812,13 +2814,68 @@
     if (i < 0) i = heads.findIndex((h) => { const n = norm(h); return n.length >= 4 && (n.includes(k) || k.includes(n)); });
     return i;
   }
+  /* ===== إكمال الفراغ من ملف «تصدير Excel» (بيانات المتقدم) =====
+     حقول مثل «الحالة الاجتماعية» تُحفظ في سجل المتقدم لا في سجل الطالب، فتظهر فارغة في صفحة الطالب. ملف «تصدير Excel» من صفحة الطلاب
+     يضم أعمدة الطالب وأعمدة المتقدم معاً، فيُقرأ على الجهاز وتُكمَّل به الخلايا الفارغة (بالهوية أو رقم الطالب). في ذاكرة الصفحة فقط. */
+  const EXPORT_MAP = {   // حقل الطالب ← [عمود الطالب في التصدير، عمود المتقدم]
+    marital_status: ["الحالة الاجتماعية", "الحالة الاجتماعية للمتقدم"], phone_2: ["الجوال 2", "جوال المتقدم 2"], birth_date: ["تاريخ الميلاد", "تاريخ ميلاد المتقدم"],
+    health_status: ["الحالة الصحية", "الوضع الصحي للمتقدم"], governorate_id: ["المحافظة", "محافظة المتقدم"], population_community_id: ["التجمع السكاني", "تجمع المتقدم"],
+    displacement_status: ["حالة النزوح", "حالة نزوح المتقدم"], residence_type_id: ["نوع الإقامة", "نوع إقامة المتقدم"], current_address: ["العنوان الحالي", "عنوان المتقدم"],
+    family_members_count: ["عدد أفراد الأسرة", "عدد أفراد أسرة المتقدم"], breadwinner_status: ["معيل الأسرة", "معيل أسرة المتقدم"], employment_status: ["حالة العمل", "حالة عمل المتقدم"],
+    income_type_id: ["مستوى الدخل", "دخل المتقدم"], education_level: ["المستوى التعليمي", "تعليم المتقدم"], specialization: ["التخصص", "تخصص المتقدم"],
+  };
+  const fieldLabelOf = (name) => ((gapFieldList().find((f) => f.name === name) || {}).label) || name;
+  async function enrichLoad(file) {
+    const wb = await App.centerXl.readWorkbook(file);
+    const sh = wb.sheets.find((s) => s.heads.some((h) => clean(h) === "رقم الهوية")) || wb.sheets[0];
+    const H = sh.heads.map(clean), ix = (n) => H.indexOf(n), iId = ix("رقم الهوية");
+    if (iId < 0) throw new Error("لا عمود «رقم الهوية» في الملف. استعمل ملف «تصدير Excel» من صفحة «الطلاب المعتمدون» في نظام المركز.");
+    const fields = Object.keys(EXPORT_MAP).map((name) => ({ name, s: ix(EXPORT_MAP[name][0]), a: ix(EXPORT_MAP[name][1]) })).filter((f) => f.s >= 0 || f.a >= 0);
+    if (!fields.some((f) => f.a >= 0)) throw new Error("الملف بلا أعمدة «المتقدم» (مثل «الحالة الاجتماعية للمتقدم»)، فلا يُكمل شيئاً. صدّر الملف من صفحة الطلاب بالزر «تصدير Excel» نفسه.");
+    const iN = ix("اسم الطالب"), iS = ix("رقم الطالب"), iP = ix("الجوال 1"), iG = ix("المجموعة الحالية"), iC = ix("الدورة الحالية"), iSex = ix("الجنس"), iH = ix("هوية المتقدم");
+    const byId = new Map(), byStu = new Map(), list = [];
+    sh.rows.forEach((r) => {
+      const id = digits(r[iId]) || (iH >= 0 ? digits(r[iH]) : ""), stu = iS >= 0 ? clean(r[iS]) : "";
+      if (!id && !stu) return;
+      const e = { name: iN >= 0 ? clean(r[iN]) : "", id, stu, phone: iP >= 0 ? phoneNorm(r[iP]) : "", group: iG >= 0 ? clean(r[iG]) : "", course: iC >= 0 ? clean(r[iC]) : "", sex: iSex >= 0 ? clean(r[iSex]) : "", v: {} };
+      fields.forEach((f) => { e.v[f.name] = { s: f.s >= 0 ? clean(r[f.s]) : "", a: f.a >= 0 ? clean(r[f.a]) : "" }; });
+      list.push(e); if (id) byId.set(id, e); if (stu) byStu.set(stu, e);
+    });
+    if (!list.length) throw new Error("لا طلاب في الملف.");
+    return { name: file.name, at: new Date(), list, byId, byStu, fields: fields.map((f) => f.name), n: list.length };
+  }
+  const enrichOf = (id, stu) => state.enrich && ((id && state.enrich.byId.get(id)) || (stu && state.enrich.byStu.get(stu))) || null;
+  const enrichVal = (e, name) => { const v = e && e.v[name]; return !v ? "" : !isBlankCell(v.s) ? v.s : !isBlankCell(v.a) ? v.a : ""; };
+  /* جدول نتيجة ← نسخة تُكمَّل خلاياه الفارغة من الملف (لا تغيّر ما فيه قيمة) */
+  function enrichResult(r) {
+    if (!state.enrich || !r || r.type !== "list") return r;
+    const heads = r.heads || [], iI = heads.indexOf("رقم الهوية"), iS = heads.indexOf("رقم الطالب");
+    if (iI < 0 && iS < 0) return r;
+    const cols = gapFieldList().map((f) => ({ f, c: gapCol(heads, f) })).filter((x) => x.c >= 0 && state.enrich.fields.includes(x.f.name));
+    if (!cols.length) return r;
+    let n = 0;
+    const rows = r.rows.map((x) => {
+      const cells = x.cells, en = enrichOf(iI >= 0 ? digits(cells[iI]) : "", iS >= 0 ? clean(cells[iS]) : ""); if (!en) return x;
+      let ch = null; cols.forEach(({ f, c }) => { if (isBlankCell(cells[c])) { const v = enrichVal(en, f.name); if (v) { ch = ch || cells.slice(); ch[c] = v; n++; } } });
+      return ch ? Object.assign({}, x, { cells: ch }) : x;
+    });
+    return Object.assign({}, r, { rows, enriched: (r.enriched || 0) + n });
+  }
+  function enrichCard() {
+    const e = state.enrich;
+    return `<details class="cc-adv cc-enrich" data-open="enrich" ${state.open.enrich || e || state.enrichErr ? "open" : ""}><summary><span>إكمال الفراغ من ملف «تصدير Excel»</span>${e ? `<span class="cc-badge on">${ui.fmt(e.n)}</span>` : ""}<small>الحالة الاجتماعية وغيرها من بيانات المتقدم</small></summary>
+      <p class="cc-note">حقول مثل «الحالة الاجتماعية» محفوظة في سجل <b>المتقدم</b> لا في سجل الطالب، فتظهر فارغة في صفحة الطالب وفي هذه التقارير. زر «تصدير Excel» في صفحة الطلاب بنظام المركز يضمها كلها. ارفع ملفه هنا فتُكمَّل به الخلايا الفارغة (بالهوية أو رقم الطالب). يُقرأ على جهازك فقط ويُمسح بإغلاق الصفحة.</p>
+      <label class="cc-field cc-wide"><span>ملف التصدير (.xlsx)</span><input type="file" id="cc-enrich-file" accept=".xlsx"></label>
+      ${state.enrichErr ? `<p class="cc-alert err" role="alert">⚠ ${esc(state.enrichErr)}</p>` : ""}
+      ${e ? `<p class="cc-note">الملف: <b>${esc(e.name)}</b> · ${ui.fmt(e.n)} طالباً · تُكمَّل: ${esc(e.fields.map(fieldLabelOf).join("، "))} <button type="button" class="cc-link" data-cc="enrich-clear">إزالة الملف</button></p>` : ""}</details>`;
+  }
   /* من قوائم نتائج (heads/rows) ← إحصاء الحقول الفارغة. المقروء = من له «الجنس» (حقل مطلوب فلا يُترك فارغاً) فمن لم تُقرأ بياناته لا يُعدّ ناقصاً */
   function gapStats(lists, fields) {
-    const per = fields.map((f) => ({ f, blank: 0, filled: 0, found: false })), rows = new Map();
+    const per = fields.map((f) => ({ f, blank: 0, filled: 0, viaApp: 0, found: !!(state.enrich && state.enrich.fields.includes(f.name)) })), rows = new Map();
     let total = 0, unread = 0;
     lists.forEach((l) => {
       const heads = l.heads || [], cols = fields.map((f) => gapCol(heads, f)), gi = heads.findIndex((h) => norm(h) === norm("الجنس"));
-      const at = (h) => heads.indexOf(h), iN = at("الاسم"), iI = at("رقم الهوية"), iP = at("الجوال"), iG = at("المجموعة"), iS = at("رقم الطالب");
+      const at = (h) => heads.indexOf(h), iN = at("الاسم"), iI = at("رقم الهوية"), iP = at("الجوال"), iG = at("المجموعة"), iS = at("رقم الطالب"), iC = at("الدورة");
       cols.forEach((c, k) => { if (c >= 0) per[k].found = true; });
       (l.rows || []).forEach((x) => {
         const cells = x.cells || x, key = (iS >= 0 && clean(cells[iS])) || (iI >= 0 && digits(cells[iI])) + "|" + (iN >= 0 ? clean(cells[iN]) : "");
@@ -2826,9 +2883,14 @@
         total++;
         const read = gi >= 0 ? !isBlankCell(cells[gi]) : cols.some((c) => c >= 0 && !isBlankCell(cells[c]));
         if (!read) { unread++; rows.set(key, null); return; }
-        const miss = [];
-        cols.forEach((c, k) => { if (c < 0) return; if (isBlankCell(cells[c])) { per[k].blank++; miss.push(fields[k].label); } else per[k].filled++; });
-        rows.set(key, { name: iN >= 0 ? clean(cells[iN]) : "", id: iI >= 0 ? digits(cells[iI]) : "", phone: iP >= 0 ? phoneNorm(cells[iP]) : "", stu: iS >= 0 ? clean(cells[iS]) : "", group: iG >= 0 ? clean(cells[iG]) : "", course: l.label || "", missing: miss });
+        const miss = [], en = enrichOf(iI >= 0 ? digits(cells[iI]) : "", iS >= 0 ? clean(cells[iS]) : "");
+        cols.forEach((c, k) => {
+          if (c < 0 && !per[k].found) return;
+          let blank = c < 0 ? true : isBlankCell(cells[c]);
+          if (blank && en && enrichVal(en, fields[k].name)) { blank = false; per[k].viaApp++; }
+          if (blank) { per[k].blank++; miss.push(fields[k].label); } else per[k].filled++;
+        });
+        rows.set(key, { name: iN >= 0 ? clean(cells[iN]) : "", id: iI >= 0 ? digits(cells[iI]) : "", phone: iP >= 0 ? phoneNorm(cells[iP]) : "", stu: iS >= 0 ? clean(cells[iS]) : "", group: iG >= 0 ? clean(cells[iG]) : "", course: (iC >= 0 ? clean(cells[iC]) : "") || l.label || "", missing: miss });
       });
     });
     const list = [...rows.values()].filter(Boolean);
@@ -2841,7 +2903,7 @@
     const hit = st.per.filter((p) => p.found && p.blank).sort((a, b) => b.blank - a.blank);
     if (!hit.length) return "";
     const pct = (p) => Math.round((p.blank / st.read) * 100);
-    return `<div class="cc-alert warn cc-gapnote" role="status"><span>ℹ️ <b>حقول فارغة في نظام المركز نفسه</b> (الأداة تنقل صفحة تعديل الطالب كما هي، فالفراغ ليس عطلاً فيها): ${hit.slice(0, 6).map((p) => `«${esc(p.f.label)}» عند <b>${ui.fmt(p.blank)}</b> من ${ui.fmt(st.read)} (${pct(p)}%)`).join(" · ")}${hit.length > 6 ? " …" : ""}.${st.unread ? ` لم تُقرأ بيانات ${ui.fmt(st.unread)} طالباً فلم يُحسبوا.` : ""}</span><button type="button" class="btn secondary small" data-cc="go-gaps">من هم الناقصون؟ ← أداة «بيانات ناقصة»</button></div>`;
+    return `<div class="cc-alert warn cc-gapnote" role="status"><span>ℹ️ <b>حقول فارغة في نظام المركز نفسه</b> (الأداة تنقل صفحة تعديل الطالب كما هي، فالفراغ ليس عطلاً فيها): ${hit.slice(0, 6).map((p) => `«${esc(p.f.label)}» عند <b>${ui.fmt(p.blank)}</b> من ${ui.fmt(st.read)} (${pct(p)}%)`).join(" · ")}${hit.length > 6 ? " …" : ""}.${st.unread ? ` لم تُقرأ بيانات ${ui.fmt(st.unread)} طالباً فلم يُحسبوا.` : ""}${state.enrich ? "" : " <b>تنبيه:</b> بعض هذه الحقول (كالحالة الاجتماعية) محفوظة في سجل «المتقدم»؛ ارفع ملف «تصدير Excel» من صفحة الطلاب لإكمالها."}</span><button type="button" class="btn secondary small" data-cc="go-gaps">من هم الناقصون؟ ← أداة «بيانات ناقصة»</button></div>`;
   }
   function gapsView() {
     const c = state.gaps, sel = new Set(gapSelected());
@@ -2852,11 +2914,12 @@
         <fieldset class="cc-fs cc-wide"><legend>الحقول المطلوب فحصها <em>${ui.fmt(sel.size)}</em></legend>
           <div class="cc-chips">${gapFieldList().map((f) => `<label class="cc-chk"><input type="checkbox" data-gaps="f:${esc(f.name)}" ${sel.has(f.name) ? "checked" : ""}> <span>${esc(f.label)}</span></label>`).join("")}</div>
           <div class="cc-row"><button type="button" class="cc-link" data-cc="gaps-all">تحديد الكل</button><button type="button" class="cc-link" data-cc="gaps-none">إلغاء الكل</button></div></fieldset>
+        ${enrichCard()}
         <label class="cc-field"><span>حالة الطالب</span><select data-gaps="status">${filterField("status").options.map((o) => `<option value="${esc(o.v)}" ${String(o.v) === c.status ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label>
         <p class="cc-note">اختر المسار والمرحلة من شريط «النطاق» أعلاه (بلا اختيار تُقرأ كل المسارات). تُقرأ صفحة لكل طالب، بحد أقصى 400 طالب في كل مسار أو دورة، فاختر المرحلة لتضييق القراءة. بعد القراءة تغيير الحقول المحددة يُحدّث النتيجة فوراً بلا قراءة جديدة.</p>
       </div>
       <footer class="cc-actions"><div class="cc-sum"><b>${state.cache && state.cache.details && !c.status ? "⚡ من الذاكرة المحمّلة" : "تقدير القراءة: حتى " + ui.fmt(n) + " أمر"}</b><span>${esc(scopeSummaryText())}</span></div>
-        <div class="cc-act"><button type="button" class="btn navy" data-cc="run-gaps" ${state.busy || !sel.size ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اقرأ وابحث عن الناقص"}</button></div></footer>
+        <div class="cc-act">${state.enrich ? `<button type="button" class="btn secondary" data-cc="gaps-file" ${sel.size ? "" : "disabled"} title="يحلّل ملف التصدير نفسه بلا أي قراءة من نظام المركز">حلّل ملف التصدير مباشرة (بلا قراءة)</button>` : ""}<button type="button" class="btn navy" data-cc="run-gaps" ${state.busy || !sel.size ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اقرأ وابحث عن الناقص"}</button></div></footer>
     </section>`;
   }
   async function runGaps() {
@@ -2883,14 +2946,15 @@
     const o = state.gaps.out; if (!o) return "";
     const fs = gapFieldList().filter((f) => gapSelected().includes(f.name)), st = gapStats(o.lists, fs);
     const miss = st.per.filter((p) => !p.found).map((p) => p.f.label), capped = o.lists.some((l) => l.details && l.details.capped);
-    const sumRows = st.per.filter((p) => p.found).map((p) => [p.f.label, ui.fmt(p.filled), ui.fmt(p.blank), st.read ? Math.round((p.blank / st.read) * 100) + "%" : "—"]);
+    const sumRows = st.per.filter((p) => p.found).map((p) => [p.f.label, ui.fmt(p.filled), ui.fmt(p.viaApp), ui.fmt(p.blank), st.read ? Math.round((p.blank / st.read) * 100) + "%" : "—"]);
     const GH = ["الاسم", "رقم الهوية", "الجوال", "المسار / الدورة", "المجموعة", "ينقصه", "عدد الناقص"];
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> بيانات ناقصة <small>(${ui.fmt(st.read)} طالباً مقروءاً)</small></h3>
-      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(st.read)}</b> طالباً قُرئت بياناته</span><span class="cc-stat ${st.withGaps.length ? "bad" : "ok"}"><b>${ui.fmt(st.withGaps.length)}</b> ينقصهم حقل أو أكثر</span>${st.unread ? `<span class="cc-stat"><b>${ui.fmt(st.unread)}</b> لم تُقرأ بياناتهم</span>` : ""}
+      <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(st.read)}</b> طالباً ${o.file ? "في الملف" : "قُرئت بياناته"}</span>${st.per.some((p) => p.viaApp) ? `<span class="cc-stat ok"><b>${ui.fmt(st.per.reduce((a, p) => a + p.viaApp, 0))}</b> خلية أُكملت من بيانات المتقدم</span>` : ""}<span class="cc-stat ${st.withGaps.length ? "bad" : "ok"}"><b>${ui.fmt(st.withGaps.length)}</b> ينقصهم حقل أو أكثر</span>${st.unread ? `<span class="cc-stat"><b>${ui.fmt(st.unread)}</b> لم تُقرأ بياناتهم</span>` : ""}
         <button type="button" class="btn secondary small" data-cc="gaps-xlsx">تنزيل Excel</button><button type="button" class="btn secondary small" data-cc="gaps-copy">نسخ الملخص</button></div>
+      ${o.file ? '<p class="cc-note">المصدر: ملف التصدير نفسه (بلا قراءة من نظام المركز). الخلية الفارغة في سجل الطالب تُكمَّل من سجل المتقدم قبل أن تُحسب ناقصة.</p>' : ""}
       ${miss.length ? `<p class="cc-alert warn">لم أجد عمود: ${esc(miss.join("، "))} في بيانات النظام، فلم تُحسب.</p>` : ""}
       ${st.unread || capped ? `<p class="cc-alert warn">قُرئت بيانات بعض الطلاب فقط (الحد الأقصى ٤٠٠ في كل مسار أو دورة، أو تعذّرت قراءة صفحاتهم): من لم تُقرأ بياناته لا يُعدّ ناقصاً. ضيّق النطاق بالمرحلة لتشمل القراءة الجميع.</p>` : ""}
-      <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الحقول: كم فارغ في النظام؟</h4></div></header>${dataTable("gap-sum", ["الحقل", "مُدخَل", "فارغ", "نسبة الفارغ"], sumRows)}</article>
+      <article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الحقول: كم فارغ في النظام؟</h4></div></header>${dataTable("gap-sum", ["الحقل", "مُدخَل", "منه من المتقدم", "فارغ", "نسبة الفارغ"], sumRows)}</article>
       ${st.withGaps.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>من ينقصه؟</h4><span class="cc-badge bad">${ui.fmt(st.withGaps.length)}</span></div></header>${dataTable("gap-list", GH, gapRowsOut(st))}</article>` : '<p class="cc-alert ok">✓ لا ينقص أحداً شيء في الحقول المختارة.</p>'}
       <p class="cc-note">الفراغ هو فراغ في نظام المركز نفسه، وتكمله من صفحة «تعديل» الطالب هناك.</p></section>`;
   }
@@ -2902,7 +2966,7 @@
       return ui.copyText("*بيانات ناقصة في نظام المركز*\n" + lines.join("\n") + "\nينقصهم شيء: " + st.withGaps.length + " طالباً").then(() => ui.toast("نُسخ الملخص"));
     }
     const wb = new ExcelJS.Workbook();
-    fmtSheet(wb.addWorksheet("ملخص الحقول"), ["الحقل", "مُدخَل", "فارغ"], st.per.filter((p) => p.found).map((p) => [p.f.label, p.filled, p.blank]));
+    fmtSheet(wb.addWorksheet("ملخص الحقول"), ["الحقل", "مُدخَل", "منه من المتقدم", "فارغ"], st.per.filter((p) => p.found).map((p) => [p.f.label, p.filled, p.viaApp, p.blank]));
     fmtSheet(wb.addWorksheet("من ينقصه"), ["الاسم", "رقم الهوية", "الجوال", "المسار / الدورة", "المجموعة", "ينقصه", "عدد الناقص"], gapRowsOut(st));
     return ui.download("بيانات ناقصة " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   }
@@ -4048,7 +4112,7 @@
       const results = await runCommands(commands, { onPartial: (i, r) => { partial[i] = r; state.results = { results: partial.map((x) => x || { type: "pending" }) }; render(); } });
       if (!results.length) throw new Error("لم تصل نتيجة من الوكيل.");
       if (commands.length === 1 && results[0] && results[0].error) throw new Error(results[0].error);
-      state.results = { at: new Date(), results: useExtras ? results.map(applyExtras) : results };
+      state.results = { at: new Date(), results: (useExtras ? results.map(applyExtras) : results).map(enrichResult) };
       state.requestText = "";
       state.reg = null;
     } catch (err) { state.resultError = err.message || String(err); }
@@ -4167,7 +4231,7 @@
           if (state.cache) for (const x of plan) { const r = localList(x); if (!r) { state.fallbackNote = cacheWhy; break; } local.push(r); }
           if (local.length && local.length === plan.length) {
             state.resultError = ""; state.groupFilter = ""; state.labels = plan.map((x) => x.label + " ⚡");
-            state.results = { results: local.map(applyExtras) };
+            state.results = { results: local.map(applyExtras).map(enrichResult) };
             render(); return;
           }
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true);
@@ -4193,6 +4257,13 @@
         } else if (act === "run-xl") { return runXl();
         } else if (act === "run-morning") { return runMorning();
         } else if (act === "run-gaps") { return runGaps();
+        } else if (act === "gaps-file") {
+          const e = state.enrich; if (!e) return;
+          const fs = gapFieldList().filter((f) => e.fields.includes(f.name)), lab = fs.map((f) => f.label);
+          const heads = ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "الجنس"].concat(lab);
+          state.gaps.out = { at: new Date(), file: true, lists: [{ heads, label: "ملف التصدير", rows: e.list.map((x) => ({ cells: [x.name, x.stu, x.id, x.phone, x.group, x.course, x.sex || "(غير محدد)"].concat(fs.map((f) => (x.v[f.name] || {}).s || "")) })) }] };
+          return render();
+        } else if (act === "enrich-clear") { state.enrich = null; state.enrichErr = ""; if (state.results) state.results = Object.assign({}, state.results); return render();
         } else if (act === "gaps-xlsx") { return gapsOutput("xlsx");
         } else if (act === "gaps-copy") { return gapsOutput("copy");
         } else if (act === "gaps-all") { state.gaps.fields = gapFieldList().map((f) => f.name); return render();
@@ -4483,6 +4554,18 @@
         else if (k.startsWith("map-")) c.map[k.slice(4)] = Number(t.value);
         return render();
       }
+      if (t.id === "cc-enrich-file") {
+        const f = (t.files || [])[0]; if (!f) return;
+        state.enrichErr = "";
+        try {
+          if (!/\.xlsx$/i.test(f.name)) throw new Error("الملف ليس بصيغة .xlsx. استعمل ملف «تصدير Excel» كما نزل من نظام المركز.");
+          state.enrich = await enrichLoad(f);
+          if (state.results) state.results = Object.assign({}, state.results, { results: state.results.results.map(enrichResult) });
+          if (state.gaps.out && !state.gaps.out.file) state.gaps.out = Object.assign({}, state.gaps.out);
+          ui.toast("حُمّل ملف التصدير: " + ui.fmt(state.enrich.n) + " طالباً");
+        } catch (e) { state.enrich = null; state.enrichErr = "تعذّرت قراءة الملف «" + f.name + "»: " + (e.message || e); ui.toast("تعذّرت قراءة ملف التصدير"); }
+        t.value = ""; return render();
+      }
       if (t.id === "cc-sig-xl") {
         const f = (t.files || [])[0]; if (!f) return;
         state.sig.xlErr = "";
@@ -4639,7 +4722,7 @@
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
   sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
   App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
-    _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol },
+    _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol, enrichResult },
     _extras: { apply: applyExtras, seen: extraSeen },
     _sig: { learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
