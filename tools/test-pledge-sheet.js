@@ -45,9 +45,16 @@ ok("رقم الكرسي يبدأ من «ابدأ الترقيم من» (101)", r
 {   // عرض الأعمدة حسب النص، والتوقيع يأخذ الباقي
   const meas = (t) => String(t || "").length * 4;   // 4 نقاط للحرف (قياس ثابت للاختبار)
   const stu = [{ name: "اسلام اسماعيل عودة بدوان", id: "801850660", stage: "المرحلة الثانية", track: "ت" }, { name: "اخلاص حسين", id: "803540020", stage: "المرحلة الأولى", track: "ت" }];
-  const tb = P.build(stu, { measure: meas }).blocks.find((b) => b.kind === "table"), W = tb.widths.map((x) => Math.round(x * 468));
-  ok("الأعمدة حسب أطول نص: الاسم 24 حرفاً، الهوية (العنوان أطول من الرقم) 10، المرحلة 15، الكرسي (العنوان) 6", W[1] === 24 * 4 + 24 && W[2] === 10 * 4 + 24 && W[3] === 15 * 4 + 24 && W[4] === 6 * 4 + 24, W);
-  ok("التوقيع يأخذ الباقي حتى حافة الجدول (المجموع 100%)", Math.abs(tb.widths.reduce((a, b) => a + b, 0) - 1) < 1e-9 && W[5] === 468 - W.slice(0, 5).reduce((a, b) => a + b, 0) && W[5] > W[1], W);
+  const tb = P.build(stu, { measure: meas }).blocks.find((b) => b.kind === "table"), W = tb.widths.map((x) => Math.round(x * tb.widthPt));
+  const old = 468 - ((1 * 4 + 24) + (24 * 4 + 24) + (10 * 4 + 24) + (15 * 4 + 24) + (6 * 4 + 24));   // التوقيع قبل الزيادة = باقي منطقة النص
+  ok("الجدول يمتد 36 نقطة في الهامش الأيسر (504)", tb.widthPt === 504, tb.widthPt);
+  ok("التوقيع أعرض بنسبة 30% (" + old + " ← " + Math.round(old * 1.3) + ")", W[5] === Math.round(old * 1.3), W);
+  ok("الاسم والهوية والمرحلة والكرسي بعرض نصّها كما هي (لا مساس)", W[1] === 24 * 4 + 24 && W[2] === 10 * 4 + 24 && W[3] === 15 * 4 + 24 && W[4] === 6 * 4 + 24, W);
+  ok("المجموع = عرض الجدول", Math.abs(tb.widths.reduce((a, b) => a + b, 0) - 1) < 1e-9);
+  const plain = P.build(stu, { measure: meas, sigBoost: 1, signExtend: 0 }).blocks.find((b) => b.kind === "table");
+  ok("بلا امتداد ولا زيادة: التوقيع = الباقي فقط", Math.round(plain.widths[5] * plain.widthPt) === old, plain.widths.map((x) => Math.round(x * plain.widthPt)));
+  const tight = P.build(stu, { measure: meas, signExtend: 0 }).blocks.find((b) => b.kind === "table").widths.map((x) => Math.round(x * 468));
+  ok("بلا امتداد: الزيادة من هوامش الأمان ثم الاسم وحده، والتوقيع 30% أعرض", tight[5] === Math.round(old * 1.3) && tight[2] === 10 * 4 + 20 && tight[1] < 24 * 4 + 24, tight);
   ok("رقم الكرسي غامق بحجم 16", tb.colStyle && tb.colStyle[4].bold === true && tb.colStyle[4].sizePt === 16 && !tb.colStyle[1]);
   const longN = P.build([{ name: "اسم طويل جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً", id: "1", stage: "م", track: "ت" }], { measure: meas }).blocks.find((b) => b.kind === "table");
   ok("أسماء طويلة جداً: التوقيع لا يقل عن 15% والاسم وحده يلتفّ", longN.widths[5] >= 0.15 - 1e-9 && Math.abs(longN.widths.reduce((a, b) => a + b, 0) - 1) < 1e-9, longN.widths.map((x) => x.toFixed(2)));

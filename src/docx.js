@@ -114,7 +114,8 @@
 
   function table(block) {
     const n = block.headers.length;
-    const widths = (block.widths || Array(n).fill(1 / n)).map((f) => Math.round(f * TEXT_WIDTH_TWIPS));
+    const TW = block.widthPt ? Math.round(block.widthPt * 20) : TEXT_WIDTH_TWIPS;   // جدول أعرض من منطقة النص يمتد في الهامش الأيسر
+    const widths = (block.widths || Array(n).fill(1 / n)).map((f) => Math.round(f * TW));
     const border = ["top", "left", "bottom", "right", "insideH", "insideV"]
       .map((s) => `<w:${s} w:val="single" w:sz="6" w:space="0" w:color="7F8C9D"/>`).join("");
     const cs = (i, header) => (!header && block.colStyle && block.colStyle[i]) || null;   // تنسيق عمود بعينه (غامق/حجم) في صفوف الجسم
@@ -124,7 +125,7 @@
     const headerRow = `<w:tr><w:trPr><w:tblHeader/></w:trPr>${block.headers.map((h, i) => cell(h, i, true)).join("")}</w:tr>`;
     const rowH = block.rowHeightTw ? `<w:trHeight w:val="${Math.round(block.rowHeightTw)}" w:hRule="atLeast"/>` : "";   // ارتفاع أدنى للصف (مثلاً خانة توقيع)
     const rows = block.rows.map((r) => `<w:tr><w:trPr><w:cantSplit/>${rowH}</w:trPr>${r.map((c, i) => cell(c, i, false)).join("")}</w:tr>`).join("");
-    return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="${TEXT_WIDTH_TWIPS}" w:type="dxa"/><w:tblBorders>${border}</w:tblBorders>` +
+    return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="${TW}" w:type="dxa"/><w:tblBorders>${border}</w:tblBorders>` +
       `<w:tblLayout w:type="fixed"/><w:tblLook w:val="04A0"/></w:tblPr>` +
       `<w:tblGrid>${widths.map((w) => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>${headerRow}${rows}</w:tbl>` +
       // Word يدمج جدولين متتاليين؛ فقرة فارغة صغيرة بعده
