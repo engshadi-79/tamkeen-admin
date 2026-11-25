@@ -125,7 +125,7 @@
     const headerRow = `<w:tr><w:trPr><w:tblHeader/></w:trPr>${block.headers.map((h, i) => cell(h, i, true)).join("")}</w:tr>`;
     const rowH = block.rowHeightTw ? `<w:trHeight w:val="${Math.round(block.rowHeightTw)}" w:hRule="atLeast"/>` : "";   // ارتفاع أدنى للصف (مثلاً خانة توقيع)
     const rows = block.rows.map((r) => `<w:tr><w:trPr><w:cantSplit/>${rowH}</w:trPr>${r.map((c, i) => cell(c, i, false)).join("")}</w:tr>`).join("");
-    return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="${TW}" w:type="dxa"/><w:tblBorders>${border}</w:tblBorders>` +
+    return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="${TW}" w:type="dxa"/>${TW > TEXT_WIDTH_TWIPS ? '<w:jc w:val="center"/>' : ""}<w:tblBorders>${border}</w:tblBorders>` +
       `<w:tblLayout w:type="fixed"/><w:tblLook w:val="04A0"/></w:tblPr>` +
       `<w:tblGrid>${widths.map((w) => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>${headerRow}${rows}</w:tbl>` +
       // Word يدمج جدولين متتاليين؛ فقرة فارغة صغيرة بعده
