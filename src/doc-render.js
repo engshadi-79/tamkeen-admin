@@ -31,6 +31,9 @@
       const td = document.createElement("td");
       td.textContent = c == null ? "" : String(c);
       if (b.align && b.align[i] === "center") td.style.textAlign = "center";
+      const st = b.colStyle && b.colStyle[i];   // تنسيق عمود بعينه (غامق/حجم)
+      if (st && st.bold) td.style.fontWeight = "700";
+      if (st && st.sizePt) { td.style.fontSize = cqw(st.sizePt); td.style.lineHeight = "1.1"; }   // سطر محكم: الرقم الأكبر لا يزيد ارتفاع الصف
       tr.append(td);
     });
     return tr;

@@ -47,6 +47,25 @@
        fixed: (رقم يكتبه المستخدم-رقم الورقة)
        none:  (رقم الورقة) فقط
      والورقة الوحيدة في نطاق ترقيمها لا رقم لها (عدا الرقم الثابت). */
+  /* ===== عرض كل عمود حسب أطول نص فيه، و«التوقيع» يأخذ الباقي حتى حافة الجدول =====
+     measure(text, bold, sizePt) ← عرض النص بالنقاط (يُمرَّر من المتصفح بقياس الخط الفعلي؛ وإلا تقدير محافظ) */
+  const TABLE_PT = 468;          // عرض منطقة النص بين هامشَي الترويسة (6.5 إنش)
+  const CELL_PAD = 24;           // هوامش الخلية الداخلية (9 نقاط لكل جانب في الطباعة، 5.8 في Word) + أمان
+  const SIG_MIN = 0.15;          // أقل عرض لخانة التوقيع (الاسم المقروء أولى؛ في الكشوف العادية يأخذ التوقيع أكثر بكثير)
+  // تقدير احتياطي (حين لا يتوفر قياس الخط): Sakkal Majalla ضيّق — قِيس الحرف العربي نحو 0.31 من حجم الخط، فنأخذ 0.36 بهامش
+  const estimate = (text, bold, size) => [...String(text == null ? "" : text)].reduce((a, ch) => a + (/[0-9٠-٩]/.test(ch) ? 0.5 : /\s/.test(ch) ? 0.25 : 0.36), 0) * size * (bold ? 1.08 : 1);
+  function fitWidths(headers, rows, opts) {
+    const meas = opts.measure || estimate, n = headers.length, sig = n - 1, nameI = headers.indexOf("الاسم");
+    const style = opts.colStyle || [];
+    const need = headers.map((h, i) => (i === sig ? 0 : Math.max(meas(h, true, 12), ...rows.map((r) => meas(r[i], !!(style[i] && style[i].bold), (style[i] && style[i].sizePt) || 12))) + CELL_PAD));
+    const room = TABLE_PT * (1 - SIG_MIN), used = need.reduce((a, b) => a + b, 0);
+    if (used > room && nameI >= 0) need[nameI] = Math.max(TABLE_PT * 0.22, need[nameI] - (used - room));   // الاسم وحده يلتفّ إن ضاق المكان
+    let tot = need.reduce((a, b) => a + b, 0);
+    if (tot > room) { const f = room / tot; need.forEach((w, i) => { need[i] = w * f; }); tot = room; }
+    need[sig] = TABLE_PT - tot;
+    return need.map((w) => w / TABLE_PT);
+  }
+
   /* ترتيب الكشوف (مشترك بين كشف التوقيع ونسخة المذيع وأرقام الكراسي): مجموعات بحسب المسار/المجموعة (والجنس)، وأبجدياً داخل كل مجموعة.
      يعيد [{ base, sex, rows }] بالترتيب الذي تُطبع به الأوراق */
   function arrange(students, options) {
@@ -69,6 +88,15 @@
     // رقم الكرسي: عدّاد متصل عبر كل المجموعات بترتيب الطباعة نفسه (يطابق بطاقات الكراسي chairs())
     const chairCol = !ann && !!o.chairCol;
     let seatNext = Math.max(1, Math.round(Number(o.chairStart)) || 1);
+    // كشف التوقيع: رقم الكرسي غامق بحجم 16، وعرض الأعمدة حسب أطول نص فيها (واحد لكل الأوراق ليتطابق شكلها)
+    const signHeads = chairCol ? C_HEADERS : HEADERS;
+    const colStyle = chairCol ? [null, null, null, null, { bold: true, sizePt: 16 }, null] : null;
+    let signWidths = chairCol ? C_WIDTHS : WIDTHS;
+    if (!ann && o.fitCols !== false) {
+      const all = []; let sx = seatNext;
+      arrange(list, o).forEach((g) => g.rows.forEach((s, i) => all.push([String(i + 1), clean(s.name), clean(s.id), clean(s.stage)].concat(chairCol ? [String(sx++)] : [], [""]))));
+      if (all.length) signWidths = fitWidths(signHeads, all, { measure: o.measure, colStyle });
+    }
     arrange(list, o).forEach(({ base: gk, sex: gSex, rows }) => {
       const seat = seatNext; seatNext += rows.length;
       const chunks = []; for (let i = 0; i < rows.length; i += perPage) chunks.push(rows.slice(i, i + perPage));
@@ -87,7 +115,7 @@
           kind: "table", headers: A_HEADERS, widths: A_WIDTHS, align: A_ALIGN, rowHeightTw: Math.round((Number(o.announcerSizePt) || 14) * 30), sizePt: Number(o.announcerSizePt) || 14,
           rows: chunk.map((s, i) => [String(ci * perPage + i + 1), clean(s.name), clean(s.stage)]),
         } : {
-          kind: "table", headers: chairCol ? C_HEADERS : HEADERS, widths: chairCol ? C_WIDTHS : WIDTHS, align: chairCol ? C_ALIGN : ALIGN, rowHeightTw: 480,
+          kind: "table", headers: signHeads, widths: signWidths, align: chairCol ? C_ALIGN : ALIGN, rowHeightTw: 480, colStyle,
           rows: chunk.map((s, i) => [String(ci * perPage + i + 1), clean(s.name), clean(s.id), clean(s.stage)].concat(chairCol ? [String(seat + ci * perPage + i)] : [], [""])),
         });
         blocks.push(meta);

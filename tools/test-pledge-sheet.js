@@ -42,6 +42,19 @@ const r5 = P.build(mk(3), { chairCol: false }).blocks.find((b) => b.kind === "ta
 ok("بإيقاف «رقم الكرسي» يعود الجدول خمسة أعمدة", r5.headers.join("|") === "م|الاسم|رقم الهوية|المرحلة|التوقيع" && r5.rows[0].length === 5, r5.headers);
 const rs = P.build(mk(3), { chairStart: 101 }).blocks.find((b) => b.kind === "table");
 ok("رقم الكرسي يبدأ من «ابدأ الترقيم من» (101)", rs.rows.map((x) => x[4]).join() === "101,102,103", rs.rows.map((x) => x[4]));
+{   // عرض الأعمدة حسب النص، والتوقيع يأخذ الباقي
+  const meas = (t) => String(t || "").length * 4;   // 4 نقاط للحرف (قياس ثابت للاختبار)
+  const stu = [{ name: "اسلام اسماعيل عودة بدوان", id: "801850660", stage: "المرحلة الثانية", track: "ت" }, { name: "اخلاص حسين", id: "803540020", stage: "المرحلة الأولى", track: "ت" }];
+  const tb = P.build(stu, { measure: meas }).blocks.find((b) => b.kind === "table"), W = tb.widths.map((x) => Math.round(x * 468));
+  ok("الأعمدة حسب أطول نص: الاسم 24 حرفاً، الهوية (العنوان أطول من الرقم) 10، المرحلة 15، الكرسي (العنوان) 6", W[1] === 24 * 4 + 24 && W[2] === 10 * 4 + 24 && W[3] === 15 * 4 + 24 && W[4] === 6 * 4 + 24, W);
+  ok("التوقيع يأخذ الباقي حتى حافة الجدول (المجموع 100%)", Math.abs(tb.widths.reduce((a, b) => a + b, 0) - 1) < 1e-9 && W[5] === 468 - W.slice(0, 5).reduce((a, b) => a + b, 0) && W[5] > W[1], W);
+  ok("رقم الكرسي غامق بحجم 16", tb.colStyle && tb.colStyle[4].bold === true && tb.colStyle[4].sizePt === 16 && !tb.colStyle[1]);
+  const longN = P.build([{ name: "اسم طويل جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً", id: "1", stage: "م", track: "ت" }], { measure: meas }).blocks.find((b) => b.kind === "table");
+  ok("أسماء طويلة جداً: التوقيع لا يقل عن 15% والاسم وحده يلتفّ", longN.widths[5] >= 0.15 - 1e-9 && Math.abs(longN.widths.reduce((a, b) => a + b, 0) - 1) < 1e-9, longN.widths.map((x) => x.toFixed(2)));
+  const fixedW = P.build(stu, { measure: meas, fitCols: false }).blocks.find((b) => b.kind === "table").widths;
+  ok("fitCols:false يعيد العرض الثابت", fixedW.join() === [0.05, 0.38, 0.15, 0.15, 0.07, 0.20].join(), fixedW);
+  ok("كل أوراق الكشف بالعرض نفسه", (() => { const ts = P.build(mk(30), { perPage: 10, measure: meas }).blocks.filter((b) => b.kind === "table"); return ts.every((t) => t.widths.join() === ts[0].widths.join()); })());
+}
 const wsum = P.build(mk(2)).blocks.find((b) => b.kind === "table").widths.reduce((a, b) => a + b, 0);
 ok("عرض الأعمدة الستة = 100%", Math.abs(wsum - 1) < 0.001, wsum);
 ok("الديباجة في كل ورقة افتراضياً", r.blocks.filter((b) => b.kind === "para").length === 2);

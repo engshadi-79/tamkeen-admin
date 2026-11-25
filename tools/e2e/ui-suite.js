@@ -800,6 +800,23 @@ async function suite() {
       ok("المستند: ورقة «كشف الذكور» ثم «كشف الإناث» ثم «جنس غير محدد» للمسار", subs.join() === "كشف الذكور,كشف الإناث,جنس غير محدد" && built.pages === 3, JSON.stringify({ subs, pages: built.pages }));
       // أرقام الكراسي: الزر يرسل الأرقام بترتيب الكشوف
       ok("قسم «أرقام الكراسي» وزر الطباعة مع العدد (4 أرقام على ورقة A4 واحدة)", !!b.querySelector('[data-cc="pledge-chairs"]:not([disabled])') && /4 رقماً \(من 1 إلى 4\) على 1 ورقة A4/.test((b.querySelector(".cc-chairs") || {}).textContent || ""), (b.querySelector(".cc-chairs") || {}).textContent);
+      {   // عرض الأعمدة حسب النص (بقياس الخط الفعلي)، والتوقيع يأخذ الباقي، والكرسي غامق 16، ولا خلية تنكسر
+        const keepSt = c.state.pledge.students;
+        c.state.pledge.students = ["اخلاص حسين احمد نعنع", "اريج محمود عبد النبي فياض", "اسلام اسماعيل عودة بدوان", "اسماء محمد ابراهيم الرباطي"].map((n, i) => ({ name: n, id: "80354002" + i, stage: i % 2 ? "المرحلة الثانية" : "المرحلة الأولى", group: "G1", track: "مسار التجميل", gender: "أنثى" }));
+        const blk = App.centerCmd.pledgeBlocks(), tbk = blk.blocks.find((x) => x.kind === "table");
+        const hw = document.createElement("div"); hw.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(hw);
+        App.docRender.paginate(hw, blk.blocks);
+        const lines = (el) => { const rg = document.createRange(); rg.selectNodeContents(el); return new Set([...rg.getClientRects()].map((x) => Math.round(x.top))).size; };
+        const wrapped = [...hw.querySelectorAll("tbody td, thead th")].filter((x) => lines(x) > 1).map((x) => x.textContent);
+        const chairTd = hw.querySelector("tbody tr td:nth-child(5)"), cst = chairTd ? { fontWeight: getComputedStyle(chairTd).fontWeight, fontSize: getComputedStyle(chairTd).fontSize } : null; hw.remove();
+        const wsg = tbk.widths;
+        ok("الكشف: عرض الأعمدة حسب النص والتوقيع الأعرض (يأخذ الباقي)، ولا خلية تنكسر إلى سطرين", wrapped.length === 0 && Math.abs(wsg.reduce((a, x) => a + x, 0) - 1) < 1e-9 && wsg[5] === Math.max(...wsg) && wsg[5] >= 0.15, JSON.stringify({ wrapped, w: wsg.map((x) => Math.round(x * 100)) }));
+        ok("رقم الكرسي في الطباعة غامق بحجم 16 (16 نقطة بمقياس صفحة 8.5 إنش = 21.3 بكسل)", !!cst && Number(cst.fontWeight) >= 700 && Math.abs(parseFloat(cst.fontSize) - 16 * 816 / 612) < 0.6, cst && cst.fontWeight + " " + cst.fontSize);
+        await App.docx.load(); const zz = await JSZip.loadAsync(await App.docx.build(blk.blocks).arrayBuffer()), dd = await zz.file("word/document.xml").async("string");
+        const grid = [...dd.matchAll(/<w:gridCol w:w="(\d+)"\/>/g)].slice(0, 6).map((m) => +m[1]);
+        ok("Word: الأعمدة بالعرض نفسه وتملأ عرض النص، والكرسي غامق 16", grid.reduce((a, x) => a + x, 0) === 9360 && grid[5] === Math.max(...grid) && /<w:b\/><w:bCs\/><w:sz w:val="32"\/><w:szCs w:val="32"\/><w:rtl\/><\/w:rPr><w:t xml:space="preserve">1</.test(dd), JSON.stringify(grid));
+        c.state.pledge.students = keepSt;
+      }
       ok("خيار «عمود رقم الكرسي قبل التوقيع» مفعّل افتراضياً والكشف بستة أعمدة", !!b.querySelector('[data-pl="chairCol"]:checked') && App.pledgeSheet.build(stP, c.state.pledge.opts).blocks.find((x) => x.kind === "table").headers.join() === "م,الاسم,رقم الهوية,المرحلة,الكرسي,التوقيع", "col");
       const keepPr = App.chairNumbers.print; let gotCh = null; App.chairNumbers.print = (items, o) => { gotCh = { items, o }; return true; };
       b.querySelector('[data-cc="pledge-chairs"]').click(); await wait(100); App.chairNumbers.print = keepPr;

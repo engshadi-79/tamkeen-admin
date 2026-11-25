@@ -2658,10 +2658,18 @@
     } finally { host.remove(); }
     return (fitCache[key] = Math.max(5, fit - 1));   // هامش صف واحد لاختلاف Word عن الطباعة
   }
+  /* قياس عرض النص بخط المستندات نفسه (Sakkal Majalla في Word والطباعة) ← بالنقاط، لضبط عرض أعمدة الكشف حسب نصّها */
+  let measureCtx = null;
+  const pledgeMeasure = (text, bold, sizePt) => {
+    try { measureCtx = measureCtx || document.createElement("canvas").getContext("2d"); } catch (e) { measureCtx = null; }
+    if (!measureCtx) return String(text || "").length * sizePt * 0.55;
+    measureCtx.font = (bold ? "700 " : "") + sizePt + 'pt "Sakkal Majalla", "Traditional Arabic", "Segoe UI", Tahoma, sans-serif';
+    return measureCtx.measureText(String(text == null ? "" : text)).width * 0.75;   // px ← pt
+  };
   function pledgeBlocks(mode) {
     const st = pledgeStudents(); if (!st.length) return null;
     if (!state.pledge.opts) state.pledge.opts = pledgeOpts();
-    const o = Object.assign({}, state.pledge.opts);
+    const o = Object.assign({}, state.pledge.opts, { measure: pledgeMeasure });
     // عدد الصفوف في الورقة واحد للنسختين، فتتطابق الأسماء في كل صفحة وعدد الصفحات والترقيم
     if (o.autoFit) { state.pledge.fit = pledgeFitRows(o); o.perPage = state.pledge.fit; }
     if (mode !== "announcer") return App.pledgeSheet.build(st, o);
