@@ -4,6 +4,7 @@
 (function (App) {
   const { ui, templates } = App;
   const PAGE_PT = 612; // عرض صفحة Letter بالنقاط
+  const TEXT_PT = 468; // عرض منطقة النص بين هامشَي الترويسة
   const cqw = (pt) => `${(pt / PAGE_PT) * 100}cqw`;
 
   /* ===== عناصر المعاينة ===== */
@@ -11,6 +12,8 @@
     const table = document.createElement("table");
     table.className = "lb lb-table";
     if (b.sizePt) table.style.fontSize = cqw(b.sizePt);
+    // جدول أعرض من منطقة النص (widthPt > 468): يمتد في الهامش الأيسر (نهاية السطر في العربية)
+    if (b.widthPt && b.widthPt > TEXT_PT) { table.style.width = cqw(b.widthPt); table.style.maxWidth = "none"; table.style.marginInlineEnd = cqw(-(b.widthPt - TEXT_PT)); }
     if (b.widths) {
       const cg = document.createElement("colgroup");
       b.widths.forEach((w) => { const c = document.createElement("col"); c.style.width = `${w * 100}%`; cg.append(c); });
@@ -106,6 +109,8 @@
   }
 
   const overflows = (body) => body.scrollHeight > body.clientHeight + 1;
+  // صفحة فيها جدول ممتد إلى الهامش: لا قصّ أفقياً (القصّ العمودي باقٍ لكشف الفيض)
+  const allowWide = (body, b) => { if (b.widthPt && b.widthPt > TEXT_PT) { body.style.overflowX = "visible"; body.style.overflowY = "clip"; } };
 
   /* تقسيم الكتل على صفحات؛ الجدول الطويل يُقسَّم بين الصفحات مع تكرار صف عناوينه */
   function paginate(container, list) {
@@ -119,11 +124,11 @@
       }
       if (b.kind === "table") {
         let table = tableEl(b);
-        body.appendChild(table);
+        body.appendChild(table); allowWide(body, b);
         if (overflows(body) && body.children.length > 1) {
           table.remove();
           body = newPage(container);
-          body.appendChild(table);
+          body.appendChild(table); allowWide(body, b);
         }
         b.rows.forEach((cells) => {
           const tr = rowEl(cells, b);
@@ -132,7 +137,7 @@
             tr.remove();
             body = newPage(container);
             table = tableEl(b);
-            body.appendChild(table);
+            body.appendChild(table); allowWide(body, b);
             table.tBodies[0].appendChild(tr);
           }
         });
