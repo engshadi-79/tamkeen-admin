@@ -14,6 +14,9 @@
     repeatPreamble: true,    // الديباجة في أعلى كل ورقة (لتكون كل ورقة موقَّعة مكتملة)
     split: "track",          // track: أسماء كل مسار معاً (حتى لو أكثر من مرحلة أو مجموعة) | group: ورقة لكل مجموعة | none: كشف واحد
     genderSplit: false,      // كشف للذكور وكشف للإناث داخل كل مسار/مجموعة (ترقيم أوراق مستقل لكلٍّ منهما)
+    chairStart: 1,           // أرقام الكراسي: أول رقم
+    chairNames: false,       // اسم الطالب تحت رقم كرسيه
+    chairTags: false,        // المسار والجنس بخط صغير تحت الرقم
   };
   /* «ذكر/أنثى» بأي صيغة ← ذكور / إناث / غير محدد */
   const SEX_ORDER = ["ذكور", "إناث", "غير محدد"];
@@ -38,22 +41,26 @@
        fixed: (رقم يكتبه المستخدم-رقم الورقة)
        none:  (رقم الورقة) فقط
      والورقة الوحيدة في نطاق ترقيمها لا رقم لها (عدا الرقم الثابت). */
+  /* ترتيب الكشوف (مشترك بين كشف التوقيع ونسخة المذيع وأرقام الكراسي): مجموعات بحسب المسار/المجموعة (والجنس)، وأبجدياً داخل كل مجموعة.
+     يعيد [{ base, sex, rows }] بالترتيب الذي تُطبع به الأوراق */
+  function arrange(students, options) {
+    const o = Object.assign({}, DEFAULTS, options || {});
+    const list = (students || []).filter((s) => clean(s.name)), groups = new Map();
+    const keyOf0 = o.split === "group" ? (s) => clean(s.group) || "—" : o.split === "none" ? () => "" : (s) => clean(s.track) || "—";
+    const SEP = "\u0001", keyOf = o.genderSplit ? (s) => keyOf0(s) + SEP + sexOf(s.gender) : keyOf0;
+    list.forEach((s) => { const k = keyOf(s); (groups.get(k) || groups.set(k, []).get(k)).push(s); });
+    const keys = [...groups.keys()].sort((a, b) => { const [ab, as] = a.split(SEP), [bb, bs] = b.split(SEP); return ab.localeCompare(bb, "ar", { numeric: true }) || SEX_ORDER.indexOf(as) - SEX_ORDER.indexOf(bs); });
+    return keys.map((k) => { const [base, sex] = k.split(SEP); return { base, sex: sex || "", rows: groups.get(k).slice().sort(byName) }; });
+  }
   function build(students, options, mode) {
     const ann = mode === "announcer";
     const o = Object.assign({}, DEFAULTS, options || {});
     const perPage = Math.max(5, Math.min(40, Math.round(Number(o.perPage)) || DEFAULTS.perPage));
     const list = students.filter((s) => clean(s.name));
-    const groups = new Map();
-    const keyOf0 = o.split === "group" ? (s) => clean(s.group) || "—" : o.split === "none" ? () => "" : (s) => clean(s.track) || "—";
-    const SEP = "\u0001", keyOf = o.genderSplit ? (s) => keyOf0(s) + SEP + sexOf(s.gender) : keyOf0;
-    list.forEach((s) => { const k = keyOf(s); (groups.get(k) || groups.set(k, []).get(k)).push(s); });
-    const keys = [...groups.keys()].sort((a, b) => { const [ab, as] = a.split(SEP), [bb, bs] = b.split(SEP); return ab.localeCompare(bb, "ar", { numeric: true }) || SEX_ORDER.indexOf(as) - SEX_ORDER.indexOf(bs); });
     const blocks = [], sheets = [];   // sheets: لكل ورقة { meta, k (داخل مجموعتها), gTotal }
     const bySex = {}; if (o.genderSplit) list.forEach((s) => { const x = sexOf(s.gender); bySex[x] = (bySex[x] || 0) + 1; });
 
-    keys.forEach((gkFull) => {
-      const [gk, gSex] = gkFull.split(SEP);
-      const rows = groups.get(gkFull).slice().sort(byName);
+    arrange(list, o).forEach(({ base: gk, sex: gSex, rows }) => {
       const chunks = []; for (let i = 0; i < rows.length; i += perPage) chunks.push(rows.slice(i, i + perPage));
       chunks.forEach((chunk, ci) => {
         if (sheets.length > 0) blocks.push({ kind: "pagebreak" });
@@ -89,5 +96,12 @@
   }
 
   /* أوراق الطلاب ← استخراج المرحلة من نص الدورة/المجموعة */
-  App.pledgeSheet = { DEFAULTS, HEADERS, build, sexOf };
+  /* أرقام الكراسي للاحتفال: بترتيب الكشوف نفسه، متسلسلة من start. يعيد [{ n, name, track, sex }] */
+  function chairs(students, options, start) {
+    let n = Math.max(1, Math.round(Number(start)) || 1);
+    const out = [];
+    arrange(students, options).forEach((g) => g.rows.forEach((s) => out.push({ n: n++, name: clean(s.name), track: g.base && g.base !== "—" ? g.base : clean(s.track), sex: g.sex })));
+    return out;
+  }
+  App.pledgeSheet = { DEFAULTS, HEADERS, build, sexOf, arrange, chairs };
 })(window.App = window.App || {});
