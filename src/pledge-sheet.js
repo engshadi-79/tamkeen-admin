@@ -110,7 +110,7 @@
   function chairs(students, options, start) {
     let n = Math.max(1, Math.round(Number(start)) || 1);
     const out = [];
-    arrange(students, options).forEach((g) => g.rows.forEach((s) => out.push({ n: n++, name: clean(s.name), track: g.base && g.base !== "—" ? g.base : clean(s.track), sex: g.sex })));
+    arrange(students, options).forEach((g) => g.rows.forEach((s) => out.push({ n: n++, name: clean(s.name), id: clean(s.id), group: clean(s.group), stage: clean(s.stage), track: g.base && g.base !== "—" ? g.base : clean(s.track), sex: g.sex || (s.gender ? sexOf(s.gender) : "") })));
     return out;
   }
   App.pledgeSheet = { DEFAULTS, HEADERS, C_HEADERS, build, sexOf, arrange, chairs };
