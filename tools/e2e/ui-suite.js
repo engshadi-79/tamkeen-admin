@@ -832,6 +832,13 @@ async function suite() {
     ok("من ينقصه: خالد وسامي فقط، لا أحمد (مكتمل) ولا ريم (لم تُقرأ بياناتها)", /خالد سعيد/.test(listT) && /سامي عمر/.test(listT) && !/أحمد علي/.test(listT) && !/ريم ناصر/.test(listT), listT.replace(/\s+/g, " ").slice(0, 220));
     ok("خالد ينقصه حقلان (الحالة الاجتماعية وتاريخ الميلاد)", /خالد سعيد[\s\S]*الحالة الاجتماعية، تاريخ الميلاد/.test(listT), listT.replace(/\s+/g, " ").slice(0, 200));
     ok("تنبيه أن من لم تُقرأ بياناتهم لا يُعدّون ناقصين", /لا يُعدّ ناقصاً/.test(b.textContent), "unread");
+    const BL = App.centerCmd._gaps.blank;
+    ok("«-» وكل أشكال الشَّرطة و N/A تُعدّ فارغة تحتاج تعبئة، والقيم الحقيقية لا", ["", "-", "--", "–", "—", "ـ", " - ", ".", "N/A", "null"].every(BL) && !["أعزب", "0", "2005-06-21", "دير البلح - شارع"].some(BL), "blank");
+    {
+      const fM = App.centerCmd._gaps.fields().filter((f) => f.name === "marital_status");
+      const stD = App.centerCmd._gaps.stats([{ heads: ["الاسم", "رقم الطالب", "الجنس", "الحالة الاجتماعية"], rows: [{ cells: ["أ", "D1", "ذكر", "-"] }, { cells: ["ب", "D2", "ذكر", "–"] }, { cells: ["ج", "D3", "ذكر", "--"] }, { cells: ["د", "D4", "ذكر", "أعزب"] }], label: "" }], fM);
+      ok("الحالة الاجتماعية «-» أو «–» أو «--» تُحسب ناقصة (3 من 4)", stD.per[0].blank === 3 && stD.per[0].filled === 1 && stD.withGaps.length === 3, JSON.stringify(stD.per[0]));
+    }
     ok("أزرار Excel ونسخ الملخص", !!b.querySelector('[data-cc="gaps-xlsx"]') && !!b.querySelector('[data-cc="gaps-copy"]'), "btns");
     // تغيير الحقول يُعيد الحساب بلا قراءة جديدة
     const n0 = gcalls; const gi = b.querySelector('[data-gaps="f:birth_date"]'); gi.checked = false; gi.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);

@@ -2809,7 +2809,8 @@
   const GAP_DEFAULT = ["marital_status", "birth_date", "current_address", "governorate_id", "education_level"];
   const gapFieldList = () => (SCHEMA().createStudent.fields || []).filter((f) => !GAP_SKIP.has(f.name) && /^(text|select|date|textarea|number)$/.test(f.type));
   const gapSelected = () => { const c = state.gaps, all = gapFieldList().map((f) => f.name); return (c.fields || GAP_DEFAULT).filter((n) => all.includes(n)); };
-  const isBlankCell = (v) => { const t = clean(v); return !t || t === "-" || t === "—"; };
+  /* فارغ = لا شيء، أو شَرطة بأي شكل («-» «--» «–» «—» «ـ»)، أو نقطة/شرطة سفلية، أو null / N/A — كلها تُعدّ ناقصة وتحتاج تعبئة */
+  const isBlankCell = (v) => { const t = clean(v); return !t || /^[\s\-‐-―−ـ_.\/\\]+$/.test(t) || /^(null|undefined|n\/?a|none)$/i.test(t); };
   /* عمود الحقل في جدول التفاصيل: تطابق التسمية ثم احتواؤها (تسميات نموذج التعديل قد تختلف قليلاً عن لقطة الإضافة) */
   function gapCol(heads, f) {
     const k = norm(f.label); let i = heads.findIndex((h) => norm(h) === k);
@@ -4815,7 +4816,7 @@
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
   sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
   App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
-    _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol, enrichResult },
+    _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol, enrichResult, blank: isBlankCell },
     _extras: { apply: applyExtras, seen: extraSeen },
     _sig: { learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
