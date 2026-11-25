@@ -12,8 +12,8 @@
     const table = document.createElement("table");
     table.className = "lb lb-table";
     if (b.sizePt) table.style.fontSize = cqw(b.sizePt);
-    // جدول أعرض من منطقة النص (widthPt > 468): يمتد في الهامش الأيسر (نهاية السطر في العربية)
-    if (b.widthPt && b.widthPt > TEXT_PT) { table.style.width = cqw(b.widthPt); table.style.maxWidth = "none"; table.style.marginInlineEnd = cqw(-(b.widthPt - TEXT_PT)); }
+    // جدول أعرض من منطقة النص (widthPt > 468): في وسط الورقة، يمتد بالتساوي في الهامشين
+    if (b.widthPt && b.widthPt > TEXT_PT) { const half = cqw(-(b.widthPt - TEXT_PT) / 2); table.style.width = cqw(b.widthPt); table.style.maxWidth = "none"; table.style.marginInlineStart = half; table.style.marginInlineEnd = half; }
     if (b.widths) {
       const cg = document.createElement("colgroup");
       b.widths.forEach((w) => { const c = document.createElement("col"); c.style.width = `${w * 100}%`; cg.append(c); });

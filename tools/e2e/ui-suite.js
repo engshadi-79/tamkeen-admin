@@ -811,14 +811,14 @@ async function suite() {
         const chairTd = hw.querySelector("tbody tr td:nth-child(5)"), cst = chairTd ? { fontWeight: getComputedStyle(chairTd).fontWeight, fontSize: getComputedStyle(chairTd).fontSize } : null;
         const tEl = hw.querySelector("table.lb-table"), bEl = hw.querySelector(".lh-body"), pEl = hw.querySelector(".lh-page");
         const tR = tEl.getBoundingClientRect(), bR = bEl.getBoundingClientRect(), pR = pEl.getBoundingClientRect(), k = 612 / pR.width;
-        ok("الطباعة: الجدول يبدأ عند الهامش الأيمن ويمتد ~36 نقطة في الهامش الأيسر دون قصّ، ويبقى داخل الورقة", Math.abs(tR.right - bR.right) < 2 && Math.abs((bR.left - tR.left) * k - 36) < 2 && tR.left > pR.left + 20 && getComputedStyle(bEl).overflowX === "visible", JSON.stringify({ extendPt: Math.round((bR.left - tR.left) * k), leftMarginPt: Math.round((tR.left - pR.left) * k), ox: getComputedStyle(bEl).overflowX }));
+        ok("الطباعة: الجدول (504 نقطة) في وسط الورقة، يمتد 18 نقطة في كل هامش دون قصّ", Math.abs((tR.right - bR.right) * k - 18) < 2 && Math.abs((bR.left - tR.left) * k - 18) < 2 && Math.abs((tR.left - pR.left) - (pR.right - tR.right)) < 2 && getComputedStyle(bEl).overflowX === "visible", JSON.stringify({ right: Math.round((tR.right - bR.right) * k), left: Math.round((bR.left - tR.left) * k), mL: Math.round((tR.left - pR.left) * k), mR: Math.round((pR.right - tR.right) * k) }));
         hw.remove();
         const wsg = tbk.widths;
         ok("الكشف: عرض الأعمدة حسب النص والتوقيع الأعرض (يأخذ الباقي)، ولا خلية تنكسر إلى سطرين", wrapped.length === 0 && Math.abs(wsg.reduce((a, x) => a + x, 0) - 1) < 1e-9 && wsg[5] === Math.max(...wsg) && wsg[5] >= 0.15, JSON.stringify({ wrapped, w: wsg.map((x) => Math.round(x * 100)) }));
         ok("رقم الكرسي في الطباعة غامق بحجم 16 (16 نقطة بمقياس صفحة 8.5 إنش = 21.3 بكسل)", !!cst && Number(cst.fontWeight) >= 700 && Math.abs(parseFloat(cst.fontSize) - 16 * 816 / 612) < 0.6, cst && cst.fontWeight + " " + cst.fontSize);
         await App.docx.load(); const zz = await JSZip.loadAsync(await App.docx.build(blk.blocks).arrayBuffer()), dd = await zz.file("word/document.xml").async("string");
         const grid = [...dd.matchAll(/<w:gridCol w:w="(\d+)"\/>/g)].slice(0, 6).map((m) => +m[1]);
-        ok("Word: الأعمدة تملأ عرض الجدول الممتد (504 نقطة = 10080)، والكرسي غامق 16", Math.abs(grid.reduce((a, x) => a + x, 0) - 10080) <= 6 && /<w:tblW w:w="10080" w:type="dxa"\/>/.test(dd) && grid[5] === Math.max(...grid) && /<w:b\/><w:bCs\/><w:sz w:val="32"\/><w:szCs w:val="32"\/><w:rtl\/><\/w:rPr><w:t xml:space="preserve">1</.test(dd), JSON.stringify(grid));
+        ok("Word: الأعمدة تملأ عرض الجدول الممتد (504 نقطة = 10080)، والكرسي غامق 16", Math.abs(grid.reduce((a, x) => a + x, 0) - 10080) <= 6 && /<w:tblW w:w="10080" w:type="dxa"\/><w:jc w:val="center"\/>/.test(dd) && grid[5] === Math.max(...grid) && /<w:b\/><w:bCs\/><w:sz w:val="32"\/><w:szCs w:val="32"\/><w:rtl\/><\/w:rPr><w:t xml:space="preserve">1</.test(dd), JSON.stringify(grid));
         c.state.pledge.students = keepSt;
       }
       ok("خيار «عمود رقم الكرسي قبل التوقيع» مفعّل افتراضياً والكشف بستة أعمدة", !!b.querySelector('[data-pl="chairCol"]:checked') && App.pledgeSheet.build(stP, c.state.pledge.opts).blocks.find((x) => x.kind === "table").headers.join() === "م,الاسم,رقم الهوية,المرحلة,الكرسي,التوقيع", "col");
