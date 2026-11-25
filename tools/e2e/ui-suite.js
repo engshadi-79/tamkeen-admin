@@ -768,6 +768,30 @@ async function suite() {
     const ta = b.querySelector('[data-pl="preamble"]'); ta.value = "ديباجة اختبار"; ta.dispatchEvent(new Event("change", { bubbles: true })); await wait(100);
     ok("الديباجة المعدّلة تُحفظ للمرة القادمة", /ديباجة اختبار/.test(localStorage.getItem("tamkeen:pledge-opts") || ""), localStorage.getItem("tamkeen:pledge-opts"));
     localStorage.removeItem("tamkeen:pledge-opts");
+    {   // كشف للذكور وكشف للإناث في كل مسار: الجنس من ملف «تصدير Excel» (إضافة 1.5.8)
+      const keepV = agent.version, keepRun2 = agent.run, seenP = [];
+      const wbP = new ExcelJS.Workbook(), wsP = wbP.addWorksheet("الطلاب");
+      wsP.addRow(["بيانات الطلاب الكاملة مع بيانات طلب التقديم"]); wsP.addRow(["رقم الطالب", "اسم الطالب", "رقم الهوية", "الجنس", "الحالة الاجتماعية للمتقدم"]);
+      wsP.addRow(["S1", "أحمد", "500000001", "ذكر", "أعزب"]); wsP.addRow(["S2", "سارة", "500000002", "أنثى", "أعزب"]); wsP.addRow(["S3", "خالد", "500000003", "ذكر", "-"]);
+      const u8P = new Uint8Array(await wbP.xlsx.writeBuffer()); let binP = ""; u8P.forEach((x) => { binP += String.fromCharCode(x); });
+      agent.version = () => "1.5.8";
+      agent.run = async (cmds) => ({ results: cmds.map((cm) => { seenP.push(cm.type); return cm.type === "export" ? { type: "export", label: cm.label, name: "x.xlsx", bytes: u8P.length, b64: btoa(binP) }
+        : { type: "list", label: "مسار الحلاقة - المرحلة الأولى", params: cm.params, heads: ["الاسم", "رقم الطالب", "المجموعة", "رقم الهوية"], rows: [{ cells: ["أحمد", "S1", "S1G1", "500000001"] }, { cells: ["سارة", "S2", "S1G1", "500000002"] }, { cells: ["خالد", "S3", "S1G1", "500000003"] }, { cells: ["مجهول", "S4", "S1G1", "500000004"] }] }; }) });
+      c.state.enrich = null; c.state.mode = "pledge"; c.state.pledge.students = null; c.state.pledge.opts = null; c.render();
+      const gs = b.querySelector('[data-pl="genderSplit"]');
+      ok("خيار «كشف للذكور وكشف للإناث في كل مسار» موجود", !!gs, "opt");
+      gs.checked = true; gs.dispatchEvent(new Event("change", { bubbles: true })); await wait(100);
+      b.querySelector('[data-cc="run-pledge"]').click(); for (let i = 0; i < 80 && (!c.state.pledge.students || c.state.busy); i++) await wait(100); await wait(300);
+      const stP = c.state.pledge.students || [];
+      ok("الجلب: قائمة الطلاب ثم طلب تصدير واحد للجنس، والجنس عُرف بالهوية", seenP.includes("export") && stP.find((s) => s.name === "سارة").gender === "أنثى" && stP.find((s) => s.name === "أحمد").gender === "ذكر", JSON.stringify({ seenP, g: stP.map((s) => s.name + ":" + (s.gender || "")) }));
+      const alP = (b.querySelector("#cc-pledge .cc-alert.ok") || {}).textContent || "";
+      ok("العدّاد: ذكور 2 · إناث 1 · غير محدد 1", /ذكور 2/.test(alP) && /إناث 1/.test(alP) && /غير محدد 1/.test(alP), alP);
+      ok("تنبيه «لا أعرف جنس 1 طالباً» مع زر الجلب", /لا أعرف جنس/.test(b.textContent) && !!b.querySelector('[data-cc="pledge-gender"]'), "warn");
+      const pt = c.state.pledge.opts; const built = App.pledgeSheet.build(stP, Object.assign({}, pt, { perPage: 12 }));
+      const subs = built.blocks.filter((x) => x.kind === "title" && x.sizePt === 12).map((x) => x.text);
+      ok("المستند: ورقة «كشف الذكور» ثم «كشف الإناث» ثم «جنس غير محدد» للمسار", subs.join() === "كشف الذكور,كشف الإناث,جنس غير محدد" && built.pages === 3, JSON.stringify({ subs, pages: built.pages }));
+      agent.version = keepV; agent.run = keepRun2; c.state.enrich = null; localStorage.removeItem("tamkeen:pledge-opts");
+    }
     agent.run = oldRun; c.state.mode = "report"; c.state.pledge.students = null; c.state.pledge.opts = null; c.state.wideLimit = 0; c.render();
   }
 
