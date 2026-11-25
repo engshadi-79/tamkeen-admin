@@ -75,4 +75,21 @@ ok("كل ورقة لها كتلة رقم واحدة (2)", kinds.filter((k) => k 
 // خط المذيع قابل للتصغير ويتبعه ارتفاع الصف
 const small = P.build(mk(5), { announcerSizePt: 12 }, "announcer").blocks.find((b) => b.kind === "table");
 ok("خط المذيع 12 ← ارتفاع صف أصغر", small.sizePt === 12 && small.rowHeightTw === 360, [small.sizePt, small.rowHeightTw]);
+// كشف للذكور وكشف للإناث في كل مسار
+{
+  const S = (name, track, gender) => ({ name, id: "1", stage: "المرحلة الأولى", group: "G1", track, gender });
+  const st = [S("أحمد", "الحلاقة", "ذكر"), S("سارة", "الحلاقة", "أنثى"), S("خالد", "الحلاقة", "ذكر"), S("منى", "التجميل", "انثى"), S("ريم", "التجميل", "female"), S("مجهول", "التجميل", "")];
+  const g = P.build(st, { perPage: 10, genderSplit: true });
+  const titles = g.blocks.filter((b) => b.kind === "title" && b.sizePt === 12).map((b) => b.text);
+  const tracks = g.blocks.filter((b) => b.kind === "title" && b.sizePt === 13).map((b) => b.text);
+  ok("4 أوراق: التجميل (إناث، غير محدد) والحلاقة (ذكور، إناث)", g.pages === 4, g.pages);
+  ok("ترتيب الأوراق: المسارات أبجدياً، وفي كل مسار الذكور ثم الإناث ثم غير المحدد", titles.join() === "كشف الإناث,جنس غير محدد,كشف الذكور,كشف الإناث" && tracks.join() === "التجميل,التجميل,الحلاقة,الحلاقة", { titles, tracks });
+  const tables = g.blocks.filter((b) => b.kind === "table").map((t) => t.rows.map((r) => r[1]).join("،"));
+  ok("كل ورقة فيها جنس واحد فقط", JSON.stringify(tables) === JSON.stringify(["ريم،منى", "مجهول", "أحمد،خالد", "سارة"]), tables);
+  ok("عدّ الجنسين: ذكور 2، إناث 3، غير محدد 1", g.bySex["ذكور"] === 2 && g.bySex["إناث"] === 3 && g.bySex["غير محدد"] === 1, g.bySex);
+  const many = P.build([...Array.from({ length: 12 }, (_, i) => S("ذ" + i, "الحلاقة", "ذكر")), ...Array.from({ length: 4 }, (_, i) => S("ث" + i, "الحلاقة", "أنثى"))], { perPage: 10, genderSplit: true });
+  ok("الترقيم مستقل لكل جنس: (2-1) (2-2) للذكور وورقة الإناث الوحيدة بلا رقم", metas(many) === "(2-1),(2-2),", metas(many));
+  ok("بلا genderSplit لا يتغيّر شيء", P.build(st, { perPage: 10 }).pages === 2);
+  ok("sexOf يفهم الصيغ", P.sexOf("أنثى") === "إناث" && P.sexOf("انثى") === "إناث" && P.sexOf("ذكر") === "ذكور" && P.sexOf("Male") === "ذكور" && P.sexOf("") === "غير محدد");
+}
 console.log(bad ? bad + " فشل" : "كل الاختبارات نجحت (" + n + ")"); process.exit(bad ? 1 : 0);

@@ -2626,6 +2626,19 @@
   function pledgeStudents() {
     const c = state.pledge; return c.students || [];
   }
+  /* جنس كل طالب في الكشف: من ملف التصدير في الذاكرة (بالهوية) إن لم يكن معروفاً */
+  function pledgeFillGender() {
+    let n = 0;
+    (state.pledge.students || []).forEach((s) => { if (!s.gender) { const e = enrichOf(digits(s.id), ""); if (e && e.sex) { s.gender = e.sex; n++; } } });
+    return n;
+  }
+  const pledgeUnknownSex = () => (state.pledge.students || []).filter((s) => App.pledgeSheet.sexOf(s.gender) === "غير محدد").length;
+  async function pledgeGenderFetch() {
+    state.busy = true; state.resultError = ""; render(); refreshStatus();
+    try { await enrichFromSystem(gapsExportPlan(state.pledge)); const n = pledgeFillGender(); ui.toast("عُرف جنس " + ui.fmt(n) + " طالباً"); }
+    catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
   /* أكبر عدد صفوف يتّسع في الورقة الواحدة المطبوعة على الترويسة مع الديباجة الحالية (يُقاس فعلياً بالتقسيم إلى صفحات) */
   const fitCache = {};
   function pledgeFitRows(o, mode) {
@@ -2682,12 +2695,14 @@
           <label class="cc-chk"><input type="checkbox" data-pl="autoFit" ${o.autoFit ? "checked" : ""}> <span>عدد الصفوف يلائم الصفحة تلقائياً</span></label>
           <label class="cc-field"><span>حالة الطالب</span><select data-pledge="status">${(filterField("status").options || []).map((x) => `<option value="${esc(x.v)}" ${String(c.status) === String(x.v) ? "selected" : ""}>${esc(x.t)}</option>`).join("")}</select></label>
           <label class="cc-chk"><input type="checkbox" data-pl="repeatPreamble" ${o.repeatPreamble ? "checked" : ""}> <span>كرّر الديباجة في أعلى كل ورقة</span></label>
+          <label class="cc-chk"><input type="checkbox" data-pl="genderSplit" ${o.genderSplit ? "checked" : ""}> <span>كشف للذكور وكشف للإناث في كل مسار</span></label>
           <label class="cc-field"><span>تقسيم الأوراق</span><select data-pl="split"><option value="track"${sel("track", o.split)}>بحسب المسار (كل المراحل والمجموعات معاً)</option><option value="group"${sel("group", o.split)}>بحسب المجموعة</option><option value="none"${sel("none", o.split)}>كشف واحد للجميع</option></select></label>
         </div>
         <p class="cc-note">الرقم الأول هو عدد الأوراق يحسبه التطبيق، والثاني رقم الورقة: مجموعة من خمس أوراق تُرقَّم (5-1) إلى (5-5). الورقة الوحيدة بلا رقم. الأسماء مرتبة أبجدياً.</p>
         <label class="cc-field cc-wide"><span>أو ارفع قائمة من Excel (أعمدة: الاسم، الهوية، وأيضاً المرحلة والمجموعة إن وُجدت)</span><input type="file" id="cc-pledge-file" accept=".xlsx"></label>
         <p class="cc-note">أو اختر <b>المرحلة</b> (والمسار والمجموعة) من شريط «النطاق» ثم اضغط «اجلب الطلاب من المركز».</p>
-        ${n ? `<p class="cc-alert ok">${ui.fmt(n)} طالباً (${esc(c.source)}) ← ${ui.fmt(built.pages)} ${built.pages === 1 ? "ورقة" : "ورقة/أوراق"}.</p>` : ""}
+        ${n ? `<p class="cc-alert ok">${ui.fmt(n)} طالباً (${esc(c.source)}) ← ${ui.fmt(built.pages)} ${built.pages === 1 ? "ورقة" : "ورقة/أوراق"}.${o.genderSplit ? " ذكور " + ui.fmt(built.bySex["ذكور"] || 0) + " · إناث " + ui.fmt(built.bySex["إناث"] || 0) + (built.bySex["غير محدد"] ? " · غير محدد " + ui.fmt(built.bySex["غير محدد"]) : "") : ""}</p>` : ""}
+        ${n && o.genderSplit && pledgeUnknownSex() ? `<p class="cc-alert warn" role="status"><span>⚠ لا أعرف جنس <b>${ui.fmt(pledgeUnknownSex())}</b> طالباً فوُضعوا في ورقة «جنس غير محدد». الجنس يأتي من ملف «تصدير Excel» في النظام${canExport() ? "" : " (يحتاج إضافة وكيل تمكين 1.5.8)"}، أو من عمود «الجنس» في ملف Excel الذي ترفعه.</span> <button type="button" class="btn secondary small" data-cc="pledge-gender" ${canExport() && !state.busy ? "" : "disabled"}>اجلب الجنس من النظام</button></p>` : ""}
       </div>
       <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-pledge"))} أمر قراءة</b><span>${esc(scopeSummaryText())}</span></div>
         <div class="cc-act"><button type="button" class="btn secondary small" data-cc="pledge-reset">الديباجة الافتراضية</button>
@@ -2708,6 +2723,10 @@
       if (!reg.length) throw new Error("لم أجد مسجلين في المرحلة المختارة. تحقق من المرحلة والمسار وحالة الطالب.");
       c.students = reg.map((r) => { const g = grpCode(r.group) || ""; return { name: r.name, id: r.id, group: g, course: r.course, track: pledgeTrackOf(r.course), stage: stageOf(r.course) || stageFromGroup(g) || "" }; });
       c.source = "نظام المركز";
+      if (c.opts && c.opts.genderSplit) {
+        pledgeFillGender();
+        if (pledgeUnknownSex() && canExport()) { try { await enrichFromSystem(gapsExportPlan(c)); pledgeFillGender(); } catch (e) { state.resultError = "جُلب الطلاب، لكن تعذّر جلب الجنس: " + (e.message || e); } }
+      }
       ui.toast("جُلب " + ui.fmt(c.students.length) + " طالباً");
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
@@ -2717,10 +2736,10 @@
   async function pledgeFromFile(f) {
     const wb = await App.centerXl.readWorkbook(f);
     if (!wb.sheets.length) throw new Error("الملف فارغ.");
-    const sh = wb.sheets[0], m = App.centerXl.detect(sh.heads, sh.rows), iS = sh.heads.findIndex((h) => /مرحلة|stage/i.test(h)), iT = sh.heads.findIndex((h) => /^(ال)?مسار|track/i.test(h));
+    const sh = wb.sheets[0], m = App.centerXl.detect(sh.heads, sh.rows), iS = sh.heads.findIndex((h) => /مرحلة|stage/i.test(h)), iT = sh.heads.findIndex((h) => /^(ال)?مسار|track/i.test(h)), iG = sh.heads.findIndex((h) => /^(ال)?جنس$|gender|sex/i.test(clean(h)));
     if (m.name < 0) throw new Error("لم أجد عمود الاسم في الملف.");
     const get = (r, i) => (i >= 0 ? clean(r[i]) : "");
-    state.pledge.students = sh.rows.map((r) => { const g = get(r, m.group); return { name: get(r, m.name), id: get(r, m.id), group: g, course: "", track: get(r, iT), stage: get(r, iS) || stageFromGroup(g) || "" }; }).filter((s) => s.name);
+    state.pledge.students = sh.rows.map((r) => { const g = get(r, m.group); return { name: get(r, m.name), id: get(r, m.id), group: g, course: "", track: get(r, iT), gender: get(r, iG), stage: get(r, iS) || stageFromGroup(g) || "" }; }).filter((s) => s.name);
     state.pledge.source = "ملف " + f.name;
   }
   async function pledgeOutput(kind, mode) {
@@ -2916,8 +2935,8 @@
     return n > 0 && hit / n >= 0.98;
   }
   const needsEnrich = (results) => (results || []).some((r) => r && r.type === "list" && gapFieldList().some((f) => gapCol(r.heads || [], f) >= 0));
-  function gapsExportPlan() {
-    const c = state.gaps, common = c.status ? { status: c.status } : {}, stageKeys = (c.stages || []).map((t) => stageK(t) || t);
+  function gapsExportPlan(cfg) {
+    const c = cfg || state.gaps, common = c.status ? { status: c.status } : {}, stageKeys = (c.stages || []).map((t) => stageK(t) || t);
     if (stageKeys.length) {
       const courses = courseOpts().filter((x) => stageKeys.includes(x.stage) && (!c.tracks.length || c.tracks.includes(x.track)));
       if (!courses.length) throw new Error("لا توجد دورة تجمع المسار والمرحلة المختارين.");
@@ -4355,6 +4374,7 @@
           const e = state.enrich; if (!e) return;
           state.gaps.out = { at: new Date(), file: true, lists: gapsListsFrom(e) };
           return render();
+        } else if (act === "pledge-gender") { return pledgeGenderFetch();
         } else if (act === "enrich-now") { return enrichNow();
         } else if (act === "enrich-clear") { state.enrich = null; state.enrichErr = ""; if (state.results) state.results = Object.assign({}, state.results); return render();
         } else if (act === "gaps-xlsx") { return gapsOutput("xlsx");
@@ -4626,6 +4646,7 @@
       if (t.dataset.pl) {
         const k = t.dataset.pl, o = state.pledge.opts;
         o[k] = t.type === "checkbox" ? !!t.checked : t.value; pledgeSave();
+        if (k === "genderSplit" && t.checked) pledgeFillGender();
         if (k === "prefixMode" || k === "split" || t.type === "checkbox" || k === "perPage" || k === "preamble" || k === "title") render();
         return;
       }
