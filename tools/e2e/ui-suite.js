@@ -713,6 +713,14 @@ async function suite() {
       fit[k] = App.docRender.paginate(h, App.pledgeSheet.build(c.state.pledge.students.slice(0, k), { perPage: k, split: "none" }).blocks); h.remove();
     }
     ok("معايرة الصفوف في الورقة المطبوعة (صفحات لكل عدد)", true, JSON.stringify(fit));
+    {   // عمود «الكرسي» لا يكسر «المرحلة الثالثة» ولا الاسم الطويل إلى سطرين، فلا يقلّ عدد الصفوف في الورقة
+      const one = [{ name: "عبد الرحمن محمد عبد الله أبو العلا", id: "400123401", stage: "المرحلة الثالثة", group: "G", track: "م" }];
+      const hc = document.createElement("div"); hc.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(hc);
+      App.docRender.paginate(hc, App.pledgeSheet.build(one, { perPage: 3, split: "none", chairCol: true }).blocks);
+      const lines = (el) => { const rg = document.createRange(); rg.selectNodeContents(el); return new Set([...rg.getClientRects()].map((x) => Math.round(x.top))).size; };
+      const cellsL = [...hc.querySelectorAll("tr")[1].children].map(lines), headL = [...hc.querySelectorAll("tr")[0].children].map(lines); hc.remove();
+      ok("مع عمود «الكرسي»: كل خلية (والعناوين) في سطر واحد", cellsL.every((n) => n <= 1) && headL.every((n) => n <= 1), JSON.stringify({ cellsL, headL }));
+    }
     const dk = App.pledgeSheet.DEFAULTS.perPage, h2 = document.createElement("div"); h2.style.cssText = "position:absolute;left:-12000px;top:0;width:8.5in;container-type:inline-size"; document.body.appendChild(h2);
     const pcd = App.docRender.paginate(h2, App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, split: "group" }).blocks); h2.remove();
     ok("الصفوف الافتراضية في الورقة تتّسع بلا فيض (كل ورقة تطبع صفحة واحدة)", pcd === App.pledgeSheet.build(c.state.pledge.students.concat(c.state.pledge.students), { perPage: dk, split: "group" }).pages, { pcd, dk });
@@ -740,7 +748,7 @@ async function suite() {
     c.state.pledge.students = [...c.state.pledge.students, ...Array.from({ length: 30 }, (_, k) => ({ name: "إضافي " + String(k + 1).padStart(2, "0"), id: "2000" + k, group: "G1", course: "مسار الحلاقة", track: "مسار الحلاقة", stage: "المرحلة الثانية" }))];
     c.state.pledge.opts = Object.assign({}, App.pledgeSheet.DEFAULTS, { autoFit: true }); c.render();
     const sg = App.centerCmd.pledgeBlocks(), an = App.centerCmd.pledgeBlocks("announcer");
-    const rowsOf = (r) => r.blocks.filter((x) => x.kind === "table").map((tb) => tb.rows.map((rw) => rw[0] + ":" + rw[1] + ":" + (rw[3] !== undefined && rw.length === 5 ? rw[3] : rw[2])));
+    const rowsOf = (r) => r.blocks.filter((x) => x.kind === "table").map((tb) => tb.rows.map((rw) => rw[0] + ":" + rw[1] + ":" + (rw.length >= 5 ? rw[3] : rw[2])));
     ok("النسختان: عدد الصفحات نفسه (توقيع = مذيع)", sg.pages === an.pages && sg.pages >= 3, { sign: sg.pages, ann: an.pages });
     ok("النسختان: الأسماء والمراحل ورقم م نفسها في كل صفحة", JSON.stringify(rowsOf(sg)) === JSON.stringify(rowsOf(an)), { s: rowsOf(sg).map((x) => x.length), a: rowsOf(an).map((x) => x.length) });
     ok("النسختان: ترقيم الصفحات نفسه", sg.blocks.filter((x) => x.kind === "pagenum").map((x) => x.text).join() === an.blocks.filter((x) => x.kind === "pagenum").map((x) => x.text).join(), "pagenum");
@@ -792,6 +800,7 @@ async function suite() {
       ok("المستند: ورقة «كشف الذكور» ثم «كشف الإناث» ثم «جنس غير محدد» للمسار", subs.join() === "كشف الذكور,كشف الإناث,جنس غير محدد" && built.pages === 3, JSON.stringify({ subs, pages: built.pages }));
       // أرقام الكراسي: الزر يرسل الأرقام بترتيب الكشوف
       ok("قسم «أرقام الكراسي» وزر الطباعة مع العدد (4 أرقام على ورقة A4 واحدة)", !!b.querySelector('[data-cc="pledge-chairs"]:not([disabled])') && /4 رقماً \(من 1 إلى 4\) على 1 ورقة A4/.test((b.querySelector(".cc-chairs") || {}).textContent || ""), (b.querySelector(".cc-chairs") || {}).textContent);
+      ok("خيار «عمود رقم الكرسي قبل التوقيع» مفعّل افتراضياً والكشف بستة أعمدة", !!b.querySelector('[data-pl="chairCol"]:checked') && App.pledgeSheet.build(stP, c.state.pledge.opts).blocks.find((x) => x.kind === "table").headers.join() === "م,الاسم,رقم الهوية,المرحلة,الكرسي,التوقيع", "col");
       const keepPr = App.chairNumbers.print; let gotCh = null; App.chairNumbers.print = (items, o) => { gotCh = { items, o }; return true; };
       b.querySelector('[data-cc="pledge-chairs"]').click(); await wait(100); App.chairNumbers.print = keepPr;
       ok("الأرقام 1..4 بترتيب الكشوف (الذكور ثم الإناث ثم غير المحدد)", !!gotCh && gotCh.items.map((x) => x.n + ":" + x.name).join() === "1:أحمد,2:خالد,3:سارة,4:مجهول", gotCh && gotCh.items.map((x) => x.n + ":" + x.name).join());
