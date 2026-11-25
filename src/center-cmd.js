@@ -2711,7 +2711,9 @@
             <label class="cc-chk"><input type="checkbox" data-pl="chairNames" ${o.chairNames ? "checked" : ""}> <span>اسم الطالب تحت الرقم</span></label>
             <label class="cc-chk"><input type="checkbox" data-pl="chairTags" ${o.chairTags ? "checked" : ""}> <span>المسار${o.genderSplit ? " والجنس" : ""} بخط صغير</span></label></div>
           ${n ? `<p class="cc-note">${ui.fmt(n)} رقماً (من ${ui.fmt(Math.max(1, Number(o.chairStart) || 1))} إلى ${ui.fmt(Math.max(1, Number(o.chairStart) || 1) + n - 1)}) على ${ui.fmt(Math.ceil(n / 4))} ورقة A4.</p>` : ""}
-          <div class="cc-row"><button type="button" class="btn navy" data-cc="pledge-chairs" ${n ? "" : "disabled"}>طباعة أرقام الكراسي (A4)</button></div>
+          <div class="cc-row"><button type="button" class="btn navy" data-cc="pledge-chairs" ${n ? "" : "disabled"}>طباعة أرقام الكراسي (A4)</button>
+            <button type="button" class="btn secondary" data-cc="pledge-chairs-word" ${n ? "" : "disabled"} title="ملف Word بالشكل نفسه (A4، أربعة أرقام في الصفحة) لتعدّله أو تطبعه من Word">تنزيل Word</button>
+            <button type="button" class="btn secondary" data-cc="pledge-chairs-xlsx" ${n ? "" : "disabled"} title="قائمة: رقم الكرسي والاسم والهوية والمسار والجنس والمجموعة والمرحلة">تنزيل Excel (القائمة)</button></div>
         </fieldset>
       </div>
       <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-pledge"))} أمر قراءة</b><span>${esc(scopeSummaryText())}</span></div>
@@ -4384,6 +4386,16 @@
           const e = state.enrich; if (!e) return;
           state.gaps.out = { at: new Date(), file: true, lists: gapsListsFrom(e) };
           return render();
+        } else if (act === "pledge-chairs-word" || act === "pledge-chairs-xlsx") {
+          const st = pledgeStudents(); if (!st.length) return;
+          const o = state.pledge.opts || pledgeOpts(), items = App.pledgeSheet.chairs(st, o, o.chairStart), base = "أرقام الكراسي " + ui.todayISO();
+          try {
+            if (act === "pledge-chairs-word") { ui.download(base + ".docx", await App.chairNumbers.docx(items, { names: !!o.chairNames, tags: !!o.chairTags, logos: o.chairLogos !== false })); return ui.toast("نُزّل ملف Word (" + ui.fmt(Math.ceil(items.length / 4)) + " صفحة A4)"); }
+            const wb = new ExcelJS.Workbook();
+            fmtSheet(wb.addWorksheet("أرقام الكراسي"), ["رقم الكرسي", "الاسم", "رقم الهوية", "المسار", "الجنس", "المجموعة", "المرحلة"], items.map((x) => [x.n, x.name, x.id, x.track, x.sex, x.group, x.stage]));
+            ui.download(base + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+            return ui.toast("نُزّلت قائمة الكراسي Excel (" + ui.fmt(items.length) + " رقماً)");
+          } catch (e) { state.resultError = "تعذّر التصدير: " + (e.message || e); return render(); }
         } else if (act === "pledge-chairs") {
           const st = pledgeStudents(); if (!st.length) return;
           const o = state.pledge.opts || pledgeOpts(), items = App.pledgeSheet.chairs(st, o, o.chairStart);

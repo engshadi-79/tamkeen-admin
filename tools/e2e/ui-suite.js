@@ -804,6 +804,18 @@ async function suite() {
       const keepPr = App.chairNumbers.print; let gotCh = null; App.chairNumbers.print = (items, o) => { gotCh = { items, o }; return true; };
       b.querySelector('[data-cc="pledge-chairs"]').click(); await wait(100); App.chairNumbers.print = keepPr;
       ok("الأرقام 1..4 بترتيب الكشوف (الذكور ثم الإناث ثم غير المحدد)", !!gotCh && gotCh.items.map((x) => x.n + ":" + x.name).join() === "1:أحمد,2:خالد,3:سارة,4:مجهول", gotCh && gotCh.items.map((x) => x.n + ":" + x.name).join());
+      {   // تنزيل Word وExcel لأرقام الكراسي
+        const keepDl = App.ui.download, got = {}; App.ui.download = (name, blob) => { got[/\.docx$/.test(name) ? "w" : "x"] = { name, blob }; };
+        b.querySelector('[data-cc="pledge-chairs-word"]').click(); for (let i = 0; i < 60 && !got.w; i++) await wait(100);
+        b.querySelector('[data-cc="pledge-chairs-xlsx"]').click(); for (let i = 0; i < 60 && !got.x; i++) await wait(100);
+        App.ui.download = keepDl;
+        const zw = got.w ? await JSZip.loadAsync(await got.w.blob.arrayBuffer()) : null, dx = zw ? await zw.file("word/document.xml").async("string") : "";
+        const perr = dx ? new DOMParser().parseFromString(dx, "application/xml").getElementsByTagName("parsererror").length : 1;
+        ok("«تنزيل Word»: ملف docx سليم البنية فيه الأرقام 1..4 والشعاران", !!got.w && perr === 0 && [...dx.matchAll(/<w:t>(\d+)<\/w:t>/g)].map((m) => m[1]).join() === "1,2,3,4" && !!zw.file("word/media/logo-right.png"), JSON.stringify({ name: got.w && got.w.name, perr }));
+        const wbx = new ExcelJS.Workbook(); if (got.x) await wbx.xlsx.load(await got.x.blob.arrayBuffer());
+        const wsx = wbx.worksheets[0], hx2 = wsx ? wsx.getRow(1).values.slice(1).map(String) : [], r2 = wsx ? wsx.getRow(2).values.slice(1).map(String) : [];
+        ok("«تنزيل Excel»: قائمة الكراسي بأعمدتها وبترتيب الكشوف", hx2.join() === "رقم الكرسي,الاسم,رقم الهوية,المسار,الجنس,المجموعة,المرحلة" && wsx.rowCount === 5 && r2[0] === "1" && r2[1] === "أحمد" && r2[2] === "500000001" && r2[4] === "ذكور", JSON.stringify({ hx2, r2, rows: wsx && wsx.rowCount }));
+      }
       const cs = b.querySelector('[data-pl="chairStart"]'); cs.value = "101"; cs.dispatchEvent(new Event("change", { bubbles: true })); await wait(150);
       ok("«ابدأ الترقيم من 101» يحدّث المدى (101 إلى 104)", /من 101 إلى 104/.test((b.querySelector(".cc-chairs") || {}).textContent || ""), (b.querySelector(".cc-chairs") || {}).textContent);
       // قياس فعلي: الرقم والاسم يتّسعان داخل الربع على A4 (3 و4 خانات)
@@ -818,6 +830,17 @@ async function suite() {
         const pg = fr.contentDocument.querySelector(".pg").getBoundingClientRect();
         ok("A4 بأربعة أرباع والرقم (" + String(start).length + " خانات) والاسم داخل كل ربع", qs.length === 4 && fits && Math.abs(pg.height / pg.width - 297 / 210) < 0.02, JSON.stringify({ n: qs.length, fits, ratio: (pg.height / pg.width).toFixed(3) }));
         fr.remove();
+      }
+      {   // الملاءمة على الجهاز: حتى لو فُرض حجم ضخم، تُصغَّر الأرقام كلها بالنسبة نفسها حتى تتّسع
+        const its = [0, 1, 2, 3].map((i) => ({ n: 1996 + i, name: "عبد الرحمن محمد عبد الله أبو العلا", track: "الحلاقة", sex: "ذكور" }));
+        const huge = App.chairNumbers.html(its, { names: true, tags: true }).replace(/\.n \{ font-size: \d+pt;/, ".n { font-size: 400pt;");
+        const fr = document.createElement("iframe"); fr.style.cssText = "position:absolute;left:-3000px;top:0;width:210mm;height:297mm;border:0"; document.body.appendChild(fr);
+        fr.contentDocument.open(); fr.contentDocument.write(huge); fr.contentDocument.close();
+        for (let i = 0; i < 40 && [...fr.contentDocument.images].some((im) => !im.complete); i++) await wait(100); await wait(300);
+        const ns = [...fr.contentDocument.querySelectorAll(".n")], sizes = [...new Set(ns.map((n) => getComputedStyle(n).fontSize))];
+        const fitsAll = ns.every((n) => { const q = n.parentElement, r = q.getBoundingClientRect(), nr = n.getBoundingClientRect(); return n.scrollWidth <= q.clientWidth && nr.left >= r.left - 1 && nr.right <= r.right + 1 && q.scrollHeight <= q.clientHeight + 1; });
+        fr.remove();
+        ok("حجم مفروض 400pt: صُغّرت الأرقام الأربعة بالحجم نفسه وتتّسع كلها", sizes.length === 1 && parseFloat(sizes[0]) < 400 * 1.333 && fitsAll, JSON.stringify({ sizes, fitsAll }));
       }
       agent.version = keepV; agent.run = keepRun2; c.state.enrich = null; localStorage.removeItem("tamkeen:pledge-opts");
     }
