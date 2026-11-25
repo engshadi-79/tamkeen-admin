@@ -104,8 +104,8 @@
   const TEXT_WIDTH_TWIPS = 9360; // عرض منطقة النص (6.5 إنش) بين هامشَي الترويسة
   const TABLE_SIZE = 24; // 12pt داخل الجداول
 
-  const cellPara = (text, jc, bold, size) => { const SZ = size || TABLE_SIZE; return (
-    `<w:p><w:pPr><w:bidi/><w:spacing w:before="20" w:after="20"/><w:jc w:val="${jc}"/>` +
+  const cellPara = (text, jc, bold, size, exactLine) => { const SZ = size || TABLE_SIZE; return (
+    `<w:p><w:pPr><w:bidi/><w:spacing w:before="20" w:after="20"${exactLine ? ` w:line="${exactLine}" w:lineRule="exact"` : ""}/><w:jc w:val="${jc}"/>` +
     `<w:rPr><w:rtl/><w:sz w:val="${SZ}"/><w:szCs w:val="${SZ}"/></w:rPr></w:pPr>` +
     (text === "" || text == null ? "" :
       `<w:r><w:rPr><w:rFonts w:ascii="${FONT}" w:hAnsi="${FONT}" w:eastAsia="${FONT}" w:cs="${FONT}"/>${bold ? "<w:b/><w:bCs/>" : ""}` +
@@ -117,9 +117,10 @@
     const widths = (block.widths || Array(n).fill(1 / n)).map((f) => Math.round(f * TEXT_WIDTH_TWIPS));
     const border = ["top", "left", "bottom", "right", "insideH", "insideV"]
       .map((s) => `<w:${s} w:val="single" w:sz="6" w:space="0" w:color="7F8C9D"/>`).join("");
+    const cs = (i, header) => (!header && block.colStyle && block.colStyle[i]) || null;   // تنسيق عمود بعينه (غامق/حجم) في صفوف الجسم
     const cell = (text, i, header) =>
       `<w:tc><w:tcPr><w:tcW w:w="${widths[i]}" w:type="dxa"/>${header ? '<w:shd w:val="clear" w:color="auto" w:fill="DFF4F4"/>' : ""}<w:vAlign w:val="center"/></w:tcPr>` +
-      cellPara(text == null ? "" : String(text), header || (block.align && block.align[i] === "center") ? "center" : "left", header, block.sizePt ? Math.round(block.sizePt * 2) : 0) + `</w:tc>`;
+      cellPara(text == null ? "" : String(text), header || (block.align && block.align[i] === "center") ? "center" : "left", header || !!(cs(i, header) && cs(i, header).bold), cs(i, header) && cs(i, header).sizePt ? Math.round(cs(i, header).sizePt * 2) : block.sizePt ? Math.round(block.sizePt * 2) : 0, cs(i, header) && cs(i, header).sizePt ? Math.round(cs(i, header).sizePt * 20 * 1.15) : 0) + `</w:tc>`;
     const headerRow = `<w:tr><w:trPr><w:tblHeader/></w:trPr>${block.headers.map((h, i) => cell(h, i, true)).join("")}</w:tr>`;
     const rowH = block.rowHeightTw ? `<w:trHeight w:val="${Math.round(block.rowHeightTw)}" w:hRule="atLeast"/>` : "";   // ارتفاع أدنى للصف (مثلاً خانة توقيع)
     const rows = block.rows.map((r) => `<w:tr><w:trPr><w:cantSplit/>${rowH}</w:trPr>${r.map((c, i) => cell(c, i, false)).join("")}</w:tr>`).join("");
