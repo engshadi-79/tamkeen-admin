@@ -18,6 +18,7 @@
     chairNames: false,       // اسم الطالب تحت رقم كرسيه
     chairTags: false,        // المسار والجنس بخط صغير تحت الرقم
     chairLogos: true,        // شعار المركز السعودي (يمين) وتمكين (يسار) أعلى كل بطاقة
+    chairCol: true,          // عمود «رقم الكرسي» قبل التوقيع في كشف التوقيع (نفس أرقام البطاقات)
   };
   /* «ذكر/أنثى» بأي صيغة ← ذكور / إناث / غير محدد */
   const SEX_ORDER = ["ذكور", "إناث", "غير محدد"];
@@ -28,6 +29,10 @@
   const HEADERS = ["م", "الاسم", "رقم الهوية", "المرحلة", "التوقيع"];
   const WIDTHS = [0.07, 0.38, 0.17, 0.15, 0.23];
   const ALIGN = ["center", "left", "center", "center", "center"];
+  // مع عمود «رقم الكرسي» قبل التوقيع (نفس أرقام بطاقات الكراسي)
+  const C_HEADERS = ["م", "الاسم", "رقم الهوية", "المرحلة", "الكرسي", "التوقيع"];
+  const C_WIDTHS = [0.05, 0.38, 0.15, 0.15, 0.07, 0.20];
+  const C_ALIGN = ["center", "left", "center", "center", "center", "center"];
   // نسخة المذيع: الترتيب نفسه، بجدول (م، الاسم، المرحلة) بخط أكبر ليُقرأ على المنصة
   const A_HEADERS = ["م", "الاسم", "المرحلة"], A_WIDTHS = [0.1, 0.62, 0.28], A_ALIGN = ["center", "left", "center"];
 
@@ -61,7 +66,11 @@
     const blocks = [], sheets = [];   // sheets: لكل ورقة { meta, k (داخل مجموعتها), gTotal }
     const bySex = {}; if (o.genderSplit) list.forEach((s) => { const x = sexOf(s.gender); bySex[x] = (bySex[x] || 0) + 1; });
 
+    // رقم الكرسي: عدّاد متصل عبر كل المجموعات بترتيب الطباعة نفسه (يطابق بطاقات الكراسي chairs())
+    const chairCol = !ann && !!o.chairCol;
+    let seatNext = Math.max(1, Math.round(Number(o.chairStart)) || 1);
     arrange(list, o).forEach(({ base: gk, sex: gSex, rows }) => {
+      const seat = seatNext; seatNext += rows.length;
       const chunks = []; for (let i = 0; i < rows.length; i += perPage) chunks.push(rows.slice(i, i + perPage));
       chunks.forEach((chunk, ci) => {
         if (sheets.length > 0) blocks.push({ kind: "pagebreak" });
@@ -78,8 +87,8 @@
           kind: "table", headers: A_HEADERS, widths: A_WIDTHS, align: A_ALIGN, rowHeightTw: Math.round((Number(o.announcerSizePt) || 14) * 30), sizePt: Number(o.announcerSizePt) || 14,
           rows: chunk.map((s, i) => [String(ci * perPage + i + 1), clean(s.name), clean(s.stage)]),
         } : {
-          kind: "table", headers: HEADERS, widths: WIDTHS, align: ALIGN, rowHeightTw: 480,
-          rows: chunk.map((s, i) => [String(ci * perPage + i + 1), clean(s.name), clean(s.id), clean(s.stage), ""]),
+          kind: "table", headers: chairCol ? C_HEADERS : HEADERS, widths: chairCol ? C_WIDTHS : WIDTHS, align: chairCol ? C_ALIGN : ALIGN, rowHeightTw: 480,
+          rows: chunk.map((s, i) => [String(ci * perPage + i + 1), clean(s.name), clean(s.id), clean(s.stage)].concat(chairCol ? [String(seat + ci * perPage + i)] : [], [""])),
         });
         blocks.push(meta);
       });
@@ -104,5 +113,5 @@
     arrange(students, options).forEach((g) => g.rows.forEach((s) => out.push({ n: n++, name: clean(s.name), track: g.base && g.base !== "—" ? g.base : clean(s.track), sex: g.sex })));
     return out;
   }
-  App.pledgeSheet = { DEFAULTS, HEADERS, build, sexOf, arrange, chairs };
+  App.pledgeSheet = { DEFAULTS, HEADERS, C_HEADERS, build, sexOf, arrange, chairs };
 })(window.App = window.App || {});

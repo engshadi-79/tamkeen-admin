@@ -2706,6 +2706,7 @@
         <fieldset class="cc-fs cc-wide cc-chairs"><legend>🪑 أرقام الكراسي للاحتفال</legend>
           <p class="cc-note">ورقة A4 مقسّمة إلى أربعة أرباع، في كل ربع رقم كبير، بخطوط قصّ متقطّعة. الأرقام متسلسلة <b>بترتيب الكشوف نفسه</b> (المسار${o.genderSplit ? " ثم الذكور والإناث" : ""} ثم الاسم أبجدياً)، فرقم كرسي كل طالب هو ترتيبه في الكشف.</p>
           <div class="cc-row"><label class="cc-field" style="min-width:0"><span>ابدأ الترقيم من</span><input type="number" min="1" data-pl="chairStart" value="${esc(o.chairStart || 1)}" style="width:7em"></label>
+            <label class="cc-chk"><input type="checkbox" data-pl="chairCol" ${o.chairCol !== false ? "checked" : ""}> <span>عمود «الكرسي» (رقم كرسي الطالب) قبل التوقيع في الكشف</span></label>
             <label class="cc-chk"><input type="checkbox" data-pl="chairLogos" ${o.chairLogos !== false ? "checked" : ""}> <span>الشعاران أعلى كل بطاقة (المركز السعودي يميناً، تمكين يساراً)</span></label>
             <label class="cc-chk"><input type="checkbox" data-pl="chairNames" ${o.chairNames ? "checked" : ""}> <span>اسم الطالب تحت الرقم</span></label>
             <label class="cc-chk"><input type="checkbox" data-pl="chairTags" ${o.chairTags ? "checked" : ""}> <span>المسار${o.genderSplit ? " والجنس" : ""} بخط صغير</span></label></div>

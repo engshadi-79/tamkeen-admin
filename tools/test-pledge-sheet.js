@@ -34,9 +34,16 @@ ok("تسلسل فقط: (1) (2) (3)", metas(r) === "(1),(2),(3)", metas(r));
 // الجدول
 r = P.build(mk(20), { perPage: 15 });
 const tables = r.blocks.filter((b) => b.kind === "table");
-ok("رؤوس الجدول", tables[0].headers.join("|") === "م|الاسم|رقم الهوية|المرحلة|التوقيع", tables[0].headers);
+ok("رؤوس الجدول (افتراضياً مع «رقم الكرسي» قبل التوقيع)", tables[0].headers.join("|") === "م|الاسم|رقم الهوية|المرحلة|الكرسي|التوقيع", tables[0].headers);
 ok("عدد الصفوف 15 ثم 5 وترقيم م متصل", tables[0].rows.length === 15 && tables[1].rows.length === 5 && tables[1].rows[0][0] === "16", [tables[0].rows.length, tables[1].rows[0]]);
-ok("خانة التوقيع فارغة وارتفاع الصف مضبوط", tables[0].rows.every((x) => x[4] === "") && tables[0].rowHeightTw > 300);
+ok("خانة التوقيع (الأخيرة) فارغة وارتفاع الصف مضبوط", tables[0].rows.every((x) => x[x.length - 1] === "") && tables[0].rowHeightTw > 300);
+ok("رقم الكرسي متصل عبر الأوراق: 1..15 ثم 16..20", tables[0].rows.map((x) => x[4]).join() === Array.from({ length: 15 }, (_, i) => i + 1).join() && tables[1].rows.map((x) => x[4]).join() === "16,17,18,19,20", [tables[0].rows[0][4], tables[1].rows[0][4]]);
+const r5 = P.build(mk(3), { chairCol: false }).blocks.find((b) => b.kind === "table");
+ok("بإيقاف «رقم الكرسي» يعود الجدول خمسة أعمدة", r5.headers.join("|") === "م|الاسم|رقم الهوية|المرحلة|التوقيع" && r5.rows[0].length === 5, r5.headers);
+const rs = P.build(mk(3), { chairStart: 101 }).blocks.find((b) => b.kind === "table");
+ok("رقم الكرسي يبدأ من «ابدأ الترقيم من» (101)", rs.rows.map((x) => x[4]).join() === "101,102,103", rs.rows.map((x) => x[4]));
+const wsum = P.build(mk(2)).blocks.find((b) => b.kind === "table").widths.reduce((a, b) => a + b, 0);
+ok("عرض الأعمدة الستة = 100%", Math.abs(wsum - 1) < 0.001, wsum);
 ok("الديباجة في كل ورقة افتراضياً", r.blocks.filter((b) => b.kind === "para").length === 2);
 r = P.build(mk(20), { perPage: 15, repeatPreamble: false });
 ok("الديباجة في الأولى فقط عند الإلغاء", r.blocks.filter((b) => b.kind === "para").length === 1);
@@ -99,6 +106,13 @@ ok("خط المذيع 12 ← ارتفاع صف أصغر", small.sizePt === 12 &&
   const ch = P.chairs(st, { genderSplit: true }, 1);
   ok("أرقام الكراسي بترتيب الكشوف (التجميل إناث، غير محدد، ثم الحلاقة ذكور، إناث) ومتسلسلة 1..6", ch.map((x) => x.n + ":" + x.name).join() === "1:ريم,2:منى,3:مجهول,4:أحمد,5:خالد,6:سارة", ch.map((x) => x.n + ":" + x.name).join());
   ok("كل رقم يحمل مساره وجنسه", ch[0].track === "التجميل" && ch[0].sex === "إناث" && ch[3].track === "الحلاقة" && ch[3].sex === "ذكور", ch[0]);
+  {   // التطابق: رقم الكرسي في كشف التوقيع = رقم بطاقة الطالب نفسه (مع الفصل بالجنس وعدة مسارات وأوراق)
+    const big = [...Array.from({ length: 14 }, (_, i) => S("ذكر" + i, "الحلاقة", "ذكر")), ...Array.from({ length: 9 }, (_, i) => S("أنثى" + i, "الحلاقة", "أنثى")), ...Array.from({ length: 7 }, (_, i) => S("تجميل" + i, "التجميل", "أنثى"))];
+    const opt = { perPage: 6, genderSplit: true, chairStart: 51 };
+    const fromSheet = P.build(big, opt).blocks.filter((b) => b.kind === "table").flatMap((t) => t.rows.map((r) => r[1] + "=" + r[4]));
+    const fromCards = P.chairs(big, opt, opt.chairStart).map((x) => x.name + "=" + x.n);
+    ok("رقم الكرسي في الكشف يطابق بطاقة كل طالب (30 طالباً، عدة أوراق، فصل بالجنس، يبدأ من 51)", fromSheet.join() === fromCards.join() && fromSheet.length === 30, { s: fromSheet.slice(0, 4), c: fromCards.slice(0, 4) });
+  }
   ok("بدء الترقيم من 101", P.chairs(st, {}, 101).map((x) => x.n).join() === "101,102,103,104,105,106");
   ok("بلا فصل بالجنس: الترتيب = ترتيب الكشف العادي", P.chairs(st, {}, 1).map((x) => x.name).join() === P.build(st, { perPage: 40 }).blocks.filter((b) => b.kind === "table").flatMap((t) => t.rows.map((r) => r[1])).join());
   ok("sexOf يفهم الصيغ", P.sexOf("أنثى") === "إناث" && P.sexOf("انثى") === "إناث" && P.sexOf("ذكر") === "ذكور" && P.sexOf("Male") === "ذكور" && P.sexOf("") === "غير محدد");
