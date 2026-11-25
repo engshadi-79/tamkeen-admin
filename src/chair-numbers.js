@@ -14,10 +14,14 @@
   /* حجم الرقم بحسب أطول رقم (عدد الخانات) ليبقى داخل الربع (105×148 مم) */
   const sizeFor = (items) => { const d = Math.max(1, ...(items || []).map((x) => String(x.n).length)); return d <= 2 ? 200 : d === 3 ? 150 : 115; };
 
+  /* شعارا الزاويتين العلويتين لكل بطاقة: المركز السعودي يميناً وتمكين يساراً (روابط مطلقة لأن الإطار المطبوع وثيقة مستقلة) */
+  const abs = (p) => { try { return new URL(p, location.href).href; } catch (e) { return p; } };
+  const LOGOS = { right: "assets/logo-maalam.png", left: "assets/logo.png" };
   function html(items, opts) {
-    const o = opts || {}, pt = sizeFor(items);
+    const o = opts || {}, pt = sizeFor(items), logos = o.logos !== false;
+    const lg = logos ? `<img class="lg r" src="${esc(abs(LOGOS.right))}" alt="المركز السعودي للثقافة والتراث"><img class="lg l" src="${esc(abs(LOGOS.left))}" alt="تمكين">` : "";
     const cell = (x) => (x
-      ? `<div class="q"><div class="n">${esc(x.n)}</div>${o.names && x.name ? `<div class="nm">${esc(x.name)}</div>` : ""}${o.tags && (x.track || x.sex) ? `<div class="tg">${esc([x.track, x.sex].filter(Boolean).join(" · "))}</div>` : ""}</div>`
+      ? `<div class="q${logos ? " wl" : ""}">${lg}<div class="n">${esc(x.n)}</div>${o.names && x.name ? `<div class="nm">${esc(x.name)}</div>` : ""}${o.tags && (x.track || x.sex) ? `<div class="tg">${esc([x.track, x.sex].filter(Boolean).join(" · "))}</div>` : ""}</div>`
       : '<div class="q e"></div>');
     const body = pages(items).map((p) => `<section class="pg">${[0, 1, 2, 3].map((i) => cell(p[i])).join("")}</section>`).join("");
     return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(o.title || "أرقام الكراسي")}</title><style>
@@ -27,7 +31,11 @@
       body { font-family: "Tajawal", "Cairo", "Segoe UI", Tahoma, Arial, sans-serif; }
       .pg { width: 210mm; height: 297mm; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; page-break-after: always; break-after: page; overflow: hidden; }
       .pg:last-child { page-break-after: auto; break-after: auto; }
-      .q { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8mm; border: 0 dashed #9aa3af; }
+      .q { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8mm; border: 0 dashed #9aa3af; }
+      .q.wl { padding-top: 32mm; }
+      .lg { position: absolute; top: 6mm; height: 22mm; width: auto; max-width: 40mm; object-fit: contain; }
+      .lg.r { right: 6mm; }
+      .lg.l { left: 6mm; height: 17mm; top: 8mm; }
       .q:nth-child(1) { border-left-width: .3mm; border-bottom-width: .3mm; }
       .q:nth-child(2) { border-bottom-width: .3mm; }
       .q:nth-child(3) { border-left-width: .3mm; }
@@ -48,10 +56,12 @@
     const d = fr.contentDocument;
     d.open(); d.write(html(items, opts)); d.close();
     const go = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } finally { setTimeout(() => fr.remove(), 60000); } };
-    const ready = d.fonts && d.fonts.ready ? d.fonts.ready : Promise.resolve();
+    // ننتظر الخطوط والشعارات قبل الطباعة (وإلا خرجت الأوراق بلا شعار)
+    const imgs = [...d.images].map((im) => (im.complete ? Promise.resolve() : new Promise((r) => { im.onload = im.onerror = r; })));
+    const ready = Promise.all([d.fonts && d.fonts.ready ? d.fonts.ready : Promise.resolve()].concat(imgs));
     ready.then(() => setTimeout(go, 50), () => setTimeout(go, 50));
     return true;
   }
 
-  App.chairNumbers = { PER_PAGE, pages, html, print, sizeFor };
+  App.chairNumbers = { PER_PAGE, pages, html, print, sizeFor, LOGOS };
 })(window.App = window.App || {});

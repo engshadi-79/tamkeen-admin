@@ -12,6 +12,8 @@ ok("HTML: 3 صفحات A4", (h.match(/class="pg"/g) || []).length === 3 && /size
 ok("الصفحة الأخيرة: رقمان وربعان فارغان", (h.match(/class="q e"/g) || []).length === 2);
 ok("الأرقام 1..10 بالترتيب", [...h.matchAll(/class="n">(\d+)</g)].map((m) => m[1]).join() === "1,2,3,4,5,6,7,8,9,10");
 ok("بلا أسماء افتراضياً", !/class="nm"/.test(h));
+ok("الشعاران افتراضياً في كل بطاقة: المركز السعودي يميناً وتمكين يساراً", (h.match(/class="lg r" src="[^"]*logo-maalam\.png"/g) || []).length === 10 && (h.match(/class="lg l" src="[^"]*logo\.png"/g) || []).length === 10);
+ok("بلا شعارات عند إيقافها", !/class="lg/.test(C.html(items(4), { logos: false })));
 const hn = C.html(items(2), { names: true, tags: true });
 ok("مع الأسماء والمسار", /class="nm">طالب 1</.test(hn) && /class="tg">الحلاقة · ذكور</.test(hn));
 ok("حجم الخط: خانتان 200، ثلاث 150، أربع 115", C.sizeFor(items(9)) === 200 && C.sizeFor(items(5, 100)) === 150 && C.sizeFor(items(3, 1000)) === 115);
