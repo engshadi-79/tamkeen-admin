@@ -2703,6 +2703,14 @@
         <p class="cc-note">أو اختر <b>المرحلة</b> (والمسار والمجموعة) من شريط «النطاق» ثم اضغط «اجلب الطلاب من المركز».</p>
         ${n ? `<p class="cc-alert ok">${ui.fmt(n)} طالباً (${esc(c.source)}) ← ${ui.fmt(built.pages)} ${built.pages === 1 ? "ورقة" : "ورقة/أوراق"}.${o.genderSplit ? " ذكور " + ui.fmt(built.bySex["ذكور"] || 0) + " · إناث " + ui.fmt(built.bySex["إناث"] || 0) + (built.bySex["غير محدد"] ? " · غير محدد " + ui.fmt(built.bySex["غير محدد"]) : "") : ""}</p>` : ""}
         ${n && o.genderSplit && pledgeUnknownSex() ? `<p class="cc-alert warn" role="status"><span>⚠ لا أعرف جنس <b>${ui.fmt(pledgeUnknownSex())}</b> طالباً فوُضعوا في ورقة «جنس غير محدد». الجنس يأتي من ملف «تصدير Excel» في النظام${canExport() ? "" : " (يحتاج إضافة وكيل تمكين 1.5.8)"}، أو من عمود «الجنس» في ملف Excel الذي ترفعه.</span> <button type="button" class="btn secondary small" data-cc="pledge-gender" ${canExport() && !state.busy ? "" : "disabled"}>اجلب الجنس من النظام</button></p>` : ""}
+        <fieldset class="cc-fs cc-wide cc-chairs"><legend>🪑 أرقام الكراسي للاحتفال</legend>
+          <p class="cc-note">ورقة A4 مقسّمة إلى أربعة أرباع، في كل ربع رقم كبير، بخطوط قصّ متقطّعة. الأرقام متسلسلة <b>بترتيب الكشوف نفسه</b> (المسار${o.genderSplit ? " ثم الذكور والإناث" : ""} ثم الاسم أبجدياً)، فرقم كرسي كل طالب هو ترتيبه في الكشف.</p>
+          <div class="cc-row"><label class="cc-field" style="min-width:0"><span>ابدأ الترقيم من</span><input type="number" min="1" data-pl="chairStart" value="${esc(o.chairStart || 1)}" style="width:7em"></label>
+            <label class="cc-chk"><input type="checkbox" data-pl="chairNames" ${o.chairNames ? "checked" : ""}> <span>اسم الطالب تحت الرقم</span></label>
+            <label class="cc-chk"><input type="checkbox" data-pl="chairTags" ${o.chairTags ? "checked" : ""}> <span>المسار${o.genderSplit ? " والجنس" : ""} بخط صغير</span></label></div>
+          ${n ? `<p class="cc-note">${ui.fmt(n)} رقماً (من ${ui.fmt(Math.max(1, Number(o.chairStart) || 1))} إلى ${ui.fmt(Math.max(1, Number(o.chairStart) || 1) + n - 1)}) على ${ui.fmt(Math.ceil(n / 4))} ورقة A4.</p>` : ""}
+          <div class="cc-row"><button type="button" class="btn navy" data-cc="pledge-chairs" ${n ? "" : "disabled"}>طباعة أرقام الكراسي (A4)</button></div>
+        </fieldset>
       </div>
       <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-pledge"))} أمر قراءة</b><span>${esc(scopeSummaryText())}</span></div>
         <div class="cc-act"><button type="button" class="btn secondary small" data-cc="pledge-reset">الديباجة الافتراضية</button>
@@ -4374,6 +4382,11 @@
           const e = state.enrich; if (!e) return;
           state.gaps.out = { at: new Date(), file: true, lists: gapsListsFrom(e) };
           return render();
+        } else if (act === "pledge-chairs") {
+          const st = pledgeStudents(); if (!st.length) return;
+          const o = state.pledge.opts || pledgeOpts(), items = App.pledgeSheet.chairs(st, o, o.chairStart);
+          App.chairNumbers.print(items, { names: !!o.chairNames, tags: !!o.chairTags, title: "أرقام الكراسي" });
+          return ui.toast("اختر الطابعة ومقاس الورق A4 بدون هوامش (" + ui.fmt(items.length) + " رقماً على " + ui.fmt(Math.ceil(items.length / 4)) + " ورقة)");
         } else if (act === "pledge-gender") { return pledgeGenderFetch();
         } else if (act === "enrich-now") { return enrichNow();
         } else if (act === "enrich-clear") { state.enrich = null; state.enrichErr = ""; if (state.results) state.results = Object.assign({}, state.results); return render();
@@ -4647,7 +4660,7 @@
         const k = t.dataset.pl, o = state.pledge.opts;
         o[k] = t.type === "checkbox" ? !!t.checked : t.value; pledgeSave();
         if (k === "genderSplit" && t.checked) pledgeFillGender();
-        if (k === "prefixMode" || k === "split" || t.type === "checkbox" || k === "perPage" || k === "preamble" || k === "title") render();
+        if (k === "prefixMode" || k === "split" || t.type === "checkbox" || k === "perPage" || k === "preamble" || k === "title" || k === "chairStart") render();
         return;
       }
       if (t.dataset.grad) { const k = t.dataset.grad; state.grad[k] = t.type === "checkbox" ? !!t.checked : (k === "from" || k === "to" ? t.value : t.value); return render(); }

@@ -90,6 +90,17 @@ ok("خط المذيع 12 ← ارتفاع صف أصغر", small.sizePt === 12 &&
   const many = P.build([...Array.from({ length: 12 }, (_, i) => S("ذ" + i, "الحلاقة", "ذكر")), ...Array.from({ length: 4 }, (_, i) => S("ث" + i, "الحلاقة", "أنثى"))], { perPage: 10, genderSplit: true });
   ok("الترقيم مستقل لكل جنس: (2-1) (2-2) للذكور وورقة الإناث الوحيدة بلا رقم", metas(many) === "(2-1),(2-2),", metas(many));
   ok("بلا genderSplit لا يتغيّر شيء", P.build(st, { perPage: 10 }).pages === 2);
+  const ann = P.build(st, { perPage: 10, genderSplit: true }, "announcer");
+  const annSubs = ann.blocks.filter((b) => b.kind === "title" && b.sizePt === 12).map((b) => b.text);
+  const annRows = ann.blocks.filter((b) => b.kind === "table").map((t) => t.rows.map((r) => r[1]).join("،"));
+  ok("نسخة المذيع مقسّمة ذكوراً وإناثاً بالترتيب نفسه لكشف التوقيع", ann.pages === g.pages && annSubs.join() === titles.join() && JSON.stringify(annRows) === JSON.stringify(tables), { annSubs, annRows });
+  ok("نسخة المذيع بجدول (م، الاسم، المرحلة)", ann.blocks.filter((b) => b.kind === "table").every((t) => t.headers.join() === "م,الاسم,المرحلة"));
+  // أرقام الكراسي: بترتيب الكشوف نفسه، متسلسلة
+  const ch = P.chairs(st, { genderSplit: true }, 1);
+  ok("أرقام الكراسي بترتيب الكشوف (التجميل إناث، غير محدد، ثم الحلاقة ذكور، إناث) ومتسلسلة 1..6", ch.map((x) => x.n + ":" + x.name).join() === "1:ريم,2:منى,3:مجهول,4:أحمد,5:خالد,6:سارة", ch.map((x) => x.n + ":" + x.name).join());
+  ok("كل رقم يحمل مساره وجنسه", ch[0].track === "التجميل" && ch[0].sex === "إناث" && ch[3].track === "الحلاقة" && ch[3].sex === "ذكور", ch[0]);
+  ok("بدء الترقيم من 101", P.chairs(st, {}, 101).map((x) => x.n).join() === "101,102,103,104,105,106");
+  ok("بلا فصل بالجنس: الترتيب = ترتيب الكشف العادي", P.chairs(st, {}, 1).map((x) => x.name).join() === P.build(st, { perPage: 40 }).blocks.filter((b) => b.kind === "table").flatMap((t) => t.rows.map((r) => r[1])).join());
   ok("sexOf يفهم الصيغ", P.sexOf("أنثى") === "إناث" && P.sexOf("انثى") === "إناث" && P.sexOf("ذكر") === "ذكور" && P.sexOf("Male") === "ذكور" && P.sexOf("") === "غير محدد");
 }
 console.log(bad ? bad + " فشل" : "كل الاختبارات نجحت (" + n + ")"); process.exit(bad ? 1 : 0);

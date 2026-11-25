@@ -790,6 +790,23 @@ async function suite() {
       const pt = c.state.pledge.opts; const built = App.pledgeSheet.build(stP, Object.assign({}, pt, { perPage: 12 }));
       const subs = built.blocks.filter((x) => x.kind === "title" && x.sizePt === 12).map((x) => x.text);
       ok("المستند: ورقة «كشف الذكور» ثم «كشف الإناث» ثم «جنس غير محدد» للمسار", subs.join() === "كشف الذكور,كشف الإناث,جنس غير محدد" && built.pages === 3, JSON.stringify({ subs, pages: built.pages }));
+      // أرقام الكراسي: الزر يرسل الأرقام بترتيب الكشوف
+      ok("قسم «أرقام الكراسي» وزر الطباعة مع العدد (4 أرقام على ورقة A4 واحدة)", !!b.querySelector('[data-cc="pledge-chairs"]:not([disabled])') && /4 رقماً \(من 1 إلى 4\) على 1 ورقة A4/.test((b.querySelector(".cc-chairs") || {}).textContent || ""), (b.querySelector(".cc-chairs") || {}).textContent);
+      const keepPr = App.chairNumbers.print; let gotCh = null; App.chairNumbers.print = (items, o) => { gotCh = { items, o }; return true; };
+      b.querySelector('[data-cc="pledge-chairs"]').click(); await wait(100); App.chairNumbers.print = keepPr;
+      ok("الأرقام 1..4 بترتيب الكشوف (الذكور ثم الإناث ثم غير المحدد)", !!gotCh && gotCh.items.map((x) => x.n + ":" + x.name).join() === "1:أحمد,2:خالد,3:سارة,4:مجهول", gotCh && gotCh.items.map((x) => x.n + ":" + x.name).join());
+      const cs = b.querySelector('[data-pl="chairStart"]'); cs.value = "101"; cs.dispatchEvent(new Event("change", { bubbles: true })); await wait(150);
+      ok("«ابدأ الترقيم من 101» يحدّث المدى (101 إلى 104)", /من 101 إلى 104/.test((b.querySelector(".cc-chairs") || {}).textContent || ""), (b.querySelector(".cc-chairs") || {}).textContent);
+      // قياس فعلي: الرقم والاسم يتّسعان داخل الربع على A4 (3 و4 خانات)
+      for (const start of [998, 9998]) {
+        const fr = document.createElement("iframe"); fr.style.cssText = "position:absolute;left:-3000px;top:0;width:210mm;height:297mm;border:0"; document.body.appendChild(fr);
+        const its = [0, 1, 2, 3].map((i) => ({ n: start + i, name: "عبد الرحمن محمد عبد الله أبو العلا", track: "الحلاقة الرجالية", sex: "ذكور" }));
+        fr.contentDocument.open(); fr.contentDocument.write(App.chairNumbers.html(its, { names: true, tags: true })); fr.contentDocument.close(); await wait(150);
+        const qs = [...fr.contentDocument.querySelectorAll(".q")], fits = qs.every((q) => { const r = q.getBoundingClientRect(); return [...q.children].every((ch) => { const c2 = ch.getBoundingClientRect(); return c2.left >= r.left - 1 && c2.right <= r.right + 1 && c2.top >= r.top - 1 && c2.bottom <= r.bottom + 1; }); });
+        const pg = fr.contentDocument.querySelector(".pg").getBoundingClientRect();
+        ok("A4 بأربعة أرباع والرقم (" + String(start).length + " خانات) والاسم داخل كل ربع", qs.length === 4 && fits && Math.abs(pg.height / pg.width - 297 / 210) < 0.02, JSON.stringify({ n: qs.length, fits, ratio: (pg.height / pg.width).toFixed(3) }));
+        fr.remove();
+      }
       agent.version = keepV; agent.run = keepRun2; c.state.enrich = null; localStorage.removeItem("tamkeen:pledge-opts");
     }
     agent.run = oldRun; c.state.mode = "report"; c.state.pledge.students = null; c.state.pledge.opts = null; c.state.wideLimit = 0; c.render();
