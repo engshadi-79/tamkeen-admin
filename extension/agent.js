@@ -717,7 +717,9 @@ window.__kxStart = async () => {
     const plan = [];
     for (const it of items) {
       if (stopped) break;
-      const p = { name: it.name || "", stu: clean(it.stu), track: it.track || "", state: "cancel", why: "" };
+      // الحالة المطلوبة لكل طالب: من البند نفسه (للتراجع: حالته السابقة) وإلا حالة الأمر («ملغي»)
+      const tgt = /^[a-z_]{2,30}$/.test(it.status || "") ? it.status : target;
+      const p = { name: it.name || "", stu: clean(it.stu), track: it.track || "", state: "cancel", why: "", tgt, to: "" };
       try {
         const st = await findStudentApp(p.stu);
         if (!st) { p.state = "invalid"; p.why = "لم أجد الطالب برقمه"; }
@@ -725,21 +727,23 @@ window.__kxStart = async () => {
         else {
           p.app = st.app; await sleep(GET_GAP);
           const a = statusOfApp((await http("GET", st.app)).doc);
+          const opt = a.form && [...a.form.querySelectorAll('select[name="status"] option')].find((o) => o.value === tgt);
           if (!a.form) { p.state = "invalid"; p.why = "لا نموذج لتغيير حالة الطلب"; }
-          else { p.cur = a.label; if (a.status === target) { p.state = "already"; p.why = "طلبه «" + a.label + "» أصلاً"; } else p.why = "الحالة الآن «" + a.label + "»"; }
+          else if (!opt) { p.state = "invalid"; p.why = "الحالة المطلوبة غير موجودة في النظام"; }
+          else { p.cur = a.label; p.curCode = a.status; p.to = clean(opt.textContent); if (a.status === tgt) { p.state = "already"; p.why = "طلبه «" + a.label + "» أصلاً"; } else p.why = "الحالة الآن «" + a.label + "»"; }
         }
       } catch (e) { if (/الجلسة/.test(e.message)) throw e; p.state = "invalid"; p.why = e.message; }
       plan.push(p); say("معاينة " + plan.length + "/" + items.length);
     }
     const n = (s) => plan.filter((p) => p.state === s).length;
-    bodyEl.replaceChildren(h("div", { textContent: "سيُلغى: " + n("cancel") + " — ملغي أصلاً: " + n("already") + " — لن يُنفَّذ: " + n("invalid") }));
+    bodyEl.replaceChildren(h("div", { textContent: (cmd.undo ? "سيُعاد إلى حالته السابقة: " : "سيُلغى: ") + n("cancel") + " — ملغي أصلاً: " + n("already") + " — لن يُنفَّذ: " + n("invalid") }));
     const todo = plan.filter((p) => p.state !== "invalid");
     plan.filter((p) => p.state === "invalid").forEach((p) => out.rows.push({ name: p.name, stu: p.stu, app: "invalid", group: "", message: p.why }));
     if (!todo.length) { log("لا شيء يُنفَّذ."); return out; }
     say("سيُكتب في نظام المركز لـ" + todo.length + " طالباً. راجع ثم اضغط «نفّذ».");
-    const summary = { kind: "cancel", total: plan.length, cancel: n("cancel"), already: n("already"), invalid: n("invalid"), removeFromGroup: cmd.removeFromGroup !== false,
-      rows: plan.slice(0, 120).map((p) => ({ name: p.name, nid: p.stu, state: p.state, why: p.why })) };
-    const local = wait("نفّذ الإلغاء لـ" + todo.length + " طالباً", "go");
+    const summary = { kind: "cancel", undo: !!cmd.undo, total: plan.length, cancel: n("cancel"), already: n("already"), invalid: n("invalid"), removeFromGroup: cmd.removeFromGroup !== false,
+      target, rows: plan.slice(0, 120).map((p) => ({ name: p.name, nid: p.stu, state: p.state, why: p.why, to: p.to })) };
+    const local = wait((cmd.undo ? "نفّذ التراجع لـ" : "نفّذ الإلغاء لـ") + todo.length + " طالباً", "go");
     const go = typeof window.__kxApprove === "function" ? await Promise.race([local, window.__kxApprove(summary)]) : await local;
     actEl.replaceChildren(stopBtn);
     if (!go || stopped) { todo.forEach((p) => out.rows.push({ name: p.name, stu: p.stu, app: "skipped", group: "", message: "لم يُنفَّذ (تخطّيت أو أوقفت)" })); log("لم يُنفَّذ."); return out; }
@@ -747,17 +751,17 @@ window.__kxStart = async () => {
     for (const p of todo) {
       if (stopped) { out.rows.push({ name: p.name, stu: p.stu, app: "skipped", group: "", message: "أُوقف قبله" }); continue; }
       if (fails >= MAX_FAILS) { out.rows.push({ name: p.name, stu: p.stu, app: "skipped", group: "", message: "توقّف بعد إخفاقات متتالية" }); continue; }
-      const row = { name: p.name, stu: p.stu, app: p.state === "already" ? "already" : "", group: "", message: "", was: p.cur || "" };
+      const row = { name: p.name, stu: p.stu, app: p.state === "already" ? "already" : "", group: "", message: "", was: p.cur || "", wasCode: p.curCode || "", to: p.to, toCode: p.tgt };
       say("إلغاء: " + p.name);
       try {
         if (p.state === "cancel") {
           await sleep(POST_GAP);
           const fresh = statusOfApp((await http("GET", p.app)).doc);          // رمز حماية طازج
           if (!fresh.form) throw new Error("اختفى نموذج تغيير الحالة");
-          await http("POST", new URL(fresh.form.getAttribute("action"), location.origin).pathname, formBody(fresh.form, { status: target }));
+          await http("POST", new URL(fresh.form.getAttribute("action"), location.origin).pathname, formBody(fresh.form, { status: p.tgt }));
           await sleep(GET_GAP);
           const after = statusOfApp((await http("GET", p.app)).doc);           // التحقق الحقيقي
-          row.app = after.status === target ? "cancelled" : "failed";
+          row.app = after.status === p.tgt ? "cancelled" : "failed";
           if (row.app === "failed") row.message = "بقيت الحالة «" + after.label + "»";
         }
         if (cmd.removeFromGroup !== false && row.app !== "failed") {
