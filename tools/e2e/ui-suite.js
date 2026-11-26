@@ -369,6 +369,31 @@ async function suite() {
   ok("الطالب الذي غاب 4 مرات يظهر أولاً بعلامة التنبيه", attRows.length === 2 && /طالب كثير الغياب/.test(attRows[0]) && /⚠ تجاوز 3/.test(attRows[0]) && !/⚠/.test(attRows[1]), JSON.stringify(attRows));
   ok("الغياب المتتالي يظهر في جدول الطالب كثير الغياب", /أطول غياب متتالٍ/.test(b.querySelector('[data-tblbox="att-0"] thead').textContent) && /جلسات متتالية/.test(attRows[0]), attRows[0]);
   ok("شريط التنبيه: طالب واحد تجاوز 3 غيابات", /طالباً تجاوزوا 3 غيابات/.test(b.textContent) && !!b.querySelector('[data-cc="att-copy"]'), "banner");
+  {   // تحديد طلاب من جدول الحضور وإلغاء طلباتهم («ملغي») ثم إخراجهم من مجموعاتهم — معاينة وموافقة قبل أي كتابة
+    const studsA = c.state.att.out.students, flag = studsA.find((e) => e.absent > 3);
+    ok("جدول الحضور: خانة تحديد لكل طالب وشريط الإلغاء", b.querySelectorAll('[data-tbl-sel="att-0"]').length === studsA.length && !!b.querySelector(".cc-cancelbar") && !!b.querySelector('[data-cc="att-cancel"][disabled]'), "bar");
+    b.querySelector('[data-cc="att-sel-flag"]').click(); await wait(100);
+    ok("«حدّد المنذَرين» يحدد كثير الغياب فقط ويفعّل الزر", c.state.tblSel["att-0"].size === 1 && c.state.tblSel["att-0"].has(flag.stu) && (b.querySelector('[data-selcount="att-0"]') || {}).textContent === "1" && !b.querySelector('[data-cc="att-cancel"]').disabled, [...(c.state.tblSel["att-0"] || [])]);
+    const kvA = agent.version, krA = agent.run; let sentCancel = null;
+    agent.version = () => "1.5.8"; b.querySelector('[data-cc="att-cancel"]').click(); await wait(150);
+    ok("إضافة قديمة (1.5.8): لا كتابة ورسالة بالإصدار المطلوب 1.5.9", /1\.5\.9/.test(c.state.resultError || "") && !c.state.att.cancelOut, c.state.resultError);
+    c.state.resultError = ""; agent.version = () => "1.5.9";
+    agent.run = async (cmds, opts) => {
+      sentCancel = cmds[0];
+      const go = await opts.onPlan({ kind: "cancel", total: 1, cancel: 1, already: 0, invalid: 0, removeFromGroup: true, rows: [{ name: flag.name, nid: flag.stu, state: "cancel", why: "الحالة الآن «مقبول»" }] });
+      return { results: [{ index: 0, type: "cancel", rows: [go ? { name: flag.name, stu: flag.stu, app: "cancelled", group: "removed", was: "مقبول", message: "" } : { name: flag.name, stu: flag.stu, app: "skipped", group: "", message: "لم يُنفَّذ" }] }] };
+    };
+    c.render(); b.querySelector('[data-cc="att-cancel"]').click();
+    for (let i = 0; i < 40 && !b.querySelector(".cc-plan-danger"); i++) await wait(100);
+    const pl = b.querySelector(".cc-plan-danger");
+    ok("بطاقة معاينة حمراء قبل الكتابة: الاسم وما سيحدث وزر «نفّذ في النظام»", !!pl && /إلغاء طلبات وإخراج من المجموعات/.test(pl.textContent) && new RegExp(flag.name).test(pl.textContent) && /سيُغيَّر طلبه إلى «ملغي» ثم يُخرج من مجموعته/.test(pl.textContent) && /نفّذ في النظام \(1\)/.test(pl.textContent), pl && pl.textContent.slice(0, 200));
+    ok("الأمر المرسل: الطالب المحدد برقمه، والحالة cancelled، والإخراج مفعّل", !!sentCancel && sentCancel.type === "cancel" && sentCancel.items.length === 1 && sentCancel.items[0].stu === flag.stu && sentCancel.status === "cancelled" && sentCancel.removeFromGroup === true, JSON.stringify(sentCancel));
+    pl.querySelector('[data-cc="plan-ok"]').click();
+    for (let i = 0; i < 40 && !c.state.att.cancelOut; i++) await wait(100); await wait(200);
+    const crBox = b.querySelector('[data-tblbox="att-cancel"]');
+    ok("نتيجة الإلغاء: «✓ أُلغي» و«✓ أُخرج» والحالة السابقة للتراجع، والتحديد أُفرغ", !!crBox && /✓ أُلغي/.test(crBox.textContent) && /✓ أُخرج/.test(crBox.textContent) && /كانت حالته «مقبول»/.test(crBox.textContent) && c.state.tblSel["att-0"].size === 0, crBox && crBox.textContent.slice(0, 200));
+    agent.version = kvA; agent.run = krA; c.state.att.cancelOut = null; c.render();
+  }
   // غائبو آخر يوم بحسب المجموعة + نص واتساب
   let waAtt = ""; const ocA = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { waAtt = x; } }, configurable: true });
   const grpBox = b.querySelector(".cc-att-groups");

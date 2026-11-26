@@ -162,3 +162,10 @@ html:root:root .cc-modes { gap: 8px 10px; padding: 8px 10px; }
 .cc-results, .cc-card-b, .cc-res, .cc-opts, .cc-tools, .cc-field, .cc-sum, .cc-sigall { grid-template-columns: minmax(0, 1fr); }
 .cc-results > *, .cc-card-b > *, .cc-res > *, .cc-opts > *, .cc-tools > * { min-width: 0; max-width: 100%; }
 .cc-stats, .cc-sigsum-tabs, .cc-sig-rev, .cc-row { max-width: 100%; }
+
+/* تحديد صفوف الجداول، وشريط إلغاء الطلبات (كتابة في النظام) */
+.cc-table th.cc-selcol, .cc-table td.cc-selcol { width: 34px; text-align: center; }
+.cc-table td.cc-selcol input, .cc-table th.cc-selcol input { width: 16px; height: 16px; cursor: pointer; }
+.cc-cancelbar { border: 1px dashed #d92d20; border-radius: 10px; padding: 8px 10px; margin: 6px 0 8px; background: rgba(217, 45, 32, .04); }
+.cc-cancelbar .cc-row { gap: 10px; align-items: center; flex-wrap: wrap; }
+.cc-plan-danger { border-color: #d92d20 !important; box-shadow: 0 0 0 2px rgba(217, 45, 32, .15); }
