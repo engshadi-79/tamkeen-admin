@@ -1575,6 +1575,76 @@
   /* حصر التبويب بمدير النظام (إعداد مشترك يحفظه المدير) */
   const centerAllowed = () => { const st = (App.store && App.store.get && App.store.get()) || {}; const u = curUser(); return !st.centerAdminOnly || !u || !!u.admin; };
   const hasSensitive = () => !!(state.results || state.cmp.out || state.sib.out || state.mis.out || state.dq.out || state.dq.rows || state.gaps.out || state.enrich || state.cache || state.grp.out || state.stu.out || state.att.out);
+  /* ===== حفظ نتائج الأدوات على هذا الجهاز (IndexedDB) =====
+     آخر نتيجة لكل أداة تُحفظ وحدها، وتظهر عند فتح الصفحة بلا قراءة من النظام. الجلب الجديد بضغطتك فقط («نفّذ» أو «حدّث»)،
+     ونتيجته تحلّ محل نتيجة تلك الأداة وحدها. الخمول يُخفيها من الشاشة ولا يحذفها؛ «مسح بيانات هذه الشاشة» يحذفها. */
+  const SNAP_DB = "tamkeen-center", SNAP_ST = "snap", SNAP_K = "v1";
+  const SNAP_FIELDS = [
+    ["results", () => state.results, (v) => { state.results = v; }, "report"],
+    ["labels", () => (state.results ? state.labels : null), (v) => { state.labels = v || []; }],
+    ["att", () => state.att.out, (v) => { state.att.out = v; }, "attend"],
+    ["mis", () => state.mis.out, (v) => { state.mis.out = v; }, "missing"],
+    ["cmp", () => state.cmp.out, (v) => { state.cmp.out = v; }, "compare"],
+    ["sib", () => state.sib.out, (v) => { state.sib.out = v; }, "siblings"],
+    ["dq", () => state.dq.out, (v) => { state.dq.out = v; }, "dq"],
+    ["dqRows", () => state.dq.rows, (v) => { state.dq.rows = v; }],
+    ["grp", () => state.grp.out, (v) => { state.grp.out = v; }, "groups"],
+    ["imp", () => state.imp.out, (v) => { state.imp.out = v; }, "impact"],
+    ["impOuts", () => (state.imp.outs && Object.keys(state.imp.outs).length ? state.imp.outs : null), (v) => { state.imp.outs = v || {}; }],
+    ["grad", () => state.grad.out, (v) => { state.grad.out = v; }, "grad"],
+    ["xl", () => state.xl.out, (v) => { state.xl.out = v; }, "xl"],
+    ["monthly", () => state.monthly.out, (v) => { state.monthly.out = v; }, "monthly"],
+    ["gaps", () => state.gaps.out, (v) => { state.gaps.out = v; }, "gaps"],
+    ["pledgeStu", () => state.pledge.students, (v) => { state.pledge.students = v; }, "pledge"],
+    ["pledgeSrc", () => (state.pledge.students ? state.pledge.source : null), (v) => { state.pledge.source = v || ""; }],
+    ["enrich", () => state.enrich, (v) => { state.enrich = v; }],
+    ["cache", () => state.cache, (v) => { state.cache = v; }],
+    ["stu", () => state.stu.out, (v) => { state.stu.out = v; }, "student"],
+  ];
+  let snapData = null, snapRefs = [], snapTimer = 0, snapReady = false;
+  const idbOpen = () => new Promise((res, rej) => { try { const q = indexedDB.open(SNAP_DB, 1); q.onupgradeneeded = () => q.result.createObjectStore(SNAP_ST); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); } catch (e) { rej(e); } });
+  const idbDo = async (mode, fn) => { const db = await idbOpen(); return new Promise((res, rej) => { const tx = db.transaction(SNAP_ST, mode), st = tx.objectStore(SNAP_ST); const q = fn(st); tx.oncomplete = () => { res(q && q.result); db.close(); }; tx.onerror = () => { rej(tx.error); db.close(); }; }); };
+  const snapGet = () => idbDo("readonly", (st) => st.get(SNAP_K)).catch(() => null);
+  const snapPut = (v) => idbDo("readwrite", (st) => st.put(v, SNAP_K));
+  const snapClear = () => { snapData = { v: 1, at: {}, data: {} }; return idbDo("readwrite", (st) => st.delete(SNAP_K)).catch(() => {}); };
+  const snapCur = () => SNAP_FIELDS.map((f) => f[1]());
+  /* بعد كل عرض (والأداة ليست مشغولة): ما تغيّر من النتائج يُدمج في المحفوظ ويُكتب */
+  function snapMaybeSave() {
+    if (!snapReady || state.busy || state.snapPaused) return;
+    const cur = snapCur();
+    if (cur.every((v, i) => v === snapRefs[i])) return;
+    snapRefs = cur;
+    clearTimeout(snapTimer);
+    snapTimer = setTimeout(async () => {
+      snapData = snapData || { v: 1, at: {}, data: {} };
+      const now = new Date();
+      SNAP_FIELDS.forEach(([k, get]) => { const v = get(); if (v != null) { if (snapData.data[k] !== v) snapData.at[k] = now; snapData.data[k] = v; } });
+      snapData.savedAt = now;
+      try { await snapPut(snapData); }
+      catch (e) {   // حقل لا يُنسخ (نادراً): يُحذف ذلك الحقل وحده
+        Object.keys(snapData.data).forEach((k) => { try { structuredClone(snapData.data[k]); } catch (e2) { delete snapData.data[k]; } });
+        try { await snapPut(snapData); } catch (e3) { /* التخزين غير متاح */ }
+      }
+    }, 700);
+  }
+  /* استرجاع المحفوظ: لا يكتب فوق نتيجة في الذاكرة (onlyEmpty) */
+  function snapApply(onlyEmpty) {
+    if (!snapData || !snapData.data) return 0;
+    let n = 0;
+    SNAP_FIELDS.forEach(([k, get, set]) => { const v = snapData.data[k]; if (v != null && (!onlyEmpty || get() == null)) { set(v); n++; } });
+    if (state.monthly.out && state.monthly.out.d && !state.monthly.out.doc && App.monthlyReport) state.monthly.out.doc = App.monthlyReport.build(state.monthly.out.d);
+    snapRefs = snapCur();
+    return n;
+  }
+  async function snapLoad() {
+    const v = await snapGet();
+    snapData = v && v.data ? v : { v: 1, at: {}, data: {} };
+    const n = snapApply(true);
+    snapReady = true;
+    if (n) render();
+  }
+  /* للأداة الحالية: هل لها نتيجة محفوظة غير معروضة؟ (بعد الخمول) */
+  const snapHiddenFor = (mode) => { const f = SNAP_FIELDS.find((x) => x[3] === mode || (mode === "morning" && x[0] === "att")); return f && snapData && snapData.data[f[0]] != null && f[1]() == null ? snapData.at[f[0]] || snapData.savedAt : null; };
   function wipeData(why) {
     state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null; state.gaps.out = null; state.enrich = null;
     state.cache = null; state.grp.out = null; state.imp.out = null; state.imp.outs = {}; state.att.out = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
@@ -1599,7 +1669,7 @@
       <label class="cc-chk"><input type="checkbox" data-set="mask" ${state.mask ? "checked" : ""}> <span>إخفاء الهوية والجوال جزئياً في العرض والنسخ (للمشاركة بالشاشة)</span></label>
       <label class="cc-field" style="max-width:320px"><span>مسح النتائج من الشاشة بعد خمول</span><select data-set="idle">${[[10, "10 دقائق"], [20, "20 دقيقة"], [60, "ساعة"], [0, "لا تمسح"]].map(([v, t]) => `<option value="${v}" ${state.idleMin === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
       ${u && u.admin ? `<label class="cc-chk"><input type="checkbox" data-set="adminonly" ${st.centerAdminOnly ? "checked" : ""}> <span>حصر هذا التبويب بمدير النظام (يسري على كل المستخدمين)</span></label>` : ""}
-      <div class="cc-row"><button type="button" class="cc-link danger" data-cc="wipe-now">مسح كل بيانات هذه الشاشة الآن</button></div>
+      <div class="cc-row"><button type="button" class="cc-link danger" data-cc="wipe-now">مسح كل بيانات هذه الشاشة الآن (ومعها النتائج المحفوظة على هذا الجهاز)</button></div>
       <p class="cc-note">الذاكرة المحمّلة (⚡) تُمسح تلقائياً بعد ساعتين. وكل ما تعرضه هذه الشاشة يبقى في المتصفح ولا يُرسل إلى أي خدمة.</p></details>
       <details class="cc-help" data-open="errs" ${state.open.errs ? "open" : ""}><summary>أخطاء الصفحة (${ui.fmt(state.errors.length)})</summary>
       ${state.errors.length ? `<table class="cc-table"><thead><tr><th>الوقت</th><th>الخطأ</th><th>الموضع</th></tr></thead><tbody>${state.errors.slice(0, 10).map((e) => `<tr><td>${esc(new Date(e.at).toLocaleString("ar"))}</td><td>${esc(e.msg)}</td><td>${esc(e.where)}</td></tr>`).join("")}</tbody></table><div class="cc-row"><button type="button" class="cc-link" data-cc="copy-errs">نسخ للإرسال إلى المطوّر</button><button type="button" class="cc-link" data-cc="clear-errs">مسح</button></div>` : '<p class="cc-note">لا أخطاء مسجّلة.</p>'}</details>`;
@@ -4021,6 +4091,7 @@
         : "تعمل الجلسة في نافذة Edge المحلية. سجّل الدخول فيها مرة واحدة؛ بعدها ينفّذ الوكيل البحث والقوائم والتسجيل ويعرض النتيجة هنا. أو ثبّت إضافة «وكيل تمكين» في Chrome لتعمل دون خادم محلي."}</p></details>
     </div>`;
     hideScopeDupes(box);
+    snapMaybeSave();
   }
 
   /* ===== التنزيل ===== */
@@ -4129,9 +4200,11 @@
     return "قبل " + ui.fmt(Math.round(h / 24)) + " يوماً";
   }
   function freshBar() {
+    const hid = snapHiddenFor(state.mode);
+    if (hid && RUN_BTN[state.mode]) return `<div class="cc-fresh" role="status"><span>💾 لهذه الأداة نتيجة محفوظة على هذا الجهاز من <b>${esc(agoText(hid))}</b> (أُخفيت من الشاشة)</span><button type="button" class="cc-link" data-cc="snap-restore">أظهرها</button></div>`;
     const f = FRESH_AT[state.mode], at = f && f(); if (!at || !RUN_BTN[state.mode]) return "";
     const stale = Date.now() - new Date(at).getTime() > 60 * 60000;
-    return `<div class="cc-fresh${stale ? " stale" : ""}" role="status"><span>🕒 جُلبت البيانات <b>${esc(agoText(at))}</b>${stale ? " — قد تكون قديمة" : ""}</span><button type="button" class="cc-link" data-cc="refresh-mode" ${state.busy ? "disabled" : ""} title="يعيد قراءة هذه الأداة وحدها من نظام المركز بقراءة جديدة">↻ حدّث هذه الأداة فقط</button></div>`;
+    return `<div class="cc-fresh${stale ? " stale" : ""}" role="status"><span>🕒 جُلبت البيانات <b>${esc(agoText(at))}</b>${stale ? " — قد تكون قديمة" : ""} · 💾 محفوظة على هذا الجهاز، ولا جلب جديد إلا بطلبك</span><button type="button" class="cc-link" data-cc="refresh-mode" ${state.busy ? "disabled" : ""} title="يعيد قراءة هذه الأداة وحدها من نظام المركز بقراءة جديدة">↻ حدّث هذه الأداة فقط</button></div>`;
   }
   /* ===== البحث الشامل (Ctrl+K): أدوات المركز، وطلاب الذاكرة المحمّلة ===== */
   function openMode(k) {
@@ -4294,6 +4367,7 @@
   };
   async function runCommands(commands, hooks) {
     hooks = hooks || {};
+    state.snapPaused = false;   // جلب جديد بطلبك: يُستأنف الحفظ على الجهاز
     const local = commands.map((c) => (hooks.noCache || state.forceFresh ? null : cachedResult(c)));
     const idx = [], todo = [];
     commands.forEach((c, i) => { if (!local[i]) { idx.push(i); todo.push(c); } });
@@ -4434,6 +4508,7 @@
     const box = $("cc-body");
     if (!box) return;
     scopeLoad();
+    snapLoad().catch(() => { snapReady = true; });
     try { const m = localStorage.getItem("tamkeen-admin:cc-msg"); if (m) state.mis.msg = m; } catch (e) { /* خاص */ }
     state.saved = lsGet(SV_KEY, []); state.runLog = lsGet(LOG_KEY, []); state.errors = lsGet(ERR_KEY, []); state.contacts = lsGet(CONTACT_KEY, []);
     try { const cc = localStorage.getItem(CC_KEY); if (cc) state.wa.cc = cc; } catch (e) { /* خاص */ }
@@ -4441,7 +4516,7 @@
     ["click", "keydown", "input", "change"].forEach((ev) => box.addEventListener(ev, () => { state.lastAct = Date.now(); }, true));
     window.setInterval(() => {                                      // مسح النتائج بعد خمول (لا أثناء تنفيذ)
       if (!state.idleMin || state.busy || !hasSensitive()) return;
-      if (Date.now() - state.lastAct > state.idleMin * 60000) wipeData("مُسحت النتائج من الشاشة لخمولك " + state.idleMin + " دقيقة؛ أعد التنفيذ عند الحاجة");
+      if (Date.now() - state.lastAct > state.idleMin * 60000) (state.snapPaused = true, wipeData)("مُسحت النتائج من الشاشة لخمولك " + state.idleMin + " دقيقة؛ أعد التنفيذ عند الحاجة");
     }, 30000);
     window.addEventListener("error", (e) => pushErr(e.message, (e.filename || "").split("/").pop() + ":" + e.lineno));
     window.addEventListener("unhandledrejection", (e) => pushErr((e.reason && e.reason.message) || e.reason, "promise"));
@@ -4721,7 +4796,8 @@
           state.saved = state.saved.filter((x) => x.id !== b.dataset.id); lsSet(SV_KEY, state.saved); renderDash();
         } else if (act === "toggle-mask") {
           state.mask = !state.mask; try { localStorage.setItem(MASK_KEY, state.mask ? "1" : ""); } catch (e) { /* خاص */ }
-        } else if (act === "wipe-now") { return wipeData("مُسحت بيانات هذه الشاشة");
+        } else if (act === "wipe-now") { snapClear(); return wipeData("مُسحت بيانات هذه الشاشة والنتائج المحفوظة على هذا الجهاز");
+        } else if (act === "snap-restore") { state.snapPaused = false; snapApply(true); return render();
         } else if (act === "clear-errs") { state.errors = []; lsSet(ERR_KEY, []);
         } else if (act === "copy-errs") {
           try { await navigator.clipboard.writeText(state.errors.map((e) => e.at + " | " + e.msg + " | " + e.where).join("\n")); ui.toast("نُسخ سجل الأخطاء"); } catch (err) { ui.toast("تعذّر النسخ"); }
@@ -5058,6 +5134,7 @@
     _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol, enrichResult, blank: isBlankCell },
     _extras: { apply: applyExtras, seen: extraSeen },
     _att: { sel: () => selOf("att-0") },
+    _snap: { get: () => snapData, load: snapLoad, clear: snapClear, flush: () => { snapRefs = []; snapMaybeSave(); } },
     _sig: { compute: (f) => sigCompute(f), unknownAll: sigUnknownAll, retrackPlan: sigRetrackPlan, trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

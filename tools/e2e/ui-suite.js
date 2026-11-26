@@ -394,6 +394,25 @@ async function suite() {
     ok("نتيجة الإلغاء: «✓ أُلغي» و«✓ أُخرج» والحالة السابقة للتراجع، والتحديد أُفرغ", !!crBox && /✓ أُلغي/.test(crBox.textContent) && /✓ أُخرج/.test(crBox.textContent) && /كانت حالته «مقبول»/.test(crBox.textContent) && c.state.tblSel["att-0"].size === 0, crBox && crBox.textContent.slice(0, 200));
     agent.version = kvA; agent.run = krA; c.state.att.cancelOut = null; c.render();
   }
+  {   // حفظ النتائج على الجهاز: تبقى بعد إعادة الفتح، والخمول يخفي ولا يحذف، والمسح الصريح يحذف
+    const snapAtt = c.state.att.out;
+    c.render(); c._snap.flush(); await wait(1200);
+    const sd = c._snap.get();
+    ok("نتيجة الحضور حُفظت على الجهاز (IndexedDB) مع وقت حفظها", !!sd && !!sd.data.att && sd.data.att.students.length === snapAtt.students.length && sd.at.att instanceof Date, JSON.stringify(sd && Object.keys(sd.data)));
+    ok("شريط الحداثة يقول: محفوظة على هذا الجهاز ولا جلب جديد إلا بطلبك", /محفوظة على هذا الجهاز/.test((b.querySelector(".cc-fresh") || {}).textContent || ""), (b.querySelector(".cc-fresh") || {}).textContent);
+    // «إعادة فتح الصفحة»: الذاكرة فارغة ثم استرجاع من الجهاز بلا أي قراءة من النظام
+    calls.length = 0; c.state.att.out = null; await c._snap.load(); await wait(200);
+    ok("عند الفتح: نتيجة الحضور تعود من الجهاز كما هي بلا قراءة من النظام", !!c.state.att.out && c.state.att.out.students.length === snapAtt.students.length && calls.length === 0 && !!b.querySelector('[data-tblbox="att-0"]'), JSON.stringify({ n: c.state.att.out && c.state.att.out.students.length, calls }));
+    // الخمول: يخفي ولا يحذف
+    c.state.snapPaused = true; c.state.att.out = null; c.render(); await wait(900);
+    const hidBar = b.querySelector('[data-cc="snap-restore"]');
+    ok("بعد الخمول: النتيجة مخفية وزر «أظهرها» من المحفوظ", !!hidBar && /محفوظة على هذا الجهاز/.test(b.querySelector(".cc-fresh").textContent) && !!c._snap.get().data.att, "hidden");
+    hidBar.click(); await wait(200);
+    ok("«أظهرها» يعيد النتيجة من الجهاز", !!c.state.att.out && c.state.att.out.students.length === snapAtt.students.length, "restored");
+    await c._snap.clear(); const keepA = c.state.att.out; c.state.att.out = null; await c._snap.load(); await wait(100);
+    ok("المسح الصريح يحذف المحفوظ من الجهاز (لا شيء يعود بعده)", !c.state.att.out && !Object.keys(c._snap.get().data).length, JSON.stringify(Object.keys(c._snap.get().data)));
+    c.state.att.out = keepA; c.render();
+  }
   // غائبو آخر يوم بحسب المجموعة + نص واتساب
   let waAtt = ""; const ocA = navigator.clipboard; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (x) => { waAtt = x; } }, configurable: true });
   const grpBox = b.querySelector(".cc-att-groups");
