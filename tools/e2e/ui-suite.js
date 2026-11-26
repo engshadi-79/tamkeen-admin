@@ -1095,6 +1095,28 @@ async function suite() {
       ok("تفاصيل كل نموذج والأدوات مطويّة", [...b.querySelectorAll(".cc-sig-perform, .cc-sig-tools")].every((d) => !d.open) && !!b.querySelector(".cc-sig-perform"), "fold");
       c.state.mode = km;
     }
+    {   // غير المعروفين: فصلهم حسب المسار ومقارنتهم بكل طلاب مسارهم في النظام
+      const trF = ((App.centerSchema.studentFilters.fields || []).find((f) => f.name === "track_id") || { options: [] }).options.filter((o) => o.v !== "");
+      const T = trF[0], tName = T ? T.t : "";
+      S.rows = [row("u:0", "احمد علي محمد سالم", "403734726", ""), row("u:1", "منى خالد يوسف", "", "", { trackAuto: tName }), row("u:2", "ليث حسن العمري", "", "")];
+      S.lookups = {}; S.nameHits = {}; S.manual = {};
+      const plan = App.centerCmd._sig.retrackPlan();
+      ok("خطة المقارنة: أمر لمسار منى، وأمر واحد لكل الطلاب لمن لا مسار له", plan.size === 2 && plan.has(String(T.v)) && plan.has("*"), JSON.stringify([...plan.keys()]));
+      const kr = agent.run, kv = agent.version, seenL = [];
+      agent.run = async (cmds) => ({ results: cmds.map((cm) => { seenL.push(JSON.stringify(cm.params || {})); const H = ["الاسم", "رقم الطالب", "رقم الهوية", "الجوال", "المسار", "المرحلة", "المجموعة"];
+        return cm.params && cm.params.track_id ? { type: "list", label: cm.label, heads: H, rows: [{ cells: ["منى خالد يوسف", "S90", "490000001", "0599000001", tName, "المرحلة الثانية", "S2G1"] }, { cells: ["هدى سمير", "S91", "490000002", "0599000002", tName, "المرحلة الأولى", "S1G1"] }] }
+          : { type: "list", label: cm.label, heads: H, rows: [{ cells: ["ليث حسن العمري", "S95", "490000009", "0599000009", "مسار آخر", "المرحلة الأولى", "S1G9"] }] }; }) });
+      const km2 = c.state.mode; c.state.mode = "sign"; c.render();
+      const btnR = b.querySelector('[data-cc="sig-retrack"]');
+      ok("زر «افصلهم حسب المسار وقارن مرة أخرى» مع العدد حسب المسار", !!btnR && /2 أوامر قراءة/.test(btnR.textContent) && /حسب المسار:/.test(b.querySelector(".cc-sig-retrack").textContent), btnR && btnR.textContent);
+      btnR.click(); for (let i = 0; i < 60 && c.state.busy; i++) await wait(100); await wait(300);
+      ok("قراءة طلاب مسار منى (track_id) وكل الطلاب لمن لا مسار له", seenL.some((x) => x.includes('"track_id"')) && seenL.some((x) => x === "{}"), JSON.stringify(seenL));
+      const lk = S.lookups || {};
+      ok("منى وليث عُرفا من النظام بالمقارنة حسب المسار (بمرحلتهما ومجموعتهما)", lk["u:1"] && lk["u:1"].by === "retrack" && lk["u:1"].list[0].stage === "المرحلة الثانية" && lk["u:2"] && lk["u:2"].list[0].group === "S1G9", JSON.stringify(Object.keys(lk)));
+      const unkBox = [...b.querySelectorAll(".cc-sig-simple .cc-sig3")].filter((x) => !x.closest("details"))[2];
+      ok("بعد المقارنة: لم يبقَ اسم غير معروف", !!unkBox && (unkBox.querySelector(".cc-badge") || {}).textContent === "0", unkBox && unkBox.textContent.slice(0, 120));
+      agent.run = kr; agent.version = kv; c.state.mode = km2;
+    }
     Object.assign(S, keep); c.render();
   }
 
