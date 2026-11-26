@@ -1665,6 +1665,7 @@
     const n = snapApply(true);
     snapReady = true;
     if (n) render();
+    try { document.dispatchEvent(new Event("tamkeen:att-brief")); } catch (e) { /* */ }
   }
   /* للأداة الحالية: هل لها نتيجة محفوظة غير معروضة؟ (بعد الخمول) */
   const snapHiddenFor = (mode) => { const f = SNAP_FIELDS.find((x) => x[3] === mode || (mode === "morning" && x[0] === "att")); return f && snapData && snapData.data[f[0]] != null && f[1]() == null ? snapData.at[f[0]] || snapData.savedAt : null; };
@@ -4490,7 +4491,7 @@
     "student": "ابحث عن طالب واحد (باسمه أو هويته أو جواله) فترى كل بياناته: الاستبيانات والتعهد والإرسالات والإخوة وجودة بياناته.",
     "ask": "اكتب طلبك بجملة عادية (مثلاً: «دورلي على أحمد» أو «هاتلي المتخرجين بمسار التسويق»)، أو سجّل طلاباً من ملف Excel."
   };
-  const MODE_ICO = { gaps: "🕳️", monthly: "🗂️", pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
+  const MODE_ICO = { write: "✍️", gaps: "🕳️", monthly: "🗂️", pledge: "🎒", img: "📷", grad: "🎓", morning: "🌅", xl: "📑", sign: "🖊️", attend: "🗓️", report: "📋", impact: "📈", missing: "✅", compare: "⚖️", siblings: "👪", dq: "🔍", groups: "👥", student: "🧑", ask: "✍️" };
   /* ===== متى جُلبت البيانات؟ وتحديث الأداة الحالية فقط (بقراءة جديدة لا من الذاكرة) ===== */
   const FRESH_AT = {
     report: () => state.results && state.results.at, attend: () => state.att.out && state.att.out.at, morning: () => state.att.out && state.att.out.at,
@@ -5460,7 +5461,14 @@
   /* صيغة التقرير الرسمي للنافذة العامة: النتيجة الظاهرة في «استبيانات وتعهدات» فقط */
   const missingReportFor = (contact, opts) => { const o = state.mis.out; return o ? waMissingReport(o, contact || null, opts) : ""; };
   sigLoad();   // جلسة التوقيعات المحفوظة تُستعاد عند فتح الأداة
-  App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
+  /* للوحة الرئيسية: أرقام آخر قراءة حضور (المعروضة أو المحفوظة على الجهاز) بلا أسماء */
+  function attBrief() {
+    const o = state.att.out || (snapData && snapData.data && snapData.data.att);
+    if (!o || !o.students) return null;
+    const thr = Number(state.att.thr || 3), c = (e) => e.absent + (state.att.excused ? e.excused : 0);
+    return { flagged: o.students.filter((e) => c(e) > thr).length, near: o.students.filter((e) => c(e) === thr).length, students: o.students.length, from: o.from, to: o.to, ago: agoText(o.at) };
+  }
+  App.centerCmd = { allowed: centerAllowed, renderDash, attBrief, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
     _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol, enrichResult, blank: isBlankCell },
     _extras: { apply: applyExtras, seen: extraSeen },
     _wr: { readEdit: wrReadEdit, cmd: wrCommand, agentWrite: () => agentWrite() },

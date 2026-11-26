@@ -2,7 +2,7 @@
    تنقلها لأعلى أو لأسفل، وتعبر بها إلى القسم المجاور عند بلوغ طرف القسم.
    الترتيب يُحفظ في هذا المتصفح فقط، و«الترتيب الأصلي» يعيده كما كان. */
 (function (App) {
-  const KEY = "tamkeen-admin:nav-order";
+  const KEY = "tamkeen-admin:nav-order-v2";   // v2: القائمة الجديدة حسب العمل (الترتيب القديم لا يُطبَّق عليها)
   let original = null;
 
   const groups = () => [...document.querySelectorAll("#primary-nav > .nav-group")];
