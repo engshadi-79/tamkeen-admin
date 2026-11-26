@@ -12,7 +12,7 @@
     const label = (btn.querySelector(".nav-text") || btn).textContent.trim();
     const group = btn.closest(".nav-group");
     const headBtn = group && group.querySelector(".nav-head");
-    const section = headBtn ? headBtn.textContent.trim() : "الرئيسية والمتابعة";
+    const section = headBtn ? headBtn.textContent.trim() : "الرئيسية";
     const title = sec.querySelector(".page-head h2, .page-header .page-title, .cv-intro-copy h2");
     if (!title) return;
     const host = title.closest("div");
@@ -85,7 +85,7 @@
       const name = g.dataset.group;
       // عند كل فتح للموقع: «الرئيسية» و«أدوات الملفات» مفتوحتان، وبقية الأقسام مطوية.
       // القسم الذي فيه الصفحة المفتوحة يُفتح تلقائياً (openGroupOf)، والنقر على عنوان قسم يفتحه ويطويه في الجلسة الحالية.
-      if (name === "main" || name === "tools") g.classList.add("open");
+      if (name !== "system" && name !== "archive") g.classList.add("open");
       const head = g.querySelector(".nav-head");
       if (!head) return;
       head.addEventListener("click", () => {

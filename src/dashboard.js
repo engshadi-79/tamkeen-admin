@@ -369,8 +369,12 @@
     if (!el) return;
     const follow = App.registry ? App.registry.followUps() : [];
     const late = follow.filter((x) => x.days < 0).length;
+    // آخر قراءة حضور محفوظة على هذا الجهاز (أرقام فقط، بلا قراءة من النظام)
+    const ab = App.centerCmd && App.centerCmd.attBrief ? App.centerCmd.attBrief() : null;
+    const attTile = !ab ? tile("warn", "—", "الحضور والغياب", "لا قراءة محفوظة: اقرأ الحضور", "", 'data-dash-tool="attend"')
+      : tile(ab.flagged ? "bad" : ab.near ? "warn" : "ok", ab.flagged, "تجاوزوا حد الغياب", (ab.near ? ui.fmt(ab.near) + " على الحد · " : "") + "قراءة " + ab.ago, "", 'data-dash-tool="attend"');
     const tiles = [
-      overdue.length ? tile("bad", overdue.length, "مهام متأخرة", "راجعها الآن", "#tasks") : tile("ok", 0, "لا مهام متأخرة", "كل شيء في موعده", "#tasks"),
+      overdue.length ? tile("bad", overdue.length, "مهام متأخرة", "راجعها الآن", "#tasks") : attTile,
       follow.length ? tile(late ? "bad" : "warn", follow.length, "وارد يحتاج معالجة", late ? `${ui.fmt(late)} منها متأخر` : "مستحق خلال ٣ أيام", "#registry") : tile("ok", 0, "لا وارد مستحق", "لا شيء بانتظار رد", "#registry"),
     ];
     // تقرير المركز الأسبوعي: لمن يُتاح له التبويب فقط
@@ -423,6 +427,8 @@
       const when = days < 0 ? `متأخر ${ui.fmt(-days)} يوم` : days === 0 ? "مطلوب اليوم" : `مطلوب خلال ${ui.fmt(days)} يوم`;
       alerts.push(`<li class="${days < 0 ? "danger" : "warn"}">الوارد <b>${ui.esc(rec.number)}</b>${rec.subject ? ` «${ui.esc(rec.subject)}»` : ""}${rec.party ? ` من ${ui.esc(rec.party)}` : ""}: ${when} (${ui.formatDate(rec.dueDate)}). <a href="#registry">فتح السجل</a></li>`);
     });
+    const nc = document.getElementById("dash-next-card"); if (nc) nc.hidden = !pending.length;
+    const tc = document.getElementById("dash-team-card"); if (tc) tc.hidden = !tasks.length;
     document.getElementById("alerts").innerHTML = alerts.length ? alerts.join("") : `<li class="ok">لا توجد تنبيهات حالياً — جميع المؤشرات ضمن الحدود المطلوبة.</li>`;
     const alertCount = document.getElementById("dash-alert-count");
     if (alertCount) { alertCount.textContent = ui.fmt(alerts.length); alertCount.classList.toggle("is-clear", alerts.length === 0); }
@@ -586,8 +592,19 @@
     el.innerHTML = `
       <div class="card ch-card ch-wide"><h3>الوارد والصادر — آخر 12 شهراً <small>${ui.fmt(inC.reduce((a, b) => a + b, 0))} وارد · ${ui.fmt(outC.reduce((a, b) => a + b, 0))} صادر</small></h3>${regHtml}</div>
       <div class="card ch-card"><h3>الضيافة — ${MONTHS[now.getMonth()]} <small>${hosSum}</small> <a href="#hospitality" class="ch-link">فتح الكشف</a></h3>${hosHtml}</div>
-      <div class="card ch-card"><h3>المهام غير المنجزة حسب المسؤول <a href="#tasks" class="ch-link">فتح المهام</a></h3>${taskHtml}</div>`;
+      ${owners.length ? `<div class="card ch-card"><h3>المهام غير المنجزة حسب المسؤول <a href="#tasks" class="ch-link">فتح المهام</a></h3>${taskHtml}</div>` : ""}`;
   }
 
+  /* بطاقات أدوات المركز: تفتح «أوامر نظام المركز» على الأداة نفسها */
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest("[data-dash-tool]");
+    if (!a || !App.centerCmd || !App.centerCmd.openMode) return;
+    e.preventDefault();
+    const k = a.dataset.dashTool;
+    if (location.hash !== "#center") location.hash = "#center";
+    setTimeout(() => App.centerCmd.openMode(k), 30);
+  });
+  // نتيجة حضور محفوظة وصلت بعد رسم اللوحة: تُحدَّث بطاقة «اليوم»
+  document.addEventListener("tamkeen:att-brief", () => { const v = document.getElementById("view-dashboard"); if (v && v.classList.contains("active")) render(); });
   App.dashboard = { render };
 })(window.App = window.App || {});

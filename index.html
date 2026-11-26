@@ -23,7 +23,7 @@
   <!-- هوية «منجز» منقولة من D:i\Mahamm: تأخذ البنية من السابق وتستبدل الصبغة -->
   <!-- هوية «نظام جرد مركز التدريب»: كحلي وفيروزي، منقولة من الملف الذي أرسلته -->
   <link rel="stylesheet" href="styles/center.css?v=414">
-  <link rel="stylesheet" href="styles/clear.css?v=411">
+  <link rel="stylesheet" href="styles/clear.css?v=412">
   <link rel="stylesheet" href="styles/center-clean.css?v=446">
 </head>
 <body>
@@ -69,66 +69,66 @@
           <small id="side-user-role"></small>
         </span>
       </div>
-      <!-- القائمة بأقسام تُطوى: ستة عشر بنداً في عمود واحد يصعب تصفّحها -->
+      <!-- القائمة مرتبة حسب العمل (2026-11-26): ما يُستعمل يومياً أولاً، وما توقّف استعماله في «الأرشيف» المطوي أسفلها -->
       <ul class="nav" id="primary-nav">
-        <li class="nav-group open" data-group="main">
-          <button type="button" class="nav-head">الرئيسية والمتابعة</button>
+        <li class="nav-group" data-group="main">
+          <button type="button" class="nav-head">الرئيسية</button>
           <ul>
             <li><button data-view="dashboard"><span class="ico material-symbols-outlined">space_dashboard</span><span class="nav-text">اللوحة الرئيسية</span></button></li>
-            <li><button data-view="tasks"><span class="ico material-symbols-outlined">fact_check</span><span class="nav-text">المهام والمتابعات</span></button></li>
           </ul>
         </li>
 
-        <li class="nav-group" data-group="tools">
-          <button type="button" class="nav-head">١. أدوات الملفات</button>
+        <li class="nav-group" data-group="center">
+          <button type="button" class="nav-head">نظام المركز</button>
           <ul>
-            <li><button data-view="converter"><span class="ico material-symbols-outlined">transform</span><span class="nav-text">تحويل ملف حسب قالب</span></button></li>
             <li><button data-view="center"><span class="ico material-symbols-outlined">hub</span><span class="nav-text">أوامر نظام المركز</span></button></li>
-            <li><button data-view="rtl"><span class="ico material-symbols-outlined">flip</span><span class="nav-text">تصحيح اتجاه Word و PPT</span></button></li>
-            <li><button data-view="sheets"><span class="ico material-symbols-outlined">table_chart</span><span class="nav-text">جداول البيانات</span></button></li>
-            <li><button data-view="hospitality"><span class="ico material-symbols-outlined">room_service</span><span class="nav-text">كشف توزيع الضيافة</span></button></li>
           </ul>
         </li>
 
-        <li class="nav-group" data-group="training">
-          <button type="button" class="nav-head">٢. التدريب والمستفيدون</button>
+        <li class="nav-group" data-group="students">
+          <button type="button" class="nav-head">الطلاب والمسارات</button>
           <ul>
             <li><button data-view="tracks"><span class="ico material-symbols-outlined">route</span><span class="nav-text">متابعة المسارات</span></button></li>
             <li><button data-view="roster"><span class="ico material-symbols-outlined">groups_3</span><span class="nav-text">المستفيدون والتعهدات</span></button></li>
+            <li><button data-view="hospitality"><span class="ico material-symbols-outlined">room_service</span><span class="nav-text">كشف توزيع الضيافة</span></button></li>
             <li><button data-view="inventory"><span class="ico material-symbols-outlined">inventory_2</span><span class="nav-text">جرد المسارات</span></button></li>
-            <li><button data-view="screen"><span class="ico material-symbols-outlined">analytics</span><span class="nav-text">شاشة إحصاءات المركز</span></button></li>
           </ul>
         </li>
 
         <li class="nav-group" data-group="docs">
-          <button type="button" class="nav-head">٣. المراسلات والمحاضر</button>
+          <button type="button" class="nav-head">المستندات والمراسلات</button>
           <ul>
             <li><button data-view="registry"><span class="ico material-symbols-outlined">move_to_inbox</span><span class="nav-text">الوارد والصادر</span></button></li>
-            <li><button data-view="letters"><span class="ico material-symbols-outlined">mark_email_read</span><span class="nav-text">المراسلات والتقارير</span></button></li>
-            <li><button data-view="meetings"><span class="ico material-symbols-outlined">history_edu</span><span class="nav-text">محاضر الاجتماعات</span></button></li>
+            <li><button data-view="converter"><span class="ico material-symbols-outlined">transform</span><span class="nav-text">تحويل ملف حسب قالب</span></button></li>
             <li><button data-view="forms"><span class="ico material-symbols-outlined">description</span><span class="nav-text">النماذج الجاهزة</span></button></li>
-            <li><button data-view="report"><span class="ico material-symbols-outlined">calendar_month</span><span class="nav-text">التقرير الدوري</span></button></li>
+            <li><button data-view="letters"><span class="ico material-symbols-outlined">mark_email_read</span><span class="nav-text">المراسلات والخطابات</span></button></li>
+            <li><button data-view="rtl"><span class="ico material-symbols-outlined">flip</span><span class="nav-text">تصحيح اتجاه Word و PPT</span></button></li>
           </ul>
         </li>
 
         <li class="nav-group" data-group="system">
-          <button type="button" class="nav-head">٤. النظام والتكوين</button>
+          <button type="button" class="nav-head">الإدارة</button>
           <ul>
             <li><button data-view="admin" data-admin-only hidden><span class="ico material-symbols-outlined">tune</span><span class="nav-text">لوحة التحكم</span></button></li>
             <li><button data-view="history"><span class="ico material-symbols-outlined">receipt_long</span><span class="nav-text">سجل التعديلات</span></button></li>
           </ul>
         </li>
 
-        <!-- صفحات حلّ محلّها «أوامر المركز» في المحوّل: لم تُحذف، بل طُويت هنا ويُفتح القسم بالنقر على عنوانه -->
-        <li class="nav-group" data-group="archive">
-          <button type="button" class="nav-head">٥. صفحات مؤرشفة</button>
+        <!-- صفحات لم تُستعمل أو توقّف استعمالها (فحص بيانات الخادم 2026-11-26): لم تُحذف، تُفتح بالنقر على العنوان -->
+        <li class="nav-group nav-archive" data-group="archive">
+          <button type="button" class="nav-head">الأرشيف</button>
           <ul>
+            <li><button data-view="tasks"><span class="ico material-symbols-outlined">fact_check</span><span class="nav-text">المهام والمتابعات</span></button></li>
+            <li><button data-view="meetings"><span class="ico material-symbols-outlined">history_edu</span><span class="nav-text">محاضر الاجتماعات</span></button></li>
+            <li><button data-view="report"><span class="ico material-symbols-outlined">calendar_month</span><span class="nav-text">التقرير الدوري</span></button></li>
+            <li><button data-view="sheets"><span class="ico material-symbols-outlined">table_chart</span><span class="nav-text">جداول البيانات</span></button></li>
+            <li><button data-view="screen"><span class="ico material-symbols-outlined">analytics</span><span class="nav-text">شاشة إحصاءات المركز</span></button></li>
             <li><button data-view="reports"><span class="ico material-symbols-outlined">bar_chart_4_bars</span><span class="nav-text">منشئ التقارير</span></button></li>
           </ul>
         </li>
       </ul>
       <div class="sidebar-foot">
-        <span class="sf-note">البيانات محفوظة على هذا الجهاز فقط</span>
+        <span class="sf-note">البيانات محفوظة على خادم المركز، مع نسخة يومية على Drive</span>
         <div class="sf-actions">
           <button id="btn-export" title="تنزيل ملف JSON بجميع البيانات">نسخة احتياطية</button>
           <button id="btn-import" title="استعادة البيانات من ملف JSON">استعادة</button>
@@ -189,27 +189,31 @@
               <div class="dash-date" id="dash-date"></div>
             </div>
             <div class="page-actions">
-              <a class="btn navy" href="#tasks"><span class="material-symbols-outlined btn-ico">check_box</span>متابعة المهام</a>
-              <a class="btn secondary" href="#letters"><span class="material-symbols-outlined btn-ico">mail</span>إنشاء مراسلة</a>
+              <a class="btn navy" href="#center"><span class="material-symbols-outlined btn-ico">hub</span>أوامر نظام المركز</a>
+              <a class="btn secondary" href="#registry"><span class="material-symbols-outlined btn-ico">move_to_inbox</span>الوارد والصادر</a>
             </div>
           </div>
         </div>
         <!-- ما يحتاج منك إجراء اليوم: ثلاثة أرقام كبيرة (يملؤها dashboard.js) -->
         <div class="card dash-today" id="dash-today"></div>
-        <!-- وصول سريع إلى أدوات الملفات: كانت تحتاج فتح القائمة الجانبية لبلوغها -->
+        <!-- أدواتك اليومية: أكثر ما يُستعمل فعلاً (أدوات نظام المركز تُفتح مباشرة على الأداة) -->
         <div class="card dash-quick">
           <div class="dash-section-head">
-            <div><span class="dash-section-kicker">وصول سريع</span><h3>أدوات الملفات</h3><p>ما تستعمله يومياً في تجهيز الملفات والبيانات</p></div>
+            <div><span class="dash-section-kicker">وصول سريع</span><h3>أدواتك اليومية</h3><p>تفتح الأداة مباشرة دون المرور بالقائمة</p></div>
           </div>
           <div class="dash-quick-grid">
-            <a class="dash-quick-card" href="#converter"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">transform</span></span><span class="dash-quick-text"><b>تحويل ملف حسب قالب</b><small>أخرج النماذج من ملف Excel أو من بيانات المركز</small></span></a>
-            <a class="dash-quick-card" href="#sheets"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">table_chart</span></span><span class="dash-quick-text"><b>جداول البيانات</b><small>جداول مشتركة بين الفريق</small></span></a>
-            <a class="dash-quick-card" href="#rtl"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">flip</span></span><span class="dash-quick-text"><b>تصحيح اتجاه Word و PPT</b><small>اضبط اتجاه الملفات العربية</small></span></a>
+            <a class="dash-quick-card" href="#center" data-dash-tool="attend"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">event_available</span></span><span class="dash-quick-text"><b>الحضور والغياب</b><small>المنذَرون ومن على الحد، ومقارنة فترتين</small></span></a>
+            <a class="dash-quick-card" href="#center" data-dash-tool="write"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">edit_note</span></span><span class="dash-quick-text"><b>تنفيذ في النظام</b><small>حالة الطالب، النقل، الطلبات، تعديل البيانات</small></span></a>
+            <a class="dash-quick-card" href="#center" data-dash-tool="gaps"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">rule</span></span><span class="dash-quick-text"><b>بيانات ناقصة</b><small>من ينقصه شيء في النظام، وملف للتعبئة</small></span></a>
+            <a class="dash-quick-card" href="#center" data-dash-tool="sign"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">draw</span></span><span class="dash-quick-text"><b>مطابقة التوقيعات</b><small>صور أوراق التوقيع مقابل المسجلين</small></span></a>
+            <a class="dash-quick-card" href="#center" data-dash-tool="monthly"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">summarize</span></span><span class="dash-quick-text"><b>تقرير الشهر</b><small>حضور وتقييمات وتوقيعات لكل مسار</small></span></a>
+            <a class="dash-quick-card" href="#converter"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">transform</span></span><span class="dash-quick-text"><b>تحويل ملف حسب قالب</b><small>أخرج النماذج من Excel أو من بيانات المركز</small></span></a>
+            <a class="dash-quick-card" href="#registry"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">move_to_inbox</span></span><span class="dash-quick-text"><b>الوارد والصادر</b><small>سجّل وارداً أو احجز رقم صادر</small></span></a>
             <a class="dash-quick-card" href="#hospitality"><span class="dash-quick-ico"><span class="material-symbols-outlined" aria-hidden="true">room_service</span></span><span class="dash-quick-text"><b>كشف توزيع الضيافة</b><small>جهّز كشف الضيافة وطباعته</small></span></a>
           </div>
         </div>
         <div class="dash-pair">
-        <div class="card dash-next-card">
+        <div class="card dash-next-card" id="dash-next-card">
               <div class="dash-section-head"><div><span class="dash-section-kicker">الخطوة التالية</span><h3>أقرب المهام</h3></div><a class="dash-text-link" href="#tasks">عرض الكل</a></div>
               <ul class="task-list" id="dash-tasks"></ul>
             </div>
@@ -235,7 +239,7 @@
         <div class="row col-8-4" id="dash-centre"></div>
         <div class="ch-grid-wrap" id="dash-charts"></div>
         <div class="row col-8-4 dash-work-grid">
-          <div class="card dash-team-card">
+          <div class="card dash-team-card" id="dash-team-card">
             <div class="dash-section-head">
               <div><span class="dash-section-kicker">توزيع المسؤوليات</span><h3>متابعة أعمال الفريق</h3><p>المهام حسب المسؤول وحالة الإنجاز</p></div>
               <a class="dash-text-link" href="#tasks">كل المهام <span aria-hidden="true">←</span></a>
@@ -1604,7 +1608,7 @@
   <script src="src/templates.js?v=340"></script>
   <script src="src/tracks.js?v=340"></script>
   <script src="src/tasks.js?v=340"></script>
-  <script src="src/dashboard.js?v=410"></script>
+  <script src="src/dashboard.js?v=411"></script>
   <script src="src/docx.js?v=347"></script>
   <script src="src/ai.js?v=346"></script>
   <script src="src/doc-render.js?v=347"></script>
@@ -1644,7 +1648,7 @@
   <script src="src/pledge-sheet.js?v=20"></script>
   <script src="src/chair-numbers.js?v=5"></script>
   <script src="src/monthly-report.js?v=1"></script>
-  <script src="src/center-cmd.js?v=515"></script>
+  <script src="src/center-cmd.js?v=516"></script>
   <script src="vendor/supabase.min.js"></script>
   <script src="src/hospitality.js?v=456"></script>
   <script src="src/forms.js?v=458"></script>
@@ -1655,7 +1659,7 @@
   <script src="src/search.js?v=341"></script>
   <script src="src/whatsapp.js?v=403"></script>
   <script src="src/realtime.js?v=340"></script>
-  <script src="src/nav-order.js?v=450"></script>
-  <script src="src/app.js?v=453"></script>
+  <script src="src/nav-order.js?v=451"></script>
+  <script src="src/app.js?v=454"></script>
 </body>
 </html>

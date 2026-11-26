@@ -86,3 +86,7 @@ html:root:root #view-dashboard .dash-pair > .card { padding: 18px 20px; }
 html:root:root #view-dashboard .dash-more { padding: 0; }
 html:root:root #view-dashboard .dash-today .dash-section-head,
 html:root:root #view-dashboard .dash-quick .dash-section-head { margin-bottom: 14px; }
+/* أدواتك اليومية (2026-11-26): ثماني بطاقات في أربعة أعمدة على الشاشات الواسعة، وعمودان على الجوال */
+.dash-quick-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); }
+.dash-quick-card small { display: block; }
+.nav-archive .nav-head { opacity: .75; }
