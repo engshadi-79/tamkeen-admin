@@ -168,4 +168,6 @@ html:root:root .cc-modes { gap: 8px 10px; padding: 8px 10px; }
 .cc-table td.cc-selcol input, .cc-table th.cc-selcol input { width: 16px; height: 16px; cursor: pointer; }
 .cc-cancelbar { border: 1px dashed #d92d20; border-radius: 10px; padding: 8px 10px; margin: 6px 0 8px; background: rgba(217, 45, 32, .04); }
 .cc-cancelbar .cc-row { gap: 10px; align-items: center; flex-wrap: wrap; }
+.cc-att-track { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
+.cc-att-track select { min-width: 220px; max-width: 100%; }
 .cc-plan-danger { border-color: #d92d20 !important; box-shadow: 0 0 0 2px rgba(217, 45, 32, .15); }

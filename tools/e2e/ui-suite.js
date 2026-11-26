@@ -394,6 +394,21 @@ async function suite() {
     ok("نتيجة الإلغاء: «✓ أُلغي» و«✓ أُخرج» والحالة السابقة للتراجع، والتحديد أُفرغ", !!crBox && /✓ أُلغي/.test(crBox.textContent) && /✓ أُخرج/.test(crBox.textContent) && /كانت حالته «مقبول»/.test(crBox.textContent) && c.state.tblSel["att-0"].size === 0, crBox && crBox.textContent.slice(0, 200));
     agent.version = kvA; agent.run = krA; c.state.att.cancelOut = null; c.render();
   }
+  {   // قائمة منسدلة للمسارات فوق جدول «الغياب لكل طالب»
+    const ao2 = c.state.att.out, keep = ao2.students.map((e) => e.track);
+    const many = ao2.students.find((e) => e.absent > 3), few = ao2.students.find((e) => e !== many);
+    many.track = "مسار أ"; few.track = "مسار ب"; c.state.att.trackFilter = ""; c.state.tblSel["att-0"] = new Set(); c.render();
+    const sel = b.querySelector("[data-att-track]");
+    ok("قائمة المسارات: «كل المسارات» ومساران بعدد كل منهما", !!sel && sel.options.length === 3 && /كل المسارات \(2\)/.test(sel.options[0].textContent) && /مسار أ \(1\)/.test(sel.textContent), sel && sel.textContent);
+    sel.value = "مسار ب"; sel.dispatchEvent(new Event("change", { bubbles: true })); await wait(100);
+    const rowsB = [...b.querySelectorAll('[data-tblbox="att-0"] tbody tr')];
+    ok("اختيار مسار يعرض طلابه فقط", rowsB.length === 1 && rowsB[0].textContent.includes(few.name) && b.querySelector("[data-att-track]").value === "مسار ب", rowsB.length);
+    b.querySelector('[data-cc="att-sel-flag"]').click(); await wait(100);
+    ok("«حدّد المنذَرين» داخل المسار المختار فقط", c.state.tblSel["att-0"].size === 0, c.state.tblSel["att-0"].size);
+    c.state.att.trackFilter = "مسار غير موجود"; c.render();
+    ok("مسار محفوظ غير موجود في القراءة الحالية: يُعرض الكل", b.querySelectorAll('[data-tblbox="att-0"] tbody tr').length === 2, "stale");
+    ao2.students.forEach((e, i) => { e.track = keep[i]; }); c.state.att.trackFilter = ""; c.render();
+  }
   {   // حفظ النتائج على الجهاز: تبقى بعد إعادة الفتح، والخمول يخفي ولا يحذف، والمسح الصريح يحذف
     const snapAtt = c.state.att.out;
     c.render(); c._snap.flush(); await wait(1200);

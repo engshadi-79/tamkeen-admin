@@ -1985,8 +1985,15 @@
   }
   const attCount = (e) => e.absent + (state.att.excused ? e.excused : 0);
   const attFlagged = () => ((state.att.out && state.att.out.students) || []).filter((e) => attCount(e) > Number(state.att.thr || 3));
+  const attFlaggedShown = () => { const tf = attTF(); return attFlagged().filter((e) => attInTrack(e, tf)); };
   const attHeads = () => ["الطالب", "الرقم", "المسار", "المجموعة", "غائب", "بعذر", "متأخر", "حاضر", "الجلسات", "آخر غياب", "أطول غياب متتالٍ", "التنبيه"];
-  const attTable = () => ((state.att.out && state.att.out.students) || []).slice().sort((a, b) => attCount(b) - attCount(a) || a.name.localeCompare(b.name, "ar"))
+  /* تصفية جدول «الغياب لكل طالب» بمسار (قائمة منسدلة فوق الجدول) */
+  const attTracksList = () => [...new Set(((state.att.out && state.att.out.students) || []).map((e) => e.track || "").filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
+  // المسار المختار فعّال فقط إن وُجد في القراءة الحالية (قراءة جديدة بلا هذا المسار تعرض الكل)
+  const attTF = () => { const t = state.att.trackFilter || ""; return t && ((state.att.out && state.att.out.students) || []).some((e) => e.track === t) ? t : ""; };
+  const attInTrack = (e, tf) => { const f = tf === undefined ? attTF() : tf; return !f || (e.track || "") === f; };
+  const attShown = () => { const tf = attTF(); return ((state.att.out && state.att.out.students) || []).filter((e) => attInTrack(e, tf)); };
+  const attTable = () => attShown().slice().sort((a, b) => attCount(b) - attCount(a) || a.name.localeCompare(b.name, "ar"))
     .map((e) => [e.name, e.stu, e.track, e.group, e.absent, e.excused, e.late, e.present, e.sessions, e.lastAbsent || "—", e.maxStreak || 0, [attCount(e) > Number(state.att.thr || 3) ? "⚠ تجاوز " + state.att.thr : "", e.maxStreak >= 3 ? "⚠ " + e.maxStreak + " جلسات متتالية" : ""].filter(Boolean).join(" · ")]);
   /* غائبو آخر يوم مقروء مجمّعين بالمسار والمجموعة، لكل مجموعة نص واتساب جاهز */
   function attGroups() {
@@ -3397,7 +3404,9 @@
   /* ===== إلغاء طلبات طلاب محددين من جدول الحضور («ملغي») ثم إخراجهم من مجموعاتهم — كتابة بعد معاينة وموافقة ===== */
   function attCancelBar() {
     const n = selOf("att-0").size;
-    return `<div class="cc-cancelbar"><div class="cc-row"><span class="cc-note"><b data-selcount="att-0">${ui.fmt(n)}</b> محدداً</span>
+    const trs = attTracksList(), all = ((state.att.out && state.att.out.students) || []);
+    const trackSel = trs.length > 1 ? `<label class="cc-field cc-att-track"><span>المسار</span><select data-att-track="1"><option value="">كل المسارات (${ui.fmt(all.length)})</option>${trs.map((t) => `<option value="${esc(t)}" ${state.att.trackFilter === t ? "selected" : ""}>${esc(t)} (${ui.fmt(all.filter((e) => e.track === t).length)})</option>`).join("")}</select></label>` : "";
+    return `${trackSel}<div class="cc-cancelbar"><div class="cc-row"><span class="cc-note"><b data-selcount="att-0">${ui.fmt(n)}</b> محدداً</span>
         <button type="button" class="cc-link" data-cc="att-sel-flag">حدّد المنذَرين</button><button type="button" class="cc-link" data-cc="att-sel-none">إلغاء التحديد</button>
         <button type="button" class="btn danger small" data-cc="att-cancel" data-selbtn="att-0" ${n && !state.busy ? "" : "disabled"}>اجعل طلباتهم «ملغي» ثم أخرجهم من مجموعاتهم</button></div>
       <p class="cc-note">⚠ كتابة في نظام المركز: تظهر أولاً معاينة بالأسماء وحالة طلب كل منهم، ولا يُكتب شيء قبل موافقتك. لكل طالب: يُغيَّر طلبه إلى «ملغي» ويُتحقَّق، ثم يُخرج من مجموعته إن بقي فيها. ${agentHas(9) ? "" : "<b>يحتاج إضافة «وكيل تمكين» 1.5.9.</b>"}</p></div>`;
@@ -4647,7 +4656,7 @@
           state.gaps.out = { at: new Date(), file: true, lists: gapsListsFrom(e) };
           return render();
         } else if (act === "att-cancel") { return attCancelRun();
-        } else if (act === "att-sel-flag") { const set = selOf("att-0"); attFlagged().forEach((e) => set.add(e.stu)); tblRefresh("att-0"); return selSync("att-0");
+        } else if (act === "att-sel-flag") { const set = selOf("att-0"); attFlaggedShown().forEach((e) => set.add(e.stu)); tblRefresh("att-0"); return selSync("att-0");
         } else if (act === "att-sel-none") { selOf("att-0").clear(); tblRefresh("att-0"); return selSync("att-0");
         } else if (act === "pledge-chairs-word" || act === "pledge-chairs-xlsx") {
           const st = pledgeStudents(); if (!st.length) return;
@@ -4961,6 +4970,7 @@
         return render();
       }
       if (t.dataset.enr === "auto") { state.enrichAuto = !!t.checked; try { localStorage.setItem("tamkeen:cc-enrich-auto", t.checked ? "1" : "0"); } catch (e) { /* خاص */ } return render(); }
+      if (t.dataset.attTrack) { state.att.trackFilter = t.value; const st = tblSt("att-0"); st.page = 0; return render(); }
       if (t.dataset.tblSel) { const set = selOf(t.dataset.tblSel); if (t.checked) set.add(t.value); else set.delete(t.value); return selSync(t.dataset.tblSel); }
       if (t.dataset.tblAll) { const k = t.dataset.tblAll, set = selOf(k), d = tblData[k]; if (d && d.sel != null) tblRows(k).forEach((row) => { const v = cellStr(row[d.sel]); if (t.checked) set.add(v); else set.delete(v); }); tblRefresh(k); return selSync(k); }
       if (t.id === "cc-enrich-file") {
