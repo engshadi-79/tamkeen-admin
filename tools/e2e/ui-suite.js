@@ -407,7 +407,66 @@ async function suite() {
     ok("«حدّد المنذَرين» داخل المسار المختار فقط", c.state.tblSel["att-0"].size === 0, c.state.tblSel["att-0"].size);
     c.state.att.trackFilter = "مسار غير موجود"; c.render();
     ok("مسار محفوظ غير موجود في القراءة الحالية: يُعرض الكل", b.querySelectorAll('[data-tblbox="att-0"] tbody tr').length === 2, "stale");
+    c.state.att.trackFilter = ""; c.render();
+    // مقارنة فترتين: قراءة سابقة محفوظة ← الحكم لكل طالب، وقائمة المسارات العامة في جدول المقارنة
+    for (let i = 0; i < 30 && !(c._att.hist() || []).length; i++) await wait(100);
+    ok("كل قراءة حضور تُحفظ في التاريخ على الجهاز", (c._att.hist() || []).length >= 1 && c._att.hist()[0].from === ao2.from && c._att.hist()[0].students.length === ao2.students.length, JSON.stringify((c._att.hist() || []).map((h) => h.from + ">" + h.to)));
+    ok("بلا قراءة سابقة لفترة أخرى: تلميح المقارنة فقط", /اقرأ فترة أخرى/.test(b.textContent) && !b.querySelector("[data-att-cmp]"), "hint");
+    c._att.hist().push({ id: "old1", at: new Date().toISOString(), from: "2026-11-01", to: "2026-11-04", sessions: 4, students: [
+      { stu: many.stu, name: many.name, track: "مسار أ", group: many.group, absent: 1, excused: 0, sessions: 4 },
+      { stu: few.stu, name: few.name, track: "مسار ب", group: few.group, absent: few.absent + 2, excused: 0, sessions: few.sessions || 4 },
+      { stu: "STU-OLD-1", name: "طالب قديم", track: "مسار ب", group: "", absent: 0, excused: 0, sessions: 4 }] });
+    c.render();
+    const cs = b.querySelector("[data-att-cmp]");
+    ok("قائمة «قارن بقراءة سابقة» فيها الفترة المحفوظة", !!cs && [...cs.options].some((o) => o.value === "old1"), cs && cs.textContent);
+    cs.value = "old1"; cs.dispatchEvent(new Event("change", { bubbles: true })); await wait(100);
+    const cmpRows = [...b.querySelectorAll('[data-tblbox="att-cmp"] tbody tr')].map((r) => r.textContent.replace(/\s+/g, " "));
+    ok("المقارنة: كثير الغياب «ساء» أولاً، والآخر «تحسّن»، ومن غاب عن الأحدث يظهر", cmpRows.length === 3 && cmpRows[0].includes(many.name) && /ساء/.test(cmpRows[0]) && cmpRows.some((t) => t.includes(few.name) && /تحسّن/.test(t)) && cmpRows.some((t) => /طالب قديم/.test(t) && /غير موجود في الأحدث/.test(t)), JSON.stringify(cmpRows));
+    ok("إحصاء المقارنة: 1 ساء و1 تحسّن", /1\s*ساء حضوره/.test(b.querySelector(".cc-attcmp").textContent.replace(/\s+/g, " ")) && /1\s*تحسّن/.test(b.querySelector(".cc-attcmp").textContent.replace(/\s+/g, " ")), b.querySelector(".cc-attcmp").textContent.slice(0, 200));
+    const gt = b.querySelector('[data-tbl-track="att-cmp"]');
+    ok("قائمة المسارات تظهر تلقائياً في جدول فيه عمود «المسار» (المقارنة)", !!gt && gt.options.length === 3 && !b.querySelector('[data-tbl-track="att-0"]'), gt && gt.textContent);
+    gt.value = "مسار ب"; gt.dispatchEvent(new Event("change", { bubbles: true })); await wait(100);
+    const cmpB = [...b.querySelectorAll('[data-tblbox="att-cmp"] tbody tr')];
+    ok("اختيار مسار في جدول المقارنة يعرض طلابه فقط", cmpB.length === 2 && cmpB.every((r) => /مسار ب/.test(r.textContent)) && /2 من 3/.test(b.querySelector('[data-tblbox="att-cmp"] [data-tbl-n]').textContent.replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d))), cmpB.length);
+    c._att.hist().pop(); c.state.att.cmpWith = ""; delete c.state.tblSel["att-cmp"];
+    // تنبيه مبكر: من وصل إلى الحد تماماً
+    const keepAbs = few.absent; few.absent = Number(c.state.att.thr); c.render();
+    const nr = b.querySelector(".cc-att-near");
+    ok("تنبيه مبكر: طالب على الحد (3 غيابات) يظهر في شريط مستقل وعلامة «🔔 على الحد» في الجدول", !!nr && /وصلوا إلى الحد/.test(nr.textContent) && [...b.querySelectorAll('[data-tblbox="att-0"] tbody tr')].some((r) => r.textContent.includes(few.name) && /🔔 على الحد/.test(r.textContent)), nr && nr.textContent);
+    c.state.tblSel["att-0"] = new Set(); nr.querySelector('[data-cc="att-sel-near"]').click(); await wait(100);
+    ok("«حدّدهم في الجدول» يحدد من على الحد فقط", c.state.tblSel["att-0"].size === 1 && c.state.tblSel["att-0"].has(few.stu), [...c.state.tblSel["att-0"]].join());
+    few.absent = keepAbs; c.state.tblSel["att-0"] = new Set();
     ao2.students.forEach((e, i) => { e.track = keep[i]; }); c.state.att.trackFilter = ""; c.render();
+  }
+  {   // سجل الإلغاءات: يُسجَّل ما أُلغي، وتقرير للإدارة، والتراجع بمعاينة وموافقة
+    for (let i = 0; i < 30 && !(c._att.log() || []).length; i++) await wait(100);
+    const L0 = c._att.log() || [], le = L0[0];
+    ok("الإلغاء المنفّذ سُجّل على الجهاز بالحالة السابقة ورمزها", L0.length === 1 && le.app === "cancelled" && le.grp === "removed" && le.was === "مقبول" && le.wasCode === "accepted", JSON.stringify(L0));
+    c.render();
+    const lc = b.querySelector(".cc-log");
+    ok("بطاقة سجل الإلغاءات في الحضور: الطالب والحالة السابقة وأزرار التقرير والتراجع", !!lc && lc.textContent.includes(le.name) && /مقبول/.test(lc.textContent) && !!lc.querySelector('[data-cc="log-word"]') && !!lc.querySelector('[data-cc="log-undo"][disabled]'), lc && lc.textContent.slice(0, 200));
+    const bl = c._att.blocks();
+    const bt = bl && bl.filter((x) => x.kind === "table");
+    ok("تقرير الإلغاءات: عنوان وجدول بحسب المسار والمجموعة وجدول الأسماء بلا أرقام هوية", !!bl && bl[0].text === "تقرير الطلبات الملغاة" && bt.length === 2 && bt[0].rows[bt[0].rows.length - 1][0] === "المجموع" && bt[1].rows.length === 1 && bt[1].rows[0][1] === le.name && !JSON.stringify(bl).includes(le.stu), JSON.stringify(bl && bt.map((t) => t.rows)));
+    const kvL = agent.version, krL = agent.run; let sentU = null;
+    c.state.tblSel["att-log"] = new Set([le.stu]); c.render();
+    agent.version = () => "1.5.9"; b.querySelector('[data-cc="log-undo"]').click(); await wait(150);
+    ok("التراجع بإضافة قديمة (1.5.9): لا كتابة ورسالة بالإصدار 1.5.10", /1\.5\.10/.test(c.state.resultError || ""), c.state.resultError);
+    c.state.resultError = ""; agent.version = () => "1.5.10";
+    agent.run = async (cmds, opts) => {
+      sentU = cmds[0];
+      const go = await opts.onPlan({ kind: "cancel", undo: true, total: 1, cancel: 1, already: 0, invalid: 0, removeFromGroup: false, rows: [{ name: le.name, nid: le.stu, state: "cancel", why: "الحالة الآن «ملغي»", to: "مقبول" }] });
+      return { results: [{ index: 0, type: "cancel", rows: [go ? { name: le.name, stu: le.stu, app: "cancelled", group: "", was: "ملغي", wasCode: "cancelled", to: "مقبول", toCode: "accepted" } : { name: le.name, stu: le.stu, app: "skipped" }] }] };
+    };
+    c.render(); b.querySelector('[data-cc="log-undo"]').click();
+    for (let i = 0; i < 40 && !b.querySelector(".cc-plan-danger"); i++) await wait(100);
+    const up = b.querySelector(".cc-plan-danger");
+    ok("معاينة التراجع: «التراجع عن الإلغاء» وسيُعاد إلى «مقبول»", !!up && /التراجع عن الإلغاء/.test(up.textContent) && /سيُعاد طلبه إلى «مقبول»/.test(up.textContent), up && up.textContent.slice(0, 200));
+    ok("أمر التراجع: حالة الطالب السابقة لكل بند، بلا إخراج من المجموعة", !!sentU && sentU.type === "cancel" && sentU.undo === true && sentU.removeFromGroup === false && sentU.items[0].status === "accepted" && sentU.items[0].stu === le.stu, JSON.stringify(sentU));
+    up.querySelector('[data-cc="plan-ok"]').click();
+    for (let i = 0; i < 40 && !(c._att.log()[0] || {}).undone; i++) await wait(100); await wait(200);
+    ok("بعد التراجع: السجل يُظهر «↩ أُعيد إلى «مقبول»» والتقرير لم يعد يعدّه", !!c._att.log()[0].undone && /↩ أُعيد إلى «مقبول»/.test(b.querySelector(".cc-log").textContent) && c._att.blocks() === null, JSON.stringify(c._att.log()[0]));
+    agent.version = kvL; agent.run = krL; c.state.resultError = "";
   }
   {   // حفظ النتائج على الجهاز: تبقى بعد إعادة الفتح، والخمول يخفي ولا يحذف، والمسح الصريح يحذف
     const snapAtt = c.state.att.out;

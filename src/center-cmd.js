@@ -507,6 +507,14 @@
   function planView() {
     const p = state.plan;
     if (!p) return "";
+    if (p.kind === "cancel" && p.undo) {
+      const todo = (p.cancel || 0);
+      const lc = (r) => (r.state === "cancel" ? "سيُعاد طلبه إلى «" + (r.to || "حالته السابقة") + "»" : r.state === "already" ? "على حالته السابقة أصلاً" : "لن يُنفَّذ");
+      return `<section class="cc-card cc-plan cc-plan-danger"><header class="cc-card-h"><h3>معاينة قبل الكتابة في نظام المركز: التراجع عن الإلغاء</h3>
+      <p>سيُعاد <b>${ui.fmt(p.cancel)}</b> طلباً إلى حالته السابقة · على حالته أصلاً ${ui.fmt(p.already)} · لن يُنفَّذ ${ui.fmt(p.invalid)} — من ${ui.fmt(p.total)}. لا يُعاد أحد إلى مجموعته تلقائياً. <b>لا يُكتب شيء قبل موافقتك.</b></p></header>
+      <div class="cc-card-b"><div class="cc-scroll"><table class="cc-table"><tbody>${p.rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.nid)}</td><td>${esc(lc(r))}${r.why ? " — " + esc(r.why) : ""}</td></tr>`).join("")}</tbody></table></div></div>
+      <footer class="cc-actions"><div class="cc-sum"></div><div class="cc-act"><button type="button" class="cc-link" data-cc="plan-no">إلغاء</button><button type="button" class="btn danger" data-cc="plan-ok" ${todo ? "" : "disabled"}>نفّذ التراجع في النظام (${ui.fmt(todo)})</button></div></footer></section>`;
+    }
     if (p.kind === "cancel") {
       const LC = { cancel: "سيُغيَّر طلبه إلى «ملغي»" + (p.removeFromGroup ? " ثم يُخرج من مجموعته" : ""), already: "طلبه ملغي أصلاً" + (p.removeFromGroup ? " — يُخرج من مجموعته إن بقي" : ""), invalid: "لن يُنفَّذ" };
       const todo = (p.cancel || 0) + (p.already || 0);
@@ -606,6 +614,7 @@
   function tblRows(k) {
     const d = tblData[k], st = tblSt(k);
     let rows = d.rows;
+    if (d.tc >= 0 && st.track && d.tracks.includes(st.track)) rows = rows.filter((r) => cellStr(r[d.tc]).trim() === st.track);
     const q = normName(st.q);
     if (q) rows = rows.filter((r) => r.some((c) => normName(cellStr(c)).includes(q)));
     if (st.sort >= 0) rows = rows.slice().sort((a, b) => st.dir * cellStr(a[st.sort]).localeCompare(cellStr(b[st.sort]), "ar", { numeric: true }));
@@ -631,10 +640,16 @@
     box.querySelectorAll(`[data-selcount="${CSS.escape(k)}"]`).forEach((e) => { e.textContent = ui.fmt(n); });
     box.querySelectorAll(`[data-selbtn="${CSS.escape(k)}"]`).forEach((e) => { e.disabled = !n || state.busy; });
   }
+  /* عمود المسار يُكتشف من عنوانه؛ تظهر القائمة حين يكون في الجدول أكثر من مسار */
+  const TRACK_HEAD = /^(المسار|المسار \/ الدورة|المسار · المرحلة|المسار والمرحلة|المسار الحالي)$/;
   function dataTable(k, heads, rows, opts) {
-    tblData[k] = { heads, rows, sel: opts && opts.sel != null ? opts.sel : null };
+    const tc = opts && opts.track === false ? -1 : heads.findIndex((h) => TRACK_HEAD.test(String(h || "").trim()));
+    const tracks = tc >= 0 ? [...new Set(rows.map((r) => cellStr(r[tc]).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")) : [];
+    const useT = tracks.length > 1 && tracks.length <= 40;
+    tblData[k] = { heads, rows, sel: opts && opts.sel != null ? opts.sel : null, tc: useT ? tc : -1, tracks: useT ? tracks : [] };
     const st = tblSt(k);
-    return `<div class="cc-tbl" data-tblbox="${esc(k)}"><div class="cc-tbl-bar"><input type="search" class="cc-tbl-q" data-tbl-q="${esc(k)}" placeholder="بحث في الجدول…" value="${esc(st.q)}"><span class="cc-tbl-n" data-tbl-n>${ui.fmt(tblRows(k).length)} من ${ui.fmt(rows.length)}</span><button type="button" class="cc-link" data-tbl-copy="${esc(k)}">نسخ للحافظة</button></div><div class="cc-tbl-body">${tblBody(k)}</div></div>`;
+    const tsel = useT ? `<select class="cc-tbl-track" data-tbl-track="${esc(k)}" aria-label="المسار"><option value="">كل المسارات (${ui.fmt(rows.length)})</option>${tracks.map((t) => `<option value="${esc(t)}" ${st.track === t ? "selected" : ""}>${esc(t)} (${ui.fmt(rows.filter((r) => cellStr(r[tc]).trim() === t).length)})</option>`).join("")}</select>` : "";
+    return `<div class="cc-tbl" data-tblbox="${esc(k)}"><div class="cc-tbl-bar">${tsel}<input type="search" class="cc-tbl-q" data-tbl-q="${esc(k)}" placeholder="بحث في الجدول…" value="${esc(st.q)}"><span class="cc-tbl-n" data-tbl-n>${ui.fmt(tblRows(k).length)} من ${ui.fmt(rows.length)}</span><button type="button" class="cc-link" data-tbl-copy="${esc(k)}">نسخ للحافظة</button></div><div class="cc-tbl-body">${tblBody(k)}</div></div>`;
   }
   function tblRefresh(k) {
     const box = $("cc-body") && $("cc-body").querySelector(`[data-tblbox="${CSS.escape(k)}"]`);
@@ -1647,7 +1662,7 @@
   const snapHiddenFor = (mode) => { const f = SNAP_FIELDS.find((x) => x[3] === mode || (mode === "morning" && x[0] === "att")); return f && snapData && snapData.data[f[0]] != null && f[1]() == null ? snapData.at[f[0]] || snapData.savedAt : null; };
   function wipeData(why) {
     state.results = null; state.cmp.out = null; state.sib.out = null; state.mis.out = null; state.dq.out = null; state.dq.rows = null; state.dq.diff = null; state.gaps.out = null; state.enrich = null;
-    state.cache = null; state.grp.out = null; state.imp.out = null; state.imp.outs = {}; state.att.out = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
+    state.cache = null; state.grp.out = null; state.imp.out = null; state.imp.outs = {}; state.att.out = null; state.cancelLog = null; state.attHist = null; state.att.undoOut = null; state.stu.out = null; state.stu.pick = null; state.wa.texts = {}; state.wa.dirty = {};
     Object.keys(tblData).forEach((k) => delete tblData[k]); Object.keys(tblState).forEach((k) => delete tblState[k]);
     render();
     if (why) ui.toast(why);
@@ -1985,6 +2000,7 @@
   }
   const attCount = (e) => e.absent + (state.att.excused ? e.excused : 0);
   const attFlagged = () => ((state.att.out && state.att.out.students) || []).filter((e) => attCount(e) > Number(state.att.thr || 3));
+  const attNear = () => ((state.att.out && state.att.out.students) || []).filter((e) => attCount(e) === Number(state.att.thr || 3));
   const attFlaggedShown = () => { const tf = attTF(); return attFlagged().filter((e) => attInTrack(e, tf)); };
   const attHeads = () => ["الطالب", "الرقم", "المسار", "المجموعة", "غائب", "بعذر", "متأخر", "حاضر", "الجلسات", "آخر غياب", "أطول غياب متتالٍ", "التنبيه"];
   /* تصفية جدول «الغياب لكل طالب» بمسار (قائمة منسدلة فوق الجدول) */
@@ -1994,7 +2010,7 @@
   const attInTrack = (e, tf) => { const f = tf === undefined ? attTF() : tf; return !f || (e.track || "") === f; };
   const attShown = () => { const tf = attTF(); return ((state.att.out && state.att.out.students) || []).filter((e) => attInTrack(e, tf)); };
   const attTable = () => attShown().slice().sort((a, b) => attCount(b) - attCount(a) || a.name.localeCompare(b.name, "ar"))
-    .map((e) => [e.name, e.stu, e.track, e.group, e.absent, e.excused, e.late, e.present, e.sessions, e.lastAbsent || "—", e.maxStreak || 0, [attCount(e) > Number(state.att.thr || 3) ? "⚠ تجاوز " + state.att.thr : "", e.maxStreak >= 3 ? "⚠ " + e.maxStreak + " جلسات متتالية" : ""].filter(Boolean).join(" · ")]);
+    .map((e) => [e.name, e.stu, e.track, e.group, e.absent, e.excused, e.late, e.present, e.sessions, e.lastAbsent || "—", e.maxStreak || 0, [attCount(e) > Number(state.att.thr || 3) ? "⚠ تجاوز " + state.att.thr : attCount(e) === Number(state.att.thr || 3) ? "🔔 على الحد" : "", e.maxStreak >= 3 ? "⚠ " + e.maxStreak + " جلسات متتالية" : ""].filter(Boolean).join(" · ")]);
   /* غائبو آخر يوم مقروء مجمّعين بالمسار والمجموعة، لكل مجموعة نص واتساب جاهز */
   function attGroups() {
     const o = state.att.out; if (!o || !o.lastDay) return [];
@@ -2042,6 +2058,7 @@
       if (!r || r.type !== "attendance") throw new Error((r && r.error) || "لم تصل نتيجة الحضور من الوكيل.");
       const days = r.sessions.map((x) => x.date).sort();
       c.out = { at: new Date(), raw: r.sessions, students: attAggregate(r.sessions), sessions: r.sessions.length, listed: r.listed, truncated: r.truncated, note: r.note, lastDay: days[days.length - 1] || "", from: params.date_from, to: params.date_to };
+      histAdd(c.out).catch(() => {});
       const n = attFlagged().length;
       if (n) ui.toast("⚠ " + ui.fmt(n) + " طالباً تجاوزوا " + c.thr + " غيابات");
     } catch (err) { state.resultError = err.message || String(err); }
@@ -3430,18 +3447,146 @@
       const res = await runCommands([{ type: "cancel", label: "إلغاء طلبات وإخراج من المجموعات", items, status: "cancelled", removeFromGroup: true }], { noCache: true, noGroup: true });
       const r0 = res[0]; if (!r0 || r0.error) throw new Error((r0 && r0.error) || "لم تصل نتيجة الإلغاء.");
       state.att.cancelOut = r0;
+      await logAdd(r0.rows, studs);
       r0.rows.filter((x) => x.app === "cancelled" || x.app === "already").forEach((x) => set.delete(x.stu));
       ui.toast("انتهى: " + ui.fmt(r0.rows.filter((x) => x.app === "cancelled").length) + " أُلغي، " + ui.fmt(r0.rows.filter((x) => x.group === "removed").length) + " أُخرج من مجموعته");
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
   }
+  /* ===== سجل الإلغاءات وتاريخ قراءات الحضور: على هذا الجهاز فقط (IndexedDB) =====
+     السجل لا يُحذف بـ«مسح بيانات هذه الشاشة» (هو أثر ما كُتب في النظام)، ويُمسح من زرّه. الخمول يُخفيه ولا يحذفه. */
+  const LOG_K = "cancelLog", HIST_K = "attHist", HIST_MAX = 12;
+  const APP_CODE = { "مقدم": "submitted", "قيد المراجعة": "under_review", "مقبول": "accepted", "مرفوض": "rejected", "ملغي": "cancelled" };
+  const kvGet = (k) => idbDo("readonly", (st) => st.get(k)).catch(() => null);
+  const kvPut = (k, v) => idbDo("readwrite", (st) => st.put(v, k)).catch(() => {});
+  async function extLoad() {
+    const [lg, hs] = await Promise.all([kvGet(LOG_K), kvGet(HIST_K)]);
+    state.cancelLog = Array.isArray(lg) ? lg : []; state.attHist = Array.isArray(hs) ? hs : [];
+  }
+  const logSave = () => kvPut(LOG_K, state.cancelLog || []);
+  const histSave = () => kvPut(HIST_K, state.attHist || []);
+  const dtText = (v) => { const d = new Date(v); return isNaN(d) ? "" : d.toLocaleString("ar", { dateStyle: "short", timeStyle: "short" }); };
+  const logUndoable = (x) => !x.undone && x.app === "cancelled" && !!x.wasCode && x.wasCode !== "cancelled";
+  async function logAdd(rows, studs) {
+    if (!state.cancelLog) await extLoad();
+    const now = new Date().toISOString();
+    rows.filter((x) => x.app === "cancelled" || x.group === "removed").forEach((x) => {
+      const e = studs.find((s) => s.stu === x.stu) || {};
+      state.cancelLog.unshift({ id: x.stu + "@" + now, at: now, name: x.name || e.name || "", stu: x.stu, track: e.track || "", group: e.group || "", was: x.was || "", wasCode: x.wasCode || APP_CODE[x.was] || "", app: x.app, grp: x.group || "", undone: null });
+    });
+    await logSave();
+  }
+  async function logUndoRun() {
+    const set = selOf("att-log"); if (!set.size) return;
+    if (!agentHas(10)) { state.resultError = "التراجع عن الإلغاء يحتاج إضافة «وكيل تمكين» بالإصدار 1.5.10 فأحدث: حدّثها من تنبيه التحديث ثم أعد المحاولة."; return render(); }
+    const L = state.cancelLog || [];
+    const ents = [...set].map((stu) => L.find((x) => x.stu === stu && logUndoable(x))).filter(Boolean);
+    if (!ents.length) { ui.toast("لا شيء قابل للتراجع في المحدد"); return; }
+    state.busy = true; state.resultError = ""; state.progress = ""; state.att.undoOut = null; render(); refreshStatus();
+    try {
+      const res = await runCommands([{ type: "cancel", label: "تراجع عن الإلغاء", undo: true, items: ents.map((x) => ({ stu: x.stu, name: x.name, track: x.track, status: x.wasCode })), status: "", removeFromGroup: false }], { noCache: true, noGroup: true });
+      const r0 = res[0]; if (!r0 || r0.error) throw new Error((r0 && r0.error) || "لم تصل نتيجة التراجع.");
+      state.att.undoOut = r0;
+      const now = new Date().toISOString();
+      r0.rows.forEach((row) => { const e = ents.find((x) => x.stu === row.stu); if (e && (row.app === "cancelled" || row.app === "already")) { e.undone = { at: now, to: row.to || e.was }; set.delete(e.stu); } });
+      await logSave();
+      const ok = r0.rows.filter((x) => x.app === "cancelled" || x.app === "already").length;
+      ui.toast("أُعيد " + ui.fmt(ok) + " من " + ui.fmt(ents.length) + " إلى حالته السابقة");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  function attLogCard() {
+    if (state.mode !== "attend") return "";
+    const L = state.cancelLog;
+    if (L == null) return state.snapPaused ? `<p class="cc-note">🗂 سجل الإلغاءات مخفي بعد الخمول. <button type="button" class="cc-link" data-cc="log-show">أظهره</button></p>` : "";
+    if (!L.length) return "";
+    const n = selOf("att-log").size, live = L.filter((x) => !x.undone).length, u = state.att.undoOut;
+    const bad = u && u.rows ? u.rows.filter((x) => x.app !== "cancelled" && x.app !== "already") : [];
+    const ACT = (x) => [x.app === "cancelled" ? "أُلغي" : x.app === "already" ? "كان ملغي" : "", x.grp === "removed" ? "أُخرج من مجموعته" : ""].filter(Boolean).join(" · ");
+    const rows = L.map((x) => [dtText(x.at), x.name, x.stu, x.track, x.group, x.was || "—", ACT(x), x.undone ? "↩ أُعيد إلى «" + (x.undone.to || x.was) + "» " + dtText(x.undone.at) : logUndoable(x) ? "" : "لا يُتراجع عنه هنا"]);
+    return `<article class="cc-res cc-log"><header class="cc-res-h"><div class="cc-res-t"><h4>🗂 سجل الإلغاءات (على هذا الجهاز)</h4><span class="cc-badge">${ui.fmt(live)} قائماً${L.length > live ? " · " + ui.fmt(L.length - live) + " تُراجع عنه" : ""}</span></div>
+        <div class="cc-act"><button type="button" class="btn secondary small" data-cc="log-word">تقرير Word</button><button type="button" class="btn secondary small" data-cc="log-print">طباعة / PDF</button><button type="button" class="btn secondary small" data-cc="log-xlsx">Excel</button></div></header>
+      ${bad.length ? `<p class="cc-alert warn">تعذّر التراجع عن: ${esc(bad.map((x) => x.name + (x.message ? " (" + x.message + ")" : "")).join("، "))}</p>` : ""}
+      <div class="cc-cancelbar cc-undobar"><div class="cc-row"><span class="cc-note"><b data-selcount="att-log">${ui.fmt(n)}</b> محدداً</span><button type="button" class="cc-link" data-cc="log-sel-none">إلغاء التحديد</button>
+        <button type="button" class="btn danger small" data-cc="log-undo" data-selbtn="att-log" ${n && !state.busy ? "" : "disabled"}>تراجع: أعد طلباتهم إلى حالتها السابقة</button><button type="button" class="cc-link" data-cc="log-clear">مسح السجل</button></div>
+        <p class="cc-note">⚠ التراجع كتابة في نظام المركز: معاينة أولاً ولا يُكتب شيء قبل موافقتك. يُعيد حالة الطلب وحدها؛ أما الإعادة إلى المجموعة فمن صفحة المجموعات في النظام. ${agentHas(10) ? "" : "<b>يحتاج إضافة «وكيل تمكين» 1.5.10.</b>"}</p></div>
+      ${dataTable("att-log", ["التاريخ", "الطالب", "الرقم", "المسار", "المجموعة", "الحالة السابقة", "ما نُفّذ", "التراجع"], rows, { sel: 2 })}</article>`;
+  }
+  /* تقرير الإلغاءات للإدارة: بحسب المسار والمجموعة ثم الأسماء (بلا هويات) */
+  const logLive = () => (state.cancelLog || []).filter((x) => !x.undone && (x.app === "cancelled" || x.grp === "removed"));
+  function logByGroup(L) {
+    const m = new Map();
+    L.forEach((x) => { const k = (x.track || "بلا مسار") + "\u0000" + (x.group || ""); const g = m.get(k) || { track: x.track || "بلا مسار", group: x.group || "", n: 0, out: 0 }; g.n++; if (x.grp === "removed") g.out++; m.set(k, g); });
+    return [...m.values()].sort((a, b) => a.track.localeCompare(b.track, "ar") || a.group.localeCompare(b.group, "ar"));
+  }
+  function cancelBlocks() {
+    const L = logLive(); if (!L.length) { ui.toast("لا إلغاءات قائمة في السجل"); return null; }
+    const days = L.map((x) => String(x.at).slice(0, 10)).sort(), G = logByGroup(L), out = L.filter((x) => x.grp === "removed").length;
+    const fd = (d) => ui.formatDate(d) || d;
+    return [{ kind: "title", text: "تقرير الطلبات الملغاة" }, lhDate(), gap(),
+      { kind: "para", text: "أُلغي " + ui.fmt(L.filter((x) => x.app === "cancelled").length) + " طلباً" + (days[0] === days[days.length - 1] ? " في " + fd(days[0]) : " بين " + fd(days[0]) + " و" + fd(days[days.length - 1])) + "، وأُخرج " + ui.fmt(out) + " منهم من مجموعاتهم، وذلك لتجاوز حدّ الغياب." },
+      { kind: "bold", text: "بحسب المسار والمجموعة" },
+      { kind: "table", headers: ["المسار", "المجموعة", "الملغاة", "أُخرجوا من المجموعة"], widths: [0.46, 0.18, 0.16, 0.2], align: [null, "center", "center", "center"],
+        rows: G.map((g) => [g.track, g.group || "—", ui.fmt(g.n), ui.fmt(g.out)]).concat([["المجموع", "", ui.fmt(L.length), ui.fmt(out)]]) }, gap(),
+      { kind: "bold", text: "الأسماء" },
+      { kind: "table", headers: ["م", "الاسم", "المسار", "المجموعة", "تاريخ الإلغاء", "الحالة السابقة"], widths: [0.06, 0.32, 0.22, 0.1, 0.15, 0.15], align: ["center", null, null, "center", "center", "center"],
+        rows: L.slice().sort((a, b) => (a.track || "").localeCompare(b.track || "", "ar") || (a.group || "").localeCompare(b.group || "", "ar") || a.name.localeCompare(b.name, "ar")).map((x, i) => [ui.fmt(i + 1), x.name, x.track || "—", x.group || "—", fd(String(x.at).slice(0, 10)), x.was || "—"]) }, gap(),
+      { kind: "para", text: "مصدر البيانات: الإلغاءات المنفّذة في نظام المركز من «مساعد تمكين». هوية الطالب وجواله غير مدرجين حمايةً للخصوصية." }];
+  }
+  async function logXlsx() {
+    const L = logLive(); if (!L.length) return ui.toast("لا إلغاءات قائمة في السجل");
+    const wb = new ExcelJS.Workbook();
+    fmtSheet(wb.addWorksheet("بحسب المجموعة"), ["المسار", "المجموعة", "الملغاة", "أُخرجوا من المجموعة"], logByGroup(L).map((g) => [g.track, g.group, g.n, g.out]));
+    fmtSheet(wb.addWorksheet("الأسماء"), ["التاريخ", "الاسم", "رقم الطالب", "المسار", "المجموعة", "الحالة السابقة", "ما نُفّذ"], L.map((x) => [dtText(x.at), x.name, x.stu, x.track, x.group, x.was, [x.app === "cancelled" ? "أُلغي" : "", x.grp === "removed" ? "أُخرج من مجموعته" : ""].filter(Boolean).join(" · ")]));
+    return ui.download("الطلبات الملغاة " + ui.todayISO() + ".xlsx", new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  }
+  /* (5) كل قراءة حضور تُحفظ ملخّصة؛ قراءة الفترة نفسها تحلّ محل سابقتها */
+  async function histAdd(o) {
+    if (!state.attHist) await extLoad();
+    const rec = { id: String(Date.now()), at: new Date().toISOString(), from: o.from, to: o.to, sessions: o.sessions,
+      students: o.students.map((e) => ({ stu: e.stu, name: e.name, track: e.track, group: e.group, absent: e.absent, excused: e.excused, sessions: e.sessions })) };
+    o.histId = rec.id;
+    state.attHist = [rec].concat(state.attHist.filter((h) => !(h.from === rec.from && h.to === rec.to))).slice(0, HIST_MAX);
+    await histSave();
+  }
+  const ATT_VERD = { worse: "↑ ساء", better: "↓ تحسّن", same: "= كما هو", new: "جديد في الأحدث", gone: "غير موجود في الأحدث" };
+  function attCompare(A, B) {   // A الأقدم، B الأحدث؛ المقارنة بنسبة الغياب من الجلسات لأن الفترتين قد تختلفان طولاً
+    const cnt = (e) => e.absent + (state.att.excused ? e.excused : 0), rate = (e) => (e && e.sessions ? cnt(e) / e.sessions : null);
+    const pa = new Map(A.students.map((e) => [e.stu, e])), pb = new Map(B.students.map((e) => [e.stu, e]));
+    const tf = attTF(), keys = [...new Set([...pa.keys(), ...pb.keys()])];
+    return keys.map((k) => {
+      const a = pa.get(k), b = pb.get(k), e = b || a, ra = rate(a), rb = rate(b);
+      const d = ra != null && rb != null ? rb - ra : null;
+      const v = !a ? "new" : !b ? "gone" : Math.abs(d) < 0.05 ? "same" : d > 0 ? "worse" : "better";
+      return { e, a, b, ra, rb, d, v };
+    }).filter((x) => attInTrack(x.e, tf));
+  }
+  function attCmpCard() {
+    const o = state.att.out; if (!o) return "";
+    const H = (state.attHist || []).filter((h) => h.id !== o.histId && !(h.from === o.from && h.to === o.to));
+    if (!H.length) return `<p class="cc-note">📊 تُحفظ كل قراءة حضور على هذا الجهاز: اقرأ فترة أخرى (مثل الأسبوع الماضي) وستقارن بينهما هنا، من تحسّن حضوره ومن ساء.</p>`;
+    const pick = H.find((h) => h.id === state.att.cmpWith);
+    const sel = `<label class="cc-field cc-att-track"><span>قارن بقراءة سابقة</span><select data-att-cmp="1"><option value="">اختر…</option>${H.map((h) => `<option value="${esc(h.id)}" ${pick === h ? "selected" : ""}>${esc(h.from)} ← ${esc(h.to)} · ${ui.fmt(h.students.length)} طالباً · ${ui.fmt(h.sessions)} جلسة</option>`).join("")}</select></label>`;
+    if (!pick) return `<article class="cc-res cc-attcmp"><header class="cc-res-h"><div class="cc-res-t"><h4>📊 مقارنة فترتين</h4></div></header>${sel}</article>`;
+    const cur = { from: o.from, to: o.to, students: o.students }, older = pick.from <= cur.from ? pick : cur, newer = older === pick ? cur : pick;
+    const L = attCompare(older, newer), c = (v) => L.filter((x) => x.v === v).length;
+    const pc = (r) => (r == null ? "—" : Math.round(r * 100) + "%"), ab = (e) => (e ? (e.absent + (state.att.excused ? e.excused : 0)) + " من " + e.sessions : "—");
+    const ord = { worse: 0, new: 1, better: 2, same: 3, gone: 4 };
+    const rows = L.sort((x, y) => ord[x.v] - ord[y.v] || (y.d || 0) - (x.d || 0) || x.e.name.localeCompare(y.e.name, "ar"))
+      .map((x) => [x.e.name, x.e.stu, x.e.track, x.e.group, ab(x.a), pc(x.ra), ab(x.b), pc(x.rb), x.d == null ? "—" : (x.d > 0 ? "+" : "") + Math.round(x.d * 100) + " نقطة", ATT_VERD[x.v]]);
+    return `<article class="cc-res cc-attcmp"><header class="cc-res-h"><div class="cc-res-t"><h4>📊 مقارنة فترتين: ${esc(older.from)} ← ${esc(older.to)} ثم ${esc(newer.from)} ← ${esc(newer.to)}</h4></div></header>${sel}
+      <div class="cc-stats"><span class="cc-stat bad"><b>${ui.fmt(c("worse"))}</b> ساء حضوره</span><span class="cc-stat ok"><b>${ui.fmt(c("better"))}</b> تحسّن</span><span class="cc-stat"><b>${ui.fmt(c("same"))}</b> كما هو</span>${c("new") ? `<span class="cc-stat"><b>${ui.fmt(c("new"))}</b> جديد في الأحدث</span>` : ""}${c("gone") ? `<span class="cc-stat"><b>${ui.fmt(c("gone"))}</b> غير موجود في الأحدث</span>` : ""}</div>
+      ${dataTable("att-cmp", ["الطالب", "الرقم", "المسار", "المجموعة", "غياب الأقدم", "نسبته", "غياب الأحدث", "نسبته", "التغيّر", "الحكم"], rows)}
+      <p class="cc-note">المقارنة بنسبة الغياب من جلسات كل فترة (لأن الفترتين قد تختلفان طولاً)، وفرق أقل من 5 نقاط يُعدّ «كما هو». القراءات محفوظة على هذا الجهاز فقط (آخر ${HIST_MAX}).</p></article>`;
+  }
   function attResult() {
     const o = state.att.out;
-    if (!o) return "";
-    const fl = attFlagged(), rows = attTable(), day = attDayTable();
+    if (!o) return attLogCard();
+    const fl = attFlagged(), rows = attTable(), day = attDayTable(), near = attNear();
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٢</span> الحضور والغياب</h3>
       ${o.note ? `<p class="cc-alert warn">${esc(o.note)} ${(state.groups || []).length && (state.att.tracks || []).length ? "جرّب إزالة اختيار المسارات، فقد لا توجد المجموعات المختارة في تلك المسارات." : ""} (G1 وG2 للمرحلة الثانية، وS3G1 وS3G2 للثالثة.)</p>` : ""}
       ${fl.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(fl.length)}</b> طالباً تجاوزوا ${esc(state.att.thr)} غيابات${state.att.excused ? " (بالعذر)" : ""}. يظهرون أولاً في الجدول بعلامة «⚠ تجاوز».</span><button type="button" class="btn secondary small" data-cc="att-copy">نسخ قائمة المتجاوزين</button></div>` : `<p class="cc-note">لا طالب تجاوز ${esc(state.att.thr)} غيابات في هذه الفترة.</p>`}
+      ${near.length ? `<div class="cc-alert warn cc-att-near" role="status"><span>🔔 <b>${ui.fmt(near.length)}</b> طالباً وصلوا إلى الحد (${esc(state.att.thr)} غيابات)${state.att.excused ? " بالعذر" : ""}: غياب واحد آخر يتجاوزونه. علامتهم في الجدول «🔔 على الحد».</span><button type="button" class="btn secondary small" data-cc="att-near-copy">نسخ قائمتهم</button><button type="button" class="cc-link" data-cc="att-sel-near">حدّدهم في الجدول</button></div>` : ""}
       ${(() => {
         const gs = attGroups();
         if (!gs.length) return "";
@@ -3451,8 +3596,9 @@
             <p>${esc(e.absent.slice(0, 6).join("، "))}${e.absent.length > 6 ? " … و" + ui.fmt(e.absent.length - 6) + " آخرون" : ""}</p><button type="button" class="cc-link" data-cc="att-wa" data-i="${i}">نسخ نص واتساب</button></div>`).join("")}</div></article>`;
       })()}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.sessions)}</b> جلسة قُرئت${o.truncated ? ` من ${ui.fmt(o.listed)} (اقتُصر على الحد الأقصى؛ ارفعه أو قصّر الفترة)` : ""}</span><span class="cc-stat"><b>${ui.fmt(o.students.length)}</b> طالباً</span><span class="cc-stat"><b>${ui.fmt(o.students.reduce((a, e) => a + e.absent, 0))}</b> غياباً</span>${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-att">تنزيل Excel</button>' : ""}</div>
-      ${rows.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الغياب لكل طالب (${esc(o.from)} ← ${esc(o.to)})</h4><span class="cc-badge">${ui.fmt(rows.length)} طالباً</span></div></header>${attCancelBar()}${dataTable("att-0", attHeads(), rows, { sel: 1 })}</article>${attCancelResult()}` : '<p class="cc-note">لا جلسات بسجلات حضور في هذه الفترة والنطاق.</p>'}
+      ${rows.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الغياب لكل طالب (${esc(o.from)} ← ${esc(o.to)})</h4><span class="cc-badge">${ui.fmt(rows.length)} طالباً</span></div></header>${attCancelBar()}${dataTable("att-0", attHeads(), rows, { sel: 1, track: false })}</article>${attCancelResult()}` : '<p class="cc-note">لا جلسات بسجلات حضور في هذه الفترة والنطاق.</p>'}
       ${day.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>غائبو آخر يوم (${esc(o.lastDay)})</h4><span class="cc-badge">${ui.fmt(day.length)}</span></div></header>${dataTable("att-1", attDayHeads(), day)}</article>` : ""}
+      ${attCmpCard()}${attLogCard()}
       <p class="cc-note">قُرئت ${esc(new Date(o.at).toLocaleString("ar"))}. لا يُكتب شيء في نظام المركز.</p></section>`;
   }
   function impView() {
@@ -4518,6 +4664,7 @@
     if (!box) return;
     scopeLoad();
     snapLoad().catch(() => { snapReady = true; });
+    extLoad().then(() => { if (state.mode === "attend" && state.cancelLog.length) render(); }).catch(() => { state.cancelLog = []; state.attHist = []; });
     try { const m = localStorage.getItem("tamkeen-admin:cc-msg"); if (m) state.mis.msg = m; } catch (e) { /* خاص */ }
     state.saved = lsGet(SV_KEY, []); state.runLog = lsGet(LOG_KEY, []); state.errors = lsGet(ERR_KEY, []); state.contacts = lsGet(CONTACT_KEY, []);
     try { const cc = localStorage.getItem(CC_KEY); if (cc) state.wa.cc = cc; } catch (e) { /* خاص */ }
@@ -4657,6 +4804,15 @@
           return render();
         } else if (act === "att-cancel") { return attCancelRun();
         } else if (act === "att-sel-flag") { const set = selOf("att-0"); attFlaggedShown().forEach((e) => set.add(e.stu)); tblRefresh("att-0"); return selSync("att-0");
+        } else if (act === "att-sel-near") { const set = selOf("att-0"), tf = attTF(); attNear().filter((e) => attInTrack(e, tf)).forEach((e) => set.add(e.stu)); tblRefresh("att-0"); return selSync("att-0");
+        } else if (act === "att-near-copy") { const t = "*طلاب على حد الغياب (" + state.att.thr + " غيابات) — غياب آخر يتجاوزونه*\n" + attNear().sort((a, b) => (a.track || "").localeCompare(b.track || "", "ar") || a.name.localeCompare(b.name, "ar")).map((e) => "• " + e.name + " — " + (e.track || "") + (e.group ? " · " + e.group : "") + " (" + attCount(e) + ")").join("\n"); return ui.copyText(t).then(() => ui.toast("نُسخت القائمة"));
+        } else if (act === "log-undo") { return logUndoRun();
+        } else if (act === "log-show") { await extLoad(); return render();
+        } else if (act === "log-word") { return lhWord(cancelBlocks(), "تقرير الطلبات الملغاة");
+        } else if (act === "log-print") { return lhPrint(cancelBlocks(), "تقرير الطلبات الملغاة");
+        } else if (act === "log-xlsx") { return logXlsx();
+        } else if (act === "log-sel-none") { selOf("att-log").clear(); tblRefresh("att-log"); return selSync("att-log");
+        } else if (act === "log-clear") { if (!window.confirm("يُمسح سجل الإلغاءات من هذا الجهاز (لا يتغيّر شيء في نظام المركز)، ولا يمكن استرجاعه. متابعة؟")) return; state.cancelLog = []; await logSave(); return render();
         } else if (act === "att-sel-none") { selOf("att-0").clear(); tblRefresh("att-0"); return selSync("att-0");
         } else if (act === "pledge-chairs-word" || act === "pledge-chairs-xlsx") {
           const st = pledgeStudents(); if (!st.length) return;
@@ -4805,8 +4961,8 @@
           state.saved = state.saved.filter((x) => x.id !== b.dataset.id); lsSet(SV_KEY, state.saved); renderDash();
         } else if (act === "toggle-mask") {
           state.mask = !state.mask; try { localStorage.setItem(MASK_KEY, state.mask ? "1" : ""); } catch (e) { /* خاص */ }
-        } else if (act === "wipe-now") { snapClear(); return wipeData("مُسحت بيانات هذه الشاشة والنتائج المحفوظة على هذا الجهاز");
-        } else if (act === "snap-restore") { state.snapPaused = false; snapApply(true); return render();
+        } else if (act === "wipe-now") { snapClear(); kvPut(HIST_K, []); return wipeData("مُسحت بيانات هذه الشاشة والنتائج المحفوظة على هذا الجهاز (سجل الإلغاءات باقٍ حتى تمسحه منه)");
+        } else if (act === "snap-restore") { state.snapPaused = false; snapApply(true); await extLoad(); return render();
         } else if (act === "clear-errs") { state.errors = []; lsSet(ERR_KEY, []);
         } else if (act === "copy-errs") {
           try { await navigator.clipboard.writeText(state.errors.map((e) => e.at + " | " + e.msg + " | " + e.where).join("\n")); ui.toast("نُسخ سجل الأخطاء"); } catch (err) { ui.toast("تعذّر النسخ"); }
@@ -4970,6 +5126,8 @@
         return render();
       }
       if (t.dataset.enr === "auto") { state.enrichAuto = !!t.checked; try { localStorage.setItem("tamkeen:cc-enrich-auto", t.checked ? "1" : "0"); } catch (e) { /* خاص */ } return render(); }
+      if (t.dataset.tblTrack) { const st = tblSt(t.dataset.tblTrack); st.track = t.value; st.page = 0; return tblRefresh(t.dataset.tblTrack); }
+      if (t.dataset.attCmp != null) { state.att.cmpWith = t.value; return render(); }
       if (t.dataset.attTrack) { state.att.trackFilter = t.value; const st = tblSt("att-0"); st.page = 0; return render(); }
       if (t.dataset.tblSel) { const set = selOf(t.dataset.tblSel); if (t.checked) set.add(t.value); else set.delete(t.value); return selSync(t.dataset.tblSel); }
       if (t.dataset.tblAll) { const k = t.dataset.tblAll, set = selOf(k), d = tblData[k]; if (d && d.sel != null) tblRows(k).forEach((row) => { const v = cellStr(row[d.sel]); if (t.checked) set.add(v); else set.delete(v); }); tblRefresh(k); return selSync(k); }
@@ -5143,7 +5301,7 @@
   App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
     _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol, enrichResult, blank: isBlankCell },
     _extras: { apply: applyExtras, seen: extraSeen },
-    _att: { sel: () => selOf("att-0") },
+    _att: { sel: () => selOf("att-0"), blocks: () => cancelBlocks(), log: () => state.cancelLog, hist: () => state.attHist, extLoad, kvPut, histKeys: [LOG_K, HIST_K] },
     _snap: { get: () => snapData, load: snapLoad, clear: snapClear, flush: () => { snapRefs = []; snapMaybeSave(); } },
     _sig: { compute: (f) => sigCompute(f), unknownAll: sigUnknownAll, retrackPlan: sigRetrackPlan, trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

@@ -207,9 +207,9 @@ http.createServer((req, res) => {
     step("الإضافة طلبت التصدير مرة واحدة فقط وبـ GET فقط (لا قراءة صفحات ولا كتابة)", hx.filter((x) => /export-excel/.test(x)).length === 1 && hx.every((x) => /^GET /.test(x)), hx.join(" | ").slice(0, 160));
 
     // أمر «cancel»: إلغاء طلب الطالب («ملغي») ثم إخراجه من مجموعته — بعد معاينة وموافقة
-    const runCancel = async (items, approve) => {
+    const runCancel = async (items, approve, extra) => {
       await stub.c.eval(`window.__out = null; window.__err = null; window.__plan = null;
-        App.centerAgent.run([{type:'cancel',label:'إلغاء',items:${JSON.stringify(items)},status:'cancelled',removeFromGroup:true}], { onPlan: (p) => { window.__plan = p; return ${approve === false ? "false" : "true"}; } }).then((d) => { window.__out = d; }).catch((e) => { window.__err = e.message; }); 1`);
+        App.centerAgent.run([Object.assign({type:'cancel',label:'إلغاء',items:${JSON.stringify(items)},status:'cancelled',removeFromGroup:true}, ${JSON.stringify(extra || {})})], { onPlan: (p) => { window.__plan = p; return ${approve === false ? "false" : "true"}; } }).then((d) => { window.__out = d; }).catch((e) => { window.__err = e.message; }); 1`);
       await waitFor(() => stub.c.eval("!!window.__out || !!window.__err"), 90000, "أمر الإلغاء");
       return JSON.parse(await stub.c.eval("JSON.stringify({ out: window.__out, err: window.__err, plan: window.__plan })"));
     };
@@ -227,6 +227,12 @@ http.createServer((req, res) => {
     const R3 = c3.out && c3.out.results && c3.out.results[0];
     step("نظام يُخرج تلقائياً عند الإلغاء: لا «إخراج» إضافي", R3 && R3.rows[0].app === "cancelled" && R3.rows[0].group === "none", JSON.stringify(R3 && R3.rows));
     await fetch("http://localhost:4197/__cancelRemoves?on=0");
+    step("نتيجة الإلغاء تحمل رمز الحالة السابقة للتراجع (accepted)", R1 && R1.rows.some((r) => r.stu === "STU-20260101-00003" && r.wasCode === "accepted" && r.was === "مقبول"), JSON.stringify(R1 && R1.rows));
+    // التراجع: إعادة الطلب إلى حالته السابقة (حالة لكل طالب)، بلا إخراج ولا إعادة إلى المجموعة
+    const u1 = await runCancel([{ stu: "STU-20260101-00003", name: "طالب تجريبي 3", status: "accepted" }, { stu: "STU-20260101-00004", name: "طالب تجريبي 4", status: "bogus_state" }], true, { status: "", undo: true, removeFromGroup: false, label: "تراجع" });
+    const U1 = u1.out && u1.out.results && u1.out.results[0], S3u = (await students()).find((x) => x.stu === "STU-20260101-00003");
+    step("التراجع: المعاينة «undo» وحالة غير موجودة في النظام لا تُنفَّذ", !!u1.plan && u1.plan.undo === true && u1.plan.cancel === 1 && u1.plan.invalid === 1 && u1.plan.rows[0].to === "مقبول", JSON.stringify(u1.plan));
+    step("التراجع: الطلب عاد «مقبول» في النظام، ولا كتابة على الطالب الآخر", S3u && S3u.appStatus === "accepted" && U1 && U1.rows.some((r) => r.stu === "STU-20260101-00003" && r.app === "cancelled" && r.group === "") && (await students()).find((x) => x.stu === "STU-20260101-00004").appStatus === "accepted", JSON.stringify({ a: S3u && S3u.appStatus, rows: U1 && U1.rows }));
     const c4 = await runCancel([{ stu: "STU-20260101-00006", name: "طالب تجريبي 6" }], false);
     const S6 = (await students()).find((x) => x.stu === "STU-20260101-00006");
     step("رفض الموافقة: لا كتابة إطلاقاً (الطلب «مقبول» والعضوية باقية)", S6 && S6.appStatus === "accepted" && !!S6.member && c4.out && c4.out.results[0].rows[0].app === "skipped", JSON.stringify({ s: S6 && { a: S6.appStatus, m: S6.member }, r: c4.out && c4.out.results[0].rows }));
