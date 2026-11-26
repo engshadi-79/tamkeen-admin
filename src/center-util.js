@@ -234,27 +234,84 @@
   /* يقابل المسجلين بما قُرئ من الأوراق: كل مسجّل بأفضل اسم مقروء (واحد لواحد). strict ≥ 0.8 مطابق، وبين 0.62 و0.8 «يحتاج مراجعة» */
   /* يقابل المسجلين بالمقروء: الهوية أولاً ثم الجوال (تطابق تام = جزم)، ثم الاسم للباقين.
      اتفاق الاسم مع اختلاف الهوية/الجوال المقروءين يُعلَّم «mismatch» ويحتاج مراجعة. */
+  /* مسافة تحرير بين رقمين مع التبديل المتجاور (خطأ قراءة خانة: استبدال/حذف/زيادة/تبديل خانتين متجاورتين) */
+  function digitDist(a, b) {
+    a = String(a || ""); b = String(b || "");
+    if (a === b) return 0;
+    if (Math.abs(a.length - b.length) > 2) return 9;
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i].concat(Array(b.length).fill(0)));
+    for (let j = 0; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+    return d[a.length][b.length];
+  }
+  /* مفتاح المسار للمقارنة: بلا «مسار» ولا «المرحلة …» وموحَّد الهمزات */
+  const trackKey = (t) => arKey(String(t || "").replace(/\s*[-–—]?\s*المرحل[ةه].*$/, "")).replace(/(^|\s)مسار(\s|$)/g, " ").replace(/\s+/g, " ").trim();
+  /* هل المساران واحد؟ true / false / null (غير معروف) */
+  function sameTrack(a, b) {
+    const x = trackKey(a), y = trackKey(b);
+    if (!x || !y) return null;
+    if (x === y || (x.length >= 4 && y.includes(x)) || (y.length >= 4 && x.includes(y))) return true;
+    return nameScore(x, y) >= 0.75;
+  }
+
+  /* يقابل المسجلين بالمقروء من الأوراق بكل الأدلة معاً (واحد لواحد):
+     1) هوية مطابقة  2) جوال مطابق  3) تبادل الخانتين (الجوال في خانة الهوية أو العكس)
+     4) هوية/جوال بفرق خانة واحدة (خطأ قراءة) لمرشح وحيد، يؤكّده الاسم
+     5) الاسم، مع تعزيز من المسار ومن الأرقام الجزئية (آخر 4 خانات، أو هوية بفرق خانتين) وخفض عند اختلاف المسار
+     الأرقام المتعارضة بوضوح تُعلَّم «mismatch» وتحتاج مراجعة. registered/found: { name, id, phone, track? } */
   function matchNames(registered, found, opts) {
     const hi = (opts && opts.hi) || 0.8, lo = (opts && opts.lo) || 0.62;
     const idOf = (x) => { const d = digits(x && x.id); return d.length >= 8 ? d : ""; };
     const phOf = (x) => { const d = phoneNorm(x && x.phone); return d.length >= 9 ? d.slice(-9) : ""; };
     const ri = new Set(), fj = new Set(), out = [];
     const take = (i, j, score, sure, by, mismatch) => { ri.add(i); fj.add(j); out.push({ reg: i, found: j, score, sure, by, mismatch: !!mismatch }); };
+    const nameless = (f) => !nameTokens(f && f.name).length || /^\(بلا اسم/.test(String(f && f.name || ""));
+    // 1-2) تطابق تام
     ["id", "phone"].forEach((by) => {
       const key = by === "id" ? idOf : phOf, idx = new Map();
       found.forEach((f, j) => { const k = key(f); if (k && !fj.has(j) && !idx.has(k)) idx.set(k, j); });
       registered.forEach((r, i) => { if (ri.has(i)) return; const k = key(r), j = k ? idx.get(k) : undefined; if (j !== undefined && !fj.has(j)) take(i, j, 1, true, by, false); });
     });
+    // 3) تبادل الخانتين: رقم الهوية المقروء هو جوال المسجّل، أو الجوال المقروء هو هويته
+    found.forEach((f, j) => {
+      if (fj.has(j)) return;
+      const fid = digits(f.id), fph = phoneNorm(f.phone);
+      const i = registered.findIndex((r, k) => !ri.has(k) && ((fid.length >= 9 && phOf(r) && fid.slice(-9) === phOf(r)) || (fph.length >= 8 && idOf(r) && digits(fph) === idOf(r))));
+      if (i >= 0) take(i, j, 1, true, "swap", false);
+    });
+    // 4) فرق خانة واحدة (خطأ قراءة) — مرشح وحيد فقط، والاسم يؤكّد (أو لا اسم مقروء)
+    [["id~", idOf], ["phone~", phOf]].forEach(([by, key]) => {
+      found.forEach((f, j) => {
+        if (fj.has(j)) return;
+        const k = key(f); if (!k) return;
+        const cand = registered.map((r, i) => ({ i, d: !ri.has(i) && key(r) ? digitDist(k, key(r)) : 9 })).filter((x) => x.d === 1);
+        if (cand.length !== 1) return;
+        const r = registered[cand[0].i], ns = nameless(f) ? 1 : nameScore(r.name, f.name);
+        if (ns < 0.45) return;                                  // الرقم قريب لكن الاسم مختلف تماماً: لا نخمّن
+        take(cand[0].i, j, Math.max(ns, 0.9), ns >= 0.6, by, false);
+      });
+    });
+    // 5) الاسم معزَّزاً بالمسار والأرقام الجزئية
+    const evidence = (r, f) => {
+      let sc = nameScore(r.name, f.name), mis = false;
+      const st = sameTrack(r.track, f.track);
+      if (st === true) sc += 0.05; else if (st === false) sc *= 0.8;
+      const ir = idOf(r), ifd = idOf(f), pr = phOf(r), pf = phOf(f);
+      if (ir && ifd) { const d = digitDist(ir, ifd); if (d <= 2) sc += 0.08; else mis = true; }
+      if (pr && pf) { if (pr.slice(-4) === pf.slice(-4) || digitDist(pr, pf) <= 2) sc += 0.08; else mis = true; }
+      return { sc: Math.min(1, sc), mis, st };
+    };
     const pairs = [];
-    registered.forEach((r, i) => { if (ri.has(i)) return; found.forEach((f, j) => { if (fj.has(j)) return; const sc = nameScore(r.name, f.name); if (sc >= lo) pairs.push({ i, j, sc }); }); });
+    registered.forEach((r, i) => { if (ri.has(i)) return; found.forEach((f, j) => { if (fj.has(j)) return; const e = evidence(r, f); if (e.sc >= lo) pairs.push({ i, j, sc: e.sc, mis: e.mis, st: e.st }); }); });
     pairs.sort((a, b) => b.sc - a.sc);
     for (const p of pairs) {
       if (ri.has(p.i) || fj.has(p.j)) continue;
-      const r = registered[p.i], f = found[p.j];
-      const mis = (idOf(r) && idOf(f) && idOf(r) !== idOf(f)) || (phOf(r) && phOf(f) && phOf(r) !== phOf(f));
-      take(p.i, p.j, p.sc, p.sc >= hi && !mis, "name", mis);
+      take(p.i, p.j, p.sc, p.sc >= hi && !p.mis && p.st !== false, "name", p.mis);
     }
     return { pairs: out, unmatchedReg: registered.map((_, i) => i).filter((i) => !ri.has(i)), unmatchedFound: found.map((_, j) => j).filter((j) => !fj.has(j)) };
   }
-  App.ccUtil = { arKey, nameTokens, nameScore, matchNames, numOf, diffTables, clean, digits, cellStr, phoneNorm, lsGet, lsSet, maskCell, verNum, verLess, waIntl, waParts, fmtSheet, splitStudentCell, splitGroupCell, expandResult, pickBase, diffRows, compareLatest, rankCompliance, weeklyDue };
+  App.ccUtil = { arKey, nameTokens, nameScore, matchNames, digitDist, trackKey, sameTrack, numOf, diffTables, clean, digits, cellStr, phoneNorm, lsGet, lsSet, maskCell, verNum, verLess, waIntl, waParts, fmtSheet, splitStudentCell, splitGroupCell, expandResult, pickBase, diffRows, compareLatest, rankCompliance, weeklyDue };
 })(window.App = window.App || {});

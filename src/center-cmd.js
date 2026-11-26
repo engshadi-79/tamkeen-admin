@@ -2095,7 +2095,7 @@
   function sigCompute(form) {
     const c = state.sig; if (!c.reg || !c.rows) return null;
     const found = c.rows.filter((r) => r.keep !== false && (form === undefined || sigFormOf(r) === form));
-    const m = App.ccUtil.matchNames(c.reg, found.map((f) => ({ name: f.name, id: f.nid, phone: f.phone })));
+    const m = App.ccUtil.matchNames(c.reg.map((x) => ({ name: x.name, id: x.id, phone: x.phone, track: pledgeTrackOf(x.course) })), found.map((f) => ({ name: f.name, id: f.nid, phone: f.phone, track: sigTrackOf(f) })));
     /* نتائج البحث في نظام المركز بالهوية/الجوال لما لم يُطابَق (أو طُوبق بالاسم وحده): إن دلّ على مسجّل في القائمة اعتُمد الربط */
     const blocks = sigBlockGet(), learned = sigLearnGet();
     m.pairs = m.pairs.filter((p) => !blocks[sigAk(found[p.found].name) + "|" + c.reg[p.reg].key]);   // «ليس هو» سابق
@@ -2128,7 +2128,7 @@
       let f = null, how = "", score = 0, state1, rev = false;
       if (man && man !== "none") { f = found.find((x) => x.id === man) || null; how = f ? "مراجعتك" : ""; score = 1; }
       else if (man === "none") { how = "رفضتَ المطابقة"; }
-      else { const p = byReg.get(i); if (p) { f = found[p.found]; score = p.score; rev = !p.sure; how = p.by === "learned" ? "من تصحيح سابق لك" : p.by === "lookupname" ? "عُثر عليه بالاسم في النظام" : p.by === "lookup" ? "عُثر عليه بالهوية/الجوال في النظام" : p.by === "id" ? "طابقت الهوية" : p.by === "phone" ? "طابق الجوال" : p.mismatch ? "الاسم يتفق لكن رقم الهوية/الجوال يختلف" : p.sure ? "" : "تحتاج مراجعة"; } }
+      else { const p = byReg.get(i); if (p) { f = found[p.found]; score = p.score; rev = !p.sure; how = p.by === "learned" ? "من تصحيح سابق لك" : p.by === "lookupname" ? "عُثر عليه بالاسم في النظام" : p.by === "lookup" ? "عُثر عليه بالهوية/الجوال في النظام" : p.by === "id" ? "طابقت الهوية" : p.by === "phone" ? "طابق الجوال" : p.by === "swap" ? "الجوال مكتوب في خانة الهوية (أو العكس)" : p.by === "id~" ? "هوية بفرق خانة واحدة (خطأ قراءة) ويؤكّدها الاسم" : p.by === "phone~" ? "جوال بفرق خانة واحدة (خطأ قراءة) ويؤكّده الاسم" : p.mismatch ? "الاسم يتفق لكن رقم الهوية/الجوال يختلف" : p.sure ? "" : "تحتاج مراجعة"; } }
       if (f) usedFound.add(f.id);
       if (!f) state1 = "absent";
       else if (rev) state1 = "review";
@@ -2225,6 +2225,24 @@
     sigForms().forEach((fm) => { const o = sigCompute(fm); if (o) o.orphans.forEach((f) => { if (seen.has(f.id) || (c.nameHits || {})[f.id]) return; const lk = (c.lookups || {})[f.id]; if (lk && lk.list && lk.list.length) return; seen.add(f.id); out.push(f); }); });
     return out;
   }
+  /* أجزاء أرقام الصف للبحث: أول 6 وآخر 6 من الهوية، وآخر 7 من الجوال (البحث في النظام نصّي) */
+  function sigDigitQueries(f) {
+    const id = digits(f.nid), ph = phoneNorm(f.phone), out = [];
+    if (id.length >= 8) out.push(id.slice(0, 6), id.slice(-6));
+    if (ph.length >= 9) out.push(ph.slice(-7));
+    return out.filter((q, i) => out.indexOf(q) === i);
+  }
+  /* تقييم مرشح من النظام لصف مقروء بكل الأدلة: الاسم + أرقام بفرق خانة + المسار */
+  function sigCandScore(f, s) {
+    const U = App.ccUtil, nameless = /^\(بلا اسم/.test(f.name) || !U.nameTokens(f.name).length;
+    let sc = nameless ? 0 : U.nameScore(f.name, s.name);
+    const id = digits(f.nid), ph = phoneNorm(f.phone), sid = digits(s.id), sph = phoneNorm(s.phone);
+    const idNear = id.length >= 8 && sid.length >= 8 && U.digitDist(id, sid) <= 1, phNear = ph.length >= 9 && sph.length >= 9 && U.digitDist(ph.slice(-9), sph.slice(-9)) <= 1;
+    if ((idNear || phNear) && (nameless || sc >= 0.45)) sc = Math.max(sc, 0.93);
+    const st = U.sameTrack(sigTrackOf(f), s.track);
+    if (st === true) sc = Math.min(1, sc + 0.05); else if (st === false) sc *= 0.8;
+    return sc;
+  }
   async function sigNameSearch() {
     const c = state.sig; c.nameHits = c.nameHits || {};
     const targets = sigPendingNameSearch().slice(0, 40);
@@ -2232,13 +2250,17 @@
     const cand = new Map(targets.map((f) => [f.id, new Map()]));
     const pass = async (people, wide) => {
       const qs = new Map();   // الاستعلام ← من يحتاجه
-      people.forEach((f) => sigNameQueries(f.name, wide).forEach((q) => { if (!qs.has(q) && qs.size < NAME_Q_MAX) qs.set(q, []); if (qs.has(q)) qs.get(q).push(f); }));
+      const add = (q, f) => { if (!qs.has(q) && qs.size < NAME_Q_MAX) qs.set(q, []); if (qs.has(q) && !qs.get(q).includes(f)) qs.get(q).push(f); };
+      people.forEach((f) => {
+        if (!/^\(بلا اسم/.test(f.name)) sigNameQueries(f.name, wide).forEach((q) => add(q, f));
+        if (!wide) sigDigitQueries(f).forEach((q) => add(q, f));   // أجزاء الهوية/الجوال: تلتقط رقماً مقروءاً بخطأ خانة
+      });
       const list = [...qs.keys()]; if (!list.length) return;
       const r = (await runCommands([{ type: "lookup", label: "بحث بالاسم في كل النظام", items: list.map((q) => ({ q })) }], { noCache: true }))[0];
       ((r && r.items) || []).forEach((it, i) => {
         if (!it || !it.count) return;
         const ppl = it.rows.map((x) => stuFrom(it, x));
-        (qs.get(list[i]) || []).forEach((f) => ppl.forEach((s) => { const sc = App.ccUtil.nameScore(f.name, s.name); if (sc >= 0.62) { const k = s.stu || s.id || s.name, m = cand.get(f.id); if (!m.has(k) || m.get(k).score < sc) m.set(k, { s, score: sc }); } }));
+        (qs.get(list[i]) || []).forEach((f) => ppl.forEach((s) => { const sc = sigCandScore(f, s); if (sc >= 0.62) { const k = s.stu || s.id || s.name, m = cand.get(f.id); if (!m.has(k) || m.get(k).score < sc) m.set(k, { s, score: sc }); } }));
       });
     };
     await pass(targets, false);
@@ -2304,6 +2326,16 @@
 
   /* ===== مصدر ثانٍ لمطابقة التوقيعات: ملف Excel بأسماء (بدل الصور أو معها) ===== */
   const SIG_NO_RX = /^(لا|لم|غير|بدون|no|false|0|-|—|×|✗|x)$/i;
+  function sigTrackOf(f) {
+    if (!f) return "";
+    const direct = clean(f.track || f.trackAuto);
+    if (direct) return direct;
+    const text = App.ccUtil.arKey([f.titleAuto, f.formAuto, f.form].filter(Boolean).join(" "));
+    if (!text) return "";
+    const hit = trackOpts().map((o) => o.t).find((t) => { const k = App.ccUtil.trackKey(t); return k.length >= 4 && text.includes(k); });
+    return hit || "";
+  }
+  const sigXlTrackCol = (heads) => heads.findIndex((h) => /^(ال)?مسار|المسار الحالي|^track/i.test(clean(h)));
   const sigXlFormCol = (heads) => heads.findIndex((h) => /نوع النموذج|اسم النموذج|^النموذج|^نموذج/.test(h));
   function sigXlView() {
     const x = state.sig.xl, opt = (i, cur, txt) => `<option value="${i}" ${Number(cur) === i ? "selected" : ""}>${esc(txt)}</option>`;
@@ -2312,17 +2344,17 @@
     const err = state.sig.xlErr ? `<p class="cc-alert err" role="alert">⚠ ${esc(state.sig.xlErr)}</p>` : "";
     if (!x) return head + err + `<p class="cc-note">يُقرأ الملف على جهازك فقط. تختار بعدها عمود الاسم (والهوية والجوال إن وُجدا) وكيف يُعدّ التوقيع.</p></details>`;
     const sh = x.sheets[x.sheet] || x.sheets[0], hs = sh.heads, m = x.map;
-    const colSel = (k, none) => `<label class="cc-field"><span>${{ name: "عمود الاسم", id: "عمود الهوية", phone: "عمود الجوال", sign: "عمود التوقيع", form: "عمود النموذج (اختياري)" }[k]}</span><select data-sigxl="${k}">${k === "sign" ? opt(-1, m.sign, "لا عمود: كل من في الملف موقّع") : opt(-1, m[k], none)}${hs.map((h, i) => opt(i, m[k], h)).join("")}</select></label>`;
+    const colSel = (k, none) => `<label class="cc-field"><span>${{ name: "عمود الاسم", id: "عمود الهوية", phone: "عمود الجوال", sign: "عمود التوقيع", form: "عمود النموذج (اختياري)", track: "عمود المسار (يحسّن الدقة)" }[k]}</span><select data-sigxl="${k}">${k === "sign" ? opt(-1, m.sign, "لا عمود: كل من في الملف موقّع") : opt(-1, m[k], none)}${hs.map((h, i) => opt(i, m[k], h)).join("")}</select></label>`;
     const n = sh.rows.filter((r) => clean(r[m.name]) || digits(r[m.id]).length >= 8 || phoneNorm(r[m.phone]).length >= 9).length;
     return head + `<p class="cc-note">الملف: <b>${esc(x.name)}</b> · ${ui.fmt(n)} اسماً في الورقة المختارة. <button type="button" class="cc-link" data-cc="sig-xl-clear">إزالة الملف</button></p>
-      <div class="cc-grid">${x.sheets.length > 1 ? `<label class="cc-field"><span>الورقة</span><select data-sigxl="sheet">${x.sheets.map((s, i) => opt(i, x.sheet, s.name)).join("")}</select></label>` : ""}${colSel("name", "— اختر —")}${colSel("id", "— بلا —")}${colSel("phone", "— بلا —")}${colSel("form", "— بلا: نموذج واحد —")}${colSel("sign", "")}</div>
+      <div class="cc-grid">${x.sheets.length > 1 ? `<label class="cc-field"><span>الورقة</span><select data-sigxl="sheet">${x.sheets.map((s, i) => opt(i, x.sheet, s.name)).join("")}</select></label>` : ""}${colSel("name", "— اختر —")}${colSel("id", "— بلا —")}${colSel("phone", "— بلا —")}${colSel("form", "— بلا: نموذج واحد —")}${colSel("track", "— بلا —")}${colSel("sign", "")}</div>
       <p class="cc-note">عمود التوقيع (إن اخترتَه): الخلية الفارغة أو «لا / غير / ×» تعني <b>لم يوقّع</b>، وغير ذلك <b>وقّع</b>.</p>
       <div class="cc-row"><button type="button" class="btn navy" data-cc="sig-xl-add" ${m.name >= 0 && n ? "" : "disabled"}>أضف أسماء الملف إلى المقارنة</button></div></details>`;
   }
   function sigXlAdd() {
     const c = state.sig, x = c.xl; if (!x) return;
     const sh = x.sheets[x.sheet] || x.sheets[0], m = x.map; if (m.name < 0) return ui.toast("اختر عمود الاسم");
-    const key = "xl:" + x.name + ":" + x.size + ":" + sh.name + ":" + m.name + ":" + m.sign + ":" + m.form;
+    const key = "xl:" + x.name + ":" + x.size + ":" + sh.name + ":" + m.name + ":" + m.sign + ":" + m.form + ":" + m.track;
     c.fileKeys = c.fileKeys || []; c.done = c.done || [];
     if (c.fileKeys.includes(key)) { state.resultError = "هذا الملف بهذه الأعمدة سبقت إضافته في الجلسة."; return render(); }
     const tag = String(key.length) + sh.rows.length, add = [];
@@ -2332,7 +2364,7 @@
       if (!name) { if (nid0.length >= 8 || ph0.length >= 9) name = "(بلا اسم" + (nid0 ? " — هوية " + nid0 : " — جوال " + ph0) + ")"; else return; }   // يُطابَق بالهوية/الجوال
       const sv = m.sign >= 0 ? clean(r[m.sign]) : "";
       const signed = m.sign < 0 ? true : !!sv && !SIG_NO_RX.test(sv);
-      const row = { id: "xl" + tag + "|" + x.name + ":" + i, file: x.name, name, nid: nid0, phone: ph0, signed, conf: 1, keep: true, formAuto: m.form >= 0 ? clean(r[m.form]) : "" };
+      const row = { id: "xl" + tag + "|" + x.name + ":" + i, file: x.name, name, nid: nid0, phone: ph0, signed, conf: 1, keep: true, formAuto: m.form >= 0 ? clean(r[m.form]) : "", track: m.track >= 0 ? clean(r[m.track]) : "" };
       row.form = sigAssignForm(row, m.form >= 0 ? "" : c.formName); add.push(row);
     });
     if (!add.length) { state.resultError = "لا أسماء في العمود المختار."; return render(); }
@@ -4725,13 +4757,13 @@
           if (typeof ExcelJS === "undefined") throw new Error("مكتبة قراءة Excel لم تُحمَّل بعد. حدّث الصفحة (Ctrl+F5) وأعد المحاولة.");
           const wb = await App.centerXl.readWorkbook(f); if (!wb.sheets.length) throw new Error("الملف لا يحوي أي ورقة فيها بيانات.");
           const s0 = wb.sheets[0], d = App.centerXl.detect(s0.heads, s0.rows);
-          state.sig.xl = { name: f.name, size: f.size, sheets: wb.sheets, sheet: 0, map: { name: d.name, id: d.id, phone: d.phone, sign: -1, form: sigXlFormCol(s0.heads) } };
+          state.sig.xl = { name: f.name, size: f.size, sheets: wb.sheets, sheet: 0, map: { name: d.name, id: d.id, phone: d.phone, sign: -1, form: sigXlFormCol(s0.heads), track: sigXlTrackCol(s0.heads) } };
         } catch (e) { state.sig.xl = null; state.sig.xlErr = "تعذّرت قراءة الملف «" + f.name + "»: " + (e.message || e); ui.toast("تعذّرت قراءة ملف Excel"); }
         t.value = ""; return render();
       }
       if (t.dataset.sigxl) {
         const x = state.sig.xl, k = t.dataset.sigxl; if (!x) return;
-        if (k === "sheet") { x.sheet = Number(t.value) || 0; const s = x.sheets[x.sheet], d = App.centerXl.detect(s.heads, s.rows); x.map = { name: d.name, id: d.id, phone: d.phone, sign: -1, form: sigXlFormCol(s.heads) }; }
+        if (k === "sheet") { x.sheet = Number(t.value) || 0; const s = x.sheets[x.sheet], d = App.centerXl.detect(s.heads, s.rows); x.map = { name: d.name, id: d.id, phone: d.phone, sign: -1, form: sigXlFormCol(s.heads), track: sigXlTrackCol(s.heads) }; }
         else x.map[k] = Number(t.value);
         return render();
       }
@@ -4874,7 +4906,7 @@
   App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
     _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol, enrichResult, blank: isBlankCell },
     _extras: { apply: applyExtras, seen: extraSeen },
-    _sig: { learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+    _sig: { compute: (f) => sigCompute(f), trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});

@@ -1040,6 +1040,37 @@ async function suite() {
     agent.version = keepV; agent.run = keepRun; c.state.enrich = null; c.state.results = null; c.state.gaps.out = null; c.state.gaps.fields = null; c.state.sel.details = false; c.state.wideLimit = 0; c.state.mode = "report"; c.render();
   }
 
+  // مطابقة التوقيعات بكل الأدلة: أرقام بخطأ خانة، وتبادل الخانات، والمسار، وأجزاء الأرقام في بحث النظام
+  {
+    const S = c.state.sig, keep = { reg: S.reg, rows: S.rows, manual: S.manual, lookups: S.lookups, nameHits: S.nameHits };
+    S.reg = [
+      { key: "R1", name: "أحمد علي محمد سالم", stu: "R1", id: "403734726", phone: "0592075178", group: "S3G1", course: "مسار الحلاقة الرجالية - المرحلة الثالثة" },
+      { key: "R2", name: "خالد سعيد عمر", stu: "R2", id: "404137440", phone: "0592130478", group: "S3G1", course: "مسار الحلاقة الرجالية - المرحلة الثالثة" },
+      { key: "R3", name: "سارة محمود خليل", stu: "R3", id: "406037630", phone: "0594541899", group: "S3G2", course: "مسار التجميل النسائي - المرحلة الثالثة" },
+      { key: "R4", name: "سارة محمود خليل", stu: "R4", id: "410000001", phone: "0590000001", group: "S3G3", course: "مسار الخياطة والتطريز - المرحلة الثالثة" },
+    ];
+    const row = (id, name, nid, phone, extra) => Object.assign({ id, file: "a.jpg", name, nid, phone, signed: true, conf: 0.9, keep: true, form: "" }, extra || {});
+    S.rows = [
+      row("a:0", "احمد علي محمد سالم", "403734728", ""),                        // هوية بخانة خاطئة
+      row("a:1", "خالد سعيد عمر", "0592130478", ""),                            // الجوال في خانة الهوية
+      row("a:2", "سارة محمود خليل", "", "", { trackAuto: "الخياطة والتطريز" }), // المسار يختار سارة الخياطة
+    ];
+    S.manual = {}; S.lookups = {}; S.nameHits = {};
+    const o = App.centerCmd._sig.compute();
+    const st = (k) => (o.items.find((x) => x.reg.key === k) || {});
+    ok("هوية مقروءة بخانة خاطئة: تُطابَق مع الاسم وتُشرح «خطأ قراءة»", st("R1").st === "signed" && /فرق خانة/.test(st("R1").how), JSON.stringify(st("R1").how));
+    ok("الجوال مكتوب في خانة الهوية: يُطابَق ويُشرح", st("R2").st === "signed" && /خانة الهوية/.test(st("R2").how), JSON.stringify(st("R2").how));
+    ok("اسمان متطابقان في مسارين: مسار الورقة (الخياطة) يختار الطالبة الصحيحة", st("R4").st === "signed" && st("R3").st === "absent", JSON.stringify({ r3: st("R3").st, r4: st("R4").st }));
+    ok("المسار من عنوان الورقة حين لا يقرؤه الذكاء", /التجميل/.test(App.centerCmd._sig.trackOf({ titleAuto: "كشف توقيع مسار التجميل النسائي - المرحلة الثالثة" }) || "") || App.centerCmd._sig.trackOf({ titleAuto: "x" }) === "", App.centerCmd._sig.trackOf({ titleAuto: "كشف توقيع مسار التجميل النسائي" }));
+    // تقييم مرشحي النظام
+    const cs = App.centerCmd._sig.candScore;
+    ok("مرشح النظام: رقم هوية بفرق خانة + اسم قريب ← تقييم عالٍ (≥0.9)", cs({ name: "احمد علي", nid: "403734728", phone: "" }, { name: "أحمد علي محمد سالم", id: "403734726", phone: "", track: "الحلاقة الرجالية" }) >= 0.9);
+    ok("مرشح النظام: صف بلا اسم وهويته بفرق خانة ← مقبول", cs({ name: "(بلا اسم — هوية 403734728)", nid: "403734728", phone: "" }, { name: "أحمد علي", id: "403734726", phone: "" }) >= 0.9);
+    ok("مرشح النظام: الاسم نفسه من مسار مختلف ← تقييم أقل من مساره", cs({ name: "سارة محمود خليل", nid: "", phone: "", trackAuto: "التجميل" }, { name: "سارة محمود خليل", id: "1", phone: "", track: "الخياطة" }) < cs({ name: "سارة محمود خليل", nid: "", phone: "", trackAuto: "التجميل" }, { name: "سارة محمود خليل", id: "1", phone: "", track: "التجميل النسائي" }));
+    ok("أجزاء الأرقام للبحث: أول 6 وآخر 6 من الهوية وآخر 7 من الجوال", App.centerCmd._sig.digitQueries({ nid: "403734728", phone: "0592130478" }).join() === "403734,734728,2130478");
+    Object.assign(S, keep); c.render();
+  }
+
   // مصدر ثانٍ لمطابقة التوقيعات: ملف Excel بأسماء (بجانب الصور)
   {
     c.state.mode = "sign"; c.state.groups = [];

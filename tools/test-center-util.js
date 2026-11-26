@@ -88,5 +88,40 @@ console.log("[مطابقة الأسماء] قراءة الصور بأخطائه�
   check("مطابقة الهوية المقروءة بأرقام فارسية بالمسجلة بلاتينية", mm.pairs.length === 1 && mm.pairs[0].by === "id" && mm.pairs[0].sure);
 }
 
+{
+  // ===== مطابقة بكل الأدلة: أخطاء قراءة الأرقام، وتبادل الخانات، والمسار =====
+  const R = [
+    { name: "أحمد علي محمد سالم", id: "403734726", phone: "0592075178", track: "مسار الحلاقة الرجالية - المرحلة الثالثة" },
+    { name: "خالد سعيد عمر", id: "404137440", phone: "0592130478", track: "مسار الحلاقة الرجالية" },
+    { name: "سارة محمود خليل", id: "406037630", phone: "0594541899", track: "مسار التجميل النسائي" },
+    { name: "سارة محمود خليل", id: "410000001", phone: "0590000001", track: "مسار الخياطة والتطريز" },
+    { name: "منى يوسف", id: "420000002", phone: "0591111111", track: "مسار التجميل" },
+  ];
+  const by = (m) => Object.fromEntries(m.pairs.map((p) => [p.found, p]));
+  check("digitDist: استبدال=1، تبديل متجاور=1، حذف=1، فرقان=2", U.digitDist("403734726", "403734728") === 1 && U.digitDist("403734726", "403737426") === 1 && U.digitDist("403734726", "40373472") === 1 && U.digitDist("403734726", "403734700") === 2);
+  let m = U.matchNames(R, [{ name: "احمد علي محمد سالم", id: "403734728", phone: "" }]);
+  check("هوية بخانة خاطئة + اسم مطابق → مطابقة مؤكدة (id~)", m.pairs[0] && m.pairs[0].reg === 0 && m.pairs[0].by === "id~" && m.pairs[0].sure, m.pairs);
+  m = U.matchNames(R, [{ name: "خالد سعيد", id: "", phone: "0592103478" }]);
+  check("جوال بخانتين متبادلتين → مطابقة (phone~)", m.pairs[0] && m.pairs[0].reg === 1 && m.pairs[0].by === "phone~", m.pairs);
+  m = U.matchNames(R, [{ name: "خالد سعيد عمر", id: "0592130478", phone: "" }]);
+  check("الجوال مكتوب في خانة الهوية → مطابقة مؤكدة (swap)", m.pairs[0] && m.pairs[0].reg === 1 && m.pairs[0].by === "swap" && m.pairs[0].sure, m.pairs);
+  m = U.matchNames(R, [{ name: "(بلا اسم — هوية 40603763)", id: "40603763", phone: "" }]);
+  check("بلا اسم وهوية ناقصة خانة → مطابقة بالرقم", m.pairs[0] && m.pairs[0].reg === 2 && m.pairs[0].by === "id~", m.pairs);
+  m = U.matchNames(R, [{ name: "محمد حسن", id: "403734728", phone: "" }]);
+  check("رقم قريب لكن الاسم مختلف تماماً → لا تخمين", !m.pairs.length, m.pairs);
+  m = U.matchNames(R, [{ name: "سارة محمود خليل", id: "", phone: "", track: "مسار الخياطة" }]);
+  check("اسمان متطابقان في مسارين: المسار يختار الصحيح (الخياطة)", m.pairs[0] && m.pairs[0].reg === 3 && m.pairs[0].sure, m.pairs);
+  m = U.matchNames([R[2]], [{ name: "سارة محمود خليل", id: "", phone: "", track: "مسار الحلاقة الرجالية" }]);
+  check("اسم مطابق لكن المسار مختلف → يحتاج مراجعة لا جزم", m.pairs[0] && !m.pairs[0].sure, m.pairs);
+  m = U.matchNames(R, [{ name: "منى يوسف عبد الله", id: "", phone: "0591111111".replace(/^05/, "05") }]);
+  check("الجوال التام ما زال يقدّم على كل شيء", m.pairs[0] && m.pairs[0].reg === 4 && m.pairs[0].by === "phone", m.pairs);
+  m = U.matchNames(R, [{ name: "سعيد خالد", id: "", phone: "0592130478" }, { name: "احمد علي", id: "403734726", phone: "" }]);
+  check("عدة صفوف معاً: كل صف بدليله", by(m)[0].reg === 1 && by(m)[1].reg === 0, m.pairs);
+  const two = [{ name: "أ ب ج", id: "500000001", phone: "" }, { name: "أ ب ج", id: "500000003", phone: "" }];
+  m = U.matchNames(two, [{ name: "أ ب ج", id: "500000002", phone: "" }]);
+  check("مرشحان على بُعد خانة واحدة → لا جزم بالرقم (يُترك للاسم والمراجعة)", !m.pairs.some((p) => p.by === "id~"), m.pairs);
+  check("sameTrack: يتجاهل «مسار» و«المرحلة» والهمزات", U.sameTrack("مسار التجميل النسائي - المرحلة الثالثة", "التجميل النسائي") === true && U.sameTrack("الحلاقة", "التجميل") === false && U.sameTrack("", "x") === null);
+}
+
 console.log(`\nنجح ${pass} · فشل ${fail}`);
 process.exit(fail ? 1 : 0);
