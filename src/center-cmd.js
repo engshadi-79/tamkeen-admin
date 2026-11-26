@@ -2389,7 +2389,7 @@
         <p class="cc-note">🔒 تُرسَل الصور إلى <b>${provider}</b> بمفتاحك لقراءتها فقط، ولا تُحفظ في تمكين ولا تُرفع إلى أي مكان آخر. وفيها أسماء متدربين.${hasKey ? "" : ' <b class="cc-bad">لا يوجد مفتاح ذكاء اصطناعي: أضفه من صفحة «المراسلات والتقارير» ← إعدادات الذكاء الاصطناعي.</b>'}</p>
         <div class="cc-row"><button type="button" class="btn navy" data-cc="sig-read" ${c.files.length && !c.reading ? "" : "disabled"}>${c.reading ? "جارٍ القراءة…" : "٢. اقرأ الصور"}</button><label class="cc-field" style="min-width:0"><span>السرعة</span><select data-sig="speed"><option value="" ${c.fast ? "" : "selected"}>دقيق (افتراضي)</option><option value="fast" ${c.fast ? "selected" : ""}>سريع (نموذج أخف)</option></select></label><label class="cc-field" style="min-width:0" title="إرسال عدة صور في طلب واحد يوفّر الحصة المجانية اليومية"><span>صور في الطلب</span><select data-sig="batch">${[1, 2, 3, 5].map((n) => `<option value="${n}" ${Number(c.batch) === n ? "selected" : ""}>${n}</option>`).join("")}</select></label><span class="cc-note" id="cc-sig-prog">${esc(c.prog || (c.took ? "آخر قراءة: " + c.took : ""))}</span></div>
         ${c.failed.length ? `<p class="cc-alert warn">تعذّرت قراءة ${ui.fmt(c.failed.length)} صورة: ${c.failed.map((x) => esc(x.name + " (" + x.error + ")")).join("، ")}</p>` : ""}
-        ${c.rows ? sigRowsEditor() : ""}
+        ${c.rows ? (c.reg ? `<details class="cc-help cc-sig-rows-fold"><summary><b>الأسماء المقروءة من الأوراق</b> (${ui.fmt((c.rows || []).filter((x) => x.keep !== false).length)}) — لتصحيح اسم أو توقيع</summary>${sigRowsEditor()}</details>` : sigRowsEditor()) : ""}
         <div class="cc-grid"><label class="cc-field"><span>حالة الطالب في المقارنة</span><select data-sig="status"><option value="">كل الحالات</option>${statusOpts.filter((o) => o.v !== "").map((o) => `<option value="${esc(o.v)}" ${String(c.status) === String(o.v) ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select></label></div>
         <p class="cc-note">٣. اختر <b>المرحلة</b> (والمسار والمجموعة إن شئت) من شريط «النطاق» أعلاه، ثم اضغط «${c.reg ? "حدّث المسجلين من النظام" : "اجلب المسجلين وقارن"}». ${c.reg ? "المسجلون محفوظون فلا حاجة لجلبهم في كل مرة: أضف صوراً جديدة واقرأها فتُحدَّث النتيجة فوراً." : ""}</p>
       </div>
@@ -2424,9 +2424,24 @@
       ${TABS.find((t) => t[0] === cur)[2] ? tabBody : '<p class="cc-note">لا أحد في هذه القائمة.</p>'}
       ${review.length ? `<p class="cc-note">و<b>${ui.fmt(review.length)}</b> يحتاجون مراجعتك: افتح «التفاصيل والمراجعة» أدناه.</p>` : ""}
       <p class="cc-note cc-sigaudit">${audit}</p></div>`;
+    /* ===== العرض المبسّط: ثلاثة جداول فقط ===== */
+    const okItems = o.items.filter((x) => x.st === "signed" || x.st === "review");
+    const t1 = okItems.map((x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, x.found ? x.found.name : "", x.how, x.st === "signed" ? "✓ وقّع" : "؟ يحتاج مراجعة"])
+      .concat(o.resolved.map((x) => [x.s.name, x.s.id || x.f.nid || "", x.s.phone || x.f.phone || "", x.s.group || "", x.f.name, "من النظام (خارج قائمة المرحلة المختارة)", x.f.signed === true ? "✓ وقّع" : "غير محسوم"]));
+    const t2 = miss.map((x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, x.st === "blank" ? "اسمه في الورقة بلا توقيع" : "لا يظهر اسمه في الأوراق"]);
+    const unk = o.orphans.concat(o.lost), t3 = unk.map((f) => [f.name, f.nid || "", f.phone || "", f.signed === true ? "موقّع" : f.signed === false ? "بلا توقيع" : "غير محسوم", sigShort(f.file), sigLookupText(f)]);
+    const box3 = (k, title, badge, bad, heads, rows, empty) => `<article class="cc-res cc-sig3"><header class="cc-res-h"><div class="cc-res-t"><h4>${title}</h4><span class="cc-badge${bad && rows.length ? " bad" : ""}">${ui.fmt(rows.length)}</span></div></header>${rows.length ? dataTable(K(k), heads, rows) : `<p class="cc-note">${empty}</p>`}</article>`;
+    const simple = `<div class="cc-sig-simple">
+      ${box3("s3-found", "١. من وُجدوا في الأوراق", 0, false, ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "الاسم في الورقة", "كيف عُرف", "الحالة"], t1, "لم يُطابَق أحد بعد.")}
+      ${box3("s3-miss", "٢. المتبقون الذين لم يوقّعوا", 0, true, ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "السبب"], t2, "✓ كل المسجلين وقّعوا.")}
+      ${box3("s3-unk", "٣. أسماء من الأوراق لم تُعرف", 0, true, ["الاسم المقروء", "رقم الهوية", "الجوال", "التوقيع", "الورقة", "نتيجة البحث في النظام"], t3, "✓ كل الأسماء المقروءة عُرفت.")}
+      ${review.length ? `<p class="cc-note">منهم <b>${ui.fmt(review.length)}</b> «يحتاج مراجعة» في الجدول الأول: أكّدهم أو ارفضهم من «التفاصيل والأدوات» أدناه.</p>` : ""}
+      <div class="cc-stats"><button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div></div>`;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> ${multi ? "النموذج: " + FM + " <small>(" + ui.fmt(o.found.length) + " اسماً مقروءاً)</small>" : "نتيجة المطابقة"}</h3>
+      ${simple}
+      <details class="cc-help cc-sigall"><summary><b>التفاصيل والأدوات</b> — المراجعة والتأكيد، ربط الأسماء غير المعروفة، البحث في النظام، والتدقيق</summary>
       ${summary}
-      <details class="cc-help cc-sigall"><summary><b>التفاصيل والمراجعة</b> — كل المسجلين، ما يحتاج مراجعتك (${ui.fmt(review.length)})، وربط الأسماء غير المعروفة</summary>
+      <details class="cc-help cc-sigall-in"><summary><b>التفاصيل والمراجعة</b> — كل المسجلين، ما يحتاج مراجعتك (${ui.fmt(review.length)})، وربط الأسماء غير المعروفة</summary>
       <details class="cc-help" open><summary><b>جدول المتابعة</b> — كل المسجلين (${ui.fmt(o.items.length)}) بحالة توقيع كل منهم؛ يكتمل كلما أضفتَ صوراً</summary>${dataTable(K("sig-all"), sigAllHeads(), o.items.map(sigAllRow))}</details>
       ${miss.length ? `<div class="cc-alert err" role="alert"><span>⚠ <b>${ui.fmt(miss.length)}</b> من ${ui.fmt(o.items.length)} مسجّلاً لم يوقّعوا.</span><button type="button" class="btn secondary small" data-cc="sig-copy" data-form="${FM}">نسخ قائمة غير الموقّعين</button></div>` : '<p class="cc-alert ok">✓ كل المسجلين وقّعوا.</p>'}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.items.length)}</b> مسجّلاً</span><span class="cc-stat"><b>${ui.fmt(cnt("signed"))}</b> وقّعوا</span>${o.resolved.length ? `<span class="cc-stat"><b>${ui.fmt(o.resolved.length)}</b> عُرفوا بالهوية/الجوال (خارج القائمة)</span>` : ""}<span class="cc-stat"><b>${ui.fmt(cnt("absent"))}</b> لا يظهرون في الأوراق</span><span class="cc-stat"><b>${ui.fmt(cnt("blank"))}</b> بلا توقيع</span><span class="cc-stat"><b>${ui.fmt(review.length)}</b> تحتاج مراجعة</span><span class="cc-stat"><b>${ui.fmt(o.orphans.length)}</b> أسماء لا تطابق أحداً</span>
@@ -2438,6 +2453,7 @@
       ${o.orphans.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>أسماء في الأوراق لا تطابق مسجّلاً في هذه المرحلة</h4><span class="cc-badge">${ui.fmt(o.orphans.length)}</span></div></header><p class="cc-note">قد تكون قراءة خاطئة أو متدرباً من مرحلة أخرى. إن كان أحدها لمسجّل فاختره:</p>
         <div class="cc-sig-rev">${o.orphans.map((f) => `<div class="cc-sig-r"><span><b>${esc(f.name)}</b> <small>${f.signed === true ? "موقّع" : "غير محسوم"} · ${esc(sigShort(f.file))}${sigLookupText(f) ? " · <b>" + esc(sigLookupText(f)) + "</b>" : ""}</small></span><select data-sig-assign="${esc(f.id)}" data-form="${FM}"><option value="">— ليس من المسجلين —</option>${miss.map((x) => `<option value="${esc(x.reg.key)}">${esc(x.reg.name)}</option>`).join("")}</select>${(((state.sig.nameHits || {})[f.id] || {}).list || []).map((x, k) => `<button type="button" class="btn secondary small" data-cc="sig-pick" data-f="${esc(f.id)}" data-k="${k}" title="اعتمد هذا الطالب من النظام">هو: ${esc(x.s.name)}${x.s.stage ? " · " + esc(x.s.stage) : ""}</button>`).join(" ")}</div>`).join("")}</div></article>` : ""}
       <details class="cc-help"><summary>الذين وقّعوا (${ui.fmt(cnt("signed"))})</summary>${cnt("signed") ? tbl(K("sig-ok"), o.items.filter((x) => x.st === "signed")) : '<p class="cc-note">لا أحد.</p>'}</details>
+      </details>
       </details>
       <p class="cc-note">القراءة بالذكاء الاصطناعي قد تخطئ في الأسماء المكتوبة بخط اليد أو الصور غير الواضحة، فراجع «تحتاج مراجعتك» قبل أن تعتمد القائمة. لا يُكتب شيء في نظام المركز.</p></section>`;
   }
@@ -2872,7 +2888,8 @@
   }
   function sigResult() {
     const forms = sigForms(), multi = forms.length > 1;
-    return sigMatrixBlock() + (!multi && state.sig.reg && state.sig.rows ? `<section class="cc-results">${sigWaBlock()}</section>` : "") + (multi ? `<section class="cc-results"><p class="cc-alert ok">في الصور ${ui.fmt(forms.length)} نماذج: ${forms.map((f) => "<b>" + esc(f) + "</b>").join("، ")}. لكل نموذج مقارنته وتقريره أدناه، ويضمّها ملف Excel في ورقات منفصلة.</p></section>` : "") + forms.map((f, i) => sigResultFor(f, i, multi)).join("");
+    const extra = sigMatrixBlock() + (!multi && state.sig.reg && state.sig.rows ? `<section class="cc-results">${sigWaBlock()}</section>` : "");
+    return (extra ? `<details class="cc-help cc-sig-tools"><summary><b>أدوات إضافية</b> — ما ينقص كل طالب في كل النماذج، ورسالة واتساب بالنواقص</summary>${extra}</details>` : "") + (multi ? `<section class="cc-results"><p class="cc-alert ok">في الصور ${ui.fmt(forms.length)} نماذج: ${forms.map((f) => "<b>" + esc(f) + "</b>").join("، ")}. لكل نموذج مقارنته وتقريره أدناه، ويضمّها ملف Excel في ورقات منفصلة.</p></section>` : "") + forms.map((f, i) => sigResultFor(f, i, multi)).join("");
   }
   /* ===== بيانات ناقصة في سجل الطالب بنظام المركز (حقول فارغة في صفحة تعديل الطالب) =====
      الأداة تنقل صفحة تعديل كل طالب كما هي، فالفراغ هنا فراغ في النظام نفسه لا في الأداة. تتطلب «كل بيانات الطالب» (قراءة صفحة لكل طالب). */

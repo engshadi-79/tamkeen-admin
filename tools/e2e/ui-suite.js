@@ -1068,6 +1068,18 @@ async function suite() {
     ok("مرشح النظام: صف بلا اسم وهويته بفرق خانة ← مقبول", cs({ name: "(بلا اسم — هوية 403734728)", nid: "403734728", phone: "" }, { name: "أحمد علي", id: "403734726", phone: "" }) >= 0.9);
     ok("مرشح النظام: الاسم نفسه من مسار مختلف ← تقييم أقل من مساره", cs({ name: "سارة محمود خليل", nid: "", phone: "", trackAuto: "التجميل" }, { name: "سارة محمود خليل", id: "1", phone: "", track: "الخياطة" }) < cs({ name: "سارة محمود خليل", nid: "", phone: "", trackAuto: "التجميل" }, { name: "سارة محمود خليل", id: "1", phone: "", track: "التجميل النسائي" }));
     ok("أجزاء الأرقام للبحث: أول 6 وآخر 6 من الهوية وآخر 7 من الجوال", App.centerCmd._sig.digitQueries({ nid: "403734728", phone: "0592130478" }).join() === "403734,734728,2130478");
+    {   // العرض المبسّط: ثلاثة جداول فقط ظاهرة، والباقي مطويّ
+      S.rows.push(row("a:3", "اسم غير معروف تماماً", "", ""));
+      const keepMode = c.state.mode; c.state.mode = "sign"; c.render();
+      const boxes = [...b.querySelectorAll(".cc-sig-simple .cc-sig3")], titles = boxes.map((x) => x.querySelector("h4").textContent.trim());
+      ok("نتيجة المطابقة: ثلاثة جداول فقط (من وُجدوا، المتبقون، أسماء لم تُعرف)", boxes.length === 3 && /وُجدوا/.test(titles[0]) && /لم يوقّعوا/.test(titles[1]) && /لم تُعرف/.test(titles[2]), JSON.stringify(titles));
+      const n = (i) => boxes[i] ? (boxes[i].querySelector(".cc-badge") || {}).textContent : "";
+      ok("الأعداد: وُجد 3 (أحمد وخالد وسارة الخياطة)، والمتبقي 1 (سارة التجميل)، وغير المعروف 1", n(0) === "3" && n(1) === "1" && n(2) === "1", JSON.stringify([n(0), n(1), n(2)]));
+      ok("الجدول الأول يشرح كيف عُرف كل اسم", /فرق خانة/.test(boxes[0].textContent) && /خانة الهوية/.test(boxes[0].textContent), "how");
+      const folds = [...b.querySelectorAll(".cc-sigall, .cc-sig-rows-fold")];
+      ok("كل التفاصيل والأدوات وجدول الأسماء المقروءة مطويّة افتراضياً", folds.length >= 2 && folds.every((d) => !d.open), JSON.stringify(folds.map((d) => d.className + ":" + d.open)));
+      c.state.mode = keepMode;
+    }
     Object.assign(S, keep); c.render();
   }
 
