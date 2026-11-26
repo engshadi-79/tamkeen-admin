@@ -2886,9 +2886,37 @@
       ${sigWaBlock()}
       ${dataTable("sig-matrix", sigMatrixHeads(m), m.rows.map(sigMatrixRow))}</section>`;
   }
+  /* عدة نماذج: جدول واحد لكل الطلاب بعمود لكل نموذج (وقّع أم لا)، وجدول واحد يجمع الأسماء غير المعروفة من كل النماذج */
+  function sigMultiSimple(forms) {
+    const m = sigMatrix(); if (!m) return "";
+    const heads = ["الاسم", "رقم الهوية", "الجوال", "المجموعة", ...forms, "الحالة"];
+    const rows = m.rows.map((x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, ...x.sts.map((st) => SIG_CELL[st]),
+      x.miss.length ? "✗ ينقصه: " + x.miss.join("، ") : x.rev.length ? "؟ مراجعة: " + x.rev.join("، ") : "✓ وقّع " + (forms.length === 2 ? "النموذجين" : "كل النماذج")]);
+    const full = m.rows.filter((x) => !x.miss.length && !x.rev.length).length, lack = m.rows.filter((x) => x.miss.length).length;
+    // غير المعروفين من كل النماذج في جدول واحد: الاسم نفسه في عدة نماذج صفّ واحد بعمود «النماذج»
+    const unk = new Map();
+    forms.forEach((f) => {
+      const o = sigCompute(f); if (!o) return;
+      o.orphans.concat(o.lost).forEach((x) => {
+        const k = App.ccUtil.arKey(x.name) + "|" + digits(x.nid);
+        const e = unk.get(k) || unk.set(k, { f: x, forms: [], signed: [] }).get(k);
+        if (!e.forms.includes(f)) e.forms.push(f);
+        e.signed.push(x.signed === true ? "موقّع" : x.signed === false ? "بلا توقيع" : "غير محسوم");
+      });
+    });
+    const uRows = [...unk.values()].map((e) => [e.f.name, e.f.nid || "", e.f.phone || "", e.forms.join("، "), [...new Set(e.signed)].join("، "), sigShort(e.f.file), sigLookupText(e.f)]);
+    const box = (k, title, bad, hs, rs, empty, stats) => `<article class="cc-res cc-sig3"><header class="cc-res-h"><div class="cc-res-t"><h4>${title}</h4><span class="cc-badge${bad && rs.length ? " bad" : ""}">${ui.fmt(rs.length)}</span></div></header>${stats || ""}${rs.length ? dataTable(k, hs, rs) : `<p class="cc-note">${empty}</p>`}</article>`;
+    return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> نتيجة المطابقة <small>(${ui.fmt(forms.length)} نماذج: ${forms.map(esc).join("، ")})</small></h3>
+      <div class="cc-sig-simple">
+      ${box("sm-all", "١. كل الطلاب في النماذج", false, heads, rows, "لا مسجلين.", `<div class="cc-stats"><span class="cc-stat ok"><b>${ui.fmt(full)}</b> وقّع ${forms.length === 2 ? "النموذجين" : "كل النماذج"}</span><span class="cc-stat bad"><b>${ui.fmt(lack)}</b> ينقصه نموذج أو أكثر</span>${m.rows.length - full - lack ? `<span class="cc-stat"><b>${ui.fmt(m.rows.length - full - lack)}</b> يحتاج مراجعة</span>` : ""}</div>`)}
+      ${box("sm-unk", "٢. أسماء من الأوراق لم تُعرف (كل النماذج)", true, ["الاسم المقروء", "رقم الهوية", "الجوال", "النماذج", "التوقيع", "الورقة", "نتيجة البحث في النظام"], uRows, "✓ كل الأسماء المقروءة عُرفت.")}
+      <div class="cc-stats"><button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div></div></section>`;
+  }
   function sigResult() {
     const forms = sigForms(), multi = forms.length > 1;
     const extra = sigMatrixBlock() + (!multi && state.sig.reg && state.sig.rows ? `<section class="cc-results">${sigWaBlock()}</section>` : "");
+    if (multi) return sigMultiSimple(forms) + (extra ? `<details class="cc-help cc-sig-tools"><summary><b>أدوات إضافية</b> — ما ينقص كل طالب بتفصيله، ورسالة واتساب بالنواقص</summary>${extra}</details>` : "")
+      + `<details class="cc-help cc-sig-perform"><summary><b>تفاصيل كل نموذج على حدة</b> — المراجعة والتأكيد وربط الأسماء لكل نموذج</summary>${forms.map((f, i) => sigResultFor(f, i, true)).join("")}</details>`;
     return (extra ? `<details class="cc-help cc-sig-tools"><summary><b>أدوات إضافية</b> — ما ينقص كل طالب في كل النماذج، ورسالة واتساب بالنواقص</summary>${extra}</details>` : "") + (multi ? `<section class="cc-results"><p class="cc-alert ok">في الصور ${ui.fmt(forms.length)} نماذج: ${forms.map((f) => "<b>" + esc(f) + "</b>").join("، ")}. لكل نموذج مقارنته وتقريره أدناه، ويضمّها ملف Excel في ورقات منفصلة.</p></section>` : "") + forms.map((f, i) => sigResultFor(f, i, multi)).join("");
   }
   /* ===== بيانات ناقصة في سجل الطالب بنظام المركز (حقول فارغة في صفحة تعديل الطالب) =====
