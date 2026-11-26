@@ -2108,7 +2108,7 @@
       if (j === undefined || !lk || !lk.list || lk.list.length !== 1) return;
       const ri = regOf(lk.list[0]); if (ri < 0 || usedReg.has(ri)) return;
       const at = m.pairs.findIndex((p) => p.found === j || p.reg === ri);
-      const np = { reg: ri, found: j, score: lk.by === "name" ? lk.score : 1, sure: true, by: lk.by === "name" ? "lookupname" : "lookup", mismatch: false };
+      const np = { reg: ri, found: j, score: lk.by === "name" || lk.by === "retrack" ? lk.score : 1, sure: true, by: lk.by === "name" ? "lookupname" : lk.by === "retrack" ? "retrack" : "lookup", mismatch: false };
       if (at >= 0) m.pairs[at] = np; else m.pairs.push(np);
       usedReg.add(ri); usedFoundIdx.add(j);
     });
@@ -2128,7 +2128,7 @@
       let f = null, how = "", score = 0, state1, rev = false;
       if (man && man !== "none") { f = found.find((x) => x.id === man) || null; how = f ? "مراجعتك" : ""; score = 1; }
       else if (man === "none") { how = "رفضتَ المطابقة"; }
-      else { const p = byReg.get(i); if (p) { f = found[p.found]; score = p.score; rev = !p.sure; how = p.by === "learned" ? "من تصحيح سابق لك" : p.by === "lookupname" ? "عُثر عليه بالاسم في النظام" : p.by === "lookup" ? "عُثر عليه بالهوية/الجوال في النظام" : p.by === "id" ? "طابقت الهوية" : p.by === "phone" ? "طابق الجوال" : p.by === "swap" ? "الجوال مكتوب في خانة الهوية (أو العكس)" : p.by === "id~" ? "هوية بفرق خانة واحدة (خطأ قراءة) ويؤكّدها الاسم" : p.by === "phone~" ? "جوال بفرق خانة واحدة (خطأ قراءة) ويؤكّده الاسم" : p.mismatch ? "الاسم يتفق لكن رقم الهوية/الجوال يختلف" : p.sure ? "" : "تحتاج مراجعة"; } }
+      else { const p = byReg.get(i); if (p) { f = found[p.found]; score = p.score; rev = !p.sure; how = p.by === "learned" ? "من تصحيح سابق لك" : p.by === "lookupname" ? "عُثر عليه بالاسم في النظام" : p.by === "retrack" ? "عُرف بالمقارنة مع طلاب مساره في النظام" : p.by === "lookup" ? "عُثر عليه بالهوية/الجوال في النظام" : p.by === "id" ? "طابقت الهوية" : p.by === "phone" ? "طابق الجوال" : p.by === "swap" ? "الجوال مكتوب في خانة الهوية (أو العكس)" : p.by === "id~" ? "هوية بفرق خانة واحدة (خطأ قراءة) ويؤكّدها الاسم" : p.by === "phone~" ? "جوال بفرق خانة واحدة (خطأ قراءة) ويؤكّده الاسم" : p.mismatch ? "الاسم يتفق لكن رقم الهوية/الجوال يختلف" : p.sure ? "" : "تحتاج مراجعة"; } }
       if (f) usedFound.add(f.id);
       if (!f) state1 = "absent";
       else if (rev) state1 = "review";
@@ -2429,12 +2429,12 @@
     const t1 = okItems.map((x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, x.found ? x.found.name : "", x.how, x.st === "signed" ? "✓ وقّع" : "؟ يحتاج مراجعة"])
       .concat(o.resolved.map((x) => [x.s.name, x.s.id || x.f.nid || "", x.s.phone || x.f.phone || "", x.s.group || "", x.f.name, "من النظام (خارج قائمة المرحلة المختارة)", x.f.signed === true ? "✓ وقّع" : "غير محسوم"]));
     const t2 = miss.map((x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, x.st === "blank" ? "اسمه في الورقة بلا توقيع" : "لا يظهر اسمه في الأوراق"]);
-    const unk = o.orphans.concat(o.lost), t3 = unk.map((f) => [f.name, f.nid || "", f.phone || "", f.signed === true ? "موقّع" : f.signed === false ? "بلا توقيع" : "غير محسوم", sigShort(f.file), sigLookupText(f)]);
-    const box3 = (k, title, badge, bad, heads, rows, empty) => `<article class="cc-res cc-sig3"><header class="cc-res-h"><div class="cc-res-t"><h4>${title}</h4><span class="cc-badge${bad && rows.length ? " bad" : ""}">${ui.fmt(rows.length)}</span></div></header>${rows.length ? dataTable(K(k), heads, rows) : `<p class="cc-note">${empty}</p>`}</article>`;
+    const unk = o.orphans.concat(o.lost).sort((a, b) => (sigTrackOf(a) || "ي").localeCompare(sigTrackOf(b) || "ي", "ar")), t3 = unk.map((f) => [f.name, f.nid || "", f.phone || "", (sigTrackOf(f) || "—").replace(/^مسار\s*/, ""), f.signed === true ? "موقّع" : f.signed === false ? "بلا توقيع" : "غير محسوم", sigShort(f.file), sigLookupText(f)]);
+    const box3 = (k, title, badge, bad, heads, rows, empty, top) => `<article class="cc-res cc-sig3"><header class="cc-res-h"><div class="cc-res-t"><h4>${title}</h4><span class="cc-badge${bad && rows.length ? " bad" : ""}">${ui.fmt(rows.length)}</span></div></header>${top || ""}${rows.length ? dataTable(K(k), heads, rows) : `<p class="cc-note">${empty}</p>`}</article>`;
     const simple = `<div class="cc-sig-simple">
       ${box3("s3-found", "١. من وُجدوا في الأوراق", 0, false, ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "الاسم في الورقة", "كيف عُرف", "الحالة"], t1, "لم يُطابَق أحد بعد.")}
       ${box3("s3-miss", "٢. المتبقون الذين لم يوقّعوا", 0, true, ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "السبب"], t2, "✓ كل المسجلين وقّعوا.")}
-      ${box3("s3-unk", "٣. أسماء من الأوراق لم تُعرف", 0, true, ["الاسم المقروء", "رقم الهوية", "الجوال", "التوقيع", "الورقة", "نتيجة البحث في النظام"], t3, "✓ كل الأسماء المقروءة عُرفت.")}
+      ${box3("s3-unk", "٣. أسماء من الأوراق لم تُعرف", 0, true, ["الاسم المقروء", "رقم الهوية", "الجوال", "المسار", "التوقيع", "الورقة", "نتيجة البحث في النظام"], t3, "✓ كل الأسماء المقروءة عُرفت.", multi ? "" : sigRetrackBar(unk))}
       ${review.length ? `<p class="cc-note">منهم <b>${ui.fmt(review.length)}</b> «يحتاج مراجعة» في الجدول الأول: أكّدهم أو ارفضهم من «التفاصيل والأدوات» أدناه.</p>` : ""}
       <div class="cc-stats"><button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div></div>`;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> ${multi ? "النموذج: " + FM + " <small>(" + ui.fmt(o.found.length) + " اسماً مقروءاً)</small>" : "نتيجة المطابقة"}</h3>
@@ -2886,6 +2886,57 @@
       ${sigWaBlock()}
       ${dataTable("sig-matrix", sigMatrixHeads(m), m.rows.map(sigMatrixRow))}</section>`;
   }
+  /* ===== غير المعروفين: فصلهم حسب المسار ومقارنتهم من جديد بكل طلاب مسارهم في النظام (كل المراحل والحالات) =====
+     غالباً هم من مرحلة أو حالة أخرى في المسار نفسه فلا يظهرون في قائمة المرحلة المختارة. أمر قراءة واحد لكل مسار،
+     ومن لا مسار له يُقارَن بكل الطلاب. ما يُجزم به يُعرف (lookups)، والقريب غير المؤكَّد يصير مرشحاً بزر «هو: …». قراءة فقط. */
+  function sigUnknownAll() {
+    const seen = new Set(), out = [];
+    sigForms().forEach((fm) => { const o = sigCompute(fm); if (o) o.orphans.concat(o.lost).forEach((f) => { if (!seen.has(f.id)) { seen.add(f.id); out.push(f); } }); });
+    return out;
+  }
+  const trackIdOf = (name) => { if (!name) return ""; const o = trackOpts().find((t) => App.ccUtil.sameTrack(t.t, name) === true); return o ? String(o.v) : ""; };
+  function sigRetrackPlan() {
+    const groups = new Map();
+    sigUnknownAll().forEach((f) => { const k = trackIdOf(sigTrackOf(f)) || "*"; (groups.get(k) || groups.set(k, []).get(k)).push(f); });
+    return groups;
+  }
+  /* «التجميل 5 · الحلاقة 3 · بلا مسار 2» */
+  function sigUnknownByTrack(list) {
+    const m = new Map();
+    list.forEach((f) => { const t = (sigTrackOf(f) || "بلا مسار").replace(/^مسار\s*/, ""); m.set(t, (m.get(t) || 0) + 1); });
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([t, n]) => esc(t) + " <b>" + ui.fmt(n) + "</b>").join(" · ");
+  }
+  function sigRetrackBar(list) {
+    if (!list.length) return "";
+    const n = sigRetrackPlan().size;
+    return `<div class="cc-sig-retrack"><p class="cc-note">حسب المسار: ${sigUnknownByTrack(list)}</p>
+      <div class="cc-row"><button type="button" class="btn navy small" data-cc="sig-retrack" ${state.busy ? "disabled" : ""}>افصلهم حسب المسار وقارن مرة أخرى (${ui.fmt(n)} ${n === 1 ? "أمر قراءة" : "أوامر قراءة"})</button>
+      <span class="cc-note">يجلب كل طلاب مسار كل اسم من النظام (كل المراحل والحالات) ويقارن بالاسم والهوية والجوال وأخطاء القراءة. قراءة فقط.</span></div></div>`;
+  }
+  async function sigRetrack() {
+    const c = state.sig, groups = sigRetrackPlan(); if (!groups.size) return;
+    state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
+    try {
+      requireAgent15();
+      const keys = [...groups.keys()];
+      const res = await runCommands(keys.map((k) => (k === "*" ? { type: "list", label: "كل الطلاب", params: {} } : { type: "list", label: optLabel("track_id", k), params: { track_id: k } })), { noGroup: true });
+      c.lookups = c.lookups || {}; c.nameHits = c.nameHits || {};
+      let sure = 0, maybe = 0;
+      keys.forEach((k, i) => {
+        const r = res[i]; if (!r || r.type !== "list" || !Array.isArray(r.rows)) return;
+        const pool = r.rows.map((x) => stuFrom(r, x)).filter((x) => x.name), fs = groups.get(k);
+        const m = App.ccUtil.matchNames(pool.map((x) => ({ name: x.name, id: x.id, phone: x.phone, track: x.track })), fs.map((f) => ({ name: f.name, id: f.nid, phone: f.phone, track: sigTrackOf(f) })));
+        m.pairs.forEach((p) => {
+          const f = fs[p.found], st = pool[p.reg];
+          if (p.sure) { c.lookups[f.id] = { q: "", list: [st], by: "retrack", score: p.score }; sure++; }
+          else { c.nameHits[f.id] = { list: [{ s: st, score: p.score }], at: Date.now() }; maybe++; }
+        });
+      });
+      sigLearnAuto(); sigSaveSoon();
+      ui.toast("عُرف " + ui.fmt(sure) + " اسماً بالمقارنة حسب المسار" + (maybe ? "، و" + ui.fmt(maybe) + " مرشحاً للمراجعة" : ""));
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
   /* عدة نماذج: جدول واحد لكل الطلاب بعمود لكل نموذج (وقّع أم لا)، وجدول واحد يجمع الأسماء غير المعروفة من كل النماذج */
   function sigMultiSimple(forms) {
     const m = sigMatrix(); if (!m) return "";
@@ -2904,12 +2955,13 @@
         e.signed.push(x.signed === true ? "موقّع" : x.signed === false ? "بلا توقيع" : "غير محسوم");
       });
     });
-    const uRows = [...unk.values()].map((e) => [e.f.name, e.f.nid || "", e.f.phone || "", e.forms.join("، "), [...new Set(e.signed)].join("، "), sigShort(e.f.file), sigLookupText(e.f)]);
+    const uVals = [...unk.values()].sort((a, b) => (sigTrackOf(a.f) || "ي").localeCompare(sigTrackOf(b.f) || "ي", "ar"));
+    const uRows = uVals.map((e) => [e.f.name, e.f.nid || "", e.f.phone || "", (sigTrackOf(e.f) || "—").replace(/^مسار\s*/, ""), e.forms.join("، "), [...new Set(e.signed)].join("، "), sigShort(e.f.file), sigLookupText(e.f)]);
     const box = (k, title, bad, hs, rs, empty, stats) => `<article class="cc-res cc-sig3"><header class="cc-res-h"><div class="cc-res-t"><h4>${title}</h4><span class="cc-badge${bad && rs.length ? " bad" : ""}">${ui.fmt(rs.length)}</span></div></header>${stats || ""}${rs.length ? dataTable(k, hs, rs) : `<p class="cc-note">${empty}</p>`}</article>`;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> نتيجة المطابقة <small>(${ui.fmt(forms.length)} نماذج: ${forms.map(esc).join("، ")})</small></h3>
       <div class="cc-sig-simple">
       ${box("sm-all", "١. كل الطلاب في النماذج", false, heads, rows, "لا مسجلين.", `<div class="cc-stats"><span class="cc-stat ok"><b>${ui.fmt(full)}</b> وقّع ${forms.length === 2 ? "النموذجين" : "كل النماذج"}</span><span class="cc-stat bad"><b>${ui.fmt(lack)}</b> ينقصه نموذج أو أكثر</span>${m.rows.length - full - lack ? `<span class="cc-stat"><b>${ui.fmt(m.rows.length - full - lack)}</b> يحتاج مراجعة</span>` : ""}</div>`)}
-      ${box("sm-unk", "٢. أسماء من الأوراق لم تُعرف (كل النماذج)", true, ["الاسم المقروء", "رقم الهوية", "الجوال", "النماذج", "التوقيع", "الورقة", "نتيجة البحث في النظام"], uRows, "✓ كل الأسماء المقروءة عُرفت.")}
+      ${box("sm-unk", "٢. أسماء من الأوراق لم تُعرف (كل النماذج)", true, ["الاسم المقروء", "رقم الهوية", "الجوال", "المسار", "النماذج", "التوقيع", "الورقة", "نتيجة البحث في النظام"], uRows, "✓ كل الأسماء المقروءة عُرفت.", sigRetrackBar(uVals.map((e) => e.f)))}
       <div class="cc-stats"><button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div></div></section>`;
   }
   function sigResult() {
@@ -4525,6 +4577,7 @@
           const c = state.sig, fid = b.dataset.f, h = ((c.nameHits || {})[fid] || {}).list, x = h && h[Number(b.dataset.k)];
           if (x) { c.lookups = c.lookups || {}; c.lookups[fid] = { q: "", list: [x.s], by: "name", score: x.score }; sigLearnAuto(); sigSaveSoon(); render(); }
           return;
+        } else if (act === "sig-retrack") { return sigRetrack();
         } else if (act === "sig-namesearch") { return runSigNameSearch();
         } else if (act === "sig-lookup") { return runSigLookup();
         } else if (act === "sig-xl-add") { return sigXlAdd();
@@ -4951,7 +5004,7 @@
   App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
     _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol, enrichResult, blank: isBlankCell },
     _extras: { apply: applyExtras, seen: extraSeen },
-    _sig: { compute: (f) => sigCompute(f), trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+    _sig: { compute: (f) => sigCompute(f), unknownAll: sigUnknownAll, retrackPlan: sigRetrackPlan, trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
