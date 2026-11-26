@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="styles/center.css?v=414">
   <link rel="stylesheet" href="styles/clear.css?v=412">
   <link rel="stylesheet" href="styles/center-clean.css?v=446">
+  <link rel="stylesheet" href="styles/unify.css?v=1">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -615,7 +616,7 @@
       <!-- ===== لوحة التحكم ===== -->
       <section class="view" id="view-admin">
         <div class="page-head">
-          <div><h2>⚙ لوحة التحكم</h2><p>المستخدمون وصلاحياتهم، وما يظهر لكل واحد، وحالة النظام</p></div>
+          <div><h2>لوحة التحكم</h2><p>المستخدمون وصلاحياتهم، وما يظهر لكل واحد، وحالة النظام</p></div>
           <div class="btn-row no-print">
             <button class="btn secondary" id="adm-refresh"><span class="material-symbols-outlined btn-ico">refresh</span>تحديث</button>
             <button class="btn secondary" id="adm-export" title="ملف فيه الحسابات وبصمات كلمات المرور، لنقلها إلى خادم آخر"><span class="material-symbols-outlined btn-ico">download</span>تصدير الحسابات</button>
@@ -1014,6 +1015,9 @@
       <!-- ===== شاشة إحصاءات نظام المركز ===== -->
       <!-- ===== جرد العُهد والمواد ===== -->
       <section class="view" id="view-inventory">
+        <div class="page-head">
+          <div><h2>جرد المسارات</h2><p>أصناف كل مسار ومواقعها، والجرد اليومي والأسبوعي، والحركات (صرف وإرجاع) — وما ينقص من كل صنف.</p></div>
+        </div>
         <div class="inv-tabs" id="inv-nav"></div>
         <!-- سطر إرشاد لكل شاشة: ما تفعله هذه الشاشة ومن يستخدمها -->
         <div class="inv-hint" id="inv-hint" hidden></div>
@@ -1660,6 +1664,6 @@
   <script src="src/whatsapp.js?v=403"></script>
   <script src="src/realtime.js?v=340"></script>
   <script src="src/nav-order.js?v=451"></script>
-  <script src="src/app.js?v=454"></script>
+  <script src="src/app.js?v=455"></script>
 </body>
 </html>

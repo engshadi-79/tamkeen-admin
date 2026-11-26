@@ -23,6 +23,9 @@
     const sep = () => `<span class="material-symbols-outlined crumb-sep">chevron_left</span>`;
     nav.innerHTML = `<span>تمكين</span>${sep()}<span>${ui.esc(section)}</span>${sep()}<b>${ui.esc(label)}</b>`;
     host.insertBefore(nav, host.firstChild);
+    // أيقونة الصفحة بجانب عنوانها: نفس أيقونة بندها في القائمة، فتتعرّف الصفحة بنظرة
+    const ico = (btn.querySelector(".ico") || {}).textContent;
+    if (ico && !title.querySelector(".ph-ico")) title.insertAdjacentHTML("afterbegin", `<span class="ph-ico material-symbols-outlined" aria-hidden="true">${ui.esc(ico.trim())}</span>`);
   }
 
   function show(view) {
