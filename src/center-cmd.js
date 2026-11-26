@@ -5004,7 +5004,10 @@
           const groupBy = [];
           if (headers.includes("المسار") && distinct("المسار") > 1) groupBy.push("المسار");
           if (headers.includes("المجموعة")) groupBy.push("المجموعة");
-          App.converter.useData(headers, rows, label, { templateIds: state.tplPick.slice(), autoParse: true, groupBy });
+          // صفحة «المحوّل» منفصلة عن صفحة أوامر المركز: ننتقل إليها أولاً ليرى المستخدم خطوة المطابقة والنتيجة
+          location.hash = "#converter";
+          ui.toast("جارٍ تجهيز النماذج في «المحوّل»…");
+          await App.converter.useData(headers, rows, label, { templateIds: state.tplPick.slice(), autoParse: true, groupBy });
           return;
         } else if (act === "cols-empty") { emptyHeads().forEach((h) => state.hiddenCols.add(h));
         } else if (act === "cols-none") { state.hiddenCols = new Set(resultHeads());
