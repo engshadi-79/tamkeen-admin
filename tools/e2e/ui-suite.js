@@ -46,6 +46,16 @@ async function suite() {
   c.state.results = { results: [{ type: "list", heads: ["الاسم", "رقم الهوية"], rows: Array.from({ length: 130 }, (_, i) => ({ cells: ["طالب " + String(i + 1).padStart(3, "0") + (i % 10 === 0 ? " الشاعر" : ""), "40" + (1000000 + i)] })) }] };
   c.state.labels = ["اختبار"]; c.render();
   const body = () => b.querySelector(".cc-tbl-body");
+  {   // «جهّز النماذج»: ينتقل إلى صفحة «المحوّل» ويسلّمها البيانات والقوالب المختارة
+    const ouse = App.converter.useData, oh = location.hash, otp = c.state.tpls, opk = c.state.tplPick; let got = null;
+    App.converter.useData = async (h, r, l, o) => { got = { h, n: r.length, o, hash: location.hash }; };
+    c.state.tpls = [{ id: "t1", name: "قالب 1", format: "docx" }, { id: "t2", name: "قالب 2", format: "xlsx" }]; c.state.tplPick = ["t1", "t2"]; c.state.open.forms = true; c.render();
+    const tf = b.querySelector('[data-cc="to-forms"]');
+    ok("زر «جهّز النماذج (2 قوالب)» مفعّل", !!tf && !tf.disabled && /2/.test(tf.textContent), tf && tf.outerHTML.slice(0, 120));
+    tf.click(); for (let i = 0; i < 20 && !got; i++) await wait(50);
+    ok("«جهّز النماذج» ينقلك إلى صفحة «المحوّل» ويسلّمها 130 صفاً والقالبين", !!got && got.hash === "#converter" && got.n === 130 && got.o.templateIds.join() === "t1,t2" && got.o.autoParse === true, JSON.stringify(got && { hash: got.hash, n: got.n, o: got.o }));
+    App.converter.useData = ouse; c.state.tpls = otp; c.state.tplPick = opk; location.hash = oh || "#center"; await wait(150); c.render();
+  }
   ok("الجدول: 50 صفاً في الصفحة و3 صفحات", body().querySelectorAll("tbody tr").length === 50 && /3/.test((b.querySelector(".cc-pager span") || {}).textContent || ""));
   const q = b.querySelector("[data-tbl-q]"); q.value = "الشاعر"; q.dispatchEvent(new Event("input", { bubbles: true }));
   ok("الجدول: البحث يحصر النتائج (13)", body().querySelectorAll("tbody tr").length === 13);
