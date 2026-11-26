@@ -507,6 +507,14 @@
   function planView() {
     const p = state.plan;
     if (!p) return "";
+    if (p.kind === "cancel") {
+      const LC = { cancel: "سيُغيَّر طلبه إلى «ملغي»" + (p.removeFromGroup ? " ثم يُخرج من مجموعته" : ""), already: "طلبه ملغي أصلاً" + (p.removeFromGroup ? " — يُخرج من مجموعته إن بقي" : ""), invalid: "لن يُنفَّذ" };
+      const todo = (p.cancel || 0) + (p.already || 0);
+      return `<section class="cc-card cc-plan cc-plan-danger"><header class="cc-card-h"><h3>معاينة قبل الكتابة في نظام المركز: إلغاء طلبات${p.removeFromGroup ? " وإخراج من المجموعات" : ""}</h3>
+      <p>سيُلغى <b>${ui.fmt(p.cancel)}</b> · ملغي أصلاً ${ui.fmt(p.already)} · لن يُنفَّذ ${ui.fmt(p.invalid)} — من ${ui.fmt(p.total)}. <b>لا يُكتب شيء قبل موافقتك.</b></p></header>
+      <div class="cc-card-b"><div class="cc-scroll"><table class="cc-table"><tbody>${p.rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.nid)}</td><td>${esc(LC[r.state] || r.state)}${r.why ? " — " + esc(r.why) : ""}</td></tr>`).join("")}</tbody></table></div></div>
+      <footer class="cc-actions"><div class="cc-sum"></div><div class="cc-act"><button type="button" class="cc-link" data-cc="plan-no">إلغاء</button><button type="button" class="btn danger" data-cc="plan-ok" ${todo ? "" : "disabled"}>نفّذ في النظام (${ui.fmt(todo)})</button></div></footer></section>`;
+    }
     const L = { create: "سيُسجَّل", exists: "موجود أصلاً — سيُتجاوز", invalid: "غير صالح — لن يُرسل" };
     return `<section class="cc-card cc-plan"><header class="cc-card-h"><h3>معاينة قبل الكتابة في نظام المركز</h3>
       <p>سيُسجَّل <b>${ui.fmt(p.create)}</b> · مسجّل أصلاً ${ui.fmt(p.exists)} · غير صالح ${ui.fmt(p.invalid)} — من ${ui.fmt(p.total)}. لا يُكتب شيء قبل موافقتك.</p></header>
@@ -613,10 +621,18 @@
     st.page = Math.max(0, Math.min(st.page, pages - 1));
     const part = rows.slice(st.page * TBL_SIZE, (st.page + 1) * TBL_SIZE);
     const pager = pages > 1 ? `<div class="cc-pager"><button type="button" class="cc-link" data-tbl-page="${esc(k)}" data-d="-1" ${st.page === 0 ? "disabled" : ""}>السابق</button><span>صفحة ${ui.fmt(st.page + 1)} من ${ui.fmt(pages)}</span><button type="button" class="cc-link" data-tbl-page="${esc(k)}" data-d="1" ${st.page >= pages - 1 ? "disabled" : ""}>التالي</button></div>` : "";
-    return `<div class="cc-scroll"><table class="cc-table"><thead><tr>${d.heads.map((h, i) => `<th data-tbl-sort="${i}" data-tbl="${esc(k)}" class="cc-sortable ${st.sort === i ? (st.dir > 0 ? "asc" : "desc") : ""}" title="اضغط للفرز">${esc(h)}</th>`).join("")}</tr></thead><tbody>${part.map((r) => `<tr>${r.map((c, ci) => `<td${lowCell(d.heads[ci], c) ? ' class="cc-low" title="دون العتبة"' : ""}>${esc(showCell(c))}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${d.heads.length}" class="cc-empty">لا نتائج مطابقة للبحث</td></tr>`}</tbody></table></div>${pager}`;
+    const sk = d.sel != null, set = sk ? selOf(k) : null;
+    return `<div class="cc-scroll"><table class="cc-table"><thead><tr>${sk ? `<th class="cc-selcol"><input type="checkbox" data-tbl-all="${esc(k)}" title="حدّد كل المعروض (بعد البحث)" aria-label="حدّد الكل"></th>` : ""}${d.heads.map((h, i) => `<th data-tbl-sort="${i}" data-tbl="${esc(k)}" class="cc-sortable ${st.sort === i ? (st.dir > 0 ? "asc" : "desc") : ""}" title="اضغط للفرز">${esc(h)}</th>`).join("")}</tr></thead><tbody>${part.map((r) => `<tr>${sk ? `<td class="cc-selcol"><input type="checkbox" data-tbl-sel="${esc(k)}" value="${esc(cellStr(r[d.sel]))}" ${set.has(cellStr(r[d.sel])) ? "checked" : ""} aria-label="تحديد"></td>` : ""}${r.map((c, ci) => `<td${lowCell(d.heads[ci], c) ? ' class="cc-low" title="دون العتبة"' : ""}>${esc(showCell(c))}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${d.heads.length + (sk ? 1 : 0)}" class="cc-empty">لا نتائج مطابقة للبحث</td></tr>`}</tbody></table></div>${pager}`;
   }
-  function dataTable(k, heads, rows) {
-    tblData[k] = { heads, rows };
+  /* التحديد في الجداول: state.tblSel[k] = Set من قيم عمود المفتاح */
+  const selOf = (k) => { state.tblSel = state.tblSel || {}; return state.tblSel[k] || (state.tblSel[k] = new Set()); };
+  function selSync(k) {
+    const n = selOf(k).size, box = $("cc-body"); if (!box) return;
+    box.querySelectorAll(`[data-selcount="${CSS.escape(k)}"]`).forEach((e) => { e.textContent = ui.fmt(n); });
+    box.querySelectorAll(`[data-selbtn="${CSS.escape(k)}"]`).forEach((e) => { e.disabled = !n || state.busy; });
+  }
+  function dataTable(k, heads, rows, opts) {
+    tblData[k] = { heads, rows, sel: opts && opts.sel != null ? opts.sel : null };
     const st = tblSt(k);
     return `<div class="cc-tbl" data-tblbox="${esc(k)}"><div class="cc-tbl-bar"><input type="search" class="cc-tbl-q" data-tbl-q="${esc(k)}" placeholder="بحث في الجدول…" value="${esc(st.q)}"><span class="cc-tbl-n" data-tbl-n>${ui.fmt(tblRows(k).length)} من ${ui.fmt(rows.length)}</span><button type="button" class="cc-link" data-tbl-copy="${esc(k)}">نسخ للحافظة</button></div><div class="cc-tbl-body">${tblBody(k)}</div></div>`;
   }
@@ -3308,6 +3324,38 @@
       <footer class="cc-actions"><div class="cc-sum"><b>${ui.fmt(estimateReads("run-att"))} أمر قراءة (تقدير أقصى)</b><span>${esc(c.from || today)} ← ${esc(c.to || today)}</span></div>
         <div class="cc-act"><button type="button" class="btn secondary" data-cc="att-today" ${state.busy ? "disabled" : ""} title="يضبط الفترة على اليوم ويقرأ جلساته">تقرير اليوم</button><button type="button" class="btn navy" data-cc="run-att" ${state.busy ? "disabled" : ""}>${state.busy ? "جارٍ القراءة…" : "اجلب الحضور"}</button></div></footer></section>`;
   }
+  /* ===== إلغاء طلبات طلاب محددين من جدول الحضور («ملغي») ثم إخراجهم من مجموعاتهم — كتابة بعد معاينة وموافقة ===== */
+  function attCancelBar() {
+    const n = selOf("att-0").size;
+    return `<div class="cc-cancelbar"><div class="cc-row"><span class="cc-note"><b data-selcount="att-0">${ui.fmt(n)}</b> محدداً</span>
+        <button type="button" class="cc-link" data-cc="att-sel-flag">حدّد المنذَرين</button><button type="button" class="cc-link" data-cc="att-sel-none">إلغاء التحديد</button>
+        <button type="button" class="btn danger small" data-cc="att-cancel" data-selbtn="att-0" ${n && !state.busy ? "" : "disabled"}>اجعل طلباتهم «ملغي» ثم أخرجهم من مجموعاتهم</button></div>
+      <p class="cc-note">⚠ كتابة في نظام المركز: تظهر أولاً معاينة بالأسماء وحالة طلب كل منهم، ولا يُكتب شيء قبل موافقتك. لكل طالب: يُغيَّر طلبه إلى «ملغي» ويُتحقَّق، ثم يُخرج من مجموعته إن بقي فيها. ${agentHas(9) ? "" : "<b>يحتاج إضافة «وكيل تمكين» 1.5.9.</b>"}</p></div>`;
+  }
+  const CANCEL_APP = { cancelled: "✓ أُلغي", already: "كان ملغي أصلاً", failed: "✗ تعذّر", invalid: "✗ لم يُنفَّذ", skipped: "لم يُنفَّذ" };
+  const CANCEL_GRP = { removed: "✓ أُخرج", none: "ليس في مجموعة", failed: "✗ ما زال فيها", "": "—" };
+  function attCancelResult() {
+    const o = state.att.cancelOut; if (!o || !o.rows) return "";
+    const ok = o.rows.filter((x) => (x.app === "cancelled" || x.app === "already") && x.group !== "failed").length;
+    return `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>نتيجة الإلغاء في نظام المركز</h4><span class="cc-badge${ok < o.rows.length ? " bad" : ""}">${ui.fmt(ok)} من ${ui.fmt(o.rows.length)}</span></div></header>
+      ${dataTable("att-cancel", ["الطالب", "الرقم", "الطلب", "المجموعة", "ملاحظة"], o.rows.map((x) => [x.name, x.stu, CANCEL_APP[x.app] || x.app, CANCEL_GRP[x.group] || x.group, x.message || (x.was ? "كانت حالته «" + x.was + "»" : "")]))}
+      <p class="cc-note">أعد تحميل الحضور لاحقاً لترى أثر الإلغاء. للتراجع: غيّر حالة الطلب من صفحة الطلب في النظام (الحالة السابقة في عمود الملاحظة).</p></article>`;
+  }
+  async function attCancelRun() {
+    const set = selOf("att-0"); if (!set.size) return;
+    if (!agentHas(9)) { state.resultError = "إلغاء الطلبات يحتاج إضافة «وكيل تمكين» بالإصدار 1.5.9 فأحدث: حدّثها من تنبيه التحديث ثم أعد المحاولة."; return render(); }
+    const studs = (state.att.out && state.att.out.students) || [];
+    const items = [...set].map((stu) => { const e = studs.find((x) => x.stu === stu) || {}; return { stu, name: e.name || "", track: e.track || "" }; });
+    state.busy = true; state.resultError = ""; state.progress = ""; state.att.cancelOut = null; render(); refreshStatus();
+    try {
+      const res = await runCommands([{ type: "cancel", label: "إلغاء طلبات وإخراج من المجموعات", items, status: "cancelled", removeFromGroup: true }], { noCache: true, noGroup: true });
+      const r0 = res[0]; if (!r0 || r0.error) throw new Error((r0 && r0.error) || "لم تصل نتيجة الإلغاء.");
+      state.att.cancelOut = r0;
+      r0.rows.filter((x) => x.app === "cancelled" || x.app === "already").forEach((x) => set.delete(x.stu));
+      ui.toast("انتهى: " + ui.fmt(r0.rows.filter((x) => x.app === "cancelled").length) + " أُلغي، " + ui.fmt(r0.rows.filter((x) => x.group === "removed").length) + " أُخرج من مجموعته");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
   function attResult() {
     const o = state.att.out;
     if (!o) return "";
@@ -3324,7 +3372,7 @@
             <p>${esc(e.absent.slice(0, 6).join("، "))}${e.absent.length > 6 ? " … و" + ui.fmt(e.absent.length - 6) + " آخرون" : ""}</p><button type="button" class="cc-link" data-cc="att-wa" data-i="${i}">نسخ نص واتساب</button></div>`).join("")}</div></article>`;
       })()}
       <div class="cc-stats"><span class="cc-stat"><b>${ui.fmt(o.sessions)}</b> جلسة قُرئت${o.truncated ? ` من ${ui.fmt(o.listed)} (اقتُصر على الحد الأقصى؛ ارفعه أو قصّر الفترة)` : ""}</span><span class="cc-stat"><b>${ui.fmt(o.students.length)}</b> طالباً</span><span class="cc-stat"><b>${ui.fmt(o.students.reduce((a, e) => a + e.absent, 0))}</b> غياباً</span>${rows.length ? '<button type="button" class="btn secondary small" data-cc="export-att">تنزيل Excel</button>' : ""}</div>
-      ${rows.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الغياب لكل طالب (${esc(o.from)} ← ${esc(o.to)})</h4><span class="cc-badge">${ui.fmt(rows.length)} طالباً</span></div></header>${dataTable("att-0", attHeads(), rows)}</article>` : '<p class="cc-note">لا جلسات بسجلات حضور في هذه الفترة والنطاق.</p>'}
+      ${rows.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>الغياب لكل طالب (${esc(o.from)} ← ${esc(o.to)})</h4><span class="cc-badge">${ui.fmt(rows.length)} طالباً</span></div></header>${attCancelBar()}${dataTable("att-0", attHeads(), rows, { sel: 1 })}</article>${attCancelResult()}` : '<p class="cc-note">لا جلسات بسجلات حضور في هذه الفترة والنطاق.</p>'}
       ${day.length ? `<article class="cc-res"><header class="cc-res-h"><div class="cc-res-t"><h4>غائبو آخر يوم (${esc(o.lastDay)})</h4><span class="cc-badge">${ui.fmt(day.length)}</span></div></header>${dataTable("att-1", attDayHeads(), day)}</article>` : ""}
       <p class="cc-note">قُرئت ${esc(new Date(o.at).toLocaleString("ar"))}. لا يُكتب شيء في نظام المركز.</p></section>`;
   }
@@ -4523,6 +4571,9 @@
           const e = state.enrich; if (!e) return;
           state.gaps.out = { at: new Date(), file: true, lists: gapsListsFrom(e) };
           return render();
+        } else if (act === "att-cancel") { return attCancelRun();
+        } else if (act === "att-sel-flag") { const set = selOf("att-0"); attFlagged().forEach((e) => set.add(e.stu)); tblRefresh("att-0"); return selSync("att-0");
+        } else if (act === "att-sel-none") { selOf("att-0").clear(); tblRefresh("att-0"); return selSync("att-0");
         } else if (act === "pledge-chairs-word" || act === "pledge-chairs-xlsx") {
           const st = pledgeStudents(); if (!st.length) return;
           const o = state.pledge.opts || pledgeOpts(), items = App.pledgeSheet.chairs(st, o, o.chairStart), base = "أرقام الكراسي " + ui.todayISO();
@@ -4834,6 +4885,8 @@
         return render();
       }
       if (t.dataset.enr === "auto") { state.enrichAuto = !!t.checked; try { localStorage.setItem("tamkeen:cc-enrich-auto", t.checked ? "1" : "0"); } catch (e) { /* خاص */ } return render(); }
+      if (t.dataset.tblSel) { const set = selOf(t.dataset.tblSel); if (t.checked) set.add(t.value); else set.delete(t.value); return selSync(t.dataset.tblSel); }
+      if (t.dataset.tblAll) { const k = t.dataset.tblAll, set = selOf(k), d = tblData[k]; if (d && d.sel != null) tblRows(k).forEach((row) => { const v = cellStr(row[d.sel]); if (t.checked) set.add(v); else set.delete(v); }); tblRefresh(k); return selSync(k); }
       if (t.id === "cc-enrich-file") {
         const f = (t.files || [])[0]; if (!f) return;
         state.enrichErr = "";
@@ -5004,6 +5057,7 @@
   App.centerCmd = { allowed: centerAllowed, renderDash, searchIndex: () => centerSearchIndex(), openMode: (k) => openMode(k), _scope: { save: scopeSave, load: scopeLoad }, _monthly: { range: monthlyRange, compose: monthlyCompose },
     _gaps: { stats: gapStats, fields: gapFieldList, col: gapCol, enrichResult, blank: isBlankCell },
     _extras: { apply: applyExtras, seen: extraSeen },
+    _att: { sel: () => selOf("att-0") },
     _sig: { compute: (f) => sigCompute(f), unknownAll: sigUnknownAll, retrackPlan: sigRetrackPlan, trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

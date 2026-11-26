@@ -7,7 +7,7 @@ const ROOT = process.argv[2];                 // مجلد يحوي سكربتا�
 
 const students = [];
 for (let i = 1; i <= 7; i++) {
-  students.push({ id: 1400 + i, name: "طالب تجريبي " + i, nid: "40000000" + i, phone: "059000000" + i, track: "2", status: "active" });
+  students.push({ id: 1400 + i, name: "طالب تجريبي " + i, nid: "40000000" + i, phone: "059000000" + i, track: "2", status: "active", stu: "STU-20260101-0000" + i, app: 5000 + i, appStatus: "accepted", member: 800 + i });
 }
 let nextId = 1500;
 const tokens = new Set();
@@ -28,11 +28,11 @@ function listPage(url) {
   const per = Math.max(1, Number(url.searchParams.get("per_page")) || 20);
   const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
   const trk = url.searchParams.get("track_id");
-  let rows = students.filter((s) => (!q || s.name.includes(q) || s.nid.includes(q) || s.phone.includes(q)) && (!trk || s.track === trk));
+  let rows = students.filter((s) => (!q || s.name.includes(q) || s.nid.includes(q) || s.phone.includes(q) || (s.stu || "").includes(q)) && (!trk || s.track === trk));
   const total = rows.length;
   rows = rows.slice((page - 1) * per, page * per);
   const tr = rows.map((s, i) => `<tr><td>${s.id}</td><td>${esc(s.name)}</td><td>${s.nid}</td><td>${TRACKS[s.track] || ""}</td><td>${s.status}</td>
-    <td><a href="/admin/students/${s.id}">تفاصيل</a>
+    <td><span>${s.stu || ""}</span> <a href="/admin/students/${s.id}">تفاصيل</a>${s.app ? ` <a href="/admin/applications/${s.app}">عرض الطلب</a>` : ""}
       <div class="modal"><form method="post" action="/admin/students/${s.id}/english-name"><input type="hidden" name="_token" value="X">الاسم الإنجليزي <input name="full_name_en"><button>حفظ</button></form></div></td></tr>`).join("");
   const next = page * per < total ? `<a rel="next" href="/admin/students?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), page: page + 1 })}">التالي</a>` : "";
   return layout(`<form method="get" action="/admin/students"><input name="q"><button>عرض النتائج</button></form>
@@ -145,6 +145,42 @@ http.createServer((req, res) => {
       <div class="card"><div class="card-header">حسب المسار والمرحلة</div><table><thead><tr><th>المسار</th><th>المرحلة</th><th>عدد الإرسالات</th><th>متوسط الدرجة</th></tr></thead><tbody>${body}</tbody></table></div>
       <div class="card"><div class="card-header">حسب الحالة</div><table><thead><tr><th>الحالة</th><th>العدد</th></tr></thead><tbody><tr><td>مكتمل</td><td>100</td></tr><tr><td>جزئي</td><td>37</td></tr></tbody></table></div>`));
   }
+  // ===== طلبات التسجيل والمجموعات (لأمر cancel): تغيير حالة الطلب، وإخراج العضوية =====
+  const newTok = () => { const t = "T" + Math.random().toString(36).slice(2); tokens.add(t); return t; };
+  const readForm = (cb) => { const chunks = []; req.on("data", (c) => chunks.push(c)); req.on("end", () => cb(parseMultipart(Buffer.concat(chunks), req.headers["content-type"]))); };
+  const APP_ST = [["submitted", "مقدم"], ["under_review", "قيد المراجعة"], ["accepted", "مقبول"], ["rejected", "مرفوض"], ["cancelled", "ملغي"]];
+  let am = url.pathname.match(/^\/admin\/applications\/(\d+)$/);
+  if (req.method === "GET" && am) {
+    const st = students.find((x) => String(x.app) === am[1]); if (!st) return send(404, layout("<p>غير موجود</p>"));
+    return send(200, layout(`<h3>ملف الطلب</h3><p>${esc(st.name)}</p><form method="post" action="/admin/applications/${st.app}/change-status"><input type="hidden" name="_token" value="${newTok()}"><input type="hidden" name="_method" value="PATCH">
+      <select name="status">${APP_ST.map(([v, t]) => `<option value="${v}"${v === st.appStatus ? " selected" : ""}>${t}</option>`).join("")}</select><textarea name="notes"></textarea><button>تحديث</button></form>`));
+  }
+  am = url.pathname.match(/^\/admin\/applications\/(\d+)\/change-status$/);
+  if (req.method === "POST" && am) {
+    return readForm((f) => {
+      if (!tokens.has(f._token)) return send(419, "Page Expired");
+      if (f._method !== "PATCH" || !f.status) return send(422, layout("<p>طلب غير صالح</p>"));
+      const st = students.find((x) => String(x.app) === am[1]); if (!st) return send(404, layout("<p>غير موجود</p>"));
+      st.appStatus = f.status;
+      if (f.status === "cancelled" && global.cancelRemoves) st.member = null;        // نظام يُخرج من المجموعة تلقائياً عند الإلغاء
+      return send(302, "", "text/plain", { Location: "/admin/applications/" + st.app });
+    });
+  }
+  if (req.method === "GET" && url.pathname === "/admin/training-groups") {
+    const trk = url.searchParams.get("track_id");
+    const rowsG = students.filter((x) => x.member && (!trk || x.track === trk)).map((x) => `<div class="row align-items-center g-2"><div class="col">${esc(x.name)} <small>${x.stu}</small></div><div class="col-md-2 text-md-end"><form method="POST" action="/admin/training-groups/members/${x.member}"><input type="hidden" name="_token" value="${newTok()}"><input type="hidden" name="_method" value="DELETE"><input type="hidden" name="track_id" value="${x.track}"><input type="hidden" name="training_course_id" value="1"><input type="hidden" name="training_group_id" value="1"><button onclick="return confirm('إخراج الطالب من هذه المجموعة؟')">إخراج</button></form></div></div>`).join("");
+    return send(200, layout(`<form method="get" action="/admin/training-groups"><select name="track_id"><option value="">كل المسارات</option>${Object.entries(TRACKS).map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></form><div class="card">${rowsG}</div>`));
+  }
+  am = url.pathname.match(/^\/admin\/training-groups\/members\/(\d+)$/);
+  if (req.method === "POST" && am) {
+    return readForm((f) => {
+      if (!tokens.has(f._token)) return send(419, "Page Expired");
+      if (f._method !== "DELETE") return send(422, layout("<p>طلب غير صالح</p>"));
+      const st = students.find((x) => String(x.member) === am[1]); if (st) st.member = null;
+      return send(302, "", "text/plain", { Location: "/admin/training-groups" });
+    });
+  }
+  if (url.pathname === "/__cancelRemoves") { global.cancelRemoves = url.searchParams.get("on") === "1"; return send(200, "ok", "text/plain"); }
   if (req.method === "GET" && url.pathname === "/admin/students") return send(200, listPage(url));
   if (req.method === "GET" && url.pathname === "/admin/students/create") return send(200, createPage());
   if (req.method === "POST" && url.pathname === "/admin/students") {

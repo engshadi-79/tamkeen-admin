@@ -27,7 +27,12 @@ window.__kxStart = async () => {
     ["GET", /^\/admin\/evaluation-impact-reports\/(summary|pre-post|impact|questions|responses)(\?[^#]*)?$/],  // إحصاءات قياس الأثر (قراءة فقط)
     ["GET", /^\/admin\/training-attendances(\?[^#]*)?$/],          // قائمة جلسات الحضور (قراءة فقط)
     ["GET", /^\/admin\/training-attendances\/\d+\/edit$/],       // حضور جلسة واحدة — قراءة فقط، لا يُحفَظ منه شيء
-    ["GET", /^\/admin\/students\/export-excel(\?[^#]*)?$/],     // ملف «تصدير Excel» نفسه (بيانات الطالب والمتقدم) — قراءة فقط، طلب واحد بدل صفحة لكل طالب
+    ["GET", /^\/admin\/students\/export-excel(\?[^#]*)?$/],
+    // إلغاء طلب طالب وإخراجه من مجموعته (أمر cancel — بعد معاينة وموافقة صريحة فقط)
+    ["GET", /^\/admin\/applications\/\d+$/],                       // صفحة الطلب: الحالة الحالية ونموذج «تغيير الحالة السريع»
+    ["POST", /^\/admin\/applications\/\d+\/change-status$/],      // تغيير حالة الطلب (PATCH عبر _method)
+    ["GET", /^\/admin\/training-groups(\?[^#]*)?$/],                // صفحة المجموعات: عضوية الطالب ونموذج «إخراج»
+    ["POST", /^\/admin\/training-groups\/members\/\d+$/],          // إخراج الطالب من المجموعة (DELETE عبر _method)     // ملف «تصدير Excel» نفسه (بيانات الطالب والمتقدم) — قراءة فقط، طلب واحد بدل صفحة لكل طالب
   ];
   const guard = (method, path) => {
     const u = new URL(path, location.origin);
@@ -660,6 +665,125 @@ window.__kxStart = async () => {
     return out;
   }
 
+  /* ===== إلغاء طلب الطالب («ملغي») ثم إخراجه من مجموعته إن بقي فيها =====
+     cmd = { type:"cancel", items:[{stu, name}], status:"cancelled", removeFromGroup:true }
+     1) معاينة بلا كتابة: الطالب برقمه ← رابط طلبه ← حالته الحالية  2) موافقة صريحة (تمكين أو زر اللوحة)
+     3) لكل طالب: نموذج الطلب طازجاً (رمز حماية جديد)، يُغيَّر حقل الحالة وحده، ثم تُعاد القراءة للتحقق
+     4) يُبحث عنه في صفحة المجموعات؛ إن بقي يُخرج بنموذج «إخراج» نفسه ثم يُتحقَّق. ثلاثة إخفاقات متتالية توقف التنفيذ. */
+  const statusOfApp = (doc) => { const f = [...doc.querySelectorAll("form")].find((x) => /\/change-status$/.test(new URL(x.getAttribute("action") || "", location.origin).pathname)); const sel = f && f.querySelector('select[name="status"]'); const o = sel && (sel.querySelector("option[selected]") || sel.options[sel.selectedIndex]); return { form: f, status: o ? o.value : "", label: o ? clean(o.textContent) : "" }; };
+  async function findStudentApp(stu) {
+    await sleep(GET_GAP);
+    const { doc } = await http("GET", "/admin/students?" + qs({ q: stu, per_page: "20" }));
+    const tr = [...doc.querySelectorAll("table tbody tr")].find((x) => x.textContent.includes(stu));
+    if (!tr) return null;
+    const app = [...tr.querySelectorAll("a[href]")].map((a) => new URL(a.getAttribute("href"), location.origin).pathname).find((h) => /^\/admin\/applications\/\d+$/.test(h));
+    const sid = ([...tr.querySelectorAll("a[href]")].map((a) => (new URL(a.getAttribute("href"), location.origin).pathname.match(/^\/admin\/students\/(\d+)/) || [])[1]).find(Boolean)) || "";
+    return { app: app || "", sid, rowText: clean(tr.textContent) };
+  }
+  /* عضوية الطالب في صفحة المجموعات: الصفحة الافتراضية ثم بمرشح مسار الطالب */
+  async function findMembership(stu, trackHint) {
+    const look = (doc) => {
+      const f = [...doc.querySelectorAll("form")].find((x) => /\/training-groups\/members\/\d+$/.test(new URL(x.getAttribute("action") || "", location.origin).pathname) && x.closest("div.row, tr, li, .card") && (x.closest("div.row, tr, li, .card").textContent || "").includes(stu));
+      return f || null;
+    };
+    await sleep(GET_GAP);
+    let { doc } = await http("GET", "/admin/training-groups");
+    let f = look(doc); if (f) return { form: f, url: "/admin/training-groups" };
+    const opts = [...doc.querySelectorAll('select[name="track_id"] option')].filter((o) => o.value && trackHint && clean(trackHint).includes(clean(o.textContent).replace(/^مسار\s*/, "")));
+    for (const o of opts.slice(0, 2)) {
+      const url = "/admin/training-groups?" + qs({ track_id: o.value });
+      await sleep(GET_GAP);
+      ({ doc } = await http("GET", url));
+      f = look(doc); if (f) return { form: f, url };
+    }
+    return null;
+  }
+  const formBody = (form, over) => {
+    const fd = new FormData();
+    form.querySelectorAll("input[name], select[name], textarea[name]").forEach((el) => {
+      const t = (el.getAttribute("type") || "").toLowerCase();
+      if (/^(password|file|submit|button|image)$/.test(t)) return;
+      if ((t === "checkbox" || t === "radio") && !el.checked && !el.hasAttribute("checked")) return;
+      const v = el.tagName === "SELECT" ? ((el.querySelector("option[selected]") || el.options[el.selectedIndex] || {}).value || "") : (el.value != null ? el.value : el.getAttribute("value") || "");
+      fd.append(el.name, v);
+    });
+    Object.keys(over || {}).forEach((k) => fd.set(k, over[k]));
+    return fd;
+  };
+  async function cmdCancel(cmd, index) {
+    const out = { index, type: "cancel", label: cmd.label || "", rows: [] };
+    const target = cmd.status || "cancelled", items = (cmd.items || []).slice(0, MAX_ROWS);
+    say("معاينة: فحص " + items.length + " طالباً");
+    const plan = [];
+    for (const it of items) {
+      if (stopped) break;
+      const p = { name: it.name || "", stu: clean(it.stu), track: it.track || "", state: "cancel", why: "" };
+      try {
+        const st = await findStudentApp(p.stu);
+        if (!st) { p.state = "invalid"; p.why = "لم أجد الطالب برقمه"; }
+        else if (!st.app) { p.state = "invalid"; p.why = "لا طلب تسجيل مرتبط به"; }
+        else {
+          p.app = st.app; await sleep(GET_GAP);
+          const a = statusOfApp((await http("GET", st.app)).doc);
+          if (!a.form) { p.state = "invalid"; p.why = "لا نموذج لتغيير حالة الطلب"; }
+          else { p.cur = a.label; if (a.status === target) { p.state = "already"; p.why = "طلبه «" + a.label + "» أصلاً"; } else p.why = "الحالة الآن «" + a.label + "»"; }
+        }
+      } catch (e) { if (/الجلسة/.test(e.message)) throw e; p.state = "invalid"; p.why = e.message; }
+      plan.push(p); say("معاينة " + plan.length + "/" + items.length);
+    }
+    const n = (s) => plan.filter((p) => p.state === s).length;
+    bodyEl.replaceChildren(h("div", { textContent: "سيُلغى: " + n("cancel") + " — ملغي أصلاً: " + n("already") + " — لن يُنفَّذ: " + n("invalid") }));
+    const todo = plan.filter((p) => p.state !== "invalid");
+    plan.filter((p) => p.state === "invalid").forEach((p) => out.rows.push({ name: p.name, stu: p.stu, app: "invalid", group: "", message: p.why }));
+    if (!todo.length) { log("لا شيء يُنفَّذ."); return out; }
+    say("سيُكتب في نظام المركز لـ" + todo.length + " طالباً. راجع ثم اضغط «نفّذ».");
+    const summary = { kind: "cancel", total: plan.length, cancel: n("cancel"), already: n("already"), invalid: n("invalid"), removeFromGroup: cmd.removeFromGroup !== false,
+      rows: plan.slice(0, 120).map((p) => ({ name: p.name, nid: p.stu, state: p.state, why: p.why })) };
+    const local = wait("نفّذ الإلغاء لـ" + todo.length + " طالباً", "go");
+    const go = typeof window.__kxApprove === "function" ? await Promise.race([local, window.__kxApprove(summary)]) : await local;
+    actEl.replaceChildren(stopBtn);
+    if (!go || stopped) { todo.forEach((p) => out.rows.push({ name: p.name, stu: p.stu, app: "skipped", group: "", message: "لم يُنفَّذ (تخطّيت أو أوقفت)" })); log("لم يُنفَّذ."); return out; }
+    let fails = 0;
+    for (const p of todo) {
+      if (stopped) { out.rows.push({ name: p.name, stu: p.stu, app: "skipped", group: "", message: "أُوقف قبله" }); continue; }
+      if (fails >= MAX_FAILS) { out.rows.push({ name: p.name, stu: p.stu, app: "skipped", group: "", message: "توقّف بعد إخفاقات متتالية" }); continue; }
+      const row = { name: p.name, stu: p.stu, app: p.state === "already" ? "already" : "", group: "", message: "", was: p.cur || "" };
+      say("إلغاء: " + p.name);
+      try {
+        if (p.state === "cancel") {
+          await sleep(POST_GAP);
+          const fresh = statusOfApp((await http("GET", p.app)).doc);          // رمز حماية طازج
+          if (!fresh.form) throw new Error("اختفى نموذج تغيير الحالة");
+          await http("POST", new URL(fresh.form.getAttribute("action"), location.origin).pathname, formBody(fresh.form, { status: target }));
+          await sleep(GET_GAP);
+          const after = statusOfApp((await http("GET", p.app)).doc);           // التحقق الحقيقي
+          row.app = after.status === target ? "cancelled" : "failed";
+          if (row.app === "failed") row.message = "بقيت الحالة «" + after.label + "»";
+        }
+        if (cmd.removeFromGroup !== false && row.app !== "failed") {
+          const m = await findMembership(p.stu, p.track);
+          if (!m) row.group = "none";
+          else {
+            await sleep(POST_GAP);
+            await http("POST", new URL(m.form.getAttribute("action"), location.origin).pathname, formBody(m.form));
+            const again = await findMembership(p.stu, p.track);                 // التحقق: لم يعد في المجموعة
+            row.group = again ? "failed" : "removed";
+            if (again) row.message = (row.message ? row.message + " · " : "") + "ما زال في المجموعة";
+          }
+        }
+        if (row.app === "failed" || row.group === "failed") fails++; else fails = 0;
+        log((row.app === "failed" || row.group === "failed" ? "✗ " : "✓ ") + p.name);
+      } catch (e) {
+        row.app = row.app || "failed"; row.message = e.message; fails++; log("✗ " + p.name + ": " + e.message);
+        out.rows.push(row);
+        if (/الجلسة/.test(e.message)) break;
+        continue;
+      }
+      out.rows.push(row);
+    }
+    return out;
+  }
+
   /* ===== التشغيل ===== */
   /* الأوامر إما مدمجة مع الوكيل (نسخة «الوكيل مع الأوامر») أو تُختار من ملف */
   let pack = window.__KX_PACK;
@@ -682,7 +806,7 @@ window.__kxStart = async () => {
     const cmd = pack.commands[i];
     window.__kxCmd = { i: i + 1, n: pack.commands.length };
     try {
-      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister, page: cmdPage, attendance: cmdAttendance, export: cmdExport }[cmd.type];
+      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister, page: cmdPage, attendance: cmdAttendance, export: cmdExport, cancel: cmdCancel }[cmd.type];
       if (!fn) { results.push({ index: i, type: cmd.type, error: "نوع أمر غير معروف" }); continue; }
       results.push(await fn(cmd, i));
     } catch (e) {
