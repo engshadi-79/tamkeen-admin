@@ -1080,6 +1080,21 @@ async function suite() {
       ok("كل التفاصيل والأدوات وجدول الأسماء المقروءة مطويّة افتراضياً", folds.length >= 2 && folds.every((d) => !d.open), JSON.stringify(folds.map((d) => d.className + ":" + d.open)));
       c.state.mode = keepMode;
     }
+    {   // نموذجان: جدول واحد بعمود لكل نموذج، وجدول واحد لغير المعروفين من كل النماذج (بلا تكرار)
+      const F1 = "إخلاء مسؤولية", F2 = "موافقة تصوير", fr = (id, name, nid, form) => row(id, name, nid, "", { form });
+      S.rows = [fr("m:0", "احمد علي محمد سالم", "403734726", F1), fr("m:1", "خالد سعيد عمر", "404137440", F1), fr("m:2", "احمد علي محمد سالم", "403734726", F2),
+        fr("m:3", "مجهول الاسم تماماً", "", F1), fr("m:4", "مجهول الاسم تماماً", "", F2)];
+      const km = c.state.mode; c.state.mode = "sign"; c.render();
+      const boxes = [...b.querySelectorAll(".cc-sig-simple .cc-sig3")].filter((x) => !x.closest("details")), t1 = boxes[0] && boxes[0].querySelector("table"), hs = t1 ? [...t1.querySelectorAll("thead th")].map((x) => x.textContent.trim()) : [];
+      ok("نموذجان: جدولان فقط (كل الطلاب، وغير المعروفين)", boxes.length === 2 && /كل الطلاب/.test(boxes[0].textContent) && /لم تُعرف/.test(boxes[1].querySelector("h4").textContent), boxes.map((x) => x.querySelector("h4").textContent).join(" | "));
+      ok("الجدول الأول فيه عمود لكل نموذج وعمود الحالة", hs.includes(F1) && hs.includes(F2) && hs[hs.length - 1] === "الحالة", JSON.stringify(hs));
+      const trs = t1 ? [...t1.querySelectorAll("tbody tr")].map((tr) => tr.textContent) : [];
+      ok("أحمد «وقّع النموذجين»، وخالد «ينقصه: موافقة تصوير»", trs.some((x) => /سالم/.test(x) && /وقّع النموذجين/.test(x)) && trs.some((x) => /خالد/.test(x) && /ينقصه: موافقة تصوير/.test(x)), JSON.stringify(trs.slice(0, 4)));
+      const u = boxes[1] && boxes[1].querySelectorAll("tbody tr");
+      ok("الاسم غير المعروف في النموذجين صفّ واحد بعمود النماذج", !!u && u.length === 1 && new RegExp(F1).test(u[0].textContent) && new RegExp(F2).test(u[0].textContent), u && [...u].map((x) => x.textContent).join(" | "));
+      ok("تفاصيل كل نموذج والأدوات مطويّة", [...b.querySelectorAll(".cc-sig-perform, .cc-sig-tools")].every((d) => !d.open) && !!b.querySelector(".cc-sig-perform"), "fold");
+      c.state.mode = km;
+    }
     Object.assign(S, keep); c.render();
   }
 
