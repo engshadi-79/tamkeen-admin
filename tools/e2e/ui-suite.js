@@ -478,6 +478,66 @@ async function suite() {
     ok("بعد التراجع: السجل يُظهر «↩ أُعيد إلى «مقبول»» والتقرير لم يعد يعدّه", !!c._att.log()[0].undone && /↩ أُعيد إلى «مقبول»/.test(b.querySelector(".cc-log").textContent) && c._att.blocks() === null, JSON.stringify(c._att.log()[0]));
     agent.version = kvL; agent.run = krL; c.state.resultError = "";
   }
+  {   // «تنفيذ في النظام»: حالة الطالب، النقل، قبول/رفض الطلبات، تعديل البيانات من Excel — معاينة وموافقة وسجل وتراجع
+    const kvW = agent.version, krW = agent.run, sent = [];
+    const modeW = c.state.mode; c.state.mode = "write"; c.state.wr.op = "stu"; c.state.wr.text = ""; c.state.wr.out = null; agent.version = () => "1.5.10"; c.render();
+    const wv = b.querySelector("#cc-write");
+    ok("أداة «تنفيذ في النظام»: أربعة أوامر، وتنبيه بإضافة 1.6.0 حين تكون أقدم", !!wv && wv.querySelectorAll('[data-cc="wr-op"]').length === 4 && /1\.6\.0/.test(wv.textContent) && !!b.querySelector('[data-cc="mode"][data-m="write"]'), wv && wv.textContent.slice(0, 160));
+    b.querySelector('[data-cc="wr-run"]').click(); await wait(120);
+    ok("بإضافة قديمة: لا أمر يُرسل ورسالة 1.6.0", /1\.6\.0/.test(c.state.resultError || ""), c.state.resultError);
+    c.state.resultError = ""; agent.version = () => "1.6.0";
+    agent.run = async (cmds, opts) => {
+      const cmd = cmds[0]; sent.push(cmd);
+      if (cmd.type === "apps") return { results: [{ index: 0, type: "apps", rows: [{ app: "11", no: "APP-1", name: "متقدم أول", track: "مسار أ", status: "مقدم", score: "70", date: "2026-11-20" }, { app: "12", no: "APP-2", name: "متقدم ثان", track: "مسار ب", status: "مقدم", score: "50", date: "2026-11-21" }] }] };
+      const its = cmd.items;
+      const go = await opts.onPlan({ kind: "write", op: cmd.type, title: cmd.undo ? "تراجع" : "أمر", undo: !!cmd.undo, total: its.length, todo: its.length, same: 0, invalid: 0, rows: its.map((x) => ({ name: x.name || x.stu, nid: x.stu || x.app, state: "do", from: "قبل", to: "بعد", why: "" })) });
+      return { results: [{ index: 0, type: cmd.type, label: cmd.label, rows: its.map((x) => go ? { name: x.name || x.stu, stu: String(x.stu || x.app), res: "done", from: "قبل", to: "بعد", undo: Object.assign({}, x, { status: "active", group: "G1" }) } : { name: x.name, stu: String(x.stu || x.app), res: "skipped" }) }] };
+    };
+    const ta = b.querySelector('[data-wr="text"]'); ta.value = "STU-W-1\nSTU-W-2, ignored"; ta.dispatchEvent(new Event("input", { bubbles: true }));
+    const ss = b.querySelector('[data-wr="status"]'); ss.value = "suspended"; ss.dispatchEvent(new Event("change", { bubbles: true })); await wait(50);
+    b.querySelector('[data-cc="wr-run"]').click();
+    for (let i = 0; i < 40 && !b.querySelector(".cc-plan-danger"); i++) await wait(100);
+    const wp = b.querySelector(".cc-plan-danger");
+    ok("حالة الطالب: أمر stustatus بطالبين والحالة «موقوف»، ومعاينة حمراء قبل/بعد", sent.length === 1 && sent[0].type === "stustatus" && sent[0].status === "suspended" && sent[0].items.map((x) => x.stu).join() === "STU-W-1,STU-W-2" && !!wp && /قبل/.test(wp.textContent) && /نفّذ في النظام \(2\)/.test(wp.textContent), JSON.stringify(sent[0]));
+    wp.querySelector('[data-cc="plan-ok"]').click();
+    for (let i = 0; i < 40 && !c.state.wr.out; i++) await wait(100); await wait(200);
+    ok("النتيجة: جدول «✓ نُفّذ» والسجل يضم الأمرين مع ما يلزم للتراجع", /✓ نُفّذ/.test((b.querySelector('[data-tblbox="wr-out"]') || {}).textContent || "") && c._att.log().filter((x) => x.op === "stustatus" && x.undoItem).length === 2 && !!b.querySelector(".cc-log"), JSON.stringify(c._att.log().slice(0, 2)));
+    // النقل: بلا مجموعة ← خطأ واضح؛ «المجموعة للكل» تكمل السطر
+    c.state.wr.op = "move"; c.state.wr.text = "STU-M-1\nSTU-M-2, S3G1"; c.state.wr.group = ""; c.render(); sent.length = 0;
+    b.querySelector('[data-cc="wr-run"]').click(); await wait(120);
+    ok("النقل بلا مجموعة لسطر: رسالة ولا أمر", /حدّد المجموعة الجديدة/.test(c.state.resultError || "") && !sent.length, c.state.resultError);
+    c.state.resultError = ""; c.state.wr.group = "G2"; c.render();
+    b.querySelector('[data-cc="wr-run"]').click();
+    for (let i = 0; i < 40 && !b.querySelector(".cc-plan-danger"); i++) await wait(100);
+    ok("النقل: المجموعة من السطر أو «المجموعة للكل»", sent.length === 1 && sent[0].type === "move" && sent[0].items[0].group === "G2" && sent[0].items[1].group === "S3G1", JSON.stringify(sent[0]));
+    b.querySelector(".cc-plan-danger [data-cc='plan-no']").click(); for (let i = 0; i < 40 && c.state.busy; i++) await wait(100);
+    // قبول/رفض الطلبات: قراءة القائمة ثم تحديد وتنفيذ
+    c.state.wr.op = "app"; c.state.wr.apps = null; c.render(); sent.length = 0;
+    b.querySelector('[data-cc="wr-apps"]').click(); for (let i = 0; i < 40 && !c.state.wr.apps; i++) await wait(100); await wait(100);
+    ok("قراءة الطلبات: جدول قابل للتحديد بطلبين", sent[0] && sent[0].type === "apps" && sent[0].params.status === "submitted" && b.querySelectorAll('[data-tbl-sel="wr-apps"]').length === 2, JSON.stringify(sent[0]));
+    const cb = b.querySelector('[data-tbl-sel="wr-apps"][value="12"]'); cb.checked = true; cb.dispatchEvent(new Event("change", { bubbles: true }));
+    const as = b.querySelector('[data-wr="appStatus"]'); as.value = "rejected"; as.dispatchEvent(new Event("change", { bubbles: true })); await wait(50);
+    b.querySelector('[data-cc="wr-run"]').click();
+    for (let i = 0; i < 40 && !b.querySelector(".cc-plan-danger"); i++) await wait(100);
+    b.querySelector(".cc-plan-danger [data-cc='plan-ok']").click(); for (let i = 0; i < 40 && c.state.busy; i++) await wait(100); await wait(150);
+    ok("حالة الطلبات: أمر appstatus للطلب المحدد وحده بالحالة «مرفوض»، وتحدّثت حالته في الجدول", sent[1] && sent[1].type === "appstatus" && sent[1].status === "rejected" && sent[1].items.length === 1 && sent[1].items[0].app === "12" && c.state.wr.apps.find((a) => a.app === "12").status === "بعد", JSON.stringify(sent[1]));
+    // التراجع من السجل عن أمر جديد
+    sent.length = 0; c.state.tblSel["att-log"] = new Set(["STU-W-1"]); c.render();
+    b.querySelector('[data-cc="log-undo"]').click();
+    for (let i = 0; i < 40 && !b.querySelector(".cc-plan-danger"); i++) await wait(100);
+    b.querySelector(".cc-plan-danger [data-cc='plan-ok']").click(); for (let i = 0; i < 40 && c.state.busy; i++) await wait(100); await wait(150);
+    ok("التراجع عن «حالة الطالب» من السجل: أمر stustatus بالتراجع وقيمة ما قبل، ثم «↩ أُعيد»", sent[0] && sent[0].type === "stustatus" && sent[0].undo === true && sent[0].items[0].stu === "STU-W-1" && sent[0].items[0].status === "active" && !!c._att.log().find((x) => x.op === "stustatus" && x.stu === "STU-W-1").undone, JSON.stringify(sent[0]));
+    // تعديل البيانات من Excel: أعمدة معروفة تُطابق حقول النظام
+    const wbx = new ExcelJS.Workbook(), wsx = wbx.addWorksheet("من ينقصه (للتعبئة)");
+    wsx.addRow(["الاسم", "رقم الطالب", "رقم الهوية", "الحالة الاجتماعية", "تاريخ الميلاد", "عنوان السكن الحالي بالتفصيل", "عدد الناقص"]);
+    wsx.addRow(["طالب أ", "STU-E-1", "401", "أعزب", "1999-03-05", "", 2]); wsx.addRow(["طالب ب", "STU-E-2", "402", "", "", "غزة - الرمال", 1]); wsx.addRow(["طالب ج", "STU-E-3", "403", "", "", "", 3]);
+    const fx = new File([await wbx.xlsx.writeBuffer()], "نواقص.xlsx");
+    const items = await c._wr.readEdit(fx);
+    ok("ملف النواقص المعبّأ ← بنود تعديل: الحقول المعروفة فقط، والصف الفارغ يُتجاوز", items.length === 2 && items[0].stu === "STU-E-1" && items[0].fields.marital_status === "أعزب" && items[0].fields.birth_date === "1999-03-05" && !("current_address" in items[0].fields) && items[1].fields.current_address === "غزة - الرمال" && !Object.keys(items[0].fields).some((k) => /ناقص/.test(k)), JSON.stringify(items));
+    c.state.wr.op = "edit"; c.state.wr.edit = items; c.state.wr.editFile = "نواقص.xlsx"; c.state.wr.onlyEmpty = true; c.render();
+    ok("تعديل البيانات: الأمر edit بالفارغ فقط افتراضياً", JSON.stringify(c._wr.cmd()) === JSON.stringify({ type: "edit", label: "تعديل بيانات الطلاب", onlyEmpty: true, items: items.map((x) => ({ stu: x.stu, name: x.name, fields: x.fields })) }) && /الحالة الاجتماعية/.test(b.querySelector("#cc-write").textContent), JSON.stringify(c._wr.cmd()));
+    agent.version = kvW; agent.run = krW; c.state.mode = modeW; c.state.wr.out = null; c.state.resultError = ""; c.render();
+  }
   {   // حفظ النتائج على الجهاز: تبقى بعد إعادة الفتح، والخمول يخفي ولا يحذف، والمسح الصريح يحذف
     const snapAtt = c.state.att.out;
     c.render(); c._snap.flush(); await wait(1200);
@@ -1534,8 +1594,8 @@ async function suite() {
     ok("المسار #center يعرض الصفحة المستقلة", document.getElementById("view-center").classList.contains("active") && !document.getElementById("view-converter").classList.contains("active"), [...document.querySelectorAll(".view.active")].map((x) => x.id));
     c.state.mode = "report"; c.render();
     const groupsEl = [...b.querySelectorAll(".cc-modes .cc-mgroup")];
-    ok("أربع مجموعات بعناوينها", groupsEl.length === 4 && groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent).join("|") === "الطلاب والتقارير|المتابعة اليومية|التوقيعات والكشوف|فحص وجودة", groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent));
-    ok("كل الأدوات الـ18 موزّعة بلا تكرار ولا نقص", groupsEl.reduce((n, g) => n + g.querySelectorAll("button[data-m]").length, 0) === 18 && new Set([...b.querySelectorAll(".cc-modes button[data-m]")].map((x) => x.dataset.m)).size === 18, groupsEl.map((g) => g.querySelectorAll("button").length));
+    ok("خمس مجموعات بعناوينها", groupsEl.length === 5 && groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent).join("|") === "الطلاب والتقارير|المتابعة اليومية|التوقيعات والكشوف|فحص وجودة|تنفيذ في النظام", groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent));
+    ok("كل الأدوات الـ19 موزّعة بلا تكرار ولا نقص", groupsEl.reduce((n, g) => n + g.querySelectorAll("button[data-m]").length, 0) === 19 && new Set([...b.querySelectorAll(".cc-modes button[data-m]")].map((x) => x.dataset.m)).size === 19, groupsEl.map((g) => g.querySelectorAll("button").length));
     ok("المطابقة والتعهد والصورة والمقارنة في مجموعة «التوقيعات والكشوف»", [...groupsEl[2].querySelectorAll("button[data-m]")].map((x) => x.dataset.m).join() === "sign,pledge,img,xl", [...groupsEl[2].querySelectorAll("button")].map((x) => x.dataset.m));
     groupsEl[2].querySelector('button[data-m="pledge"]').click(); await wait(200);
     ok("النقر على أداة داخل مجموعتها يفتحها", c.state.mode === "pledge" && !!b.querySelector("#cc-pledge"), c.state.mode);

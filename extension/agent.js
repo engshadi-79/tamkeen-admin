@@ -32,7 +32,12 @@ window.__kxStart = async () => {
     ["GET", /^\/admin\/applications\/\d+$/],                       // صفحة الطلب: الحالة الحالية ونموذج «تغيير الحالة السريع»
     ["POST", /^\/admin\/applications\/\d+\/change-status$/],      // تغيير حالة الطلب (PATCH عبر _method)
     ["GET", /^\/admin\/training-groups(\?[^#]*)?$/],                // صفحة المجموعات: عضوية الطالب ونموذج «إخراج»
-    ["POST", /^\/admin\/training-groups\/members\/\d+$/],          // إخراج الطالب من المجموعة (DELETE عبر _method)     // ملف «تصدير Excel» نفسه (بيانات الطالب والمتقدم) — قراءة فقط، طلب واحد بدل صفحة لكل طالب
+    ["POST", /^\/admin\/training-groups\/members\/\d+$/],
+    // أوامر كتابة 1.6.0 (كلها بعد معاينة وموافقة صريحة فقط)
+    ["GET", /^\/admin\/applications(\?[^#]*)?$/],                    // قائمة الطلبات (قراءة)
+    ["POST", /^\/admin\/students\/bulk-update-status$/],           // تغيير حالة الطالب (طالب واحد في كل طلب)
+    ["POST", /^\/admin\/training-groups\/assign$/],                // نقل الطالب إلى مجموعة
+    ["POST", /^\/admin\/students\/\d+$/],                          // حفظ نموذج «تعديل» الطالب (PUT عبر _method)          // إخراج الطالب من المجموعة (DELETE عبر _method)     // ملف «تصدير Excel» نفسه (بيانات الطالب والمتقدم) — قراءة فقط، طلب واحد بدل صفحة لكل طالب
   ];
   const guard = (method, path) => {
     const u = new URL(path, location.origin);
@@ -710,6 +715,255 @@ window.__kxStart = async () => {
     Object.keys(over || {}).forEach((k) => fd.set(k, over[k]));
     return fd;
   };
+
+  /* ===== أوامر كتابة 1.6.0: حالة الطلب (بأرقام الطلبات)، حالة الطالب، النقل بين المجموعات، تعديل بيانات الطالب =====
+     كلها بنفس المسار: معاينة بلا كتابة ← موافقة ← نموذج طازج لكل بند ← كتابة ← تحقّق بالقراءة ← توقف بعد 3 إخفاقات.
+     كل صف ناتج يحمل «undo»: البند الذي يعيد الحال كما كان (يستعمله «تراجع» في تمكين). */
+  const optName = (t) => clean(t).split(" (")[0].trim();
+  const normV = (v) => clean(v).replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").toLowerCase();
+  async function writeFlow(cmd, index, type, title, plan, doOne) {
+    const out = { index, type, label: cmd.label || "", rows: [] };
+    const n = (st) => plan.filter((p) => p.state === st).length;
+    plan.filter((p) => p.state !== "do").forEach((p) => out.rows.push({ name: p.name, stu: p.stu, res: p.state === "same" ? "same" : "invalid", from: p.from || "", to: p.to || "", message: p.why || "" }));
+    const todo = plan.filter((p) => p.state === "do");
+    bodyEl.replaceChildren(h("div", { textContent: title + ": سيُنفَّذ " + n("do") + " — لا تغيير " + n("same") + " — لن يُنفَّذ " + n("invalid") }));
+    if (!todo.length) { log("لا شيء يُنفَّذ."); return out; }
+    say("سيُكتب في نظام المركز لـ" + todo.length + ". راجع ثم اضغط «نفّذ».");
+    const summary = { kind: "write", op: type, title, undo: !!cmd.undo, total: plan.length, todo: n("do"), same: n("same"), invalid: n("invalid"),
+      rows: plan.slice(0, 150).map((p) => ({ name: p.name, nid: p.stu, state: p.state, from: p.from || "", to: p.to || "", why: p.why || "" })) };
+    const local = wait("نفّذ (" + todo.length + ")", "go");
+    const go = typeof window.__kxApprove === "function" ? await Promise.race([local, window.__kxApprove(summary)]) : await local;
+    actEl.replaceChildren(stopBtn);
+    if (!go || stopped) { todo.forEach((p) => out.rows.push({ name: p.name, stu: p.stu, res: "skipped", from: p.from || "", to: p.to || "", message: "لم يُنفَّذ (تخطّيت أو أوقفت)" })); log("لم يُنفَّذ."); return out; }
+    let fails = 0;
+    for (const p of todo) {
+      if (stopped || fails >= MAX_FAILS) { out.rows.push({ name: p.name, stu: p.stu, res: "skipped", from: p.from || "", to: p.to || "", message: stopped ? "أُوقف قبله" : "توقّف بعد إخفاقات متتالية" }); continue; }
+      const row = { name: p.name, stu: p.stu, res: "", from: p.from || "", to: p.to || "", message: "", undo: p.undo || null };
+      say(title + ": " + p.name);
+      try { await sleep(POST_GAP); row.res = (await doOne(p, row)) ? "done" : "failed"; }
+      catch (e) { row.res = "failed"; row.message = e.message; if (/الجلسة/.test(e.message)) { out.rows.push(row); log("✗ " + p.name + ": " + e.message); break; } }
+      if (row.res === "failed") { fails++; row.undo = null; } else fails = 0;
+      log((row.res === "done" ? "✓ " : "✗ ") + p.name + (row.message ? ": " + row.message : ""));
+      out.rows.push(row);
+    }
+    return out;
+  }
+  const preview = async (items, fn) => {
+    const plan = [];
+    for (const it of items) {
+      if (stopped) break;
+      const p = { name: clean(it.name), stu: clean(it.stu || it.app || ""), state: "do", why: "" };
+      try { await fn(it, p); } catch (e) { if (/الجلسة/.test(e.message)) throw e; p.state = "invalid"; p.why = e.message; }
+      plan.push(p); say("معاينة " + plan.length + "/" + items.length);
+    }
+    return plan;
+  };
+
+  /* (1) حالة الطلب لطلبات بأرقامها (من قائمة الطلبات): مقبول، مرفوض، قائمة انتظار… */
+  async function cmdAppStatus(cmd, index) {
+    const items = (cmd.items || []).slice(0, MAX_ROWS);
+    const plan = await preview(items, async (it, p) => {
+      const app = "/admin/applications/" + String(it.app || "").replace(/\D/g, "");
+      if (!/\d$/.test(app)) throw new Error("رقم الطلب غير صالح");
+      const tgt = /^[a-z_]{2,30}$/.test(it.status || "") ? it.status : cmd.status;
+      await sleep(GET_GAP);
+      const a = statusOfApp((await http("GET", app)).doc);
+      const opt = a.form && [...a.form.querySelectorAll('select[name="status"] option')].find((o) => o.value === tgt);
+      if (!a.form) throw new Error("لا نموذج لتغيير حالة الطلب");
+      if (!opt) throw new Error("الحالة المطلوبة غير موجودة في النظام");
+      Object.assign(p, { app, tgt, from: a.label, to: clean(opt.textContent), undo: { app: it.app, name: it.name, status: a.status } });
+      if (a.status === tgt) { p.state = "same"; p.why = "حالته «" + a.label + "» أصلاً"; }
+    });
+    return writeFlow(cmd, index, "appstatus", cmd.undo ? "تراجع عن حالة الطلبات" : "تغيير حالة الطلبات", plan, async (p, row) => {
+      const fresh = statusOfApp((await http("GET", p.app)).doc);
+      if (!fresh.form) throw new Error("اختفى نموذج تغيير الحالة");
+      await http("POST", new URL(fresh.form.getAttribute("action"), location.origin).pathname, formBody(fresh.form, { status: p.tgt }));
+      await sleep(GET_GAP);
+      const after = statusOfApp((await http("GET", p.app)).doc);
+      if (after.status !== p.tgt) row.message = "بقيت الحالة «" + after.label + "»";
+      return after.status === p.tgt;
+    });
+  }
+  /* قراءة قائمة الطلبات (بمرشحات الصفحة نفسها) — قراءة فقط */
+  async function cmdApps(cmd, index) {
+    const out = { index, type: "apps", label: cmd.label || "", rows: [], total: 0 };
+    const params = Object.assign({ per_page: "200" }, cmd.params || {});
+    for (let page = 1; page <= 10 && !stopped; page++) {
+      await sleep(GET_GAP);
+      const { doc } = await http("GET", "/admin/applications?" + qs(Object.assign({}, params, { page: String(page) })));
+      const heads = [...doc.querySelectorAll("table thead th")].map((t) => clean(t.textContent));
+      const col = (rx) => heads.findIndex((x) => rx.test(x));
+      const iNo = col(/^رقم الطلب$/), iName = col(/^المتقدم/), iTr = col(/^المسار$/), iSt = col(/^الحالة$/), iSc = col(/^الدرجة$/), iDt = col(/^تاريخ التقديم$/);
+      const trs = [...doc.querySelectorAll("table tbody tr")].filter((tr) => tr.cells.length > 3);
+      trs.forEach((tr) => {
+        const link = [...tr.querySelectorAll("a[href]")].map((a) => new URL(a.getAttribute("href"), location.origin).pathname).find((x) => /^\/admin\/applications\/\d+$/.test(x));
+        if (!link) return;
+        const cell = (i) => (i >= 0 && tr.cells[i] ? clean(tr.cells[i].textContent) : "");
+        out.rows.push({ app: link.split("/").pop(), no: cell(iNo), name: cell(iName), track: cell(iTr), status: cell(iSt), score: cell(iSc), date: cell(iDt) });
+      });
+      say("قراءة الطلبات: " + out.rows.length);
+      const next = doc.querySelector('.pagination a[rel="next"], .pagination li:last-child a[href*="page="]');
+      if (!trs.length || !next || out.rows.length >= 2000) break;
+    }
+    out.total = out.rows.length;
+    return out;
+  }
+
+  /* (2) حالة الطالب: نشط، منسحب، موقوف، متخرج… (نموذج «تحديث الحالة للطلاب المحددين» لطالب واحد في كل طلب) */
+  async function studentRow(stu) {
+    await sleep(GET_GAP);
+    const { doc } = await http("GET", "/admin/students?" + qs({ q: stu, per_page: "20" }));
+    const heads = [...doc.querySelectorAll("table thead th")].map((t) => clean(t.textContent));
+    const tr = [...doc.querySelectorAll("table tbody tr")].find((x) => x.textContent.includes(stu));
+    if (!tr) return null;
+    const sid = ([...tr.querySelectorAll("a[href]")].map((a) => (new URL(a.getAttribute("href"), location.origin).pathname.match(/^\/admin\/students\/(\d+)/) || [])[1]).find(Boolean)) || "";
+    const cbx = tr.querySelector('input[name="student_ids[]"]');
+    const iSt = heads.findIndex((x) => /^الحالة$/.test(x));
+    const bulk = doc.querySelector('form[action$="/admin/students/bulk-update-status"]') || (cbx && cbx.getAttribute("form") && doc.getElementById(cbx.getAttribute("form")));
+    return { doc, tr, sid: (cbx && cbx.value) || sid, statusText: iSt >= 0 && tr.cells[iSt] ? clean(tr.cells[iSt].textContent) : "", bulk };
+  }
+  async function cmdStuStatus(cmd, index) {
+    const items = (cmd.items || []).slice(0, MAX_ROWS);
+    const plan = await preview(items, async (it, p) => {
+      const tgt = /^[a-z_]{2,30}$/.test(it.status || "") ? it.status : cmd.status;
+      const st = await studentRow(clean(it.stu));
+      if (!st) throw new Error("لم أجد الطالب برقمه");
+      if (!st.bulk) throw new Error("لا نموذج لتغيير حالة الطالب (صلاحياتك؟)");
+      const opts = [...st.bulk.querySelectorAll('select[name="status"] option')].filter((o) => o.value);
+      const opt = opts.find((o) => o.value === tgt); if (!opt) throw new Error("الحالة المطلوبة غير موجودة في النظام");
+      const cur = opts.find((o) => st.statusText && (st.statusText === clean(o.textContent) || st.statusText.includes(clean(o.textContent))));
+      Object.assign(p, { sid: st.sid, tgt, tgtLabel: clean(opt.textContent), from: st.statusText || "—", to: clean(opt.textContent), undo: cur ? { stu: it.stu, name: it.name, status: cur.value } : null });
+      if (!p.name) p.name = it.stu;
+      if (cur && cur.value === tgt) { p.state = "same"; p.why = "حالته «" + p.from + "» أصلاً"; }
+    });
+    return writeFlow(cmd, index, "stustatus", cmd.undo ? "تراجع عن حالة الطلاب" : "تغيير حالة الطلاب", plan, async (p, row) => {
+      const st = await studentRow(p.stu);                                      // رمز حماية طازج
+      if (!st || !st.bulk) throw new Error("اختفى الطالب أو النموذج");
+      const fd = new FormData();
+      const tok = st.bulk.querySelector('input[name="_token"]') || st.doc.querySelector('input[name="_token"]');
+      if (tok) fd.append("_token", tok.value);
+      fd.append("status", p.tgt); fd.append("student_ids[]", st.sid || p.sid);
+      await http("POST", "/admin/students/bulk-update-status", fd);
+      const after = await studentRow(p.stu);                                   // التحقق الحقيقي
+      const ok = !!after && (after.statusText === p.tgtLabel || after.statusText.includes(p.tgtLabel));
+      if (!ok) row.message = "الحالة الآن «" + ((after && after.statusText) || "؟") + "»";
+      return ok;
+    });
+  }
+
+  /* (3) النقل بين المجموعات: نموذج «نقل» في صف الطالب بصفحة المجموعات */
+  async function findAssign(stu, trackHint) {
+    const look = (doc) => {
+      const all = [...doc.querySelectorAll("form")].filter((x) => /\/training-groups\/assign$/.test(new URL(x.getAttribute("action") || "", location.origin).pathname));
+      const f = all.find((x) => { const row = x.parentElement && x.parentElement.closest("div.row, tr, li"); return row && row.textContent.includes(stu); });
+      if (!f) return null;
+      const names = new Set(); all.forEach((x) => x.querySelectorAll('select[name="training_group_id"] option').forEach((o) => { if (o.value) names.add(optName(o.textContent)); }));
+      const mine = [...f.querySelectorAll('select[name="training_group_id"] option')].filter((o) => o.value);
+      const row = f.parentElement.closest("div.row, tr, li");
+      const member = !!(row && row.querySelector('input[name="_method"][value="DELETE"]'));
+      const rest = [...names].filter((x) => !mine.some((o) => optName(o.textContent) === x));
+      return { form: f, opts: mine, current: member && rest.length === 1 ? rest[0] : member ? "" : "بلا مجموعة" };
+    };
+    await sleep(GET_GAP);
+    let { doc } = await http("GET", "/admin/training-groups");
+    let r = look(doc); if (r) return r;
+    const tops = [...doc.querySelectorAll('select[name="track_id"] option')].filter((o) => o.value && trackHint && clean(trackHint).includes(clean(o.textContent).replace(/^مسار\s*/, "")));
+    const all = tops.length ? tops : [...doc.querySelectorAll('select[name="track_id"] option')].filter((o) => o.value);
+    for (const o of all.slice(0, 9)) {
+      if (stopped) break;
+      await sleep(GET_GAP);
+      ({ doc } = await http("GET", "/admin/training-groups?" + qs({ track_id: o.value })));
+      r = look(doc); if (r) return r;
+    }
+    return null;
+  }
+  const pickGroup = (opts, want) => { const w = normV(want); return opts.find((o) => normV(optName(o.textContent)) === w) || opts.find((o) => normV(o.textContent).includes("(" + w + ")")) || null; };
+  async function cmdMove(cmd, index) {
+    const items = (cmd.items || []).slice(0, MAX_ROWS);
+    const plan = await preview(items, async (it, p) => {
+      if (!clean(it.group)) throw new Error("لم تُحدَّد المجموعة الجديدة");
+      const a = await findAssign(clean(it.stu), it.track);
+      if (!a) throw new Error("لم أجد الطالب في صفحة المجموعات");
+      Object.assign(p, { track: it.track || "", group: clean(it.group), from: a.current || "—", to: clean(it.group) });
+      if (!p.name) p.name = it.stu;
+      if (a.current && normV(a.current) === normV(it.group)) { p.state = "same"; p.why = "في المجموعة «" + a.current + "» أصلاً"; return; }
+      const o = pickGroup(a.opts, it.group);
+      if (!o) throw new Error("المجموعة «" + clean(it.group) + "» غير متاحة لهذا الطالب (مسار آخر أو غير موجودة)");
+      p.to = optName(o.textContent);
+      p.undo = a.current && a.current !== "بلا مجموعة" ? { stu: it.stu, name: it.name, track: it.track || "", group: a.current } : null;
+    });
+    return writeFlow(cmd, index, "move", cmd.undo ? "تراجع عن النقل" : "النقل بين المجموعات", plan, async (p, row) => {
+      const a = await findAssign(p.stu, p.track);                              // رمز حماية طازج
+      if (!a) throw new Error("اختفى الطالب من صفحة المجموعات");
+      const o = pickGroup(a.opts, p.group); if (!o) throw new Error("المجموعة لم تعد متاحة");
+      await http("POST", "/admin/training-groups/assign", formBody(a.form, { training_group_id: o.value }));
+      const after = await findAssign(p.stu, p.track);                          // التحقق: المجموعة الجديدة هي الحالية
+      const ok = !!after && !pickGroup(after.opts, p.group) && after.current !== "بلا مجموعة";
+      if (!ok) row.message = "لم يتأكد النقل (المجموعة الآن: " + ((after && after.current) || "؟") + ")";
+      return ok;
+    });
+  }
+
+  /* (4) تعديل بيانات الطالب: حقول محددة فقط، من صفحة «تعديل» نفسها (بقية الحقول تُرسل كما هي) */
+  const EDIT_OK = ["marital_status", "phone_2", "birth_date", "health_status", "governorate_id", "population_community_id", "displacement_status", "residence_type_id",
+    "current_address", "family_members_count", "breadwinner_status", "employment_status", "income_type_id", "education_level", "specialization", "notes", "gender", "phone_1"];
+  const fieldVal = (el) => (el.tagName === "SELECT" ? ((el.querySelector("option[selected]") || el.options[el.selectedIndex] || {}).value || "") : clean(el.tagName === "TEXTAREA" ? el.textContent : (el.getAttribute("value") || el.value || "")));
+  const fieldText = (el, v) => (el.tagName === "SELECT" ? clean(([...el.options].find((o) => o.value === v) || {}).textContent || v) : v);
+  function toFieldValue(el, given) {
+    const g = clean(given); if (!g) return null;
+    if (el.tagName === "SELECT") {
+      const os = [...el.options].filter((o) => o.value), w = normV(g);
+      const o = os.find((x) => x.value === g) || os.find((x) => normV(x.textContent) === w) || os.find((x) => normV(x.textContent).split("/").map((t) => t.trim()).includes(w)) || os.find((x) => normV(x.textContent).startsWith(w));
+      if (!o) throw new Error("القيمة «" + g + "» ليست من خيارات «" + el.name + "»");
+      return o.value;
+    }
+    if (el.type === "date") {
+      const d = g.replace(/[٠-٩]/g, (x) => "٠١٢٣٤٥٦٧٨٩".indexOf(x)), m = d.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/) || d.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+      if (!m) throw new Error("تاريخ غير مفهوم «" + g + "»");
+      const [y, mo, da] = m[1].length === 4 ? [m[1], m[2], m[3]] : [m[3], m[2], m[1]];
+      return y + "-" + mo.padStart(2, "0") + "-" + da.padStart(2, "0");
+    }
+    if (el.type === "number") { const n = g.replace(/[٠-٩]/g, (x) => "٠١٢٣٤٥٦٧٨٩".indexOf(x)).replace(/\D/g, ""); if (!n) throw new Error("رقم غير صالح «" + g + "»"); return n; }
+    return g;
+  }
+  async function editForm(sid) {
+    await sleep(GET_GAP);
+    const { doc } = await http("GET", "/admin/students/" + sid + "/edit");
+    const f = [...doc.querySelectorAll("form")].find((x) => new RegExp("^/admin/students/" + sid + "$").test(new URL(x.getAttribute("action") || "", location.origin).pathname));
+    if (!f) throw new Error("لا نموذج تعديل لهذا الطالب");
+    return f;
+  }
+  async function cmdEdit(cmd, index) {
+    const items = (cmd.items || []).slice(0, MAX_ROWS), onlyEmpty = cmd.onlyEmpty !== false && !cmd.undo;
+    const plan = await preview(items, async (it, p) => {
+      const st = await studentRow(clean(it.stu));
+      if (!st || !st.sid) throw new Error("لم أجد الطالب برقمه");
+      const f = await editForm(st.sid);
+      const ch = {}, from = [], to = [], back = {}, kept = [];
+      Object.keys(it.fields || {}).filter((k) => EDIT_OK.includes(k)).forEach((k) => {
+        const el = f.elements[k]; if (!el || !el.tagName) return;
+        const raw = it.fields[k]; if (raw == null || clean(raw) === "") return;
+        const v = cmd.undo ? String(raw) : toFieldValue(el, raw); if (v == null) return;
+        const cur = fieldVal(el);
+        if (cur === v) return;
+        if (onlyEmpty && cur) { kept.push(fieldLabel(el, f.ownerDocument) || el.name); return; }
+        ch[k] = v; back[k] = cur; const lb = fieldLabel(el, f.ownerDocument) || el.name;
+        from.push(lb + ": " + (cur ? fieldText(el, cur) : "—")); to.push(lb + ": " + fieldText(el, v));
+      });
+      if (!p.name) p.name = it.stu;
+      Object.assign(p, { sid: st.sid, ch, from: from.join(" · "), to: to.join(" · "), undo: Object.keys(ch).length ? { stu: it.stu, name: it.name, fields: back } : null });
+      if (!Object.keys(ch).length) { p.state = "same"; p.why = kept.length ? "مُدخَل أصلاً (لم يُستبدل): " + kept.join("، ") : "لا تغيير"; }
+      else if (kept.length) p.why = "لن يُستبدل المُدخَل أصلاً: " + kept.join("، ");
+    });
+    return writeFlow(cmd, index, "edit", cmd.undo ? "تراجع عن تعديل البيانات" : "تعديل بيانات الطلاب", plan, async (p, row) => {
+      const f = await editForm(p.sid);                                         // نموذج طازج بكل الحقول كما هي الآن
+      await http("POST", "/admin/students/" + p.sid, formBody(f, p.ch));
+      const g = await editForm(p.sid);                                         // التحقق: كل حقل غُيّر صار بالقيمة الجديدة
+      const bad = Object.keys(p.ch).filter((k) => !g.elements[k] || fieldVal(g.elements[k]) !== p.ch[k]);
+      if (bad.length) row.message = "لم يُحفظ: " + bad.map((k) => (g.elements[k] && fieldLabel(g.elements[k], g.ownerDocument)) || k).join("، ");
+      return !bad.length;
+    });
+  }
   async function cmdCancel(cmd, index) {
     const out = { index, type: "cancel", label: cmd.label || "", rows: [] };
     const target = cmd.status || "cancelled", items = (cmd.items || []).slice(0, MAX_ROWS);
@@ -810,7 +1064,7 @@ window.__kxStart = async () => {
     const cmd = pack.commands[i];
     window.__kxCmd = { i: i + 1, n: pack.commands.length };
     try {
-      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister, page: cmdPage, attendance: cmdAttendance, export: cmdExport, cancel: cmdCancel }[cmd.type];
+      const fn = { lookup: cmdLookup, list: cmdList, register: cmdRegister, page: cmdPage, attendance: cmdAttendance, export: cmdExport, cancel: cmdCancel, apps: cmdApps, appstatus: cmdAppStatus, stustatus: cmdStuStatus, move: cmdMove, edit: cmdEdit }[cmd.type];
       if (!fn) { results.push({ index: i, type: cmd.type, error: "نوع أمر غير معروف" }); continue; }
       results.push(await fn(cmd, i));
     } catch (e) {

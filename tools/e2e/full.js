@@ -236,6 +236,45 @@ http.createServer((req, res) => {
     const c4 = await runCancel([{ stu: "STU-20260101-00006", name: "طالب تجريبي 6" }], false);
     const S6 = (await students()).find((x) => x.stu === "STU-20260101-00006");
     step("رفض الموافقة: لا كتابة إطلاقاً (الطلب «مقبول» والعضوية باقية)", S6 && S6.appStatus === "accepted" && !!S6.member && c4.out && c4.out.results[0].rows[0].app === "skipped", JSON.stringify({ s: S6 && { a: S6.appStatus, m: S6.member }, r: c4.out && c4.out.results[0].rows }));
+
+    // أوامر كتابة 1.6.0: قائمة الطلبات، حالة الطلب، حالة الطالب، النقل بين المجموعات، تعديل البيانات — كلها بمعاينة وموافقة
+    const runW = async (cmd, approve) => {
+      await stub.c.eval(`window.__out = null; window.__err = null; window.__plan = null;
+        App.centerAgent.run([${JSON.stringify(cmd)}], { onPlan: (p) => { window.__plan = p; return ${approve === false ? "false" : "true"}; } }).then((d) => { window.__out = d; }).catch((e) => { window.__err = e.message; }); 1`);
+      await waitFor(() => stub.c.eval("!!window.__out || !!window.__err"), 120000, "أمر " + cmd.type);
+      const o = JSON.parse(await stub.c.eval("JSON.stringify({ out: window.__out, err: window.__err, plan: window.__plan })"));
+      o.R = o.out && o.out.results && o.out.results[0]; return o;
+    };
+    const stuOf = async (n) => (await students()).find((x) => x.stu === "STU-20260101-0000" + n);
+    const w0 = await runW({ type: "apps", label: "الطلبات", params: { status: "accepted" } });
+    step("قراءة قائمة الطلبات: رقم الطلب والاسم والحالة لكل صف (قراءة فقط)", w0.R && w0.R.type === "apps" && w0.R.rows.length === (await students()).filter((x) => x.appStatus === "accepted").length && w0.R.rows.every((r) => /^\d+$/.test(r.app) && r.name && r.status === "مقبول"), JSON.stringify(w0.R && w0.R.rows.slice(0, 2)) + (w0.err || ""));
+    const w1 = await runW({ type: "appstatus", label: "حالة", status: "waiting_list", items: [{ app: "5006", name: "طالب تجريبي 6" }, { app: "999999", name: "غير موجود" }] });
+    step("حالة الطلب: معاينة «write» بالحالة قبل/بعد، وغير الموجود لا يُنفَّذ", !!w1.plan && w1.plan.kind === "write" && w1.plan.op === "appstatus" && w1.plan.todo === 1 && w1.plan.invalid === 1 && w1.plan.rows[0].from === "مقبول" && w1.plan.rows[0].to === "قائمة انتظار", JSON.stringify(w1.plan) + (w1.err || ""));
+    step("حالة الطلب: صار «قائمة انتظار» في النظام، والنتيجة تحمل التراجع (accepted)", (await stuOf(6)).appStatus === "waiting_list" && w1.R.rows.some((r) => r.res === "done" && r.undo && r.undo.status === "accepted"), JSON.stringify(w1.R && w1.R.rows));
+    const w1u = await runW({ type: "appstatus", undo: true, items: [w1.R.rows.find((r) => r.res === "done").undo] });
+    step("التراجع عن حالة الطلب: عاد «مقبول»", (await stuOf(6)).appStatus === "accepted" && w1u.plan.undo === true, JSON.stringify(w1u.R && w1u.R.rows));
+    const w2 = await runW({ type: "stustatus", label: "حالة الطالب", status: "withdrawn", items: [{ stu: "STU-20260101-00001", name: "طالب تجريبي 1" }] });
+    step("حالة الطالب: معاينة «نشط ← منسحب» ثم صار «منسحب» فعلاً وطالب واحد فقط تغيّر", w2.plan && w2.plan.rows[0].from === "نشط" && w2.plan.rows[0].to === "منسحب" && (await stuOf(1)).status === "withdrawn" && (await students()).filter((x) => x.status === "withdrawn").length === 1 && w2.R.rows[0].res === "done" && w2.R.rows[0].undo.status === "active", JSON.stringify({ p: w2.plan && w2.plan.rows, r: w2.R && w2.R.rows, e: w2.err }));
+    const w2b = await runW({ type: "stustatus", status: "withdrawn", items: [{ stu: "STU-20260101-00001", name: "طالب تجريبي 1" }] });
+    step("حالة الطالب مكررة: «لا تغيير» ولا كتابة", w2b.R && w2b.R.rows[0].res === "same" && !w2b.plan, JSON.stringify(w2b.R && w2b.R.rows));
+    await runW({ type: "stustatus", undo: true, items: [w2.R.rows[0].undo] });
+    step("التراجع عن حالة الطالب: عاد «نشط»", (await stuOf(1)).status === "active", (await stuOf(1)).status);
+    const w3 = await runW({ type: "move", label: "نقل", items: [{ stu: "STU-20260101-00001", name: "طالب تجريبي 1", group: "G2" }, { stu: "STU-20260101-00007", name: "طالب تجريبي 7", group: "X9" }] });
+    step("النقل: معاينة «G1 ← G2»، ومجموعة غير موجودة لا تُنفَّذ", w3.plan && w3.plan.todo === 1 && w3.plan.invalid === 1 && w3.plan.rows[0].from === "G1" && w3.plan.rows[0].to === "G2", JSON.stringify(w3.plan) + (w3.err || ""));
+    step("النقل: الطالب صار في G2 فعلاً، والتراجع يعيده إلى G1", (await stuOf(1)).group === "G2" && w3.R.rows.some((r) => r.res === "done" && r.undo && r.undo.group === "G1"), JSON.stringify(w3.R && w3.R.rows));
+    await runW({ type: "move", undo: true, items: [w3.R.rows.find((r) => r.res === "done").undo] });
+    step("التراجع عن النقل: عاد إلى G1", (await stuOf(1)).group === "G1", (await stuOf(1)).group);
+    const w4 = await runW({ type: "edit", label: "تعديل", items: [{ stu: "STU-20260101-00002", name: "طالب تجريبي 2", fields: { notes: "ملاحظة تجريبية", governorate_id: "خانيونس", education_level: "دبلوم", national_id: "123", birth_date: "5/3/1999" } }] });
+    const S2 = await stuOf(2);
+    step("تعديل البيانات (الفارغ فقط): الملاحظات فقط تُكتب، والمُدخَل أصلاً لا يُستبدل، والهوية خارج المسموح", w4.plan && /ملاحظات/.test(w4.plan.rows[0].to) && !/المحافظة/.test(w4.plan.rows[0].to) && /لن يُستبدل/.test(w4.plan.rows[0].why) && S2.ed.notes === "ملاحظة تجريبية" && S2.ed.governorate_id === "4" && S2.nid === "400000002", JSON.stringify({ p: w4.plan && w4.plan.rows, ed: S2.ed, e: w4.err }));
+    step("تعديل البيانات: بقية النموذج أُرسلت كما هي بلا كلمة مرور", S2.name === "طالب تجريبي 2" && !S2.pwSent && S2.ed.current_address === "حي الرمال - شارع الوحدة", JSON.stringify(S2));
+    const w5 = await runW({ type: "edit", onlyEmpty: false, items: [{ stu: "STU-20260101-00002", name: "طالب تجريبي 2", fields: { governorate_id: "خانيونس", birth_date: "5/3/1999" } }] });
+    const S2b = await stuOf(2);
+    step("تعديل مع الاستبدال: المحافظة «خانيونس» والتاريخ 1999-03-05، والتراجع يحمل القيم السابقة", S2b.ed.governorate_id === "2" && S2b.ed.birth_date === "1999-03-05" && w5.R.rows[0].undo && w5.R.rows[0].undo.fields.governorate_id === "4" && w5.R.rows[0].undo.fields.birth_date === "1998-05-20", JSON.stringify({ ed: S2b.ed, r: w5.R && w5.R.rows }));
+    await runW({ type: "edit", undo: true, items: [w5.R.rows[0].undo] });
+    step("التراجع عن التعديل: عادت المحافظة والتاريخ", (await stuOf(2)).ed.governorate_id === "4" && (await stuOf(2)).ed.birth_date === "1998-05-20", JSON.stringify((await stuOf(2)).ed));
+    const w6 = await runW({ type: "stustatus", status: "suspended", items: [{ stu: "STU-20260101-00003", name: "طالب تجريبي 3" }] }, false);
+    step("رفض الموافقة على حالة الطالب: لا كتابة", (await stuOf(3)).status === "active" && w6.R.rows[0].res === "skipped", JSON.stringify(w6.R && w6.R.rows));
     stub.c.close();
 
     // ===== ب) واجهة تمكين الحقيقية من القرص =====
