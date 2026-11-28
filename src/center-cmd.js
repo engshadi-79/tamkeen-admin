@@ -2104,15 +2104,20 @@
     return out;
   }
   /* ما لم يُطابَق أو طُوبق بالاسم وحده يُبحث عنه في نظام المركز بالهوية (أو الجوال إن لم تُقرأ الهوية). قراءة فقط، ضمن ضغطتك على «اجلب المسجلين وقارن» */
+  const SIG_LOOKUP_MAX = 300, SIG_NAME_MAX = 150;
   async function sigResolve() {
     const c = state.sig; c.lookups = c.lookups || {};
     const targets = sigPendingLookups();
-    const slice = targets.slice(0, 40);
+    const slice = targets.slice(0, SIG_LOOKUP_MAX);   // كل الأسماء في ضغطة واحدة (كان أول 40 فقط فيبقى الباقي بلا بحث)
     if (!slice.length) return;
-    const r = (await runCommands([{ type: "lookup", label: "بحث بالهوية/الجوال", items: slice.map((t) => ({ q: t.q })) }], { noCache: true }))[0];
-    ((r && r.items) || []).forEach((it, i) => {
-      const t = slice[i]; if (!t) return;
-      c.lookups[t.f.id] = !it || !it.count ? { q: t.q, list: [], none: true } : { q: t.q, list: it.rows.map((x) => stuFrom(it, x)) };
+    const items = [], owner = [];
+    slice.forEach((t) => (t.qs || [t.q]).forEach((q) => { items.push({ q }); owner.push(t); }));
+    const r = (await runCommands([{ type: "lookup", label: "بحث بالهوية والجوال", items }], { noCache: true }))[0];
+    const got = new Map(slice.map((t) => [t.f.id, []]));
+    ((r && r.items) || []).forEach((it, i) => { const t = owner[i]; if (t && it && it.count) got.get(t.f.id).push(...it.rows.map((x) => stuFrom(it, x))); });
+    slice.forEach((t) => {
+      const seen = new Set(), list = got.get(t.f.id).filter((s2) => { const k = s2.stu || s2.id || s2.name; if (seen.has(k)) return false; seen.add(k); return true; });
+      c.lookups[t.f.id] = list.length ? { q: (t.qs || [t.q]).join(" / "), list, tried: t.qs || [t.q] } : { q: (t.qs || [t.q]).join(" / "), list: [], none: true, tried: t.qs || [t.q] };
     });
     c.lookupCapped = targets.length > slice.length;
   }
@@ -2144,7 +2149,14 @@
     const need = [];
     sigForms().forEach((fm) => { const o = sigCompute(fm); if (o) need.push(...o.orphans, ...o.items.filter((x) => x.st === "review" && x.found).map((x) => x.found)); });
     const seen = new Set(), out = [];
-    need.forEach((f) => { if (seen.has(f.id) || (c.lookups || {})[f.id]) return; seen.add(f.id); const nid = digits(f.nid), ph = phoneNorm(f.phone); const q = nid.length >= 9 ? nid : ph.length >= 9 ? ph : ""; if (q) out.push({ f, q }); });
+    need.forEach((f) => {
+      if (seen.has(f.id)) return;
+      const nid = digits(f.nid), ph = phoneNorm(f.phone), qs = [nid.length >= 9 ? nid : "", ph.length >= 9 ? ph : ""].filter(Boolean);
+      // بحث سابق لم يجده وفاته رقم (كان يُبحث بالهوية وحدها حين تُقرأ): يُعاد بكل الأرقام
+      const lk = (c.lookups || {})[f.id], tried = lk ? (lk.tried || [lk.q]) : [];
+      if (lk && !(lk.none && qs.some((q) => !tried.includes(q)))) return;
+      seen.add(f.id); if (qs.length) out.push({ f, q: qs[0], qs });
+    });
     return out;
   }
   const sigAllHeads = () => ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "الدورة", "الحالة", "الاسم المقروء من الورقة", "الورقة", "المطابقة"];
@@ -2170,6 +2182,8 @@
     });
     return ctx;
   }
+  /* ملف Excel أو CSV كشفٌ لكل المجموعات، فلا يُستنتج منه مكان أحد؛ صور الأوراق وحدها ورقة لمجموعة واحدة */
+  const sigSheetLike = (file) => !/\.(xlsx?|csv|ods)$/i.test(String(file || ""));
   const sigTop = (m) => [...m.entries()].sort((a, b) => b[1] - a[1])[0];
   function sigWhere(f, ctx) {
     const lk = (state.sig.lookups || {})[f.id], s1 = lk && lk.list && lk.list.length === 1 ? lk.list[0] : null;
@@ -2178,16 +2192,23 @@
     let group = "", gHow = "";
     if (s1 && s1.group) { group = grpCode(s1.group) || clean(s1.group); gHow = "من النظام"; }
     else if (clean(f.groupAuto)) { const gm = clean(f.groupAuto).match(/(?:^|[^A-Za-z0-9])(S\d+\s*G\d+|G\d+)(?![A-Za-z0-9])/i); group = gm ? gm[1].replace(/\s+/g, "").toUpperCase() : clean(f.groupAuto); gHow = "من الورقة"; }
-    else if (e && e.g.size) { const [g, n] = sigTop(e.g); group = g; gHow = "زملاؤه في الورقة (" + ui.fmt(n) + " من " + ui.fmt(tot) + ")"; }
+    else if (e && e.g.size && sigSheetLike(f.file) && sigTop(e.g)[1] / tot >= 0.6) { const [g, n] = sigTop(e.g); group = g; gHow = "زملاؤه في الورقة (" + ui.fmt(n) + " من " + ui.fmt(tot) + ")"; }
     else if (n1 && n1.group) { group = grpCode(n1.group) || clean(n1.group); gHow = "أقرب اسم في النظام"; }
     let track = sigTrackOf(f), tHow = track ? "من الورقة" : "";
     if (!track && s1 && s1.track) { track = s1.track; tHow = "من النظام"; }
-    if (!track && e && e.t.size) { track = sigTop(e.t)[0]; tHow = "زملاؤه في الورقة"; }
+    if (!track && e && e.t.size && sigSheetLike(f.file) && sigTop(e.t)[1] / [...e.t.values()].reduce((a, b) => a + b, 0) >= 0.6) { track = sigTop(e.t)[0]; tHow = "زملاؤه في الورقة"; }
     if (!track && n1 && n1.track) { track = n1.track; tHow = "أقرب اسم في النظام"; }
     return { track: clean(track).replace(/^مسار\s*/, ""), tHow, group, gHow };
   }
   const sigWhereCells = (w) => [w.track || "—", w.group || "—", [w.track && w.tHow ? "المسار: " + w.tHow : "", w.group && w.gHow ? "المجموعة: " + w.gHow : ""].filter(Boolean).join(" · ")];
   const sigLookupText = (f) => {
+    const lk0 = (state.sig.lookups || {})[f.id];
+    if (lk0 && lk0.none && lk0.tried) {   // بُحث بالهوية والجوال فلم يُعثر عليه: يُذكر ما بُحث به، ثم نتيجة البحث بالاسم إن وُجدت
+      const idq = lk0.tried.find((q) => q === digits(f.nid)), phq = lk0.tried.find((q) => q !== idq);
+      const what = "بحثتُ " + [idq ? "بالهوية " + idq : "", phq ? "بالجوال " + phq : ""].filter(Boolean).join(" و") + " فلم أجد طالباً";
+      const nh = (state.sig.nameHits || {})[f.id];
+      return what + (nh ? (nh.list.length ? "؛ وبالاسم: " + nh.list.map((x) => (x.s || x).name + " (" + Math.round((x.score || 0) * 100) + "%)").join("، ") : "؛ ولا شبيه لاسمه في النظام") : "؛ لم يُبحث باسمه بعد");
+    }
     const lk = (state.sig.lookups || {})[f.id];
     if (!lk || (lk.none && ((state.sig.nameHits || {})[f.id] || {}).list)) { const nh = (state.sig.nameHits || {})[f.id]; if (!nh) return ""; if (!nh.list.length) return "بحثتُ عن اسمه في كل النظام فلم أجد شبيهاً"; return "بالاسم في النظام: " + nh.list.map((x) => x.s.name + [x.s.stage, x.s.group ? "مجموعة " + x.s.group : "", x.s.track].filter(Boolean).map((y) => " · " + y).join("") + " (" + Math.round(x.score * 100) + "%)").join(" ‖ "); }
     if (lk.none) return "بحثتُ عنه بـ" + (digits(f.nid).length >= 9 ? "الهوية" : "الجوال") + " في النظام فلم أجد طالباً";
@@ -2399,7 +2420,7 @@
   }
   async function sigNameSearch() {
     const c = state.sig; c.nameHits = c.nameHits || {};
-    const targets = sigPendingNameSearch().slice(0, 40);
+    const targets = sigPendingNameSearch().slice(0, SIG_NAME_MAX);
     if (!targets.length) return 0;
     const cand = new Map(targets.map((f) => [f.id, new Map()]));
     const pass = async (people, wide) => {
@@ -2434,6 +2455,18 @@
       requireAgent15();
       const n = await sigNameSearch(), found = Object.values(state.sig.nameHits || {}).filter((h) => h.list.length).length;
       ui.toast(n ? "بحثتُ عن " + ui.fmt(n) + " اسماً في النظام، وجدتُ مرشحين لـ" + ui.fmt(found) : "لا أسماء تحتاج بحثاً");
+    } catch (err) { state.resultError = err.message || String(err); }
+    finally { state.busy = false; render(); refreshStatus(); }
+  }
+  /* بحث شامل عن غير المعروفين: بالهوية والجوال أولاً، ثم بالاسم لمن بقي */
+  async function runSigFindAll() {
+    state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
+    try {
+      requireAgent15();
+      await sigResolve(); sigLearnAuto();
+      const n = await sigNameSearch(); sigLearnAuto();
+      const left = sigUnknownAll().length;
+      ui.toast("انتهى البحث" + (n ? " (بحثتُ بالاسم عن " + ui.fmt(n) + ")" : "") + " — بقي " + ui.fmt(left) + " غير معروف");
     } catch (err) { state.resultError = err.message || String(err); }
     finally { state.busy = false; render(); refreshStatus(); }
   }
@@ -3058,13 +3091,14 @@
   /* «التجميل 5 · الحلاقة 3 · بلا مسار 2» */
   function sigUnknownByTrack(list) {
     const m = new Map();
-    list.forEach((f) => { const t = (sigTrackOf(f) || "بلا مسار").replace(/^مسار\s*/, ""); m.set(t, (m.get(t) || 0) + 1); });
+    list.forEach((f) => { const t = (sigTrackOf(f) || "بلا مسار مكتوب").replace(/^مسار\s*/, ""); m.set(t, (m.get(t) || 0) + 1); });
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([t, n]) => esc(t) + " <b>" + ui.fmt(n) + "</b>").join(" · ");
   }
   function sigRetrackBar(list) {
     if (!list.length) return "";
-    const n = sigRetrackPlan().size;
+    const n = sigRetrackPlan().size, pend = sigPendingLookups().length + sigPendingNameSearch().length;
     return `<div class="cc-sig-retrack"><p class="cc-note">حسب المسار: ${sigUnknownByTrack(list)}</p>
+      ${pend ? `<div class="cc-row"><button type="button" class="btn secondary small" data-cc="sig-findall" ${state.busy ? "disabled" : ""}>ابحث عنهم في النظام بالهوية والجوال والاسم (${ui.fmt(pend)})</button><span class="cc-note">لم يُبحث بعد عن ${ui.fmt(pend)} منهم. قراءة فقط.</span></div>` : ""}
       <div class="cc-row"><button type="button" class="btn navy small" data-cc="sig-retrack" ${state.busy ? "disabled" : ""}>افصلهم حسب المسار وقارن مرة أخرى (${ui.fmt(n)} ${n === 1 ? "أمر قراءة" : "أوامر قراءة"})</button>
       <span class="cc-note">يجلب كل طلاب مسار كل اسم من النظام (كل المراحل والحالات) ويقارن بالاسم والهوية والجوال وأخطاء القراءة. قراءة فقط.</span></div></div>`;
   }
@@ -5076,6 +5110,7 @@
         } else if (act === "sig-retrack") { return sigRetrack();
         } else if (act === "sig-namesearch") { return runSigNameSearch();
         } else if (act === "sig-lookup") { return runSigLookup();
+        } else if (act === "sig-findall") { return runSigFindAll();
         } else if (act === "sig-xl-add") { return sigXlAdd();
         } else if (act === "sig-xl-clear") { state.sig.xl = null; state.sig.xlErr = ""; return render();
         } else if (act === "sig-rm") { state.sig.files.splice(Number(b.dataset.i), 1); return render();
@@ -5522,7 +5557,7 @@
     _wr: { readEdit: wrReadEdit, cmd: wrCommand, agentWrite: () => agentWrite() },
     _att: { sel: () => selOf("att-0"), blocks: () => cancelBlocks(), log: () => state.cancelLog, hist: () => state.attHist, extLoad, kvPut, histKeys: [LOG_K, HIST_K] },
     _snap: { get: () => snapData, load: snapLoad, clear: snapClear, flush: () => { snapRefs = []; snapMaybeSave(); } },
-    _sig: { where: (f) => sigWhere(f, sigSheetCtx()), compute: (f) => sigCompute(f), unknownAll: sigUnknownAll, retrackPlan: sigRetrackPlan, trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+    _sig: { pendingLookups: () => sigPendingLookups(), lookupText: (f) => sigLookupText(f), where: (f) => sigWhere(f, sigSheetCtx()), compute: (f) => sigCompute(f), unknownAll: sigUnknownAll, retrackPlan: sigRetrackPlan, trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});
