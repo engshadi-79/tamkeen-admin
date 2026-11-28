@@ -1593,9 +1593,18 @@ async function suite() {
     location.hash = "#center"; await wait(400);
     ok("المسار #center يعرض الصفحة المستقلة", document.getElementById("view-center").classList.contains("active") && !document.getElementById("view-converter").classList.contains("active"), [...document.querySelectorAll(".view.active")].map((x) => x.id));
     c.state.mode = "report"; c.render();
-    const groupsEl = [...b.querySelectorAll(".cc-modes .cc-mgroup")];
-    ok("خمس مجموعات بعناوينها", groupsEl.length === 5 && groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent).join("|") === "الطلاب والتقارير|المتابعة اليومية|التوقيعات والكشوف|فحص وجودة|تنفيذ في النظام", groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent));
+    let groupsEl = [...b.querySelectorAll(".cc-modes .cc-mgroup")];
+    ok("خمس مجموعات بعناوينها", groupsEl.length === 5 && groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent).join("|") === "التقارير|الحضور والمتابعة|التوقيعات والكشوف|فحص البيانات|الطالب والتنفيذ", groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent));
     ok("كل الأدوات الـ19 موزّعة بلا تكرار ولا نقص", groupsEl.reduce((n, g) => n + g.querySelectorAll("button[data-m]").length, 0) === 19 && new Set([...b.querySelectorAll(".cc-modes button[data-m]")].map((x) => x.dataset.m)).size === 19, groupsEl.map((g) => g.querySelectorAll("button").length));
+    {   // البطاقات: كل أداة باسمها وسطر شرحها، وتُطوى بعد اختيار أداة ويعيدها «كل الأدوات»
+      c.state.navOpen = true; c.render();
+      ok("بطاقات الأدوات: لكل أداة سطر شرح، والبطاقات ظاهرة عند فتح الصفحة", b.querySelectorAll(".cc-modes .cc-tool small").length === 19 && !b.querySelector(".cc-modes.collapsed") && /إخفاء قائمة الأدوات/.test(b.querySelector('[data-cc="nav-toggle"]').textContent), "cards");
+      b.querySelector('.cc-modes button[data-m="attend"]').click(); await wait(150);
+      ok("اختيار أداة يطوي البطاقات ويُظهر شريطها باسمها ومجموعتها و«كل الأدوات (19)»", c.state.mode === "attend" && !!b.querySelector(".cc-modes.collapsed") && /الحضور والغياب/.test(b.querySelector(".cc-curbar").textContent) && /الحضور والمتابعة/.test(b.querySelector(".cc-curbar").textContent) && /كل الأدوات \(19\)/.test(b.querySelector('[data-cc="nav-toggle"]').textContent), b.querySelector(".cc-curbar") && b.querySelector(".cc-curbar").textContent);
+      b.querySelector('[data-cc="nav-toggle"]').click(); await wait(150);
+      ok("«كل الأدوات» يعيد البطاقات والأداة المفتوحة مميّزة في بطاقتها", !b.querySelector(".cc-modes.collapsed") && !!b.querySelector('.cc-mgroup.has-on button.on[data-m="attend"]'), "reopen");
+      c.state.mode = "report"; c.state.navOpen = true; c.render(); groupsEl = [...b.querySelectorAll(".cc-modes .cc-mgroup")];
+    }
     ok("المطابقة والتعهد والصورة والمقارنة في مجموعة «التوقيعات والكشوف»", [...groupsEl[2].querySelectorAll("button[data-m]")].map((x) => x.dataset.m).join() === "sign,pledge,img,xl", [...groupsEl[2].querySelectorAll("button")].map((x) => x.dataset.m));
     groupsEl[2].querySelector('button[data-m="pledge"]').click(); await wait(200);
     ok("النقر على أداة داخل مجموعتها يفتحها", c.state.mode === "pledge" && !!b.querySelector("#cc-pledge"), c.state.mode);
