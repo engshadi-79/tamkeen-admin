@@ -2473,6 +2473,9 @@
     state.busy = true; state.resultError = ""; state.progress = ""; render(); refreshStatus();
     try {
       requireAgent15();
+      // إعادة البحث عن كل غير المعروفين (لا من لم يُبحث عنه فقط): ما بُحث سابقاً كان في صفحة الطلاب وحدها
+      const c = state.sig; c.lookups = c.lookups || {}; c.nameHits = c.nameHits || {};
+      sigUnknownAll().forEach((f) => { const lk = c.lookups[f.id]; if (!lk || lk.none || !lk.list || lk.list.length !== 1) delete c.lookups[f.id]; delete c.nameHits[f.id]; });
       await sigResolve(); sigLearnAuto();
       const n = await sigNameSearch(); sigLearnAuto();
       const left = sigUnknownAll().length;
@@ -2632,7 +2635,7 @@
     const simple = `<div class="cc-sig-simple">
       ${box3("s3-found", "١. من وُجدوا في الأوراق", 0, false, ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "الاسم في الورقة", "كيف عُرف", "الحالة"], t1, "لم يُطابَق أحد بعد.")}
       ${box3("s3-miss", "٢. المتبقون الذين لم يوقّعوا", 0, true, ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "السبب"], t2, "✓ كل المسجلين وقّعوا.")}
-      ${box3("s3-unk", "٣. أسماء من الأوراق لم تُعرف", 0, true, ["الاسم المقروء", "رقم الهوية", "الجوال", "المسار", "المجموعة", "كيف عُرف مكانه", "التوقيع", "الورقة", "نتيجة البحث في النظام"], t3, "✓ كل الأسماء المقروءة عُرفت.", multi ? "" : sigRetrackBar(unk))}
+      ${box3("s3-unk", "٣. أسماء من الأوراق لم تُعرف", 0, true, ["الاسم المقروء", "رقم الهوية", "الجوال", "المسار", "المجموعة", "كيف عُرف مكانه", "التوقيع", "الورقة", "نتيجة البحث في النظام"], t3, "✓ كل الأسماء المقروءة عُرفت.", sigRetrackBar(unk))}
       ${review.length ? `<p class="cc-note">منهم <b>${ui.fmt(review.length)}</b> «يحتاج مراجعة» في الجدول الأول: أكّدهم أو ارفضهم من «التفاصيل والأدوات» أدناه.</p>` : ""}
       <div class="cc-stats"><button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div></div>`;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> ${multi ? "النموذج: " + FM + " <small>(" + ui.fmt(o.found.length) + " اسماً مقروءاً)</small>" : "نتيجة المطابقة"}</h3>
@@ -3106,9 +3109,9 @@
   }
   function sigRetrackBar(list) {
     if (!list.length) return "";
-    const n = sigRetrackPlan().size, pend = sigPendingLookups().length + sigPendingNameSearch().length;
+    const n = sigRetrackPlan().size;
     return `<div class="cc-sig-retrack"><p class="cc-note">حسب المسار: ${sigUnknownByTrack(list)}</p>
-      ${pend ? `<div class="cc-row"><button type="button" class="btn secondary small" data-cc="sig-findall" ${state.busy ? "disabled" : ""}>ابحث عنهم في النظام بالهوية والجوال والاسم (${ui.fmt(pend)})</button><span class="cc-note">لم يُبحث بعد عن ${ui.fmt(pend)} منهم. قراءة فقط.</span></div>` : ""}
+      <div class="cc-row"><button type="button" class="btn navy small" data-cc="sig-findall" ${state.busy ? "disabled" : ""}><span class="material-symbols-outlined btn-ico" aria-hidden="true">person_search</span>ابحث عنهم في النظام بالهوية والجوال والاسم (${ui.fmt(list.length)})</button><span class="cc-note">في الطلاب والمتقدمين والطلبات، ويُعاد البحث عن الجميع في كل ضغطة. قراءة فقط.</span></div>
       <div class="cc-row"><button type="button" class="btn navy small" data-cc="sig-retrack" ${state.busy ? "disabled" : ""}>افصلهم حسب المسار وقارن مرة أخرى (${ui.fmt(n)} ${n === 1 ? "أمر قراءة" : "أوامر قراءة"})</button>
       <span class="cc-note">يجلب كل طلاب مسار كل اسم من النظام (كل المراحل والحالات) ويقارن بالاسم والهوية والجوال وأخطاء القراءة. قراءة فقط.</span></div></div>`;
   }
