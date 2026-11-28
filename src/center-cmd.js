@@ -4380,8 +4380,8 @@
       ${weeklyBanner()}
       ${wideBanner()}
       ${newsCard()}
-      ${quickBar()}
       ${modesNav(mode)}
+      ${quickBar()}
       ${savedBar(mode)}
       ${mode === "write" ? "" : groupBar()}
       ${mode === "write" ? writeView() : mode === "report" ? scriptsView() : mode === "compare" ? compareView() : mode === "siblings" ? siblingsView() : mode === "missing" ? missingView() : mode === "attend" ? attView() : mode === "sign" ? sigView() : mode === "xl" ? xlView() : mode === "morning" ? morningView() : mode === "grad" ? gradView() : mode === "pledge" ? pledgeView() : mode === "monthly" ? monthlyView() : mode === "gaps" ? gapsView() : mode === "img" ? imgView() : mode === "impact" ? impView() : mode === "dq" ? dqView() : mode === "groups" ? grpView() : mode === "student" ? stuView() : assistantView() + (state.adding === "register" ? registerBuilder() : "")}
@@ -4516,7 +4516,7 @@
   /* ===== البحث الشامل (Ctrl+K): أدوات المركز، وطلاب الذاكرة المحمّلة ===== */
   function openMode(k) {
     if (!MODE_FLAT[k]) return;
-    state.mode = k; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
+    state.mode = k; state.navOpen = false; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
     render();
   }
   function centerSearchIndex() {
@@ -4559,16 +4559,24 @@
     return `<div class="cc-quick"><span class="cc-q-t">الأكثر استعمالاً</span>${items || '<span class="cc-note">تظهر هنا آخر أدواتك ومفضلتك.</span>'}<button type="button" class="cc-link cc-fav" data-cc="fav-toggle" data-m="${esc(cur)}" aria-pressed="${isFav}">${isFav ? "★ في المفضلة (إزالة)" : "☆ ثبّت هذه الأداة في المفضلة"}</button></div>`;
   }
   /* الأدوات مجمّعة بحسب المهمة (بدل صف واحد من 16 تبويباً): لكل مجموعة عنوان، وتحتها أدواتها */
+  /* الأدوات في خمس بطاقات حسب المهمة (2026-11-28): [العنوان، الأدوات، أيقونة البطاقة] */
   const MODE_SECTIONS = [
-    ["الطلاب والتقارير", ["report", "monthly", "student", "ask", "groups"]],
-    ["المتابعة اليومية", ["morning", "attend", "missing", "impact", "grad"]],
-    ["التوقيعات والكشوف", ["sign", "pledge", "img", "xl"]],
-    ["فحص وجودة", ["dq", "gaps", "compare", "siblings"]],
-    ["تنفيذ في النظام", ["write"]],
+    ["التقارير", ["report", "monthly", "morning", "impact", "groups"], "summarize"],
+    ["الحضور والمتابعة", ["attend", "missing", "grad"], "event_available"],
+    ["التوقيعات والكشوف", ["sign", "pledge", "img", "xl"], "draw"],
+    ["فحص البيانات", ["gaps", "dq", "compare", "siblings"], "fact_check"],
+    ["الطالب والتنفيذ", ["student", "ask", "write"], "person_search"],
   ];
   const MODE_FLAT = Object.fromEntries(MODE_GROUPS.flat().map(([k, t, h]) => [k, [k, t, h]]));
-  const modeBtn = (mode, [k, t, h]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" data-tip-t="${esc(t)}" data-tip="${esc(MODE_TIPS[k] || h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><b>${esc(t)}</b></button>`;
-  const modesNav = (mode) => `<nav class="cc-modes" role="tablist" aria-label="نوع الأمر">${MODE_SECTIONS.map(([title, keys]) => `<div class="cc-mgroup" role="presentation"><span class="cc-mg-t" aria-hidden="true">${esc(title)}</span><div class="cc-mg-b" role="presentation">${keys.filter((k) => MODE_FLAT[k]).map((k) => modeBtn(mode, MODE_FLAT[k])).join("")}</div></div>`).join("")}</nav>`;
+  const modeBtn = (mode, [k, t, h]) => `<button type="button" role="tab" class="cc-tool${mode === k ? " on" : ""}" aria-selected="${mode === k}" data-cc="mode" data-m="${k}" data-tip-t="${esc(t)}" data-tip="${esc(MODE_TIPS[k] || h)}"><span class="cc-ico" aria-hidden="true">${MODE_ICO[k] || ""}</span><span class="cc-tool-t"><b>${esc(t)}</b><small>${esc(h)}</small></span></button>`;
+  /* شريط الأداة المفتوحة + بطاقات كل الأدوات: البطاقات تظهر عند فتح الصفحة، وتُطوى بعد اختيار أداة (تبقى في الصفحة مخفية) ويعيدها «كل الأدوات» */
+  const modesNav = (mode) => {
+    const cur = MODE_FLAT[mode], open = state.navOpen !== false, n = Object.keys(MODE_FLAT).length;
+    const sec = MODE_SECTIONS.find((x) => x[1].includes(mode));
+    const bar = cur ? `<div class="cc-curbar"><span class="cc-curbar-ico" aria-hidden="true">${MODE_ICO[mode] || "🧰"}</span><div class="cc-curbar-t"><small>${esc(sec ? sec[0] : "الأداة المفتوحة")}</small><b>${esc(cur[1])}</b><span>${esc(cur[2])}</span></div>
+      <button type="button" class="btn ${open ? "secondary" : "navy"} small" data-cc="nav-toggle" aria-expanded="${open}"><span class="material-symbols-outlined btn-ico" aria-hidden="true">${open ? "expand_less" : "apps"}</span>${open ? "إخفاء قائمة الأدوات" : "كل الأدوات (" + ui.fmt(n) + ")"}</button></div>` : "";
+    return `${bar}<nav class="cc-modes${open ? "" : " collapsed"}" role="tablist" aria-label="أدوات نظام المركز">${MODE_SECTIONS.map(([title, keys, ico]) => { const ks = keys.filter((k) => MODE_FLAT[k]); return `<div class="cc-mgroup${ks.includes(mode) ? " has-on" : ""}" role="presentation"><div class="cc-mg-h"><span class="material-symbols-outlined cc-mg-ico" aria-hidden="true">${ico || "apps"}</span><span class="cc-mg-t">${esc(title)}</span><span class="cc-mg-n">${ui.fmt(ks.length)}</span></div><div class="cc-mg-b" role="presentation">${ks.map((k) => modeBtn(mode, MODE_FLAT[k])).join("")}</div></div>`; }).join("")}</nav>`;
+  };
   /* ===== النطاق الموحّد: المسارات والمراحل والمجموعات في شريط واحد يسري على كل التبويبات ===== */
   const stageK = (t) => (STAGES.find((g) => g.t === t) || {}).k;
   const scopeCfg = (mode) => ({ report: state.sel, missing: state.mis, compare: state.cmp, siblings: state.sib, dq: state.dq, groups: state.grp, impact: state.imp, attend: state.att, sign: state.sig, xl: state.xl, morning: state.att, grad: state.att, pledge: state.pledge, monthly: state.monthly, gaps: state.gaps }[mode] || state.sel);
@@ -4931,7 +4939,9 @@
           return executeBatch(plan.map((p) => p.command), plan.map((p) => p.label), true, plan.map((p) => ({ params: p.command.params, label: p.label })));
         } else if (act === "refresh-mode") { const rb = box.querySelector('[data-cc="' + RUN_BTN[state.mode] + '"]'); if (!rb || rb.disabled) return; state.forceFresh = true; return rb.click();
         } else if (act === "fav-toggle") { const k = b.dataset.m, f = lsGet(FAV_KEY, []); lsSet(FAV_KEY, f.includes(k) ? f.filter((x) => x !== k) : [...f, k]); return render();
+        } else if (act === "nav-toggle") { state.navOpen = state.navOpen === false; return render();
         } else if (act === "mode") {
+          state.navOpen = false;
           state.mode = b.dataset.m; state.adding = ""; state.proposal = null; state.autoRunRegister = false; state.reg = null; state.resultError = "";
         } else if (act === "run-stu") { return runStudent();
         } else if (act === "stu-pick") { return runStudent(state.stu.pick[i]);

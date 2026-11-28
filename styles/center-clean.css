@@ -176,3 +176,37 @@ html:root:root .cc-modes { gap: 8px 10px; padding: 8px 10px; }
 .cc-undobar { border-color: #b54708; background: rgba(181, 71, 8, .04); }
 .cc-att-near .btn, .cc-att-near .cc-link { margin-inline-start: 8px; }
 .cc-log .cc-res-h, .cc-attcmp .cc-res-h { flex-wrap: wrap; gap: 8px; }
+
+/* ===== أدوات نظام المركز في بطاقات (2026-11-28) =====
+   شريط «الأداة المفتوحة» ثم خمس بطاقات؛ كل أداة: أيقونة واسم وسطر يشرحها. بعد اختيار أداة تُطوى البطاقات (.collapsed) ويعيدها «كل الأدوات». */
+html:root:root:root .cc-curbar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin: 0 0 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.cc-curbar-ico { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; border-radius: 11px; background: rgba(15, 118, 110, .1); font-size: 20px; }
+.cc-curbar-t { display: grid; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.cc-curbar-t small { font-size: .74rem; font-weight: 700; color: var(--teal-600, #0f8b8d); }
+.cc-curbar-t b { font-size: 1.05rem; font-weight: 800; color: var(--ink); }
+.cc-curbar-t span { font-size: .82rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html:root:root:root .cc-curbar .btn { flex: 0 0 auto; }
+
+html:root:root:root .cc-modes { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 12px; padding: 0; margin: 0 0 10px; background: none; border: 0; border-radius: 0; }
+html:root:root:root .cc-modes.collapsed { display: none; }
+html:root:root:root .cc-mgroup { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); min-width: 0; }
+html:root:root:root .cc-mgroup.has-on { border-color: rgba(15, 118, 110, .45); box-shadow: 0 0 0 3px rgba(15, 118, 110, .08); }
+.cc-mg-h { display: flex; align-items: center; gap: 8px; padding: 0 4px 6px; margin-bottom: 2px; border-bottom: 1px solid var(--line); }
+.cc-mg-ico { font-size: 20px; color: var(--teal-600, #0f8b8d); }
+html:root:root:root .cc-mg-h .cc-mg-t { flex: 1 1 auto; font-size: .95rem; font-weight: 800; color: var(--ink); letter-spacing: 0; }
+.cc-mg-n { font-size: .75rem; font-weight: 700; color: var(--muted); background: rgba(15, 118, 110, .08); border-radius: 999px; padding: 1px 8px; }
+html:root:root:root .cc-mg-b { display: grid; gap: 2px; }
+html:root:root:root .cc-modes button.cc-tool { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); text-align: start; cursor: pointer; }
+html:root:root:root .cc-modes button.cc-tool:hover { background: rgba(15, 118, 110, .07); }
+html:root:root:root .cc-modes button.cc-tool.on { background: var(--navy); color: #fff; }
+html:root:root:root .cc-modes button.cc-tool .cc-ico { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 9px; background: rgba(15, 118, 110, .08); font-size: 16px; }
+html:root:root:root .cc-modes button.cc-tool.on .cc-ico { background: rgba(255, 255, 255, .15); }
+.cc-tool-t { display: grid; gap: 1px; min-width: 0; }
+html:root:root:root .cc-modes button.cc-tool b { font-size: .92rem; font-weight: 700; }
+.cc-tool-t small { font-size: .76rem; color: var(--muted); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html:root:root:root .cc-modes button.cc-tool.on small { color: rgba(255, 255, 255, .75); }
+@media (max-width: 640px) {
+  html:root:root:root .cc-curbar { flex-wrap: wrap; }
+  html:root:root:root .cc-curbar .btn { width: 100%; justify-content: center; }
+  .cc-curbar-t span { white-space: normal; }
+}
