@@ -4,6 +4,24 @@
   const VIEWS = ["dashboard", "tracks", "letters", "report", "meetings", "registry", "roster", "rtl", "converter", "center", "hospitality", "forms", "sheets", "screen", "reports", "tasks", "history", "admin", "inventory"];
 
   /* مسار التنقّل: يُشتق من القائمة الجانبية، فيكفي بناؤه مرة واحدة لكل صفحة */
+  /* «المزيد»: أزرار الترويسة الثانوية (data-more) تُنقل كما هي إلى قائمة منسدلة، فتبقى أحداثها وصلاحياتها كما كانت */
+  function moreMenus() {
+    document.querySelectorAll(".view > .page-head > .btn-row").forEach((row) => {
+      const items = [...row.querySelectorAll(":scope > [data-more]")];
+      if (!items.length || row.querySelector(":scope > .more-menu")) return;
+      const d = document.createElement("details");
+      d.className = "more-menu";
+      d.innerHTML = `<summary class="btn secondary" title="بقية أدوات هذه الصفحة"><span class="material-symbols-outlined btn-ico" aria-hidden="true">more_horiz</span>المزيد</summary><div class="more-pop" role="menu"></div>`;
+      const pop = d.querySelector(".more-pop");
+      items.forEach((b) => pop.appendChild(b));
+      row.appendChild(d);
+      // بعد النقر على بند تُغلق القائمة (بعد أن يكمل الزر عمله، كفتح نافذة اختيار الملفات)
+      pop.addEventListener("click", (e) => { if (e.target.closest("button, a, label")) setTimeout(() => { d.open = false; }, 0); });
+    });
+    document.addEventListener("click", (e) => document.querySelectorAll(".more-menu[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; }));
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".more-menu[open]").forEach((d) => { d.open = false; }); });
+  }
+
   function paintCrumb(view) {
     const sec = document.getElementById("view-" + view);
     if (!sec || sec.querySelector(".crumb")) return;
@@ -241,6 +259,7 @@
     // إضافات تاب النماذج (حذف جماعي، معاينة، «جديد»، بحث موحّد): ملف مستقل يُحمَّل بعد الواجهة
     { const fx = document.createElement("script"); fx.src = "src/forms-extra.js?v=3"; fx.async = true; document.body.appendChild(fx); }
     initGroups();
+    moreMenus();
     const menu = document.getElementById("mobile-menu-toggle");
     const nav = document.getElementById("primary-nav");
     const mobile = window.matchMedia("(max-width: 760px)");

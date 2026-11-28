@@ -1592,6 +1592,12 @@ async function suite() {
     ok("المحتوى في صفحة مستقلة view-center", !!document.querySelector("#view-center #cc-body") && !!document.querySelector("#view-center .cv-intro h2"), "view");
     location.hash = "#center"; await wait(400);
     ok("المسار #center يعرض الصفحة المستقلة", document.getElementById("view-center").classList.contains("active") && !document.getElementById("view-converter").classList.contains("active"), [...document.querySelectorAll(".view.active")].map((x) => x.id));
+    {   // «المزيد»: الأزرار الثانوية في قائمة منسدلة، والأساسية ظاهرة، والزر يعمل من داخل القائمة
+      const mm = (v) => document.querySelector("#view-" + v + " .page-head .more-menu");
+      ok("قائمة «المزيد» في الصفحات المزدحمة الست", ["registry", "roster", "admin", "hospitality", "letters", "screen"].every((v) => !!mm(v)), ["registry", "roster", "admin", "hospitality", "letters", "screen"].filter((v) => !mm(v)).join());
+      ok("الوارد: «قيد جديد» و«رفع ملفات» ظاهران، و«المحذوفات» و«سجل النشاط» داخل «المزيد»", !mm("registry").contains(document.getElementById("reg-add")) && !mm("registry").contains(document.getElementById("reg-bulk")) && mm("registry").contains(document.getElementById("reg-trash")) && mm("registry").contains(document.getElementById("reg-activity")), "registry");
+      ok("المستفيدون: «حذف القائمة» داخل «المزيد» لا في الواجهة", mm("roster").contains(document.getElementById("ros-clear")) && !mm("roster").contains(document.getElementById("ros-add")), "roster");
+    }
     c.state.mode = "report"; c.render();
     let groupsEl = [...b.querySelectorAll(".cc-modes .cc-mgroup")];
     ok("خمس مجموعات بعناوينها", groupsEl.length === 5 && groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent).join("|") === "التقارير|الحضور والمتابعة|التوقيعات والكشوف|فحص البيانات|الطالب والتنفيذ", groupsEl.map((g) => g.querySelector(".cc-mg-t").textContent));

@@ -73,3 +73,29 @@ html:root:root:root:root :is(#u-, .view) .card.ch-card > h3 { font-size: 14px; f
 /* رؤوس الجداول: 13px عريض (كانت 11.5px في اللوحة) */
 html:root:root:root:root :is(#u-, .view) table th { font-size: 13px; font-weight: 700; }
 html:root:root:root:root :is(#u-, .view) .dash-table th { padding: 10px 12px; }
+
+/* ===== قائمة «المزيد» في ترويسة الصفحات المزدحمة (2026-11-28) ===== */
+.more-menu { position: relative; display: inline-block; }
+.more-menu > summary { list-style: none; cursor: pointer; user-select: none; }
+.more-menu > summary::-webkit-details-marker { display: none; }
+.more-menu[open] > summary { box-shadow: 0 0 0 3px rgba(15, 139, 141, .18); }
+html:root:root .more-menu > .more-pop {
+  position: absolute; inset-inline-end: 0; top: calc(100% + 6px); z-index: 60; min-width: 230px; max-width: min(320px, 90vw);
+  display: grid; gap: 2px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 32px -8px rgba(16, 24, 40, .25);
+}
+html:root:root .more-menu > .more-pop > .btn,
+html:root:root .more-menu > .more-pop > a.btn {
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; height: auto; min-height: 36px; padding: 7px 10px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--text); box-shadow: none; font-weight: 600; text-align: start; white-space: nowrap;
+}
+html:root:root .more-menu > .more-pop > .btn:hover,
+html:root:root .more-menu > .more-pop > .btn:focus-visible { background: var(--teal-100, rgba(15, 139, 141, .1)); outline: none; }
+html:root:root .more-menu > .more-pop > .btn.danger { color: var(--danger); }
+html:root:root .more-menu > .more-pop > .btn[hidden] { display: none; }
+@media (max-width: 720px) {
+  /* على الجوال تنفتح القائمة في مكانها تحت الزر (لا عائمة) فلا تخرج عن عرض الشاشة */
+  html:root:root .view > .page-head > .btn-row > .more-menu { flex: 1 1 100%; display: block; }
+  html:root:root .more-menu > summary { display: flex; width: 100%; justify-content: center; }
+  html:root:root .more-menu > .more-pop { position: static; min-width: 0; max-width: none; margin-top: 6px; box-shadow: none; }
+}
