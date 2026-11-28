@@ -59,3 +59,17 @@ html:root:root .view .card.cc-main-card { border-radius: 14px; margin-bottom: 16
   html:root:root .view > .page-header .page-actions > .btn { flex: 1 1 auto; justify-content: center; }
   html:root:root .view > .cv-intro .cv-trust { display: none; }
 }
+
+/* ===== داخل الصفحات (2026-11-28): بطاقات وعناوين أقسام وجداول بمقاس واحد =====
+   البادئة html:root:root:root:root :is(#u-, .view) تحمل وزن مُعرِّف (#u- غير موجود، لكن :is تأخذ أعلى وزن) فتغلب قواعد القوالب القديمة مثل «#view-dashboard .card» دون تعديلها. */
+/* البطاقات: زاوية واحدة 14px في كل الصفحات (كانت 10px في اللوحة والجرد والمحوّل) */
+html:root:root:root:root :is(#u-, .view) .card { border-radius: 14px; }
+/* عناوين الأقسام داخل البطاقات: 16px عريض (كانت 13–17px) */
+html:root:root:root:root :is(#u-, .view) .card .dash-section-head h3,
+html:root:root:root:root :is(#u-, .view) .card > h3,
+html:root:root:root:root :is(#u-, .view) .card .cv-card-heading h3,
+html:root:root:root:root :is(#u-, .view) .card .mj-panel-head h3 { font-size: 16px; font-weight: 800; line-height: 1.45; }
+html:root:root:root:root :is(#u-, .view) .card.ch-card > h3 { font-size: 14px; font-weight: 800; }
+/* رؤوس الجداول: 13px عريض (كانت 11.5px في اللوحة) */
+html:root:root:root:root :is(#u-, .view) table th { font-size: 13px; font-weight: 700; }
+html:root:root:root:root :is(#u-, .view) .dash-table th { padding: 10px 12px; }
