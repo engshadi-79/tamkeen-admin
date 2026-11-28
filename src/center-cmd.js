@@ -2152,6 +2152,41 @@
   const sigShort = (t) => { t = String(t || ""); return t.length > 22 ? t.slice(0, 10) + "…" + t.slice(-8) : t; };
   const sigFoundHeads = () => ["الاسم في النظام", "الاسم المقروء من الورقة", "رقم الهوية", "الجوال", "المرحلة", "المجموعة", "المسار", "الحكم", "طريقة التعرّف"];
   const sigFoundRow = (x) => [x.s.name, x.f.name, x.s.id || x.f.nid || "", x.s.phone || x.f.phone || "", x.s.stage, x.s.group, x.s.track, x.f.signed === true ? "موقّع" : "غير محسوم", ((state.sig.lookups || {})[x.f.id] || {}).by === "name" ? "بالاسم" : "بالهوية/الجوال"];
+  /* ===== أين كل اسم لم يُعرف؟ المسار والمجموعة لكل اسم مقروء =====
+     المصادر بالترتيب: النظام (إن دلّ البحث على طالب واحد) ← ما قُرئ من الورقة (الترويسة أو عمود المجموعة)
+     ← زملاؤه في نفس الورقة الذين عُرفوا (أوراق التوقيع تكون لمجموعة واحدة عادةً) ← أقرب اسم في النظام. */
+  function sigSheetCtx() {
+    const ctx = new Map(), forms = sigForms();
+    (forms.length ? forms : [undefined]).forEach((fm) => {
+      const o = sigCompute(fm); if (!o) return;
+      o.items.forEach((x) => {
+        if (!x.found || !x.found.file) return;
+        const e = ctx.get(x.found.file) || { g: new Map(), t: new Map() };
+        const g = grpCode(x.reg.group) || clean(x.reg.group), t = pledgeTrackOf(x.reg.course);
+        if (g) e.g.set(g, (e.g.get(g) || 0) + 1);
+        if (t) e.t.set(t, (e.t.get(t) || 0) + 1);
+        ctx.set(x.found.file, e);
+      });
+    });
+    return ctx;
+  }
+  const sigTop = (m) => [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+  function sigWhere(f, ctx) {
+    const lk = (state.sig.lookups || {})[f.id], s1 = lk && lk.list && lk.list.length === 1 ? lk.list[0] : null;
+    const nh = (state.sig.nameHits || {})[f.id], n1 = nh && nh.list && nh.list.length ? (nh.list[0].s || nh.list[0]) : null;
+    const e = ctx && ctx.get(f.file), tot = e ? [...e.g.values()].reduce((a, b) => a + b, 0) : 0;
+    let group = "", gHow = "";
+    if (s1 && s1.group) { group = grpCode(s1.group) || clean(s1.group); gHow = "من النظام"; }
+    else if (clean(f.groupAuto)) { const gm = clean(f.groupAuto).match(/(?:^|[^A-Za-z0-9])(S\d+\s*G\d+|G\d+)(?![A-Za-z0-9])/i); group = gm ? gm[1].replace(/\s+/g, "").toUpperCase() : clean(f.groupAuto); gHow = "من الورقة"; }
+    else if (e && e.g.size) { const [g, n] = sigTop(e.g); group = g; gHow = "زملاؤه في الورقة (" + ui.fmt(n) + " من " + ui.fmt(tot) + ")"; }
+    else if (n1 && n1.group) { group = grpCode(n1.group) || clean(n1.group); gHow = "أقرب اسم في النظام"; }
+    let track = sigTrackOf(f), tHow = track ? "من الورقة" : "";
+    if (!track && s1 && s1.track) { track = s1.track; tHow = "من النظام"; }
+    if (!track && e && e.t.size) { track = sigTop(e.t)[0]; tHow = "زملاؤه في الورقة"; }
+    if (!track && n1 && n1.track) { track = n1.track; tHow = "أقرب اسم في النظام"; }
+    return { track: clean(track).replace(/^مسار\s*/, ""), tHow, group, gHow };
+  }
+  const sigWhereCells = (w) => [w.track || "—", w.group || "—", [w.track && w.tHow ? "المسار: " + w.tHow : "", w.group && w.gHow ? "المجموعة: " + w.gHow : ""].filter(Boolean).join(" · ")];
   const sigLookupText = (f) => {
     const lk = (state.sig.lookups || {})[f.id];
     if (!lk || (lk.none && ((state.sig.nameHits || {})[f.id] || {}).list)) { const nh = (state.sig.nameHits || {})[f.id]; if (!nh) return ""; if (!nh.list.length) return "بحثتُ عن اسمه في كل النظام فلم أجد شبيهاً"; return "بالاسم في النظام: " + nh.list.map((x) => x.s.name + [x.s.stage, x.s.group ? "مجموعة " + x.s.group : "", x.s.track].filter(Boolean).map((y) => " · " + y).join("") + " (" + Math.round(x.score * 100) + "%)").join(" ‖ "); }
@@ -2284,7 +2319,7 @@
       { name: "لم يوقّعوا", heads: sigHeads(), rows: by(["absent", "blank"]).map(sigRowCells) },
       { name: "تحتاج مراجعة", heads: ["الاسم المسجّل", "الاسم المقروء", "الهوية المقروءة", "الجوال المقروء", "درجة التشابه", "ملاحظة", "الدورة"], rows: by(["review"]).map((x) => [x.reg.name, x.found ? x.found.name : "", x.found ? x.found.nid || "" : "", x.found ? x.found.phone || "" : "", x.found ? Math.round(x.score * 100) + "%" : "", x.how, x.reg.course]) },
       { name: "عُرفوا بالبحث", heads: sigFoundHeads(), rows: o.resolved.map(sigFoundRow) },
-      { name: "أسماء في الأوراق", heads: ["الاسم المقروء", "الهوية", "الجوال", "نتيجة البحث في النظام", "الورقة", "الحكم", "الثقة"], rows: o.orphans.concat(o.lost).map((f) => [f.name, f.nid || "", f.phone || "", sigLookupText(f), f.file, f.signed === true ? "موقّع" : "غير محسوم", Math.round(f.conf * 100) + "%"]) },
+      { name: "أسماء في الأوراق", heads: ["الاسم المقروء", "الهوية", "الجوال", "المسار", "المجموعة", "كيف عُرف مكانه", "نتيجة البحث في النظام", "الورقة", "الحكم", "الثقة"], rows: ((ctxX) => o.orphans.concat(o.lost).map((f) => [f.name, f.nid || "", f.phone || ""].concat(sigWhereCells(sigWhere(f, ctxX)), [sigLookupText(f), f.file, f.signed === true ? "موقّع" : "غير محسوم", Math.round(f.conf * 100) + "%"])))(sigSheetCtx()) },
       { name: "وقّعوا", heads: sigHeads(), rows: by(["signed"]).map(sigRowCells) },
     ].filter((x) => x.rows.length);
   }
@@ -2548,12 +2583,13 @@
     const t1 = okItems.map((x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, x.found ? x.found.name : "", x.how, x.st === "signed" ? "✓ وقّع" : "؟ يحتاج مراجعة"])
       .concat(o.resolved.map((x) => [x.s.name, x.s.id || x.f.nid || "", x.s.phone || x.f.phone || "", x.s.group || "", x.f.name, "من النظام (خارج قائمة المرحلة المختارة)", x.f.signed === true ? "✓ وقّع" : "غير محسوم"]));
     const t2 = miss.map((x) => [x.reg.name, x.reg.id, x.reg.phone, grpCode(x.reg.group) || x.reg.group, x.st === "blank" ? "اسمه في الورقة بلا توقيع" : "لا يظهر اسمه في الأوراق"]);
-    const unk = o.orphans.concat(o.lost).sort((a, b) => (sigTrackOf(a) || "ي").localeCompare(sigTrackOf(b) || "ي", "ar")), t3 = unk.map((f) => [f.name, f.nid || "", f.phone || "", (sigTrackOf(f) || "—").replace(/^مسار\s*/, ""), f.signed === true ? "موقّع" : f.signed === false ? "بلا توقيع" : "غير محسوم", sigShort(f.file), sigLookupText(f)]);
+    const ctx3 = sigSheetCtx(), unkW = o.orphans.concat(o.lost).map((f) => ({ f, w: sigWhere(f, ctx3) })).sort((a, b) => (a.w.track || "ي").localeCompare(b.w.track || "ي", "ar") || (a.w.group || "ي").localeCompare(b.w.group || "ي", "ar", { numeric: true }));
+    const unk = unkW.map((x) => x.f), t3 = unkW.map(({ f, w }) => [f.name, f.nid || "", f.phone || ""].concat(sigWhereCells(w), [f.signed === true ? "موقّع" : f.signed === false ? "بلا توقيع" : "غير محسوم", sigShort(f.file), sigLookupText(f)]));
     const box3 = (k, title, badge, bad, heads, rows, empty, top) => `<article class="cc-res cc-sig3"><header class="cc-res-h"><div class="cc-res-t"><h4>${title}</h4><span class="cc-badge${bad && rows.length ? " bad" : ""}">${ui.fmt(rows.length)}</span></div></header>${top || ""}${rows.length ? dataTable(K(k), heads, rows) : `<p class="cc-note">${empty}</p>`}</article>`;
     const simple = `<div class="cc-sig-simple">
       ${box3("s3-found", "١. من وُجدوا في الأوراق", 0, false, ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "الاسم في الورقة", "كيف عُرف", "الحالة"], t1, "لم يُطابَق أحد بعد.")}
       ${box3("s3-miss", "٢. المتبقون الذين لم يوقّعوا", 0, true, ["الاسم", "رقم الهوية", "الجوال", "المجموعة", "السبب"], t2, "✓ كل المسجلين وقّعوا.")}
-      ${box3("s3-unk", "٣. أسماء من الأوراق لم تُعرف", 0, true, ["الاسم المقروء", "رقم الهوية", "الجوال", "المسار", "التوقيع", "الورقة", "نتيجة البحث في النظام"], t3, "✓ كل الأسماء المقروءة عُرفت.", multi ? "" : sigRetrackBar(unk))}
+      ${box3("s3-unk", "٣. أسماء من الأوراق لم تُعرف", 0, true, ["الاسم المقروء", "رقم الهوية", "الجوال", "المسار", "المجموعة", "كيف عُرف مكانه", "التوقيع", "الورقة", "نتيجة البحث في النظام"], t3, "✓ كل الأسماء المقروءة عُرفت.", multi ? "" : sigRetrackBar(unk))}
       ${review.length ? `<p class="cc-note">منهم <b>${ui.fmt(review.length)}</b> «يحتاج مراجعة» في الجدول الأول: أكّدهم أو ارفضهم من «التفاصيل والأدوات» أدناه.</p>` : ""}
       <div class="cc-stats"><button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div></div>`;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> ${multi ? "النموذج: " + FM + " <small>(" + ui.fmt(o.found.length) + " اسماً مقروءاً)</small>" : "نتيجة المطابقة"}</h3>
@@ -3074,13 +3110,15 @@
         e.signed.push(x.signed === true ? "موقّع" : x.signed === false ? "بلا توقيع" : "غير محسوم");
       });
     });
-    const uVals = [...unk.values()].sort((a, b) => (sigTrackOf(a.f) || "ي").localeCompare(sigTrackOf(b.f) || "ي", "ar"));
-    const uRows = uVals.map((e) => [e.f.name, e.f.nid || "", e.f.phone || "", (sigTrackOf(e.f) || "—").replace(/^مسار\s*/, ""), e.forms.join("، "), [...new Set(e.signed)].join("، "), sigShort(e.f.file), sigLookupText(e.f)]);
+    const ctxU = sigSheetCtx();
+    const uVals0 = [...unk.values()].map((e) => Object.assign(e, { w: sigWhere(e.f, ctxU) }));
+    const uVals = uVals0.sort((a, b) => (a.w.track || "ي").localeCompare(b.w.track || "ي", "ar") || (a.w.group || "ي").localeCompare(b.w.group || "ي", "ar", { numeric: true }) || a.f.name.localeCompare(b.f.name, "ar"));
+    const uRows = uVals.map((e) => [e.f.name, e.f.nid || "", e.f.phone || ""].concat(sigWhereCells(e.w), [e.forms.join("، "), [...new Set(e.signed)].join("، "), sigShort(e.f.file), sigLookupText(e.f)]));
     const box = (k, title, bad, hs, rs, empty, stats) => `<article class="cc-res cc-sig3"><header class="cc-res-h"><div class="cc-res-t"><h4>${title}</h4><span class="cc-badge${bad && rs.length ? " bad" : ""}">${ui.fmt(rs.length)}</span></div></header>${stats || ""}${rs.length ? dataTable(k, hs, rs) : `<p class="cc-note">${empty}</p>`}</article>`;
     return `<section class="cc-results"><h3 class="cc-results-title"><span class="cv-step-tag">٣</span> نتيجة المطابقة <small>(${ui.fmt(forms.length)} نماذج: ${forms.map(esc).join("، ")})</small></h3>
       <div class="cc-sig-simple">
       ${box("sm-all", "١. كل الطلاب في النماذج", false, heads, rows, "لا مسجلين.", `<div class="cc-stats"><span class="cc-stat ok"><b>${ui.fmt(full)}</b> وقّع ${forms.length === 2 ? "النموذجين" : "كل النماذج"}</span><span class="cc-stat bad"><b>${ui.fmt(lack)}</b> ينقصه نموذج أو أكثر</span>${m.rows.length - full - lack ? `<span class="cc-stat"><b>${ui.fmt(m.rows.length - full - lack)}</b> يحتاج مراجعة</span>` : ""}</div>`)}
-      ${box("sm-unk", "٢. أسماء من الأوراق لم تُعرف (كل النماذج)", true, ["الاسم المقروء", "رقم الهوية", "الجوال", "المسار", "النماذج", "التوقيع", "الورقة", "نتيجة البحث في النظام"], uRows, "✓ كل الأسماء المقروءة عُرفت.", sigRetrackBar(uVals.map((e) => e.f)))}
+      ${box("sm-unk", "٢. أسماء من الأوراق لم تُعرف (كل النماذج)", true, ["الاسم المقروء", "رقم الهوية", "الجوال", "المسار", "المجموعة", "كيف عُرف مكانه", "النماذج", "التوقيع", "الورقة", "نتيجة البحث في النظام"], uRows, "✓ كل الأسماء المقروءة عُرفت.", sigRetrackBar(uVals.map((e) => e.f)))}
       <div class="cc-stats"><button type="button" class="btn secondary small" data-cc="export-sig">تنزيل Excel</button></div></div></section>`;
   }
   function sigResult() {
@@ -5484,7 +5522,7 @@
     _wr: { readEdit: wrReadEdit, cmd: wrCommand, agentWrite: () => agentWrite() },
     _att: { sel: () => selOf("att-0"), blocks: () => cancelBlocks(), log: () => state.cancelLog, hist: () => state.attHist, extLoad, kvPut, histKeys: [LOG_K, HIST_K] },
     _snap: { get: () => snapData, load: snapLoad, clear: snapClear, flush: () => { snapRefs = []; snapMaybeSave(); } },
-    _sig: { compute: (f) => sigCompute(f), unknownAll: sigUnknownAll, retrackPlan: sigRetrackPlan, trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
+    _sig: { where: (f) => sigWhere(f, sigSheetCtx()), compute: (f) => sigCompute(f), unknownAll: sigUnknownAll, retrackPlan: sigRetrackPlan, trackOf: sigTrackOf, candScore: sigCandScore, digitQueries: sigDigitQueries, learn: { get: sigLearnGet, add: sigLearnAdd, block: sigLearnBlock, clear: sigLearnClear }, save: sigSaveNow, load: sigLoad, clear: sigClear, key: sigFileKey, forms: sigForms, sheets: sigSheets }, pledgeBlocks: (m) => pledgeBlocks(m), missingReport: missingReportFor, tableRows: (k) => (tblData[k] ? { heads: tblData[k].heads, rows: tblRows(k) } : null), init, render, state, buildRegister, toOption, execute: executeCommand, localIntent, expand: expandResult, fmtSheet };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })(window.App = window.App || {});

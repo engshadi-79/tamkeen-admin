@@ -1280,6 +1280,10 @@ async function suite() {
       ok("أحمد «وقّع النموذجين»، وخالد «ينقصه: موافقة تصوير»", trs.some((x) => /سالم/.test(x) && /وقّع النموذجين/.test(x)) && trs.some((x) => /خالد/.test(x) && /ينقصه: موافقة تصوير/.test(x)), JSON.stringify(trs.slice(0, 4)));
       const u = boxes[1] && boxes[1].querySelectorAll("tbody tr");
       ok("الاسم غير المعروف في النموذجين صفّ واحد بعمود النماذج", !!u && u.length === 1 && new RegExp(F1).test(u[0].textContent) && new RegExp(F2).test(u[0].textContent), u && [...u].map((x) => x.textContent).join(" | "));
+      const uh = boxes[1] ? [...boxes[1].querySelectorAll("thead th")].map((x) => x.textContent.trim()) : [];
+      ok("غير المعروف: عمودا المسار والمجموعة — من زملائه المعروفين في نفس الورقة (S3G1 الحلاقة)", uh.includes("المسار") && uh.includes("المجموعة") && !!u && /S3G1/.test(u[0].textContent) && /الحلاقة الرجالية/.test(u[0].textContent) && /زملاؤه في الورقة \(3 من 3\)/.test(u[0].textContent), u && u[0].textContent);
+      const w1 = App.centerCmd._sig.where({ id: "zz", file: "a.jpg", name: "س", groupAuto: "المجموعة G2", trackAuto: "التجميل النسائي" });
+      ok("مجموعة مكتوبة في الورقة تتقدّم على استنتاج الزملاء", w1.group === "G2" && w1.gHow === "من الورقة" && /التجميل/.test(w1.track), JSON.stringify(w1));
       ok("تفاصيل كل نموذج والأدوات مطويّة", [...b.querySelectorAll(".cc-sig-perform, .cc-sig-tools")].every((d) => !d.open) && !!b.querySelector(".cc-sig-perform"), "fold");
       c.state.mode = km;
     }
