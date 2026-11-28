@@ -245,6 +245,12 @@ http.createServer((req, res) => {
       const o = JSON.parse(await stub.c.eval("JSON.stringify({ out: window.__out, err: window.__err, plan: window.__plan })"));
       o.R = o.out && o.out.results && o.out.results[0]; return o;
     };
+    // البحث في الطلاب والمتقدمين والطلبات (1.6.1): متقدمة ليست طالبة تُوجد بجوالها، وبهويتها المقروءة بخطأ خانة
+    const L1 = await runW({ type: "lookup", label: "بحث", sources: ["students", "applicants", "applications"], items: [{ q: "0599365506" }, { q: "904594889" }, { q: "0590000000" }] });
+    const parts = (k) => ((L1.R && L1.R.items[k] && L1.R.items[k].parts) || []).map((p) => p.source + ":" + p.rows.length).join();
+    step("البحث بالجوال: وُجدت في المتقدمين (حقل البحث «search» قُرئ من نموذج الصفحة)", /applicants:1/.test(parts(0)) && !/students/.test(parts(0)), parts(0) + " " + (L1.err || ""));
+    step("البحث بهوية مقروءة بخطأ خانة (904594889): يُعاد صف المتقدمة 404594889", /applicants:1/.test(parts(1)), parts(1));
+    step("رقم غير موجود: لا نتيجة في أي صفحة", !!L1.R && L1.R.items[2].count === 0, JSON.stringify(L1.R && L1.R.items[2]));
     const stuOf = async (n) => (await students()).find((x) => x.stu === "STU-20260101-0000" + n);
     const w0 = await runW({ type: "apps", label: "الطلبات", params: { status: "accepted" } });
     step("قراءة قائمة الطلبات: رقم الطلب والاسم والحالة لكل صف (قراءة فقط)", w0.R && w0.R.type === "apps" && w0.R.rows.length === (await students()).filter((x) => x.appStatus === "accepted").length && w0.R.rows.every((r) => /^\d+$/.test(r.app) && r.name && r.status === "مقبول"), JSON.stringify(w0.R && w0.R.rows.slice(0, 2)) + (w0.err || ""));

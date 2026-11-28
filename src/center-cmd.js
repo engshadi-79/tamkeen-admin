@@ -2112,11 +2112,19 @@
     if (!slice.length) return;
     const items = [], owner = [];
     slice.forEach((t) => (t.qs || [t.q]).forEach((q) => { items.push({ q }); owner.push(t); }));
-    const r = (await runCommands([{ type: "lookup", label: "بحث بالهوية والجوال", items }], { noCache: true }))[0];
+    const r = (await runCommands([{ type: "lookup", label: "بحث بالهوية والجوال في الطلاب والمتقدمين والطلبات", sources: ["students", "applicants", "applications"], items }], { noCache: true }))[0];
     const got = new Map(slice.map((t) => [t.f.id, []]));
-    ((r && r.items) || []).forEach((it, i) => { const t = owner[i]; if (t && it && it.count) got.get(t.f.id).push(...it.rows.map((x) => stuFrom(it, x))); });
+    /* يُقبل الصف إن طابق الرقمُ نفسه (هوية أو أحد الجوالات)، وإلا فبتقييم الأدلة كلها (رقم بفرق خانة + الاسم) */
+    const exact = (f, s2) => { const id = digits(f.nid), ph = phoneNorm(f.phone); return (id.length >= 9 && s2.id === id) || (ph.length >= 9 && (s2.phones || [s2.phone]).includes(ph)); };
+    ((r && r.items) || []).forEach((it, i) => { const t = owner[i]; if (t && it && it.count) got.get(t.f.id).push(...lookupPeople(it).filter((s2) => exact(t.f, s2) || sigCandScore(t.f, s2) >= 0.85)); });
     slice.forEach((t) => {
-      const seen = new Set(), list = got.get(t.f.id).filter((s2) => { const k = s2.stu || s2.id || s2.name; if (seen.has(k)) return false; seen.add(k); return true; });
+      // الشخص نفسه قد يظهر طالباً ومتقدماً وطلباً: يُبقى أغنى صف (الطالب أولاً) ويُدمج ما ينقصه من الآخرين
+      const rank = { students: 0, applicants: 1, applications: 2 }, byKey = new Map();
+      got.get(t.f.id).sort((a, b) => rank[a.source] - rank[b.source]).forEach((s2) => {
+        const k = s2.id || (s2.phones || [])[0] || normName(s2.name), cur = byKey.get(k) || [...byKey.values()].find((x) => normName(x.name) === normName(s2.name));
+        if (!cur) byKey.set(k, Object.assign({}, s2)); else ["id", "phone", "track", "stage", "group", "stu"].forEach((f2) => { if (!cur[f2] && s2[f2]) cur[f2] = s2[f2]; });
+      });
+      const list = [...byKey.values()];
       c.lookups[t.f.id] = list.length ? { q: (t.qs || [t.q]).join(" / "), list, tried: t.qs || [t.q] } : { q: (t.qs || [t.q]).join(" / "), list: [], none: true, tried: t.qs || [t.q] };
     });
     c.lookupCapped = targets.length > slice.length;
@@ -2214,7 +2222,7 @@
     if (lk.none) return "بحثتُ عنه بـ" + (digits(f.nid).length >= 9 ? "الهوية" : "الجوال") + " في النظام فلم أجد طالباً";
     if (lk.list.length > 1) return "وُجد " + lk.list.length + " طلاب بهذا الرقم في النظام: " + lk.list.slice(0, 3).map((s) => s.name).join("، ");
     const s = lk.list[0];
-    return "في النظام: " + s.name + [s.stage, s.group ? "مجموعة " + s.group : "", s.track].filter(Boolean).map((x) => " · " + x).join("");
+    return "في النظام" + (s.source && s.source !== "students" ? " (" + (SRC_L[s.source] || s.source) + ")" : "") + ": " + s.name + [s.id && s.id !== digits(f.nid) ? "هويته " + s.id : "", s.stage, s.group ? "مجموعة " + s.group : "", s.track].filter(Boolean).map((x) => " · " + x).join("");
   };
   /* ===== ذاكرة تصحيحات المطابقة: ما ربطتَه بيدك (أو دلّت عليه الهوية/الجوال) لا تصحّحه ثانية =====
      اسم مقروء (موحَّد الهمزات) ← مسجّل؛ و«ليس هو» يُحفظ حظراً. تبقى على هذا الجهاز بين الجلسات، وتُمسح بزر خاص. */
@@ -2412,7 +2420,8 @@
     const U = App.ccUtil, nameless = /^\(بلا اسم/.test(f.name) || !U.nameTokens(f.name).length;
     let sc = nameless ? 0 : U.nameScore(f.name, s.name);
     const id = digits(f.nid), ph = phoneNorm(f.phone), sid = digits(s.id), sph = phoneNorm(s.phone);
-    const idNear = id.length >= 8 && sid.length >= 8 && U.digitDist(id, sid) <= 1, phNear = ph.length >= 9 && sph.length >= 9 && U.digitDist(ph.slice(-9), sph.slice(-9)) <= 1;
+    const sphs = (s.phones && s.phones.length ? s.phones : [sph]).filter((x) => x && x.length >= 9);
+    const idNear = id.length >= 8 && sid.length >= 8 && U.digitDist(id, sid) <= 1, phNear = ph.length >= 9 && sphs.some((x) => U.digitDist(ph.slice(-9), x.slice(-9)) <= 1);
     if ((idNear || phNear) && (nameless || sc >= 0.45)) sc = Math.max(sc, 0.93);
     const st = U.sameTrack(sigTrackOf(f), s.track);
     if (st === true) sc = Math.min(1, sc + 0.05); else if (st === false) sc *= 0.8;
@@ -2426,15 +2435,16 @@
     const pass = async (people, wide) => {
       const qs = new Map();   // الاستعلام ← من يحتاجه
       const add = (q, f) => { if (!qs.has(q) && qs.size < NAME_Q_MAX) qs.set(q, []); if (qs.has(q) && !qs.get(q).includes(f)) qs.get(q).push(f); };
+      const everywhere = new Set(), ALL3 = ["students", "applicants", "applications"];
       people.forEach((f) => {
-        if (!/^\(بلا اسم/.test(f.name)) sigNameQueries(f.name, wide).forEach((q) => add(q, f));
-        if (!wide) sigDigitQueries(f).forEach((q) => add(q, f));   // أجزاء الهوية/الجوال: تلتقط رقماً مقروءاً بخطأ خانة
+        if (!/^\(بلا اسم/.test(f.name)) sigNameQueries(f.name, wide).forEach((q, k) => { add(q, f); if (!wide && k < 2) everywhere.add(q); });   // الاسم كاملاً (بهمزاته وبتوحيدها) في الصفحات الثلاث
+        if (!wide) sigDigitQueries(f).forEach((q) => { add(q, f); everywhere.add(q); });   // أجزاء الهوية/الجوال: تلتقط رقماً مقروءاً بخطأ خانة
       });
       const list = [...qs.keys()]; if (!list.length) return;
-      const r = (await runCommands([{ type: "lookup", label: "بحث بالاسم في كل النظام", items: list.map((q) => ({ q })) }], { noCache: true }))[0];
+      const r = (await runCommands([{ type: "lookup", label: "بحث بالاسم في الطلاب والمتقدمين والطلبات", items: list.map((q) => (everywhere.has(q) ? { q, sources: ALL3 } : { q })) }], { noCache: true }))[0];
       ((r && r.items) || []).forEach((it, i) => {
         if (!it || !it.count) return;
-        const ppl = it.rows.map((x) => stuFrom(it, x));
+        const ppl = lookupPeople(it);
         (qs.get(list[i]) || []).forEach((f) => ppl.forEach((s) => { const sc = sigCandScore(f, s); if (sc >= 0.62) { const k = s.stu || s.id || s.name, m = cand.get(f.id); if (!m.has(k) || m.get(k).score < sc) m.set(k, { s, score: sc }); } }));
       });
     };
@@ -4081,8 +4091,11 @@
   /* ===== ملف الطالب الشامل: كل ما يخصّ طالباً في بطاقة واحدة ===== */
   const stuFrom = (it, x) => {
     const g = (h) => { const i = it.heads.indexOf(h); return i < 0 ? "" : clean(x.cells[i]); };
-    return { name: g("الاسم"), id: digits(g("رقم الهوية")), stu: g("رقم الطالب"), phone: phoneNorm(g("الجوال")), track: g("المسار").replace(/^مسار\s*/, ""), stage: g("المرحلة"), group: g("المجموعة"), trainer: g("المدرب") };
+    const phones = (g("الجوال").replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).match(/0?5\d{8}/g) || []).map(phoneNorm);
+    return { name: g("الاسم") || g("المتقدم") || g("اسم الطالب"), id: digits(g("رقم الهوية")), stu: g("رقم الطالب"), app: g("رقم الطلب"), phone: phones[0] || phoneNorm(g("الجوال")), phones, track: g("المسار").replace(/^مسار\s*/, ""), stage: g("المرحلة"), group: g("المجموعة"), trainer: g("المدرب"), source: it.source || "students" };
   };
+  const lookupPeople = (it) => (it && it.parts && it.parts.length ? it.parts.flatMap((pt) => pt.rows.map((x) => stuFrom({ heads: pt.heads, source: pt.source }, x))) : ((it && it.rows) || []).map((x) => stuFrom(it, x)));
+  const SRC_L = { students: "طالب", applicants: "متقدم", applications: "طلب تسجيل" };
   const sameStu = (s0, r, x) => {
     const stu = misCell(r, x, "رقم الطالب"), id = digits(misCell(r, x, "رقم الهوية")), nm = normName(misCell(r, x, "الاسم") || misCell(r, x, "الطالب"));
     return (s0.stu && stu && s0.stu === stu) || (s0.id && id && s0.id === id) || (!stu && !id && nm && nm === normName(s0.name));
