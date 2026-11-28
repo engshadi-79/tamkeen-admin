@@ -17,7 +17,7 @@
 - الرد JSON وحده بلا شرح.`;
 
   const PROMPT = `اقرأ الورقة المرفقة وأعد JSON بهذا الشكل بالضبط:
-{"title":"عنوان الورقة أو التاريخ إن ظهر","form":"اسم النموذج من الترويسة","track":"اسم المسار التدريبي إن ظهر في الترويسة أو العنوان (مثل الحلاقة الرجالية)","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","signed":true,"confidence":0.0}]}
+{"title":"عنوان الورقة أو التاريخ إن ظهر","form":"اسم النموذج من الترويسة","track":"اسم المسار التدريبي إن ظهر في الترويسة أو العنوان (مثل الحلاقة الرجالية)","group":"المجموعة إن ظهرت في الترويسة أو العنوان (مثل G1 أو S3G2 أو المجموعة الأولى)","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","group":"مجموعة الطالب إن كان في الجدول عمود للمجموعة","signed":true,"confidence":0.0}]}
 حيث confidence رقم بين 0 و1 لثقتك في قراءة الاسم والحكم على التوقيع.`;
 
   const TABLE_SYSTEM = `أنت تحوّل صور الجداول (كشوف أسماء، درجات، هويات، حضور) إلى بيانات منظمة، وتعيد JSON فقط.
@@ -128,6 +128,7 @@
       phone: String((r && r.phone) || "").replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, ""),
       signed: s === true || s === "true" ? true : s === false || s === "false" ? false : null,
       conf: Math.max(0, Math.min(1, Number(r.confidence) || 0)),
+      groupRow: String((r && r.group) || "").replace(/\s+/g, " ").trim().slice(0, 40),
     };
   }
 
@@ -138,8 +139,8 @@
     const text = await ai.vision({ images: [{ mime: image.mime, data: image.data }], prompt: PROMPT, system: SYSTEM, signal: opts && opts.signal, fast: !!(opts && opts.fast) });
     const j = parseJson(text);
     const rows = (Array.isArray(j.rows) ? j.rows : []).map((r, i) => normRow(r, image.name, i)).filter(Boolean);
-    const form = String(j.form || "").replace(/\s+/g, " ").trim().slice(0, 80), track = String(j.track || "").replace(/\s+/g, " ").trim().slice(0, 80), title = String(j.title || "").slice(0, 120);
-    rows.forEach((r) => { r.formAuto = form; r.trackAuto = track; r.titleAuto = title; });
+    const form = String(j.form || "").replace(/\s+/g, " ").trim().slice(0, 80), track = String(j.track || "").replace(/\s+/g, " ").trim().slice(0, 80), title = String(j.title || "").slice(0, 120), group = String(j.group || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    rows.forEach((r) => { r.formAuto = form; r.trackAuto = track; r.titleAuto = title; r.groupAuto = r.groupRow || group; });
     return { title: String(j.title || "").slice(0, 120), form, rows };
   }
 
@@ -148,7 +149,7 @@
   const QUOTA_MSG = "بلغتَ الحد اليومي المجاني لمزوّد الذكاء الاصطناعي فتوقّفت القراءة.";
 
   const MULTI_PROMPT = (n) => `أمامك ${n} صور لأوراق مختلفة بالترتيب (الصورة 1 ثم 2 … ثم ${n}). اقرأ كل ورقة على حدة وأعد JSON بهذا الشكل بالضبط:
-{"sheets":[{"image":1,"title":"عنوان الورقة أو التاريخ إن ظهر","form":"اسم النموذج من الترويسة","track":"اسم المسار التدريبي إن ظهر في الترويسة أو العنوان (مثل الحلاقة الرجالية)","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","signed":true,"confidence":0.0}]}]}
+{"sheets":[{"image":1,"title":"عنوان الورقة أو التاريخ إن ظهر","form":"اسم النموذج من الترويسة","track":"اسم المسار التدريبي إن ظهر في الترويسة أو العنوان (مثل الحلاقة الرجالية)","group":"المجموعة إن ظهرت في الترويسة أو العنوان (مثل G1 أو S3G2 أو المجموعة الأولى)","rows":[{"name":"الاسم كما يظهر","id":"رقم الهوية إن وُجد","phone":"رقم الجوال إن وُجد","group":"مجموعة الطالب إن كان في الجدول عمود للمجموعة","signed":true,"confidence":0.0}]}]}
 عنصر واحد في sheets لكل صورة بنفس ترتيبها، ولا تخلط أسماء صورة بصورة أخرى. confidence بين 0 و1.`;
 
   /* عدة صور في طلب واحد (يوفّر حصة الطلبات): يعيد [{ title, rows }] بترتيب الصور */
@@ -162,8 +163,8 @@
     return images.map((im, k) => {
       const sh = sheets.find((x) => Number(x && x.image) === k + 1) || sheets[k] || { rows: [] };
       const rows = (Array.isArray(sh.rows) ? sh.rows : []).map((r, i) => normRow(r, im.name, i)).filter(Boolean);
-      const form = String(sh.form || "").replace(/\s+/g, " ").trim().slice(0, 80), track = String(sh.track || "").replace(/\s+/g, " ").trim().slice(0, 80), title = String(sh.title || "").slice(0, 120);
-      rows.forEach((r) => { r.formAuto = form; r.trackAuto = track; r.titleAuto = title; });
+      const form = String(sh.form || "").replace(/\s+/g, " ").trim().slice(0, 80), track = String(sh.track || "").replace(/\s+/g, " ").trim().slice(0, 80), title = String(sh.title || "").slice(0, 120), group = String(sh.group || "").replace(/\s+/g, " ").trim().slice(0, 40);
+      rows.forEach((r) => { r.formAuto = form; r.trackAuto = track; r.titleAuto = title; r.groupAuto = r.groupRow || group; });
       return { title: String(sh.title || "").slice(0, 120), form, rows };
     });
   }
