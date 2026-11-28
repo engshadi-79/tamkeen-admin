@@ -1299,6 +1299,21 @@ async function suite() {
         ok("نتيجة البحث تذكر ما بُحث به: «بحثتُ بالهوية … وبالجوال … فلم أجد طالباً»", /بحثتُ بالهوية 904594889 وبالجوال 0599365506 فلم أجد طالباً/.test(SG.lookupText(Object.assign({}, orphan))), SG.lookupText(Object.assign({}, orphan)));
         agent.run = krF; agent.version = kvF; S.lookups = {}; S.nameHits = {};
       }
+      {   // البحث في الصفحات الثلاث: صف من «المتقدمين» بهوية بفرق خانة وجوالها نفسه يُقبل ويُعرض مصدره
+        const SG = App.centerCmd._sig, orphan = { id: "m:3", file: "a.jpg", name: "مجهول الاسم تماماً", nid: "904594889", phone: "0599365506" };
+        S.lookups = {}; S.nameHits = { "m:3": { list: [], at: 1 }, "m:4": { list: [], at: 1 } };
+        const krG = agent.run, kvG = agent.version; let sentG = null;
+        const AH = ["#", "الاسم", "رقم الهوية", "الجوال", "الجنس", "المحافظة", "الحالة الصحية", "الحالة"];
+        agent.version = () => "1.6.1";
+        agent.run = async (cmds) => { if (!sentG) sentG = cmds[0]; return { results: [{ index: 0, type: "lookup", items: cmds[0].items.map((it) => (it.q === "0599365506" ? { q: it.q, count: 1, heads: [], rows: [], parts: [{ source: "applicants", heads: AH, rows: [{ cells: ["3272", "مجهول الاسم تماماً", "404594889", "0599365506 0599316145", "أنثى", "الوسطى", "سليم", "نشط"] }] }] } : { q: it.q, count: 0, heads: [], rows: [], parts: [] })) }] }; };
+        c.render(); b.querySelector('[data-cc="sig-findall"]').click();
+        for (let i = 0; i < 40 && (!sentG || c.state.busy); i++) await wait(100); await wait(150);
+        ok("أمر البحث بالأرقام يشمل الطلاب والمتقدمين والطلبات", !!sentG && (sentG.sources || []).join() === "students,applicants,applications", JSON.stringify(sentG && sentG.sources));
+        const lkG = S.lookups["m:3"];
+        ok("صف المتقدمة يُقبل (الجوال نفسه) ومصدره «متقدم» وهويته الصحيحة 404594889", !!lkG && lkG.list.length === 1 && lkG.list[0].source === "applicants" && lkG.list[0].id === "404594889" && lkG.list[0].phones.join() === "0599365506,0599316145", JSON.stringify(lkG));
+        ok("نتيجة البحث: «في النظام (متقدم): … هويته 404594889»", /في النظام \(متقدم\)/.test(SG.lookupText(orphan)) && /هويته 404594889/.test(SG.lookupText(orphan)), SG.lookupText(orphan));
+        agent.run = krG; agent.version = kvG; S.lookups = {}; S.nameHits = {};
+      }
       ok("تفاصيل كل نموذج والأدوات مطويّة", [...b.querySelectorAll(".cc-sig-perform, .cc-sig-tools")].every((d) => !d.open) && !!b.querySelector(".cc-sig-perform"), "fold");
       c.state.mode = km;
     }

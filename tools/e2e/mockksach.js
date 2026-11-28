@@ -207,10 +207,20 @@ http.createServer((req, res) => {
       return send(302, "", "text/plain", { Location: "/admin/students/" + st.id + "/edit" });
     });
   }
+  if (req.method === "GET" && url.pathname === "/admin/applicants") {
+    // متقدمة ليست طالبة (هويتها 404594889 وجوالان)، وحقل البحث «search»، والبحث يقبل فرق خانة كما لوحظ في النظام الحقيقي
+    const APPL = [{ id: 3272, name: "جنين حسن سالم الملاح", nid: "404594889", phones: ["0599365506", "0599316145"] }].concat(students.map((x) => ({ id: 3000 + x.id, name: x.name, nid: x.nid, phones: [x.phone] })));
+    const q = (url.searchParams.get("search") || "").trim(), dq = q.replace(/\D/g, "");
+    const near = (a, b) => a.length === b.length && [...a].filter((c, i) => c !== b[i]).length <= 1;
+    const hit = (a) => !q || a.name.includes(q) || (dq.length >= 6 && (a.nid.includes(dq) || near(a.nid, dq) || a.phones.some((p) => p.includes(dq))));
+    const rowsP = APPL.filter(hit).map((a) => `<tr><td>${a.id}</td><td>${esc(a.name)}</td><td>${a.nid}</td><td>${a.phones.join("<br>")}</td><td>أنثى</td><td>الوسطى</td><td>سليم</td><td>نشط</td><td><a href="/admin/applicants/${a.id}">عرض</a></td></tr>`).join("");
+    return send(200, layout(`<form method="get" action="/admin/applicants"><input type="text" name="search" placeholder="بحث"><button>بحث</button></form>
+      <table><thead><tr><th>#</th><th>الاسم</th><th>رقم الهوية</th><th>الجوال</th><th>الجنس</th><th>المحافظة</th><th>الحالة الصحية</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>${rowsP}</tbody></table>`));
+  }
   if (req.method === "GET" && url.pathname === "/admin/applications") {
     const AL = { submitted: "مقدم", under_review: "قيد المراجعة", accepted: "مقبول", rejected: "مرفوض", cancelled: "ملغي", waiting_list: "قائمة انتظار" };
-    const stq = url.searchParams.get("status");
-    const rowsA = students.filter((x) => x.app && (!stq || x.appStatus === stq)).map((x) => `<tr><td><input type="checkbox" name="application_ids[]" value="${x.app}"></td><td>APP-2026-${x.app}</td><td>${esc(x.name)}</td><td>${TRACKS[x.track] || ""}</td><td>${AL[x.appStatus] || x.appStatus}</td><td>لم يتم التحليل</td><td>0</td><td>2026-11-20 10:00</td><td><a href="/admin/applications/${x.app}">عرض</a></td></tr>`).join("");
+    const stq = url.searchParams.get("status"), aq = (url.searchParams.get("q") || "").trim(), adq = aq.replace(/\D/g, "");
+    const rowsA = students.filter((x) => x.app && (!stq || x.appStatus === stq) && (!aq || x.name.includes(aq) || (adq.length >= 6 && (x.nid.includes(adq) || x.phone.includes(adq))))).map((x) => `<tr><td><input type="checkbox" name="application_ids[]" value="${x.app}"></td><td>APP-2026-${x.app}</td><td>${esc(x.name)}</td><td>${TRACKS[x.track] || ""}</td><td>${AL[x.appStatus] || x.appStatus}</td><td>لم يتم التحليل</td><td>0</td><td>2026-11-20 10:00</td><td><a href="/admin/applications/${x.app}">عرض</a></td></tr>`).join("");
     return send(200, layout(`<table><thead><tr><th></th><th>رقم الطلب</th><th>المتقدم</th><th>المسار</th><th>الحالة</th><th>حالة التحليل</th><th>الدرجة</th><th>تاريخ التقديم</th><th>الإجراءات</th></tr></thead><tbody>${rowsA}</tbody></table>`));
   }
   am = url.pathname.match(/^\/admin\/training-groups\/members\/(\d+)$/);

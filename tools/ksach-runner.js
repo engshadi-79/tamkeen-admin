@@ -33,7 +33,8 @@
     ["GET", /^\/admin\/training-groups(\?[^#]*)?$/],                // صفحة المجموعات: عضوية الطالب ونموذج «إخراج»
     ["POST", /^\/admin\/training-groups\/members\/\d+$/],
     // أوامر كتابة 1.6.0 (كلها بعد معاينة وموافقة صريحة فقط)
-    ["GET", /^\/admin\/applications(\?[^#]*)?$/],                    // قائمة الطلبات (قراءة)
+    ["GET", /^\/admin\/applications(\?[^#]*)?$/],
+    ["GET", /^\/admin\/applicants(\?[^#]*)?$/],                      // قائمة المتقدمين والبحث فيها (قراءة) — 1.6.1                    // قائمة الطلبات (قراءة)
     ["POST", /^\/admin\/students\/bulk-update-status$/],           // تغيير حالة الطالب (طالب واحد في كل طلب)
     ["POST", /^\/admin\/training-groups\/assign$/],                // نقل الطالب إلى مجموعة
     ["POST", /^\/admin\/students\/\d+$/],                          // حفظ نموذج «تعديل» الطالب (PUT عبر _method)          // إخراج الطالب من المجموعة (DELETE عبر _method)     // ملف «تصدير Excel» نفسه (بيانات الطالب والمتقدم) — قراءة فقط، طلب واحد بدل صفحة لكل طالب
@@ -271,20 +272,49 @@
     return out;
   }
 
+  /* البحث في ثلاث صفحات (1.6.1): الطلاب، والمتقدمون، والطلبات. اسم حقل البحث يُقرأ من نموذج الصفحة نفسها */
+  const LOOK_SRC = { students: { path: "/admin/students", label: "طالب" }, applicants: { path: "/admin/applicants", label: "متقدم" }, applications: { path: "/admin/applications", label: "طلب" } };
+  const searchField = {};
+  async function searchFieldOf(src) {
+    if (searchField[src]) return searchField[src];
+    let name = "q";
+    if (src !== "students") {
+      try {
+        await sleep(GET_GAP);
+        const { doc } = await http("GET", LOOK_SRC[src].path);
+        const f = [...doc.querySelectorAll("form")].find((x) => (x.getAttribute("method") || "get").toLowerCase() === "get" && new URL(x.getAttribute("action") || LOOK_SRC[src].path, location.origin).pathname === LOOK_SRC[src].path);
+        const inp = f && [...f.querySelectorAll("input[name]")].find((x) => /^(text|search|)$/i.test(x.getAttribute("type") || ""));
+        if (inp) name = inp.getAttribute("name");
+      } catch (e) { if (/الجلسة/.test(e.message)) throw e; }
+    }
+    return (searchField[src] = name);
+  }
+  /* رقم بفرق خانة واحدة (خطأ قراءة): نفس الطول ورقم واحد مختلف */
+  const nearNum = (a, b) => { if (a.length !== b.length || a.length < 8) return false; let d = 0; for (let i = 0; i < a.length; i++) if (a[i] !== b[i] && ++d > 1) return false; return true; };
+  const rowNums = (r) => (r.cells.join(" ").match(/\d{8,}/g) || []).map((x) => (/^5\d{8}$/.test(x) ? "0" + x : x));
   async function cmdLookup(cmd, index) {
     const out = { index, type: "lookup", label: cmd.label || "", items: [] };
     for (const it of cmd.items || []) {
       if (stopped) break;
-      say("استعلام: " + it.q);
-      await sleep(GET_GAP);
-      const { doc } = await http("GET", "/admin/students?" + qs({ q: it.q, per_page: "100" }));
-      const t = tableRows(doc);
-      const isNid = digits(it.q).length >= 9 && digits(it.q) === String(it.q).replace(/\s/g, "");
-      const rows = isNid ? t.rows.filter((r) => digits(r.cells.join(" ")).includes(digits(it.q))) : t.rows;
-      const item = { q: it.q, count: rows.length, heads: t.heads, rows: rows.slice(0, 30) };
+      const srcs = (it.sources || cmd.sources || ["students"]).filter((x) => LOOK_SRC[x]);
+      const isNum = digits(it.q).length >= 9 && digits(it.q) === String(it.q).replace(/\s/g, ""), dq = digits(it.q);
+      const item = { q: it.q, count: 0, heads: [], rows: [], parts: [] };
+      for (const src of srcs) {
+        if (stopped) break;
+        say("استعلام: " + it.q + (srcs.length > 1 ? " — " + LOOK_SRC[src].label : ""));
+        const field = await searchFieldOf(src);
+        await sleep(GET_GAP);
+        const { doc } = await http("GET", LOOK_SRC[src].path + "?" + qs(Object.assign({ [field]: it.q }, src === "applicants" ? {} : { per_page: "100" })));
+        const t = tableRows(doc);
+        // رقم: الطلاب بالرقم نفسه؛ والمتقدمون بالرقم أو بفرق خانة؛ والطلبات بلا أرقام في الجدول فيُعتمد بحث النظام نفسه
+        const rows = !isNum ? t.rows : src === "applications" ? t.rows : t.rows.filter((r) => digits(r.cells.join(" ")).includes(dq) || (src === "applicants" && rowNums(r).some((n) => nearNum(n, dq))));
+        if (src === "students") { item.heads = t.heads; item.rows = rows.slice(0, 30); }
+        if (rows.length) item.parts.push({ source: src, heads: t.heads, rows: rows.slice(0, 30) });
+        item.count += rows.length;
+      }
       if (cmd.details && item.rows.length && !stopped) await addDetails(item, 10);
       out.items.push(item);
-      log((rows.length ? "وُجد " + rows.length : "لا نتيجة") + " ← " + it.q);
+      log((item.count ? "وُجد " + item.count : "لا نتيجة") + " ← " + it.q);
     }
     return out;
   }
