@@ -1284,6 +1284,21 @@ async function suite() {
       ok("غير المعروف: عمودا المسار والمجموعة — من زملائه المعروفين في نفس الورقة (S3G1 الحلاقة)", uh.includes("المسار") && uh.includes("المجموعة") && !!u && /S3G1/.test(u[0].textContent) && /الحلاقة الرجالية/.test(u[0].textContent) && /زملاؤه في الورقة \(3 من 3\)/.test(u[0].textContent), u && u[0].textContent);
       const w1 = App.centerCmd._sig.where({ id: "zz", file: "a.jpg", name: "س", groupAuto: "المجموعة G2", trackAuto: "التجميل النسائي" });
       ok("مجموعة مكتوبة في الورقة تتقدّم على استنتاج الزملاء", w1.group === "G2" && w1.gHow === "من الورقة" && /التجميل/.test(w1.track), JSON.stringify(w1));
+      {   // البحث في النظام: بالهوية والجوال معاً، وما بُحث بالهوية وحدها سابقاً ولم يُوجد يُعاد بالجوال
+        const SG = App.centerCmd._sig, orphan = { id: "m:3", file: "a.jpg", name: "مجهول الاسم تماماً", nid: "904594889", phone: "0599365506" };
+        S.rows.find((x) => x.id === "m:3").nid = orphan.nid; S.rows.find((x) => x.id === "m:3").phone = orphan.phone;
+        S.lookups = { "m:3": { q: "904594889", list: [], none: true } }; S.nameHits = { "m:3": { list: [], at: 1 } };
+        const pl = SG.pendingLookups().find((t) => t.f.id === "m:3");
+        ok("اسم بُحث بهويته وحدها ولم يُوجد: يُعاد البحث بالهوية والجوال", !!pl && pl.qs.join() === "904594889,0599365506", JSON.stringify(pl && pl.qs));
+        const krF = agent.run, kvF = agent.version; let sentL = null;
+        agent.version = () => "1.6.0"; agent.run = async (cmds) => { if (!sentL) sentL = cmds[0]; return { results: [{ index: 0, type: "lookup", items: cmds[0].items.map(() => ({ count: 0, rows: [] })) }] }; };
+        c.render(); const fb = b.querySelector('[data-cc="sig-findall"]');
+        ok("زر «ابحث عنهم في النظام بالهوية والجوال والاسم» فوق جدول غير المعروفين", !!fb, "btn");
+        fb.click(); for (let i = 0; i < 40 && (!sentL || c.state.busy); i++) await wait(100); await wait(150);
+        ok("أمر البحث يرسل الهوية والجوال كليهما", !!sentL && sentL.type === "lookup" && sentL.items.map((x) => x.q).join() === "904594889,0599365506", JSON.stringify(sentL));
+        ok("نتيجة البحث تذكر ما بُحث به: «بحثتُ بالهوية … وبالجوال … فلم أجد طالباً»", /بحثتُ بالهوية 904594889 وبالجوال 0599365506 فلم أجد طالباً/.test(SG.lookupText(Object.assign({}, orphan))), SG.lookupText(Object.assign({}, orphan)));
+        agent.run = krF; agent.version = kvF; S.lookups = {}; S.nameHits = {};
+      }
       ok("تفاصيل كل نموذج والأدوات مطويّة", [...b.querySelectorAll(".cc-sig-perform, .cc-sig-tools")].every((d) => !d.open) && !!b.querySelector(".cc-sig-perform"), "fold");
       c.state.mode = km;
     }
@@ -1598,6 +1613,7 @@ async function suite() {
     ok("المسار #center يعرض الصفحة المستقلة", document.getElementById("view-center").classList.contains("active") && !document.getElementById("view-converter").classList.contains("active"), [...document.querySelectorAll(".view.active")].map((x) => x.id));
     {   // «المزيد»: الأزرار الثانوية في قائمة منسدلة، والأساسية ظاهرة، والزر يعمل من داخل القائمة
       const mm = (v) => document.querySelector("#view-" + v + " .page-head .more-menu");
+      for (let i = 0; i < 30 && !mm("registry"); i++) await wait(100);   // تُبنى القوائم عند تهيئة الصفحة
       ok("قائمة «المزيد» في الصفحات المزدحمة الست", ["registry", "roster", "admin", "hospitality", "letters", "screen"].every((v) => !!mm(v)), ["registry", "roster", "admin", "hospitality", "letters", "screen"].filter((v) => !mm(v)).join());
       ok("الوارد: «قيد جديد» و«رفع ملفات» ظاهران، و«المحذوفات» و«سجل النشاط» داخل «المزيد»", !mm("registry").contains(document.getElementById("reg-add")) && !mm("registry").contains(document.getElementById("reg-bulk")) && mm("registry").contains(document.getElementById("reg-trash")) && mm("registry").contains(document.getElementById("reg-activity")), "registry");
       ok("المستفيدون: «حذف القائمة» داخل «المزيد» لا في الواجهة", mm("roster").contains(document.getElementById("ros-clear")) && !mm("roster").contains(document.getElementById("ros-add")), "roster");
