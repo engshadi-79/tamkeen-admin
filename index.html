@@ -25,7 +25,7 @@
   <link rel="stylesheet" href="styles/center.css?v=414">
   <link rel="stylesheet" href="styles/clear.css?v=412">
   <link rel="stylesheet" href="styles/center-clean.css?v=447">
-  <link rel="stylesheet" href="styles/unify.css?v=3">
+  <link rel="stylesheet" href="styles/unify.css?v=5">
 </head>
 <body>
   <div class="login-screen" id="login-screen" hidden>
@@ -310,10 +310,10 @@
           <div><h2>المراسلات والخطابات</h2><p>اختر قالباً واملأ الحقول، وستظهر المعاينة فوراً</p></div>
           <div class="btn-row no-print">
             <button class="btn secondary" id="letter-approval-clear" hidden>إغلاق المعاينة</button>
-            <button class="btn" id="btn-copy" data-perm="export">نسخ النص</button>
+            <button class="btn" id="btn-copy" data-more data-perm="export">نسخ النص</button>
             <button class="btn navy" id="btn-word" data-perm="export">تصدير Word</button>
             <button class="btn" id="lb-open" data-perm="export"><span class="material-symbols-outlined btn-ico">topic</span>إصدار جماعي من Excel</button>
-            <button class="btn navy" id="btn-pdf" data-perm="export">تصدير PDF</button>
+            <button class="btn navy" id="btn-pdf" data-more data-perm="export">تصدير PDF</button>
             <button class="btn navy" id="btn-print" data-perm="export"><span class="material-symbols-outlined btn-ico">print</span>طباعة</button>
           </div>
         </div>
@@ -532,17 +532,17 @@
           <div class="btn-row no-print">
             <button class="btn navy" id="reg-bulk" data-perm="upload"><span class="material-symbols-outlined btn-ico">upload</span>رفع ملفات</button>
             <input type="file" id="reg-bulk-input" multiple hidden>
-            <button class="btn navy" id="reg-folder" data-perm="upload"><span class="material-symbols-outlined btn-ico">folder</span>رفع مجلد</button>
+            <button class="btn navy" id="reg-folder" data-more data-perm="upload"><span class="material-symbols-outlined btn-ico">folder</span>رفع مجلد</button>
             <button class="btn navy" id="reg-camera" data-perm="upload"><span class="material-symbols-outlined btn-ico">photo_camera</span>تصوير خطاب</button>
             <input type="file" id="reg-camera-input" accept="image/*" capture="environment" multiple hidden>
             <input type="file" id="reg-folder-input" webkitdirectory multiple hidden>
             <button class="btn" id="reg-add">+ قيد جديد</button>
             <button class="btn secondary" id="reg-export" data-perm="export">تصدير Excel</button>
             <button class="btn" id="reg-archive-pending" hidden></button>
-            <button class="btn secondary" data-drive-settings><span class="material-symbols-outlined btn-ico">cloud</span>Google Drive</button>
-            <button class="btn secondary" data-profile><span class="material-symbols-outlined btn-ico">person</span>حسابي</button>
-            <button class="btn secondary" id="reg-activity"><span class="material-symbols-outlined btn-ico">history</span>سجل النشاط</button>
-            <button class="btn secondary" id="reg-trash"><span class="material-symbols-outlined btn-ico">delete</span>المحذوفات</button>
+            <button class="btn secondary" data-drive-settings data-more><span class="material-symbols-outlined btn-ico">cloud</span>Google Drive</button>
+            <button class="btn secondary" data-profile data-more><span class="material-symbols-outlined btn-ico">person</span>حسابي</button>
+            <button class="btn secondary" id="reg-activity" data-more><span class="material-symbols-outlined btn-ico">history</span>سجل النشاط</button>
+            <button class="btn secondary" id="reg-trash" data-more><span class="material-symbols-outlined btn-ico">delete</span>المحذوفات</button>
           </div>
         </div>
         <div class="reg-watch card" id="reg-watch" hidden>
@@ -620,13 +620,13 @@
           <div class="btn-row no-print">
             <button class="btn secondary" id="adm-refresh"><span class="material-symbols-outlined btn-ico">refresh</span>تحديث</button>
             <button class="btn secondary" id="adm-export" title="ملف فيه الحسابات وبصمات كلمات المرور، لنقلها إلى خادم آخر"><span class="material-symbols-outlined btn-ico">download</span>تصدير الحسابات</button>
-            <button class="btn navy" id="adm-move" title="نسخ المرفقات والبيانات والحسابات إلى خادم Supabase؛ الخادم الحالي لا يُمسّ"><span class="material-symbols-outlined btn-ico">local_shipping</span>نقل كل شيء إلى Supabase</button>
-            <button class="btn secondary" id="adm-restore" title="استعادة سجلات ناقصة من النسخ الاحتياطية اليومية"><span class="material-symbols-outlined btn-ico">recycling</span>استعادة من نسخة</button>
-            <button class="btn secondary" id="adm-legacy" hidden title="نسخ مرفقات الوارد والصادر التي ما زالت على Google Drive إلى Supabase"><span class="material-symbols-outlined btn-ico">move_to_inbox</span>نسخ مرفقات Drive القديمة</button>
-            <button class="btn navy" id="adm-adopt" title="يرفع كل بيانات هذا الجهاز إلى الخادم الحالي ويعتمدها"><span class="material-symbols-outlined btn-ico">reply</span>اعتماد بيانات هذا الجهاز</button>
-            <button class="btn secondary" id="adm-import" title="استيراد حسابات من خادم آخر؛ الموجود لا يُستبدل"><span class="material-symbols-outlined btn-ico">upload</span>استيراد الحسابات</button>
+            <button class="btn navy" id="adm-move" data-more title="نسخ المرفقات والبيانات والحسابات إلى خادم Supabase؛ الخادم الحالي لا يُمسّ"><span class="material-symbols-outlined btn-ico">local_shipping</span>نقل كل شيء إلى Supabase</button>
+            <button class="btn secondary" id="adm-restore" data-more title="استعادة سجلات ناقصة من النسخ الاحتياطية اليومية"><span class="material-symbols-outlined btn-ico">recycling</span>استعادة من نسخة</button>
+            <button class="btn secondary" id="adm-legacy" data-more hidden title="نسخ مرفقات الوارد والصادر التي ما زالت على Google Drive إلى Supabase"><span class="material-symbols-outlined btn-ico">move_to_inbox</span>نسخ مرفقات Drive القديمة</button>
+            <button class="btn navy" id="adm-adopt" data-more title="يرفع كل بيانات هذا الجهاز إلى الخادم الحالي ويعتمدها"><span class="material-symbols-outlined btn-ico">reply</span>اعتماد بيانات هذا الجهاز</button>
+            <button class="btn secondary" id="adm-import" data-more title="استيراد حسابات من خادم آخر؛ الموجود لا يُستبدل"><span class="material-symbols-outlined btn-ico">upload</span>استيراد الحسابات</button>
             <input type="file" id="adm-import-file" accept=".json,application/json" hidden>
-            <a class="btn secondary" id="adm-log" target="_blank" rel="noopener" hidden><span class="material-symbols-outlined btn-ico">history</span>سجل الأحداث في Drive</a>
+            <a class="btn secondary" id="adm-log" data-more target="_blank" rel="noopener" hidden><span class="material-symbols-outlined btn-ico">history</span>سجل الأحداث في Drive</a>
             <a class="btn secondary" id="adm-backups" target="_blank" rel="noopener" hidden><span class="material-symbols-outlined btn-ico">save</span>النسخ الاحتياطية</a>
           </div>
         </div>
@@ -690,14 +690,14 @@
           <div class="btn-row no-print">
             <button class="btn navy" data-ros-import data-perm="upload"><span class="material-symbols-outlined btn-ico">upload</span>رفع ملف Excel</button>
             <button class="btn" id="ros-add">+ سجل جديد</button>
-            <button class="btn secondary" id="ros-add-col">+ عمود جديد</button>
-            <button class="btn secondary" id="ros-cols"><span class="material-symbols-outlined btn-ico">folder_copy</span>الأعمدة</button>
-            <button class="btn secondary" id="ros-sync"><span class="material-symbols-outlined btn-ico">refresh</span>مزامنة الآن</button>
+            <button class="btn secondary" id="ros-add-col" data-more>+ عمود جديد</button>
+            <button class="btn secondary" id="ros-cols" data-more><span class="material-symbols-outlined btn-ico">folder_copy</span>الأعمدة</button>
+            <button class="btn secondary" id="ros-sync" data-more><span class="material-symbols-outlined btn-ico">refresh</span>مزامنة الآن</button>
             <button class="btn secondary" id="ros-audit" title="المكرّر والهوية والجوال غير الصحيحين والحقول الناقصة"><span class="material-symbols-outlined btn-ico">search</span>تدقيق البيانات</button>
-            <button class="btn secondary" id="ros-export" data-perm="export">تصدير Excel</button>
+            <button class="btn secondary" id="ros-export" data-more data-perm="export">تصدير Excel</button>
             <button class="btn" id="ros-report"><span class="material-symbols-outlined btn-ico">print</span>تقرير المتابعة</button>
-            <button class="btn secondary" id="ros-report-word">تقرير Word</button>
-            <button class="btn danger" id="ros-clear" data-perm="delete">حذف القائمة</button>
+            <button class="btn secondary" id="ros-report-word" data-more>تقرير Word</button>
+            <button class="btn danger" id="ros-clear" data-more data-perm="delete">حذف القائمة</button>
           </div>
         </div>
         <input type="file" id="ros-file" accept=".xlsx,.xlsm" hidden>
@@ -941,9 +941,9 @@
           <div><h2>كشف توزيع الضيافة</h2><p>خانة المسار: عدد المتدربين في ذلك اليوم. خانة الموظف: اضغط لوضع (1) عند استلام الضيافة، واضغط مرة أخرى للإلغاء. المجاميع تُحسب تلقائياً والحفظ فوري لكل المستخدمين.</p></div>
           <div class="btn-row no-print">
             <button class="btn navy" id="hos-export"><span class="material-symbols-outlined btn-ico">download</span>تصدير الشهر Excel</button>
-            <button class="btn" id="hos-export-year"><span class="material-symbols-outlined btn-ico">download</span>تصدير السنة (12 ورقة)</button>
+            <button class="btn" id="hos-export-year" data-more><span class="material-symbols-outlined btn-ico">download</span>تصدير السنة (12 ورقة)</button>
             <button class="btn secondary" id="hos-print"><span class="material-symbols-outlined btn-ico">print</span>طباعة الكشف</button>
-            <button class="btn" id="hos-report"><span class="material-symbols-outlined btn-ico">inventory_2</span>تقرير الاستلام والصرف</button>
+            <button class="btn" id="hos-report" data-more><span class="material-symbols-outlined btn-ico">inventory_2</span>تقرير الاستلام والصرف</button>
             <button class="btn secondary" id="hos-rows"><span class="material-symbols-outlined btn-ico">edit</span>المسارات والموظفون</button>
           </div>
         </div>
@@ -1033,13 +1033,13 @@
         <div class="page-head">
           <div><h2>شاشة إحصاءات المركز</h2><p id="sc-updated" class="conv-hint"></p></div>
           <div class="btn-row no-print">
-            <button class="btn navy" id="sc-full"><span class="material-symbols-outlined btn-ico">fullscreen</span>ملء الشاشة</button>
+            <button class="btn navy" id="sc-full" data-more><span class="material-symbols-outlined btn-ico">fullscreen</span>ملء الشاشة</button>
             <button class="btn navy" id="sc-run" title="ينسخ السكربت ويفتح نظام المركز"><span class="material-symbols-outlined btn-ico">play_arrow</span>تشغيل القراءة في النظام</button>
             <button class="btn secondary" id="sc-refresh"><span class="material-symbols-outlined btn-ico">refresh</span>تحديث الآن</button>
             <button class="btn secondary" id="sc-report"><span class="material-symbols-outlined btn-ico">print</span>تقرير شامل</button>
-            <button class="btn secondary" id="sc-key" data-admin-only hidden><span class="material-symbols-outlined btn-ico">key</span>نسخ رمز الشاشة</button>
-            <button class="btn secondary" id="sc-copy" data-admin-only hidden title="نسخ أرقام اللقطة لإرسالها عند وجود خلل"><span class="material-symbols-outlined btn-ico">content_copy</span>نسخ اللقطة</button>
-            <button class="btn secondary" id="sc-how">؟ طريقة التشغيل</button>
+            <button class="btn secondary" id="sc-key" data-more data-admin-only hidden><span class="material-symbols-outlined btn-ico">key</span>نسخ رمز الشاشة</button>
+            <button class="btn secondary" id="sc-copy" data-more data-admin-only hidden title="نسخ أرقام اللقطة لإرسالها عند وجود خلل"><span class="material-symbols-outlined btn-ico">content_copy</span>نسخ اللقطة</button>
+            <button class="btn secondary" id="sc-how" data-more>؟ طريقة التشغيل</button>
           </div>
         </div>
         <div class="conv-tabs sc-tabs" id="sc-tabs"></div>
@@ -1664,6 +1664,6 @@
   <script src="src/whatsapp.js?v=403"></script>
   <script src="src/realtime.js?v=340"></script>
   <script src="src/nav-order.js?v=451"></script>
-  <script src="src/app.js?v=455"></script>
+  <script src="src/app.js?v=456"></script>
 </body>
 </html>
